@@ -4,7 +4,7 @@ from .models import (AcademyRole, ACADEMY_ROLE_CHOICES, SELF_SIGNUP_ROLES,
                      Branch, SignupRequest, CourseClass, ClassEnrollment,
                      TimetableSlot, ClassSession, AttendanceRecord,
                      ATTENDANCE_STATUS_VALUES, Lead, CounselingLog,
-                     CONTACT_PREFERENCES, SCHOOL_TYPES)
+                     CONTACT_PREFERENCES, SCHOOL_TYPES, COUNSELING_PURPOSES)
 
 ALL_ROLE_VALUES = [c[0] for c in ACADEMY_ROLE_CHOICES]
 WEEKDAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"]
@@ -227,7 +227,13 @@ class LeadCreateSerializer(serializers.Serializer):
     school_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
     grade = serializers.CharField(max_length=16, required=False, allow_blank=True)
     interest = serializers.CharField(required=False, allow_blank=True)
-    contact_preference = serializers.ChoiceField(choices=CONTACT_PREFERENCES, required=False)
+    purpose = serializers.ChoiceField(choices=COUNSELING_PURPOSES)
+    purpose_detail = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if attrs.get("purpose") == "ETC" and not (attrs.get("purpose_detail") or "").strip():
+            raise serializers.ValidationError("직접 입력 시 상담 목적 내용을 적어주세요.")
+        return attrs
 
 
 class CounselingLogSerializer(serializers.ModelSerializer):
@@ -250,6 +256,7 @@ class LeadSerializer(serializers.ModelSerializer):
         model = Lead
         fields = ["id", "branch", "parent_name", "parent_phone", "student_name",
                   "school_type", "school_name", "grade", "interest", "contact_preference",
+                  "purpose", "purpose_detail",
                   "status", "converted_username", "close_reason", "create_time", "logs"]
 
     def get_branch(self, obj):

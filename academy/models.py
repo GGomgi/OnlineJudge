@@ -232,6 +232,9 @@ class LeadStatus(object):
 CONTACT_PREFERENCES = ["PHONE_OK", "MESSAGE_PREFERRED", "MESSAGE_ONLY", "KAKAO_PREFERRED"]
 SCHOOL_TYPES = ["ELEMENTARY", "MIDDLE", "HIGH", "ETC"]
 
+# 상담 목적(필수). ETC 선택 시 purpose_detail 에 직접 입력값 저장.
+COUNSELING_PURPOSES = ["SELF_DEV", "ADMISSION", "COMPETITION", "CAREER", "ETC"]
+
 
 class Lead(models.Model):
     """상담 신청(리드). 계정 없이 방문 상담 시 직접 작성하는 신청서.
@@ -245,6 +248,9 @@ class Lead(models.Model):
     grade = models.CharField(max_length=16, blank=True, default="")
     interest = models.TextField(blank=True, default="")
     contact_preference = models.CharField(max_length=24, blank=True, default="PHONE_OK")
+    # 상담 목적(필수). ETC 면 purpose_detail 에 직접 입력값.
+    purpose = models.CharField(max_length=24, blank=True, default="")
+    purpose_detail = models.CharField(max_length=255, blank=True, default="")
     status = models.CharField(max_length=16, default=LeadStatus.NEW)
     converted_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                        on_delete=models.SET_NULL, related_name="converted_from_lead")

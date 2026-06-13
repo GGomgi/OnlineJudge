@@ -69,7 +69,8 @@ class LeadCreateAPI(APIView):
             school_name=data.get("school_name", "") or "",
             grade=data.get("grade", "") or "",
             interest=data.get("interest", "") or "",
-            contact_preference=data.get("contact_preference", "") or "PHONE_OK",
+            purpose=data.get("purpose", "") or "",
+            purpose_detail=data.get("purpose_detail", "") or "",
         )
         return self.success("상담 신청이 접수되었습니다.")
 
