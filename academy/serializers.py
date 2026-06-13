@@ -2,7 +2,8 @@ from utils.api import serializers
 
 from .models import (AcademyRole, ACADEMY_ROLE_CHOICES, SELF_SIGNUP_ROLES,
                      Branch, SignupRequest, CourseClass, ClassEnrollment,
-                     TimetableSlot)
+                     TimetableSlot, ClassSession, AttendanceRecord,
+                     ATTENDANCE_STATUS_VALUES)
 
 ALL_ROLE_VALUES = [c[0] for c in ACADEMY_ROLE_CHOICES]
 WEEKDAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"]
@@ -150,3 +151,65 @@ class EnrollmentSerializer(serializers.ModelSerializer):
         except Exception:
             real_name = ""
         return {"id": obj.student.id, "username": obj.student.username, "real_name": real_name}
+
+
+def _student_brief(user):
+    real_name = ""
+    try:
+        real_name = user.userprofile.real_name or ""
+    except Exception:
+        real_name = ""
+    return {"id": user.id, "username": user.username, "real_name": real_name}
+
+
+class ClassSessionSerializer(serializers.ModelSerializer):
+    class_name = serializers.SerializerMethodField()
+    branch = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClassSession
+        fields = ["id", "course_class_id", "class_name", "branch", "date",
+                  "start_time", "end_time", "status", "topic", "create_time"]
+
+    def get_class_name(self, obj):
+        return obj.course_class.name
+
+    def get_branch(self, obj):
+        b = obj.course_class.branch
+        return {"id": b.id, "code": b.code, "name": b.name} if b else None
+
+
+class CreateSessionSerializer(serializers.Serializer):
+    class_id = serializers.IntegerField()
+    date = serializers.DateField()
+    start_time = serializers.TimeField(required=False, allow_null=True)
+    end_time = serializers.TimeField(required=False, allow_null=True)
+    topic = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+
+class GenerateSessionsSerializer(serializers.Serializer):
+    class_id = serializers.IntegerField()
+    from_date = serializers.DateField()
+    to_date = serializers.DateField()
+
+
+class AttendanceRecordSerializer(serializers.ModelSerializer):
+    student = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AttendanceRecord
+        fields = ["id", "student", "status", "memo", "update_time"]
+
+    def get_student(self, obj):
+        return _student_brief(obj.student)
+
+
+class _AttItemSerializer(serializers.Serializer):
+    student_id = serializers.IntegerField()
+    status = serializers.ChoiceField(choices=ATTENDANCE_STATUS_VALUES)
+    memo = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+
+class MarkAttendanceSerializer(serializers.Serializer):
+    session_id = serializers.IntegerField()
+    records = serializers.ListField(child=_AttItemSerializer())

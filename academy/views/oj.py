@@ -3,9 +3,11 @@ from django.db import transaction
 from utils.api import APIView, validate_serializer
 
 from account.models import User, UserProfile
-from ..models import AcademyProfile, Branch, SignupRequest, CourseClass
+from ..models import (AcademyProfile, Branch, SignupRequest, CourseClass,
+                      AttendanceRecord)
 from ..serializers import (AcademySignupSerializer, BranchSerializer,
-                           SignupRequestSerializer, CourseClassSerializer)
+                           SignupRequestSerializer, CourseClassSerializer,
+                           ClassSessionSerializer)
 from account.decorators import login_required
 
 
@@ -71,3 +73,23 @@ class MyTimetableAPI(APIView):
             enrollments__student=user, enrollments__is_active=True, is_active=True)
         classes = (teaching | enrolled).distinct().select_related("branch", "instructor")
         return self.success(CourseClassSerializer(classes, many=True).data)
+
+
+class MyAttendanceAPI(APIView):
+    @login_required
+    def get(self, request):
+        """본인 출결 내역(최근순). class_id 로 특정 반 필터 가능."""
+        qs = AttendanceRecord.objects.filter(student=request.user).select_related(
+            "session", "session__course_class", "session__course_class__branch")
+        class_id = request.GET.get("class_id")
+        if class_id:
+            qs = qs.filter(session__course_class_id=class_id)
+        qs = qs.order_by("-session__date")
+        results = []
+        for r in qs[:200]:
+            results.append({
+                "session": ClassSessionSerializer(r.session).data,
+                "status": r.status,
+                "memo": r.memo,
+            })
+        return self.success(results)

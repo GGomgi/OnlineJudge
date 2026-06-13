@@ -138,7 +138,8 @@ UPLOAD_DIR = f"{DATA_DIR}{UPLOAD_PREFIX}"
 STATICFILES_DIRS = [os.path.join(DATA_DIR, "public")]
 
 
-LOGGING_HANDLERS = ['console', 'sentry'] if production_env else ['console']
+# 업스트림 Sentry(raven) 전송 비활성: py3.12 ssl 비호환 + 외부 계정 전송 방지
+LOGGING_HANDLERS = ['console']
 LOGGING = {
    'version': 1,
    'disable_existing_loggers': False,

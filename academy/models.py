@@ -166,3 +166,55 @@ class TimetableSlot(models.Model):
     class Meta:
         db_table = "academy_timetable_slot"
         ordering = ["day_of_week", "start_time"]
+
+
+class SessionStatus(object):
+    SCHEDULED = "SCHEDULED"
+    DONE = "DONE"
+    CANCELED = "CANCELED"
+
+
+class ClassSession(models.Model):
+    """반의 개별 수업 회차(날짜 단위). 출결·숙제의 기준."""
+    course_class = models.ForeignKey(CourseClass, on_delete=models.CASCADE, related_name="sessions")
+    date = models.DateField()
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    status = models.CharField(max_length=16, default=SessionStatus.SCHEDULED)
+    topic = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_class_session"
+        ordering = ["-date", "start_time"]
+        unique_together = ("course_class", "date", "start_time")
+
+
+class AttendanceStatus(object):
+    PRESENT = "PRESENT"        # 출석
+    LATE = "LATE"              # 지각
+    ABSENT = "ABSENT"          # 결석
+    EARLY_LEAVE = "EARLY_LEAVE"  # 조퇴
+    EXCUSED = "EXCUSED"        # 사유결석(인정)
+
+
+ATTENDANCE_STATUS_VALUES = [
+    AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.ABSENT,
+    AttendanceStatus.EARLY_LEAVE, AttendanceStatus.EXCUSED,
+]
+
+
+class AttendanceRecord(models.Model):
+    """회차별 학생 출결 기록."""
+    session = models.ForeignKey(ClassSession, on_delete=models.CASCADE, related_name="attendances")
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="attendance_records")
+    status = models.CharField(max_length=16, default=AttendanceStatus.PRESENT)
+    memo = models.CharField(max_length=255, blank=True, default="")
+    marked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="marked_attendances")
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_attendance_record"
+        unique_together = ("session", "student")

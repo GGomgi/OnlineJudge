@@ -1,4 +1,13 @@
+from datetime import timedelta, datetime, date as date_cls
+
 from django.utils.timezone import now
+
+
+def _to_date(v):
+    """validate_serializer 가 문자열로 넘기는 날짜를 date 로 변환."""
+    if isinstance(v, date_cls):
+        return v
+    return datetime.strptime(v, "%Y-%m-%d").date()
 
 from utils.api import APIView, validate_serializer
 
@@ -6,12 +15,15 @@ from account.decorators import admin_role_required
 from account.models import User
 from ..models import (AcademyProfile, AcademyRole, ALL_BRANCH_ROLES, Branch,
                       SignupRequest, SignupStatus, CourseClass, ClassEnrollment,
-                      TimetableSlot)
+                      TimetableSlot, ClassSession, SessionStatus, AttendanceRecord)
 from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            SignupRejectSerializer, AssignRoleSerializer,
                            CourseClassSerializer, CreateClassSerializer,
                            EditClassSerializer, EnrollSerializer,
-                           EnrollmentSerializer, SetTimetableSlotSerializer)
+                           EnrollmentSerializer, SetTimetableSlotSerializer,
+                           ClassSessionSerializer, CreateSessionSerializer,
+                           GenerateSessionsSerializer, AttendanceRecordSerializer,
+                           MarkAttendanceSerializer, _student_brief)
 from ..services import apply_role, staff_scope, can_manage_branch
 
 
@@ -279,3 +291,131 @@ class TimetableSlotAdminAPI(APIView):
             return self.error("No permission for this branch")
         slot.delete()
         return self.success()
+
+
+class ClassSessionAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """반의 수업 회차 목록(date_from/date_to 옵션)."""
+        course_class = CourseClass.objects.select_related("branch").filter(id=request.GET.get("class_id")).first()
+        if not course_class:
+            return self.error("Class does not exist")
+        if not can_manage_branch(request.user, course_class.branch_id):
+            return self.error("No permission for this branch")
+        qs = course_class.sessions.all()
+        if request.GET.get("date_from"):
+            qs = qs.filter(date__gte=request.GET["date_from"])
+        if request.GET.get("date_to"):
+            qs = qs.filter(date__lte=request.GET["date_to"])
+        return self.success(self.paginate_data(request, qs, ClassSessionSerializer))
+
+    @validate_serializer(CreateSessionSerializer)
+    @admin_role_required
+    def post(self, request):
+        data = request.data
+        course_class = CourseClass.objects.filter(id=data["class_id"]).first()
+        if not course_class:
+            return self.error("Class does not exist")
+        if not can_manage_branch(request.user, course_class.branch_id):
+            return self.error("No permission for this branch")
+        obj, created = ClassSession.objects.get_or_create(
+            course_class=course_class, date=data["date"], start_time=data.get("start_time"),
+            defaults={"end_time": data.get("end_time"), "topic": data.get("topic", "") or ""})
+        if not created:
+            return self.error("Session already exists for this date/time")
+        return self.success(ClassSessionSerializer(obj).data)
+
+    @admin_role_required
+    def delete(self, request):
+        session = ClassSession.objects.filter(id=request.GET.get("id")).select_related("course_class").first()
+        if not session:
+            return self.error("Session does not exist")
+        if not can_manage_branch(request.user, session.course_class.branch_id):
+            return self.error("No permission for this branch")
+        session.delete()
+        return self.success()
+
+
+class GenerateSessionsAPI(APIView):
+    @validate_serializer(GenerateSessionsSerializer)
+    @admin_role_required
+    def post(self, request):
+        """시간표 슬롯을 바탕으로 기간 내 수업 회차를 자동 생성."""
+        data = request.data
+        course_class = CourseClass.objects.filter(id=data["class_id"]).first()
+        if not course_class:
+            return self.error("Class does not exist")
+        if not can_manage_branch(request.user, course_class.branch_id):
+            return self.error("No permission for this branch")
+        from_date, to_date = _to_date(data["from_date"]), _to_date(data["to_date"])
+        if to_date < from_date:
+            return self.error("to_date must be on or after from_date")
+        if (to_date - from_date).days > 366:
+            return self.error("Date range too large (max 366 days)")
+
+        slots_by_day = {}
+        for slot in course_class.timetable_slots.all():
+            slots_by_day.setdefault(slot.day_of_week, []).append(slot)
+        if not slots_by_day:
+            return self.error("No timetable slots to generate from")
+
+        created = 0
+        d = from_date
+        while d <= to_date:
+            for slot in slots_by_day.get(d.weekday(), []):
+                _, was_created = ClassSession.objects.get_or_create(
+                    course_class=course_class, date=d, start_time=slot.start_time,
+                    defaults={"end_time": slot.end_time, "status": SessionStatus.SCHEDULED})
+                if was_created:
+                    created += 1
+            d += timedelta(days=1)
+        return self.success({"created": created})
+
+
+class AttendanceAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """회차 출결 명부: 수강생 전원 + (있으면) 기록된 출결 상태."""
+        session = ClassSession.objects.select_related("course_class").filter(id=request.GET.get("session_id")).first()
+        if not session:
+            return self.error("Session does not exist")
+        if not can_manage_branch(request.user, session.course_class.branch_id):
+            return self.error("No permission for this branch")
+
+        recs = {r.student_id: r for r in session.attendances.select_related("student").all()}
+        roster = []
+        enrollments = session.course_class.enrollments.filter(is_active=True).select_related("student")
+        for en in enrollments:
+            r = recs.get(en.student_id)
+            roster.append({
+                "student": _student_brief(en.student),
+                "status": r.status if r else None,
+                "memo": r.memo if r else "",
+            })
+        return self.success({"session": ClassSessionSerializer(session).data, "roster": roster})
+
+    @validate_serializer(MarkAttendanceSerializer)
+    @admin_role_required
+    def post(self, request):
+        """회차 출결 일괄 입력(upsert)."""
+        data = request.data
+        session = ClassSession.objects.select_related("course_class").filter(id=data["session_id"]).first()
+        if not session:
+            return self.error("Session does not exist")
+        if not can_manage_branch(request.user, session.course_class.branch_id):
+            return self.error("No permission for this branch")
+
+        enrolled_ids = set(session.course_class.enrollments.filter(is_active=True).values_list("student_id", flat=True))
+        updated = 0
+        for item in data["records"]:
+            if item["student_id"] not in enrolled_ids:
+                continue
+            AttendanceRecord.objects.update_or_create(
+                session=session, student_id=item["student_id"],
+                defaults={"status": item["status"], "memo": item.get("memo", "") or "",
+                          "marked_by": request.user})
+            updated += 1
+        if session.status == SessionStatus.SCHEDULED:
+            session.status = SessionStatus.DONE
+            session.save()
+        return self.success({"updated": updated})
