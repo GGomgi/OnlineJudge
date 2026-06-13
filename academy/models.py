@@ -119,3 +119,50 @@ class SignupRequest(models.Model):
     class Meta:
         db_table = "academy_signup_request"
         ordering = ["-create_time"]
+
+
+class CourseClass(models.Model):
+    """반(class group). 지점 소속, 담당 강사, 트랙/레벨(커리큘럼 09)."""
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="classes")
+    name = models.CharField(max_length=128)
+    # 커리큘럼 09: track LANG/ALGO/BLOCK/SQL/CERT, level L1~L4 (자유 문자열로 보관)
+    track = models.CharField(max_length=16, blank=True, default="")
+    level = models.CharField(max_length=8, blank=True, default="")
+    instructor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="teaching_classes")
+    is_active = models.BooleanField(default=True)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_class"
+        ordering = ["branch_id", "name"]
+
+    def __str__(self):
+        return f"{self.branch_id}:{self.name}"
+
+
+class ClassEnrollment(models.Model):
+    """학생 ↔ 반 수강 관계."""
+    course_class = models.ForeignKey(CourseClass, on_delete=models.CASCADE, related_name="enrollments")
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="class_enrollments")
+    is_active = models.BooleanField(default=True)
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_class_enrollment"
+        unique_together = ("course_class", "student")
+
+
+class TimetableSlot(models.Model):
+    """반의 정규 주간 시간표 슬롯(요일+시작/종료)."""
+    course_class = models.ForeignKey(CourseClass, on_delete=models.CASCADE, related_name="timetable_slots")
+    # 0=월 ... 6=일 (Python date.weekday() 기준)
+    day_of_week = models.PositiveSmallIntegerField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    room = models.CharField(max_length=64, blank=True, default="")
+
+    class Meta:
+        db_table = "academy_timetable_slot"
+        ordering = ["day_of_week", "start_time"]

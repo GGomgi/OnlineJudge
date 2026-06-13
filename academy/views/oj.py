@@ -3,9 +3,9 @@ from django.db import transaction
 from utils.api import APIView, validate_serializer
 
 from account.models import User, UserProfile
-from ..models import AcademyProfile, Branch, SignupRequest
+from ..models import AcademyProfile, Branch, SignupRequest, CourseClass
 from ..serializers import (AcademySignupSerializer, BranchSerializer,
-                           SignupRequestSerializer)
+                           SignupRequestSerializer, CourseClassSerializer)
 from account.decorators import login_required
 
 
@@ -58,3 +58,16 @@ class MySignupStatusAPI(APIView):
         if not req:
             return self.success(None)
         return self.success(SignupRequestSerializer(req).data)
+
+
+class MyTimetableAPI(APIView):
+    @login_required
+    def get(self, request):
+        """내 시간표: 학생은 수강 중인 반, 강사는 담당 반의 반·시간표를 반환."""
+        user = request.user
+        # 담당 강사로 배정된 반 + 수강 중인 반(중복 제거)
+        teaching = CourseClass.objects.filter(instructor=user, is_active=True)
+        enrolled = CourseClass.objects.filter(
+            enrollments__student=user, enrollments__is_active=True, is_active=True)
+        classes = (teaching | enrolled).distinct().select_related("branch", "instructor")
+        return self.success(CourseClassSerializer(classes, many=True).data)

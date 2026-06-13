@@ -1,9 +1,11 @@
 from utils.api import serializers
 
 from .models import (AcademyRole, ACADEMY_ROLE_CHOICES, SELF_SIGNUP_ROLES,
-                     Branch, SignupRequest)
+                     Branch, SignupRequest, CourseClass, ClassEnrollment,
+                     TimetableSlot)
 
 ALL_ROLE_VALUES = [c[0] for c in ACADEMY_ROLE_CHOICES]
+WEEKDAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"]
 
 
 class BranchSerializer(serializers.ModelSerializer):
@@ -63,3 +65,88 @@ class AssignRoleSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
     role = serializers.ChoiceField(choices=ALL_ROLE_VALUES)
     branch_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class TimetableSlotSerializer(serializers.ModelSerializer):
+    day_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TimetableSlot
+        fields = ["id", "day_of_week", "day_name", "start_time", "end_time", "room"]
+
+    def get_day_name(self, obj):
+        if 0 <= obj.day_of_week <= 6:
+            return WEEKDAY_NAMES[obj.day_of_week]
+        return ""
+
+
+class CourseClassSerializer(serializers.ModelSerializer):
+    branch = serializers.SerializerMethodField()
+    instructor = serializers.SerializerMethodField()
+    student_count = serializers.SerializerMethodField()
+    timetable = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CourseClass
+        fields = ["id", "name", "track", "level", "branch", "instructor",
+                  "student_count", "timetable", "is_active", "create_time"]
+
+    def get_branch(self, obj):
+        if obj.branch_id:
+            return {"id": obj.branch.id, "code": obj.branch.code, "name": obj.branch.name}
+        return None
+
+    def get_instructor(self, obj):
+        return obj.instructor.username if obj.instructor_id else None
+
+    def get_student_count(self, obj):
+        return obj.enrollments.filter(is_active=True).count()
+
+    def get_timetable(self, obj):
+        return TimetableSlotSerializer(obj.timetable_slots.all(), many=True).data
+
+
+class CreateClassSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=128)
+    branch_id = serializers.IntegerField()
+    track = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    level = serializers.CharField(max_length=8, required=False, allow_blank=True)
+    instructor_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class EditClassSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField(max_length=128, required=False)
+    track = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    level = serializers.CharField(max_length=8, required=False, allow_blank=True)
+    instructor_id = serializers.IntegerField(required=False, allow_null=True)
+    is_active = serializers.BooleanField(required=False)
+
+
+class EnrollSerializer(serializers.Serializer):
+    class_id = serializers.IntegerField()
+    student_id = serializers.IntegerField()
+
+
+class SetTimetableSlotSerializer(serializers.Serializer):
+    class_id = serializers.IntegerField()
+    day_of_week = serializers.IntegerField(min_value=0, max_value=6)
+    start_time = serializers.TimeField()
+    end_time = serializers.TimeField()
+    room = serializers.CharField(max_length=64, required=False, allow_blank=True)
+
+
+class EnrollmentSerializer(serializers.ModelSerializer):
+    student = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClassEnrollment
+        fields = ["id", "student", "is_active", "joined_at"]
+
+    def get_student(self, obj):
+        real_name = ""
+        try:
+            real_name = obj.student.userprofile.real_name or ""
+        except Exception:
+            real_name = ""
+        return {"id": obj.student.id, "username": obj.student.username, "real_name": real_name}
