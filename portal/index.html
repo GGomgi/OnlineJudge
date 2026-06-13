@@ -7,6 +7,7 @@
   <link rel="icon" href="data:,">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
   <style>
     [v-cloak] { display: none; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", sans-serif; }
@@ -175,7 +176,7 @@
     </section>
 
     <!-- ============ 관리자: 상담·등록 ============ -->
-    <section v-if="tab==='leadmgr'">
+    <section v-if="tab==='leadmgr' && !convertingLead">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-bold">상담 · 등록</h2>
         <select v-model="leadFilter" @change="loadLeads" class="input w-32">
@@ -228,23 +229,130 @@
 
             <!-- 액션 -->
             <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED'" class="flex flex-wrap gap-2">
-              <button @click="showConvert = showConvert===r.id ? null : r.id" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">등록 전환</button>
+              <button @click="openConvert(r)" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">등록 전환</button>
               <button @click="closeLead(r)" class="px-3 py-1.5 rounded bg-slate-200 text-slate-700 text-sm hover:bg-slate-300">종결</button>
             </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-            <!-- 등록 전환 폼 -->
-            <div v-if="showConvert===r.id && r.status!=='CONVERTED'" class="bg-indigo-50 rounded-lg p-3 space-y-2">
-              <div class="text-xs font-semibold text-indigo-700">등록 전환 — 학생 계정 생성</div>
-              <div class="grid grid-cols-2 gap-2">
-                <input v-model="convertForm.login_id" placeholder="로그인 아이디" class="input" />
-                <input v-model="convertForm.password" type="text" placeholder="비밀번호(6자+)" class="input" />
-                <input v-model="convertForm.birth_date" type="date" class="input" />
-                <input :value="convertForm.student_phone" @input="convertForm.student_phone = formatPhone($event.target.value)"
-                       inputmode="numeric" placeholder="학생 연락처(선택)" class="input" />
+    <!-- ============ 입회원 신청서 (등록 전환, 부모/학생 직접 작성) ============ -->
+    <section v-if="tab==='leadmgr' && convertingLead" class="max-w-2xl mx-auto">
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+          <div class="font-bold tracking-wide">입회원 신청서</div>
+          <button @click="closeConvert" class="text-xs text-slate-300 hover:text-white">← 목록으로</button>
+        </div>
+        <div class="p-5 space-y-5">
+          <p class="text-xs text-slate-400">상담 시 작성한 정보를 확인하고, 추가 정보를 작성해 주세요. 작성은 보호자/학생이 직접 진행합니다.</p>
+
+          <!-- 학생/보호자 정보 (상담 정보 prefill) -->
+          <div class="space-y-3">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">학생 · 보호자 정보</div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="lbl">학생 성명</label>
+                <input :value="convertForm.student_name" class="input bg-slate-50" readonly />
               </div>
-              <input v-model="convertForm.address" placeholder="주소(선택)" class="input" />
-              <button @click="convertLead(r)" class="btn-primary w-full text-sm">계정 생성 · 등록 완료</button>
+              <div>
+                <label class="lbl">성별</label>
+                <div class="flex gap-2 pt-1">
+                  <label class="flex items-center gap-1 text-sm"><input type="radio" value="M" v-model="convertForm.gender"> 남</label>
+                  <label class="flex items-center gap-1 text-sm"><input type="radio" value="F" v-model="convertForm.gender"> 여</label>
+                </div>
+              </div>
             </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="lbl">생년월일 <span class="text-rose-500">*</span></label>
+                <input v-model="convertForm.birth_date" @change="genLoginId" type="date" class="input" />
+              </div>
+              <div>
+                <label class="lbl">보호자 연락처</label>
+                <input v-model="convertForm.parent_phone" class="input bg-slate-50" readonly />
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <div><label class="lbl">학교 구분</label><input :value="schoolLabel(convertForm.school_type)||'-'" class="input bg-slate-50" readonly /></div>
+              <div><label class="lbl">학교</label><input :value="convertForm.school_name||'-'" class="input bg-slate-50" readonly /></div>
+              <div><label class="lbl">학년</label><input :value="convertForm.grade||'-'" class="input bg-slate-50" readonly /></div>
+            </div>
+            <div>
+              <label class="lbl">학생 휴대폰 <span class="text-rose-500">*</span></label>
+              <div class="flex gap-2">
+                <input :value="convertForm.student_phone" @input="convertForm.student_phone = formatPhone($event.target.value)"
+                       inputmode="numeric" class="input" placeholder="010-0000-0000" />
+                <button type="button" @click="useParentPhone" class="btn-secondary text-xs whitespace-nowrap">보호자번호와 동일</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 주소 -->
+          <div class="space-y-2">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">주소 <span class="text-rose-500">*</span></div>
+            <div class="flex gap-2">
+              <input :value="convertForm.zipcode" class="input w-28 bg-slate-50" readonly placeholder="우편번호" />
+              <button type="button" @click="openPostcode" class="btn-secondary text-sm whitespace-nowrap">우편번호 검색</button>
+            </div>
+            <input :value="convertForm.address" class="input bg-slate-50" readonly placeholder="도로명/지번 주소" />
+            <input v-model="convertForm.address_detail" class="input" placeholder="상세주소 (동/호 등)" />
+          </div>
+
+          <!-- 계정 -->
+          <div class="space-y-2">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">로그인 계정</div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="lbl">아이디 (이름+생일 자동)</label>
+                <input v-model="convertForm.login_id" class="input" />
+              </div>
+              <div>
+                <label class="lbl">비밀번호 (6자 이상)</label>
+                <input v-model="convertForm.password" type="text" class="input" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 개인정보 동의서 -->
+          <div class="space-y-3">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">개인정보 수집·이용·제공 동의서</div>
+            <div class="text-[12px] leading-relaxed text-slate-600 bg-slate-50 rounded-lg p-3 space-y-2">
+              <p>학원은 정보통신망 이용촉진 및 정보보호 등에 관한 법률을 준수하기 위하여 다음 내용에 대하여 회원의 동의를 받고자 합니다.</p>
+              <p>* 학원은 회원학습 이력관리 및 상담, 학습정보 제공, 회비 정산, 신규 서비스 홍보 및 마케팅 등의 목적으로 이용 동의를 철회하는 때까지(단, 법률상 별도 보관기간이 있는 경우 예외) 다음의 개인정보를 수집 및 이용합니다.</p>
+              <p>- 성명, 생년월일, 주소, 집 전화번호, 휴대폰번호, 외국인등록번호 또는 여권번호(외국인에 한함)</p>
+              <p class="text-rose-600 font-medium">※ 만 14세 미만 아동의 경우 반드시 법적 대리인의 동의가 필요함</p>
+              <p class="font-semibold pt-1">[법정대리인 동의서]</p>
+              <p>본인은 미성년자의 법정대리인으로 서비스 이용을 위해 위와 같이 정보를 이용하는데 대하여 동의합니다.</p>
+              <p class="text-[11px] text-slate-400">※ 법정대리인의 개인정보는 법정대리인 동의를 위한 목적으로만 사용합니다.</p>
+            </div>
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" v-model="convertForm.consent_privacy" class="w-4 h-4" />
+              <span>위 개인정보 수집·이용·제공에 동의합니다. <span class="text-rose-500">*</span></span>
+            </label>
+            <div class="flex items-end justify-between gap-3 flex-wrap">
+              <div class="text-sm text-slate-600">작성일: <b>{{ today.y }}년 {{ today.m }}월 {{ today.d }}일</b></div>
+              <div>
+                <label class="lbl">법정대리인 성명 <span class="text-rose-500">*</span></label>
+                <input v-model="convertForm.consent_guardian_name" class="input w-44" />
+              </div>
+            </div>
+            <div>
+              <label class="lbl">인 / 서명 <span class="text-rose-500">*</span> (아래 칸에 서명)</label>
+              <div class="border-2 border-dashed border-slate-300 rounded-lg bg-white inline-block">
+                <canvas ref="sig" width="360" height="140"
+                  class="touch-none rounded-lg"
+                  @pointerdown="sigStart" @pointermove="sigMove" @pointerup="sigEnd" @pointerleave="sigEnd"></canvas>
+              </div>
+              <div class="mt-1">
+                <button type="button" @click="sigClear" class="text-xs text-slate-400 hover:text-slate-600">지우기</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex gap-2 pt-2">
+            <button @click="closeConvert" class="btn-secondary flex-1">취소</button>
+            <button @click="submitConvert" class="btn-primary flex-1">계정 생성 · 등록 완료</button>
           </div>
         </div>
       </div>
@@ -425,7 +533,10 @@ createApp({
       leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' },
       myClasses: [], myAtt: [],
       leadFilter: '', leads: [], openLeadId: null, noteText: '',
-      showConvert: null, convertForm: { login_id:'', password:'', birth_date:'', address:'', student_phone:'' },
+      convertingLead: null,
+      convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', login_id:'', password:'', consent_privacy:false, consent_guardian_name:'' },
+      sig: { drawing:false, ctx:null, hasInk:false },
+      today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
       classes: [], sel: null, roster: [],
       classForm: { name:'', branch_id:null, track:'', level:'' },
       slotForm: { day_of_week:0, start_time:'', end_time:'', room:'' },
@@ -516,28 +627,75 @@ createApp({
     async loadMyTimetable(){ try { this.myClasses = await api('GET','/api/academy/my_timetable'); } catch(e){ this.notify(e.message,false); } },
     async loadMyAttendance(){ try { this.myAtt = await api('GET','/api/academy/my_attendance'); } catch(e){ this.notify(e.message,false); } },
     async loadLeads(){
+      this.convertingLead = null;
       try { const d = await api('GET','/api/admin/academy/lead?limit=250&status='+this.leadFilter); this.leads = d.results || d; }
       catch(e){ this.notify(e.message,false); }
     },
-    toggleLead(r){ this.openLeadId = this.openLeadId===r.id ? null : r.id; this.showConvert=null; this.noteText=''; },
+    toggleLead(r){ this.openLeadId = this.openLeadId===r.id ? null : r.id; this.noteText=''; },
     replaceLead(updated){ const i=this.leads.findIndex(x=>x.id===updated.id); if(i>=0) this.leads.splice(i,1,updated); },
     async addNote(r){
       if (!this.noteText.trim()) return;
       try { const d = await api('POST','/api/admin/academy/lead/note', { lead_id:r.id, summary:this.noteText }); this.replaceLead(d); this.noteText=''; this.notify('상담 기록이 추가되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
-    async convertLead(r){
+    openConvert(r){
+      this.convertingLead = r;
+      this.convertForm = {
+        student_name: r.student_name, gender:'', birth_date:'',
+        parent_phone: r.parent_phone, school_type: r.school_type||'', school_name: r.school_name||'', grade: r.grade||'',
+        student_phone:'', zipcode:'', address:'', address_detail:'',
+        login_id:'', password:'', consent_privacy:false, consent_guardian_name:'',
+      };
+      this.$nextTick(()=> this.sigInit());
+    },
+    closeConvert(){ this.convertingLead = null; },
+    genLoginId(){
+      const name = (this.convertForm.student_name||'').replace(/\s/g,'');
+      const bd = this.convertForm.birth_date;
+      if (name && bd) { const p = bd.split('-'); this.convertForm.login_id = name + p[1] + p[2]; }
+    },
+    useParentPhone(){ this.convertForm.student_phone = this.convertForm.parent_phone; },
+    openPostcode(){
+      if (typeof daum === 'undefined' || !daum.Postcode) return this.notify('주소 검색 모듈을 불러오지 못했습니다(인터넷 확인).', false);
+      new daum.Postcode({ oncomplete: (data) => {
+        this.convertForm.zipcode = data.zonecode;
+        this.convertForm.address = data.roadAddress || data.jibunAddress;
+      }}).open();
+    },
+    sigInit(){
+      const c = this.$refs.sig; if (!c) return;
+      const ctx = c.getContext('2d');
+      ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#1e293b';
+      ctx.clearRect(0,0,c.width,c.height);
+      this.sig.ctx = ctx; this.sig.hasInk = false;
+    },
+    sigPos(e){ const r = e.target.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top }; },
+    sigStart(e){ if(!this.sig.ctx) this.sigInit(); this.sig.drawing=true; const p=this.sigPos(e); this.sig.ctx.beginPath(); this.sig.ctx.moveTo(p.x,p.y); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); },
+    sigMove(e){ if(!this.sig.drawing) return; const p=this.sigPos(e); this.sig.ctx.lineTo(p.x,p.y); this.sig.ctx.stroke(); this.sig.hasInk=true; },
+    sigEnd(){ this.sig.drawing=false; },
+    sigClear(){ this.sigInit(); },
+    async submitConvert(){
+      const f = this.convertForm, r = this.convertingLead;
+      if (!f.birth_date) return this.notify('생년월일을 입력하세요.', false);
+      if (!f.login_id) this.genLoginId();
+      if (!f.login_id || !f.password) return this.notify('아이디·비밀번호를 확인하세요(비밀번호 6자 이상).', false);
+      if (!f.student_phone) return this.notify('학생 휴대폰을 입력하세요. (보호자번호와 동일 버튼 사용 가능)', false);
+      if (!f.zipcode || !f.address) return this.notify('우편번호 검색으로 주소를 입력하세요.', false);
+      if (!f.consent_privacy) return this.notify('개인정보 수집·이용에 동의해 주세요.', false);
+      if (!f.consent_guardian_name) return this.notify('법정대리인 성명을 입력하세요.', false);
+      if (!this.sig.hasInk) return this.notify('서명을 입력해 주세요.', false);
       try {
-        const f = this.convertForm;
-        if (!f.login_id || !f.password) return this.notify('로그인 아이디와 비밀번호를 입력하세요.', false);
-        const body = { lead_id:r.id, login_id:f.login_id, password:f.password };
-        if (f.birth_date) body.birth_date = f.birth_date;
-        if (f.address) body.address = f.address;
-        if (f.student_phone) body.student_phone = f.student_phone;
+        const body = {
+          lead_id: r.id, login_id: f.login_id, password: f.password, birth_date: f.birth_date,
+          gender: f.gender || '', student_phone: f.student_phone, zipcode: f.zipcode,
+          address: f.address, address_detail: f.address_detail || '',
+          consent_privacy: true, consent_guardian_name: f.consent_guardian_name,
+          consent_signature: this.$refs.sig.toDataURL('image/png'),
+          consent_date: this.today.y + '-' + String(this.today.m).padStart(2,'0') + '-' + String(this.today.d).padStart(2,'0'),
+        };
         const d = await api('POST','/api/admin/academy/lead/convert', body);
-        this.replaceLead(d); this.showConvert=null;
-        this.convertForm = { login_id:'', password:'', birth_date:'', address:'', student_phone:'' };
-        this.notify(r.student_name+' 등록 완료 (계정 @'+d.converted_username+')');
+        this.replaceLead(d); this.convertingLead = null;
+        this.notify(d.student_name+' 등록 완료 (계정 @'+d.converted_username+')');
       } catch(e){ this.notify(e.message,false); }
     },
     async closeLead(r){

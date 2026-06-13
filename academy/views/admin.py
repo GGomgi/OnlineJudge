@@ -492,7 +492,10 @@ class ConvertLeadAdminAPI(APIView):
             StudentProfile.objects.create(
                 user=user,
                 birth_date=data.get("birth_date"),
+                gender=data.get("gender", "") or "",
+                zipcode=data.get("zipcode", "") or "",
                 address=data.get("address", "") or "",
+                address_detail=data.get("address_detail", "") or "",
                 student_phone=data.get("student_phone", "") or "",
                 parent_name=lead.parent_name,
                 parent_phone=lead.parent_phone,
@@ -501,6 +504,10 @@ class ConvertLeadAdminAPI(APIView):
                 grade=lead.grade,
                 enrollment_date=now().date(),
                 enrollment_status=EnrollmentStatus.ENROLLED,
+                consent_privacy=bool(data.get("consent_privacy")),
+                consent_guardian_name=data.get("consent_guardian_name", "") or "",
+                consent_signature=data.get("consent_signature", "") or "",
+                consent_date=data.get("consent_date") or now().date(),
             )
             lead.status = LeadStatus.CONVERTED
             lead.converted_user = user

@@ -285,11 +285,14 @@ class EnrollmentStatus(object):
 
 
 class StudentProfile(models.Model):
-    """학생 등록 정보(56 필드의 1차 구현형). 등록 전환 시 생성."""
+    """학생 등록 정보(56 필드의 1차 구현형). 등록 전환(입회원 신청) 시 생성."""
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                 related_name="student_profile")
     birth_date = models.DateField(null=True, blank=True)
+    gender = models.CharField(max_length=8, blank=True, default="")  # M / F
+    zipcode = models.CharField(max_length=16, blank=True, default="")
     address = models.CharField(max_length=255, blank=True, default="")
+    address_detail = models.CharField(max_length=255, blank=True, default="")
     student_phone = models.CharField(max_length=32, blank=True, default="")
     parent_name = models.CharField(max_length=64, blank=True, default="")
     parent_phone = models.CharField(max_length=32, blank=True, default="")
@@ -299,6 +302,11 @@ class StudentProfile(models.Model):
     enrollment_date = models.DateField(null=True, blank=True)
     enrollment_status = models.CharField(max_length=16, default=EnrollmentStatus.ENROLLED)
     memo = models.TextField(blank=True, default="")
+    # 개인정보 수집·이용·제공 동의(법정대리인 동의서)
+    consent_privacy = models.BooleanField(default=False)
+    consent_guardian_name = models.CharField(max_length=64, blank=True, default="")
+    consent_signature = models.TextField(blank=True, default="")  # data URL(PNG base64)
+    consent_date = models.DateField(null=True, blank=True)
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 

@@ -277,9 +277,22 @@ class ConvertLeadSerializer(serializers.Serializer):
     lead_id = serializers.IntegerField()
     login_id = serializers.CharField(max_length=32)
     password = serializers.CharField(min_length=6, max_length=128)
-    birth_date = serializers.DateField(required=False, allow_null=True)
-    address = serializers.CharField(max_length=255, required=False, allow_blank=True)
-    student_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    birth_date = serializers.DateField()
+    gender = serializers.ChoiceField(choices=["M", "F"], required=False, allow_blank=True)
+    student_phone = serializers.CharField(max_length=32)
+    zipcode = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    address = serializers.CharField(max_length=255)
+    address_detail = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    # 개인정보 동의(법정대리인)
+    consent_privacy = serializers.BooleanField()
+    consent_guardian_name = serializers.CharField(max_length=64)
+    consent_signature = serializers.CharField()
+    consent_date = serializers.DateField(required=False, allow_null=True)
+
+    def validate_consent_privacy(self, v):
+        if not v:
+            raise serializers.ValidationError("개인정보 수집·이용 동의가 필요합니다.")
+        return v
 
 
 class CloseLeadSerializer(serializers.Serializer):
