@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>두잉창의코딩 · 학원 포털</title>
+  <link rel="icon" href="data:,">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    [v-cloak] { display: none; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+<div id="app" v-cloak>
+  <!-- 상단 바 -->
+  <header class="bg-slate-900 text-white">
+    <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-lg font-bold tracking-tight">두잉창의코딩</span>
+        <span class="text-xs text-slate-300 hidden sm:inline">학원 포털</span>
+      </div>
+      <div class="flex items-center gap-3 text-sm">
+        <template v-if="me">
+          <span class="text-slate-300">{{ me.real_name || me.user.username }}님
+            <span class="ml-1 px-1.5 py-0.5 rounded bg-slate-700 text-[11px]">{{ roleBadge }}</span>
+          </span>
+          <button @click="logout" class="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600">로그아웃</button>
+        </template>
+      </div>
+    </div>
+  </header>
+
+  <!-- 탭 -->
+  <nav class="bg-white border-b">
+    <div class="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
+      <button v-for="t in tabs" :key="t.key" @click="go(t.key)"
+        :class="['px-4 py-3 text-sm whitespace-nowrap border-b-2 -mb-px',
+                 tab===t.key ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700']">
+        {{ t.label }}
+      </button>
+    </div>
+  </nav>
+
+  <main class="max-w-5xl mx-auto px-4 py-6">
+    <!-- 알림 배너 -->
+    <div v-if="flash.msg" :class="['mb-4 px-4 py-3 rounded text-sm',
+        flash.ok ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200']">
+      {{ flash.msg }}
+    </div>
+
+    <!-- ============ 로그인 ============ -->
+    <section v-if="tab==='login'" class="max-w-sm mx-auto bg-white rounded-xl shadow-sm p-6">
+      <h2 class="text-lg font-bold mb-4">로그인</h2>
+      <form @submit.prevent="login" class="space-y-3">
+        <input v-model="loginForm.username" placeholder="아이디" class="input" autocomplete="username" />
+        <input v-model="loginForm.password" type="password" placeholder="비밀번호" class="input" autocomplete="current-password" />
+        <button class="btn-primary w-full">로그인</button>
+      </form>
+      <p class="text-xs text-slate-400 mt-4">계정이 없으면 상단 <b>가입 신청</b> 탭에서 신청하세요. (관리자 승인 후 이용 가능)</p>
+    </section>
+
+    <!-- ============ 가입 신청 ============ -->
+    <section v-if="tab==='signup'" class="max-w-md mx-auto bg-white rounded-xl shadow-sm p-6">
+      <h2 class="text-lg font-bold mb-1">가입 신청</h2>
+      <p class="text-xs text-slate-400 mb-4">신청 후 관리자 승인이 완료되면 로그인할 수 있습니다.</p>
+      <form @submit.prevent="submitSignup" class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl">이름</label>
+            <input v-model="signupForm.real_name" class="input" />
+          </div>
+          <div>
+            <label class="lbl">구분</label>
+            <select v-model="signupForm.role" class="input">
+              <option value="STUDENT">학생</option>
+              <option value="PARENT">학부모</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="lbl">지점</label>
+          <select v-model="signupForm.branch_id" class="input">
+            <option :value="null" disabled>지점 선택</option>
+            <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl">아이디</label>
+            <input v-model="signupForm.username" class="input" />
+          </div>
+          <div>
+            <label class="lbl">비밀번호 (6자 이상)</label>
+            <input v-model="signupForm.password" type="password" class="input" />
+          </div>
+        </div>
+        <div>
+          <label class="lbl">연락처 (선택)</label>
+          <input v-model="signupForm.contact" class="input" placeholder="010-0000-0000" />
+        </div>
+        <div>
+          <label class="lbl">메모 (선택)</label>
+          <input v-model="signupForm.memo" class="input" placeholder="요청사항 등" />
+        </div>
+        <button class="btn-primary w-full">가입 신청</button>
+      </form>
+    </section>
+
+    <!-- ============ 내 시간표 ============ -->
+    <section v-if="tab==='timetable'">
+      <h2 class="text-lg font-bold mb-3">내 시간표</h2>
+      <div v-if="myClasses.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">배정된 반이 없습니다.</div>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div v-for="c in myClasses" :key="c.id" class="bg-white rounded-xl shadow-sm p-4">
+          <div class="flex items-center justify-between">
+            <div class="font-semibold">{{ c.name }}</div>
+            <span class="text-xs text-slate-400">{{ c.branch?.name }}</span>
+          </div>
+          <div class="text-xs text-slate-400 mt-0.5">{{ c.track }} {{ c.level }}</div>
+          <ul class="mt-3 space-y-1">
+            <li v-for="s in c.timetable" :key="s.id" class="text-sm flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-xs font-medium">{{ s.day_name }}</span>
+              <span>{{ hm(s.start_time) }} ~ {{ hm(s.end_time) }}</span>
+              <span v-if="s.room" class="text-slate-400 text-xs">· {{ s.room }}</span>
+            </li>
+            <li v-if="c.timetable.length===0" class="text-xs text-slate-400">시간표 미등록</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 내 출결 ============ -->
+    <section v-if="tab==='attendance'">
+      <h2 class="text-lg font-bold mb-3">내 출결</h2>
+      <div v-if="myAtt.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">출결 기록이 없습니다.</div>
+      <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs">
+            <tr><th class="text-left px-4 py-2">날짜</th><th class="text-left px-4 py-2">반</th><th class="text-left px-4 py-2">상태</th><th class="text-left px-4 py-2">비고</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="(r,i) in myAtt" :key="i" class="border-t">
+              <td class="px-4 py-2">{{ r.session.date }}</td>
+              <td class="px-4 py-2">{{ r.session.class_name }}</td>
+              <td class="px-4 py-2"><span :class="attClass(r.status)">{{ attLabel(r.status) }}</span></td>
+              <td class="px-4 py-2 text-slate-500">{{ r.memo }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ 관리자: 가입 승인 ============ -->
+    <section v-if="tab==='approve'">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-bold">가입 승인</h2>
+        <select v-model="approveFilter" @change="loadSignups" class="input w-32">
+          <option value="PENDING">대기</option>
+          <option value="APPROVED">승인됨</option>
+          <option value="REJECTED">반려됨</option>
+        </select>
+      </div>
+      <div v-if="signups.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">목록이 없습니다.</div>
+      <div class="space-y-3">
+        <div v-for="r in signups" :key="r.id" class="bg-white rounded-xl shadow-sm p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="font-semibold">{{ r.applicant_name }}
+                <span class="text-xs font-normal text-slate-400">@{{ r.username }}</span>
+              </div>
+              <div class="text-sm text-slate-500 mt-1">
+                {{ roleLabel(r.requested_role) }} · {{ r.branch?.name || '지점 미정' }}
+                <span v-if="r.contact"> · {{ r.contact }}</span>
+              </div>
+              <div v-if="r.memo" class="text-xs text-slate-400 mt-1">메모: {{ r.memo }}</div>
+              <div v-if="r.status==='REJECTED' && r.reject_reason" class="text-xs text-rose-500 mt-1">반려사유: {{ r.reject_reason }}</div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-xs text-slate-400">{{ (r.create_time||'').slice(0,10) }}</div>
+              <div v-if="r.status==='PENDING'" class="mt-2 flex gap-2">
+                <button @click="approve(r)" class="px-3 py-1 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700">승인</button>
+                <button @click="reject(r)" class="px-3 py-1 rounded bg-rose-100 text-rose-700 text-sm hover:bg-rose-200">반려</button>
+              </div>
+              <span v-else :class="['mt-2 inline-block px-2 py-0.5 rounded text-xs', r.status==='APPROVED'?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700']">
+                {{ r.status==='APPROVED'?'승인됨':'반려됨' }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 관리자: 반/시간표/출결 ============ -->
+    <section v-if="tab==='classes'">
+      <div class="grid md:grid-cols-3 gap-4">
+        <!-- 반 목록 -->
+        <div class="md:col-span-1 space-y-3">
+          <div class="bg-white rounded-xl shadow-sm p-4">
+            <h3 class="font-semibold mb-2 text-sm">반 만들기</h3>
+            <div class="space-y-2">
+              <input v-model="classForm.name" placeholder="반 이름" class="input" />
+              <select v-model="classForm.branch_id" class="input">
+                <option :value="null" disabled>지점</option>
+                <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+              </select>
+              <div class="grid grid-cols-2 gap-2">
+                <input v-model="classForm.track" placeholder="트랙(LANG 등)" class="input" />
+                <input v-model="classForm.level" placeholder="레벨(L1 등)" class="input" />
+              </div>
+              <button @click="createClass" class="btn-primary w-full text-sm">생성</button>
+            </div>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm p-2">
+            <div v-for="c in classes" :key="c.id" @click="selectClass(c)"
+              :class="['px-3 py-2 rounded cursor-pointer text-sm', sel && sel.id===c.id ? 'bg-indigo-50 text-indigo-700':'hover:bg-slate-50']">
+              <div class="font-medium">{{ c.name }}</div>
+              <div class="text-xs text-slate-400">{{ c.branch?.name }} · 학생 {{ c.student_count }}명</div>
+            </div>
+            <div v-if="classes.length===0" class="text-xs text-slate-400 p-3">반이 없습니다.</div>
+          </div>
+        </div>
+
+        <!-- 반 상세 -->
+        <div class="md:col-span-2 space-y-4">
+          <div v-if="!sel" class="bg-white rounded-xl shadow-sm p-6 text-sm text-slate-400">왼쪽에서 반을 선택하세요.</div>
+          <template v-else>
+            <div class="bg-white rounded-xl shadow-sm p-4">
+              <div class="font-semibold">{{ sel.name }} <span class="text-xs text-slate-400">{{ sel.branch?.name }}</span></div>
+            </div>
+
+            <!-- 시간표 -->
+            <div class="bg-white rounded-xl shadow-sm p-4">
+              <h3 class="font-semibold mb-2 text-sm">시간표</h3>
+              <ul class="space-y-1 mb-3">
+                <li v-for="s in sel.timetable" :key="s.id" class="text-sm flex items-center gap-2">
+                  <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-xs">{{ s.day_name }}</span>
+                  {{ hm(s.start_time) }}~{{ hm(s.end_time) }} <span class="text-slate-400 text-xs">{{ s.room }}</span>
+                  <button @click="delSlot(s)" class="ml-auto text-xs text-rose-400 hover:text-rose-600">삭제</button>
+                </li>
+                <li v-if="sel.timetable.length===0" class="text-xs text-slate-400">미등록</li>
+              </ul>
+              <div class="flex flex-wrap gap-2 items-end">
+                <select v-model.number="slotForm.day_of_week" class="input w-20"><option v-for="(d,i) in days" :value="i">{{ d }}</option></select>
+                <input v-model="slotForm.start_time" type="time" class="input w-28" />
+                <input v-model="slotForm.end_time" type="time" class="input w-28" />
+                <input v-model="slotForm.room" placeholder="강의실" class="input w-24" />
+                <button @click="addSlot" class="btn-primary text-sm">추가</button>
+              </div>
+            </div>
+
+            <!-- 수강생 -->
+            <div class="bg-white rounded-xl shadow-sm p-4">
+              <h3 class="font-semibold mb-2 text-sm">수강생 ({{ roster.length }})</h3>
+              <ul class="space-y-1 mb-3">
+                <li v-for="e in roster" :key="e.id" class="text-sm flex items-center gap-2">
+                  {{ e.student.real_name }} <span class="text-xs text-slate-400">@{{ e.student.username }}</span>
+                  <button @click="unenroll(e)" class="ml-auto text-xs text-rose-400 hover:text-rose-600">해제</button>
+                </li>
+                <li v-if="roster.length===0" class="text-xs text-slate-400">없음</li>
+              </ul>
+              <div class="flex gap-2">
+                <input v-model="userSearch" @keyup.enter="searchUsers" placeholder="학생 아이디/이름 검색" class="input" />
+                <button @click="searchUsers" class="btn-secondary text-sm">검색</button>
+              </div>
+              <ul v-if="userResults.length" class="mt-2 border rounded divide-y">
+                <li v-for="u in userResults" :key="u.id" class="px-3 py-1.5 text-sm flex items-center justify-between">
+                  <span>{{ u.username }}</span>
+                  <button @click="enroll(u)" class="text-xs text-indigo-600 hover:underline">등록</button>
+                </li>
+              </ul>
+            </div>
+
+            <!-- 회차/출결 -->
+            <div class="bg-white rounded-xl shadow-sm p-4">
+              <h3 class="font-semibold mb-2 text-sm">수업 회차 · 출결</h3>
+              <div class="flex flex-wrap gap-2 items-end mb-3">
+                <input v-model="genForm.from_date" type="date" class="input w-36" />
+                <input v-model="genForm.to_date" type="date" class="input w-36" />
+                <button @click="generate" class="btn-secondary text-sm">시간표로 회차 생성</button>
+              </div>
+              <div class="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <div class="text-xs text-slate-400 mb-1">회차</div>
+                  <ul class="border rounded divide-y max-h-48 overflow-auto">
+                    <li v-for="s in sessions" :key="s.id" @click="openSession(s)"
+                      :class="['px-3 py-1.5 text-sm cursor-pointer flex justify-between', curSession && curSession.id===s.id?'bg-indigo-50':'hover:bg-slate-50']">
+                      <span>{{ s.date }} {{ hm(s.start_time) }}</span>
+                      <span :class="['text-xs', s.status==='DONE'?'text-emerald-600':'text-slate-400']">{{ s.status==='DONE'?'완료':'예정' }}</span>
+                    </li>
+                    <li v-if="sessions.length===0" class="px-3 py-2 text-xs text-slate-400">회차 없음</li>
+                  </ul>
+                </div>
+                <div>
+                  <div class="text-xs text-slate-400 mb-1">출결 입력</div>
+                  <div v-if="!curSession" class="text-xs text-slate-400 border rounded px-3 py-2">회차를 선택하세요.</div>
+                  <template v-else>
+                    <ul class="space-y-1 mb-2">
+                      <li v-for="row in attRoster" :key="row.student.id" class="flex items-center gap-2 text-sm">
+                        <span class="flex-1 truncate">{{ row.student.real_name }}</span>
+                        <select v-model="row.status" class="input py-1 w-28">
+                          <option v-for="st in attStatuses" :value="st">{{ attLabel(st) }}</option>
+                        </select>
+                      </li>
+                      <li v-if="attRoster.length===0" class="text-xs text-slate-400">수강생 없음</li>
+                    </ul>
+                    <button v-if="attRoster.length" @click="saveAttendance" class="btn-primary w-full text-sm">출결 저장</button>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 내 정보 ============ -->
+    <section v-if="tab==='me' && me" class="max-w-md mx-auto bg-white rounded-xl shadow-sm p-6">
+      <h2 class="text-lg font-bold mb-4">내 정보</h2>
+      <dl class="text-sm space-y-2">
+        <div class="flex justify-between"><dt class="text-slate-400">아이디</dt><dd>{{ me.user.username }}</dd></div>
+        <div class="flex justify-between"><dt class="text-slate-400">이름</dt><dd>{{ me.real_name || '-' }}</dd></div>
+        <div class="flex justify-between"><dt class="text-slate-400">권한</dt><dd>{{ roleBadge }}</dd></div>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="text-center text-xs text-slate-400 py-8">두잉창의코딩 · 학원 포털 (개발 미리보기)</footer>
+</div>
+
+<script>
+const { createApp } = Vue;
+
+const ROLE_LABELS = {HQ_ADMIN:'본부 관리자',HR_ADMIN:'인사 관리자',BRANCH_MANAGER:'지점장/원장',INSTRUCTOR:'강사',TA:'조교',STUDENT:'학생',PARENT:'학부모',EXTERNAL_INSTRUCTOR_ADMIN:'외부 강사 관리자'};
+const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
+const ATT_CLASS = {PRESENT:'text-emerald-700 bg-emerald-50',LATE:'text-amber-700 bg-amber-50',ABSENT:'text-rose-700 bg-rose-50',EARLY_LEAVE:'text-orange-700 bg-orange-50',EXCUSED:'text-slate-700 bg-slate-100'};
+
+function getCookie(name){
+  const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return m ? m.pop() : '';
+}
+async function api(method, path, body){
+  const opts = { method, credentials: 'same-origin', headers: {} };
+  if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  if (method !== 'GET') opts.headers['X-CSRFToken'] = getCookie('csrftoken');
+  const res = await fetch(path, opts);
+  let json;
+  try { json = await res.json(); } catch (e) { throw new Error('서버 응답 오류 (' + res.status + ')'); }
+  if (json.error) {
+    const d = json.data;
+    throw new Error(typeof d === 'string' ? d : (Object.values(d || {})[0] || json.error));
+  }
+  return json.data;
+}
+
+createApp({
+  data(){
+    return {
+      me: null,
+      branches: [],
+      tab: 'login',
+      flash: { msg:'', ok:true },
+      days: ['월','화','수','목','금','토','일'],
+      attStatuses: ['PRESENT','LATE','ABSENT','EARLY_LEAVE','EXCUSED'],
+      loginForm: { username:'', password:'' },
+      signupForm: { real_name:'', role:'STUDENT', branch_id:null, username:'', password:'', contact:'', memo:'' },
+      myClasses: [], myAtt: [],
+      approveFilter: 'PENDING', signups: [],
+      classes: [], sel: null, roster: [],
+      classForm: { name:'', branch_id:null, track:'', level:'' },
+      slotForm: { day_of_week:0, start_time:'', end_time:'', room:'' },
+      userSearch:'', userResults: [],
+      genForm: { from_date:'', to_date:'' },
+      sessions: [], curSession: null, attRoster: [],
+    };
+  },
+  computed: {
+    isStaff(){ return this.me && (this.me.user.admin_type === 'Admin' || this.me.user.admin_type === 'Super Admin'); },
+    roleBadge(){
+      if (!this.me) return '';
+      if (this.me.user.admin_type === 'Super Admin') return '본부 관리자';
+      if (this.me.user.admin_type === 'Admin') return '교직원';
+      return '학생/학부모';
+    },
+    tabs(){
+      if (!this.me) return [ {key:'login',label:'로그인'}, {key:'signup',label:'가입 신청'} ];
+      if (this.isStaff) return [ {key:'approve',label:'가입 승인'}, {key:'classes',label:'반·시간표·출결'}, {key:'me',label:'내 정보'} ];
+      return [ {key:'timetable',label:'내 시간표'}, {key:'attendance',label:'내 출결'}, {key:'me',label:'내 정보'} ];
+    },
+  },
+  methods: {
+    notify(msg, ok=true){ this.flash = { msg, ok }; if (ok) setTimeout(()=>{ if(this.flash.msg===msg) this.flash.msg=''; }, 3000); },
+    roleLabel(r){ return ROLE_LABELS[r] || r; },
+    attLabel(s){ return ATT_LABELS[s] || s || '-'; },
+    attClass(s){ return 'px-2 py-0.5 rounded text-xs font-medium ' + (ATT_CLASS[s] || 'bg-slate-100'); },
+    hm(t){ return t ? String(t).slice(0,5) : ''; },
+    go(key){ this.tab = key; this.flash.msg=''; this.onTab(key); },
+    onTab(key){
+      if (key==='timetable') this.loadMyTimetable();
+      else if (key==='attendance') this.loadMyAttendance();
+      else if (key==='approve') this.loadSignups();
+      else if (key==='classes') this.loadClasses();
+    },
+    async boot(){
+      try { this.me = await api('GET','/api/profile'); } catch(e){ this.me = null; }
+      try { this.branches = await api('GET','/api/academy/branches'); } catch(e){}
+      this.tab = this.me ? this.tabs[0].key : 'login';
+      this.onTab(this.tab);
+    },
+    async login(){
+      try {
+        await api('POST','/api/login', { username:this.loginForm.username, password:this.loginForm.password });
+        this.me = await api('GET','/api/profile');
+        this.notify('로그인되었습니다.');
+        this.tab = this.tabs[0].key; this.onTab(this.tab);
+      } catch(e){ this.notify(e.message, false); }
+    },
+    async logout(){ try { await api('GET','/api/logout'); } catch(e){} this.me=null; this.tab='login'; },
+    async submitSignup(){
+      try {
+        const f = this.signupForm;
+        if (!f.branch_id) return this.notify('지점을 선택하세요.', false);
+        await api('POST','/api/academy/signup', f);
+        this.notify('가입 신청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.');
+        this.signupForm = { real_name:'', role:'STUDENT', branch_id:null, username:'', password:'', contact:'', memo:'' };
+      } catch(e){ this.notify(e.message, false); }
+    },
+    async loadMyTimetable(){ try { this.myClasses = await api('GET','/api/academy/my_timetable'); } catch(e){ this.notify(e.message,false); } },
+    async loadMyAttendance(){ try { this.myAtt = await api('GET','/api/academy/my_attendance'); } catch(e){ this.notify(e.message,false); } },
+    async loadSignups(){
+      try { const d = await api('GET','/api/admin/academy/signup_request?limit=250&status='+this.approveFilter); this.signups = d.results || d; }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async approve(r){
+      try { await api('POST','/api/admin/academy/signup_request/approve', { id:r.id }); this.notify(r.applicant_name+' 승인 완료'); this.loadSignups(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async reject(r){
+      const reason = prompt('반려 사유 (선택)') ?? '';
+      try { await api('POST','/api/admin/academy/signup_request/reject', { id:r.id, reason }); this.notify(r.applicant_name+' 반려 처리'); this.loadSignups(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async loadClasses(){
+      try { const d = await api('GET','/api/admin/academy/class?limit=250'); this.classes = d.results || d; if (this.sel){ const u=this.classes.find(c=>c.id===this.sel.id); if(u) this.sel=u; } }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async createClass(){
+      try {
+        const f = this.classForm;
+        if (!f.name || !f.branch_id) return this.notify('반 이름과 지점을 입력하세요.', false);
+        await api('POST','/api/admin/academy/class', f);
+        this.notify('반이 생성되었습니다.');
+        this.classForm = { name:'', branch_id:null, track:'', level:'' };
+        this.loadClasses();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async selectClass(c){
+      this.sel = c; this.curSession=null; this.attRoster=[]; this.userResults=[]; this.userSearch='';
+      await this.loadRoster(); await this.loadSessions();
+    },
+    async loadRoster(){ try { this.roster = await api('GET','/api/admin/academy/class/enrollment?class_id='+this.sel.id); } catch(e){ this.notify(e.message,false); } },
+    async addSlot(){
+      try {
+        const f = this.slotForm;
+        if (!f.start_time || !f.end_time) return this.notify('시작/종료 시각을 입력하세요.', false);
+        const c = await api('POST','/api/admin/academy/class/timetable', { class_id:this.sel.id, ...f });
+        this.sel = c; this.notify('시간표가 추가되었습니다.');
+        this.slotForm = { day_of_week:0, start_time:'', end_time:'', room:'' };
+        this.loadClasses();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async delSlot(s){
+      try { await api('DELETE','/api/admin/academy/class/timetable?id='+s.id); this.sel.timetable = this.sel.timetable.filter(x=>x.id!==s.id); this.loadClasses(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async searchUsers(){
+      try {
+        const d = await api('GET','/api/admin/user?paging=true&page=1&limit=8&keyword='+encodeURIComponent(this.userSearch));
+        this.userResults = (d.results || d).filter(u=>u.admin_type==='Regular User');
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async enroll(u){
+      try { await api('POST','/api/admin/academy/class/enrollment', { class_id:this.sel.id, student_id:u.id }); this.notify(u.username+' 등록 완료'); this.userResults=[]; this.userSearch=''; this.loadRoster(); this.loadClasses(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async unenroll(e){
+      try { await api('DELETE','/api/admin/academy/class/enrollment?id='+e.id); this.loadRoster(); this.loadClasses(); }
+      catch(err){ this.notify(err.message,false); }
+    },
+    async loadSessions(){ try { const d = await api('GET','/api/admin/academy/session?class_id='+this.sel.id); this.sessions = d.results || d; } catch(e){ this.notify(e.message,false); } },
+    async generate(){
+      try {
+        const f = this.genForm;
+        if (!f.from_date || !f.to_date) return this.notify('기간을 입력하세요.', false);
+        const d = await api('POST','/api/admin/academy/session/generate', { class_id:this.sel.id, from_date:f.from_date, to_date:f.to_date });
+        this.notify(d.created + '개 회차가 생성되었습니다.');
+        this.loadSessions();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async openSession(s){
+      this.curSession = s;
+      try {
+        const d = await api('GET','/api/admin/academy/attendance?session_id='+s.id);
+        this.attRoster = (d.roster || []).map(r=>({ student:r.student, status:r.status || 'PRESENT' }));
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async saveAttendance(){
+      try {
+        const records = this.attRoster.map(r=>({ student_id:r.student.id, status:r.status }));
+        const d = await api('POST','/api/admin/academy/attendance', { session_id:this.curSession.id, records });
+        this.notify(d.updated + '명 출결이 저장되었습니다.');
+        this.loadSessions();
+      } catch(e){ this.notify(e.message,false); }
+    },
+  },
+  mounted(){ this.boot(); },
+}).mount('#app');
+</script>
+<style type="text/tailwindcss">
+  .input { @apply w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white; }
+  .lbl { @apply block text-xs text-slate-400 mb-1; }
+  .btn-primary { @apply px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50; }
+  .btn-secondary { @apply px-3 py-2 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300; }
+</style>
+</body>
+</html>
