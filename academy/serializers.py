@@ -3,7 +3,8 @@ from utils.api import serializers
 from .models import (AcademyRole, ACADEMY_ROLE_CHOICES, SELF_SIGNUP_ROLES,
                      Branch, SignupRequest, CourseClass, ClassEnrollment,
                      TimetableSlot, ClassSession, AttendanceRecord,
-                     ATTENDANCE_STATUS_VALUES)
+                     ATTENDANCE_STATUS_VALUES, Lead, CounselingLog,
+                     CONTACT_PREFERENCES, SCHOOL_TYPES)
 
 ALL_ROLE_VALUES = [c[0] for c in ACADEMY_ROLE_CHOICES]
 WEEKDAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"]
@@ -213,3 +214,67 @@ class _AttItemSerializer(serializers.Serializer):
 class MarkAttendanceSerializer(serializers.Serializer):
     session_id = serializers.IntegerField()
     records = serializers.ListField(child=_AttItemSerializer())
+
+
+# ── 상담 신청(리드) → 등록 전환 (80) ──
+
+class LeadCreateSerializer(serializers.Serializer):
+    branch_id = serializers.IntegerField()
+    parent_name = serializers.CharField(max_length=64)
+    parent_phone = serializers.CharField(max_length=32)
+    student_name = serializers.CharField(max_length=64)
+    school_type = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    school_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    grade = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    interest = serializers.CharField(required=False, allow_blank=True)
+    contact_preference = serializers.ChoiceField(choices=CONTACT_PREFERENCES, required=False)
+
+
+class CounselingLogSerializer(serializers.ModelSerializer):
+    author = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CounselingLog
+        fields = ["id", "author", "channel", "summary", "next_contact_at", "create_time"]
+
+    def get_author(self, obj):
+        return obj.author.username if obj.author_id else None
+
+
+class LeadSerializer(serializers.ModelSerializer):
+    branch = serializers.SerializerMethodField()
+    logs = CounselingLogSerializer(many=True, read_only=True)
+    converted_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Lead
+        fields = ["id", "branch", "parent_name", "parent_phone", "student_name",
+                  "school_type", "school_name", "grade", "interest", "contact_preference",
+                  "status", "converted_username", "close_reason", "create_time", "logs"]
+
+    def get_branch(self, obj):
+        return {"id": obj.branch.id, "code": obj.branch.code, "name": obj.branch.name} if obj.branch_id else None
+
+    def get_converted_username(self, obj):
+        return obj.converted_user.username if obj.converted_user_id else None
+
+
+class AddCounselingNoteSerializer(serializers.Serializer):
+    lead_id = serializers.IntegerField()
+    summary = serializers.CharField()
+    channel = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    next_contact_at = serializers.DateField(required=False, allow_null=True)
+
+
+class ConvertLeadSerializer(serializers.Serializer):
+    lead_id = serializers.IntegerField()
+    login_id = serializers.CharField(max_length=32)
+    password = serializers.CharField(min_length=6, max_length=128)
+    birth_date = serializers.DateField(required=False, allow_null=True)
+    address = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    student_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+
+
+class CloseLeadSerializer(serializers.Serializer):
+    lead_id = serializers.IntegerField()
+    reason = serializers.CharField(max_length=255, required=False, allow_blank=True)

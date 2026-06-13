@@ -9,13 +9,16 @@ def _to_date(v):
         return v
     return datetime.strptime(v, "%Y-%m-%d").date()
 
+from django.db import transaction
+
 from utils.api import APIView, validate_serializer
 
 from account.decorators import admin_role_required
-from account.models import User
+from account.models import User, UserProfile
 from ..models import (AcademyProfile, AcademyRole, ALL_BRANCH_ROLES, Branch,
                       SignupRequest, SignupStatus, CourseClass, ClassEnrollment,
-                      TimetableSlot, ClassSession, SessionStatus, AttendanceRecord)
+                      TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
+                      Lead, LeadStatus, CounselingLog, StudentProfile, EnrollmentStatus)
 from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            SignupRejectSerializer, AssignRoleSerializer,
                            CourseClassSerializer, CreateClassSerializer,
@@ -23,7 +26,9 @@ from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            EnrollmentSerializer, SetTimetableSlotSerializer,
                            ClassSessionSerializer, CreateSessionSerializer,
                            GenerateSessionsSerializer, AttendanceRecordSerializer,
-                           MarkAttendanceSerializer, _student_brief)
+                           MarkAttendanceSerializer, _student_brief,
+                           LeadSerializer, AddCounselingNoteSerializer,
+                           ConvertLeadSerializer, CloseLeadSerializer)
 from ..services import apply_role, staff_scope, can_manage_branch
 
 
@@ -419,3 +424,103 @@ class AttendanceAdminAPI(APIView):
             session.status = SessionStatus.DONE
             session.save()
         return self.success({"updated": updated})
+
+
+# ── 상담 신청(리드) → 등록 전환 (80) ──
+
+class LeadAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """리드(상담 신청) 목록. 전지점 역할은 전체, 지점 역할은 자기 지점만."""
+        all_branch, branch_id, role = staff_scope(request.user)
+        if not all_branch and branch_id is None:
+            return self.error("No branch scope assigned")
+        qs = Lead.objects.select_related("branch", "converted_user").prefetch_related("logs__author")
+        status = request.GET.get("status")
+        if status:
+            qs = qs.filter(status=status)
+        if not all_branch:
+            qs = qs.filter(branch_id=branch_id)
+        return self.success(self.paginate_data(request, qs, LeadSerializer))
+
+
+class CounselingNoteAdminAPI(APIView):
+    @validate_serializer(AddCounselingNoteSerializer)
+    @admin_role_required
+    def post(self, request):
+        data = request.data
+        lead = Lead.objects.filter(id=data["lead_id"]).first()
+        if not lead:
+            return self.error("Lead does not exist")
+        if not can_manage_branch(request.user, lead.branch_id):
+            return self.error("No permission for this branch")
+        CounselingLog.objects.create(
+            lead=lead, author=request.user,
+            channel=data.get("channel", "") or "VISIT",
+            summary=data["summary"],
+            next_contact_at=data.get("next_contact_at"))
+        if lead.status == LeadStatus.NEW:
+            lead.status = LeadStatus.COUNSELING
+            lead.save()
+        return self.success(LeadSerializer(lead).data)
+
+
+class ConvertLeadAdminAPI(APIView):
+    @validate_serializer(ConvertLeadSerializer)
+    @admin_role_required
+    def post(self, request):
+        """등록 전환: 리드를 활성 학생 계정으로 전환(계정 생성 + 학생 등록 정보)."""
+        data = request.data
+        lead = Lead.objects.select_related("branch").filter(id=data["lead_id"]).first()
+        if not lead:
+            return self.error("Lead does not exist")
+        if not can_manage_branch(request.user, lead.branch_id):
+            return self.error("No permission for this branch")
+        if lead.status == LeadStatus.CONVERTED:
+            return self.error("This lead has already been converted")
+
+        username = data["login_id"].lower()
+        if User.objects.filter(username=username).exists():
+            return self.error("Login ID already exists")
+
+        with transaction.atomic():
+            user = User.objects.create(username=username, is_disabled=False)
+            user.set_password(data["password"])
+            user.save()
+            UserProfile.objects.create(user=user, real_name=lead.student_name)
+            apply_role(user, AcademyRole.STUDENT, lead.branch)
+            StudentProfile.objects.create(
+                user=user,
+                birth_date=data.get("birth_date"),
+                address=data.get("address", "") or "",
+                student_phone=data.get("student_phone", "") or "",
+                parent_name=lead.parent_name,
+                parent_phone=lead.parent_phone,
+                school_type=lead.school_type,
+                school_name=lead.school_name,
+                grade=lead.grade,
+                enrollment_date=now().date(),
+                enrollment_status=EnrollmentStatus.ENROLLED,
+            )
+            lead.status = LeadStatus.CONVERTED
+            lead.converted_user = user
+            lead.save()
+        return self.success(LeadSerializer(lead).data)
+
+
+class CloseLeadAdminAPI(APIView):
+    @validate_serializer(CloseLeadSerializer)
+    @admin_role_required
+    def post(self, request):
+        data = request.data
+        lead = Lead.objects.filter(id=data["lead_id"]).first()
+        if not lead:
+            return self.error("Lead does not exist")
+        if not can_manage_branch(request.user, lead.branch_id):
+            return self.error("No permission for this branch")
+        if lead.status == LeadStatus.CONVERTED:
+            return self.error("Converted lead cannot be closed")
+        lead.status = LeadStatus.CLOSED
+        lead.close_reason = data.get("reason", "") or ""
+        lead.save()
+        return self.success(LeadSerializer(lead).data)

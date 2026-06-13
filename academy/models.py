@@ -218,3 +218,83 @@ class AttendanceRecord(models.Model):
     class Meta:
         db_table = "academy_attendance_record"
         unique_together = ("session", "student")
+
+
+# ── 상담 신청(리드) → 등록 전환 흐름 (80) ──
+
+class LeadStatus(object):
+    NEW = "NEW"              # 신규 접수
+    COUNSELING = "COUNSELING"  # 상담 진행 중
+    CONVERTED = "CONVERTED"  # 등록 전환(계정 생성)
+    CLOSED = "CLOSED"        # 종결(미등록)
+
+
+CONTACT_PREFERENCES = ["PHONE_OK", "MESSAGE_PREFERRED", "MESSAGE_ONLY", "KAKAO_PREFERRED"]
+SCHOOL_TYPES = ["ELEMENTARY", "MIDDLE", "HIGH", "ETC"]
+
+
+class Lead(models.Model):
+    """상담 신청(리드). 계정 없이 방문 상담 시 직접 작성하는 신청서.
+    등록(결제) 시점에 학생 계정으로 전환된다."""
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="leads")
+    parent_name = models.CharField(max_length=64)
+    parent_phone = models.CharField(max_length=32)
+    student_name = models.CharField(max_length=64)
+    school_type = models.CharField(max_length=16, blank=True, default="")
+    school_name = models.CharField(max_length=64, blank=True, default="")
+    grade = models.CharField(max_length=16, blank=True, default="")
+    interest = models.TextField(blank=True, default="")
+    contact_preference = models.CharField(max_length=24, blank=True, default="PHONE_OK")
+    status = models.CharField(max_length=16, default=LeadStatus.NEW)
+    converted_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name="converted_from_lead")
+    close_reason = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_lead"
+        ordering = ["-create_time"]
+
+
+class CounselingLog(models.Model):
+    """리드(또는 향후 학생)에 누적되는 상담 기록 (18 타임라인 1차형)."""
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="logs")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="counseling_logs")
+    channel = models.CharField(max_length=16, blank=True, default="VISIT")
+    summary = models.TextField()
+    next_contact_at = models.DateField(null=True, blank=True)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_counseling_log"
+        ordering = ["-create_time"]
+
+
+class EnrollmentStatus(object):
+    ENROLLED = "ENROLLED"
+    ON_LEAVE = "ON_LEAVE"
+    WITHDRAWN = "WITHDRAWN"
+
+
+class StudentProfile(models.Model):
+    """학생 등록 정보(56 필드의 1차 구현형). 등록 전환 시 생성."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="student_profile")
+    birth_date = models.DateField(null=True, blank=True)
+    address = models.CharField(max_length=255, blank=True, default="")
+    student_phone = models.CharField(max_length=32, blank=True, default="")
+    parent_name = models.CharField(max_length=64, blank=True, default="")
+    parent_phone = models.CharField(max_length=32, blank=True, default="")
+    school_type = models.CharField(max_length=16, blank=True, default="")
+    school_name = models.CharField(max_length=64, blank=True, default="")
+    grade = models.CharField(max_length=16, blank=True, default="")
+    enrollment_date = models.DateField(null=True, blank=True)
+    enrollment_status = models.CharField(max_length=16, default=EnrollmentStatus.ENROLLED)
+    memo = models.TextField(blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_student_profile"

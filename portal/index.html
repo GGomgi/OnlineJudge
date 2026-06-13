@@ -61,50 +61,67 @@
       <p class="text-xs text-slate-400 mt-4">계정이 없으면 상단 <b>가입 신청</b> 탭에서 신청하세요. (관리자 승인 후 이용 가능)</p>
     </section>
 
-    <!-- ============ 가입 신청 ============ -->
-    <section v-if="tab==='signup'" class="max-w-md mx-auto bg-white rounded-xl shadow-sm p-6">
-      <h2 class="text-lg font-bold mb-1">가입 신청</h2>
-      <p class="text-xs text-slate-400 mb-4">신청 후 관리자 승인이 완료되면 로그인할 수 있습니다.</p>
-      <form @submit.prevent="submitSignup" class="space-y-3">
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="lbl">이름</label>
-            <input v-model="signupForm.real_name" class="input" />
-          </div>
-          <div>
-            <label class="lbl">구분</label>
-            <select v-model="signupForm.role" class="input">
-              <option value="STUDENT">학생</option>
-              <option value="PARENT">학부모</option>
-            </select>
-          </div>
-        </div>
+    <!-- ============ 상담 신청서 ============ -->
+    <section v-if="tab==='lead'" class="max-w-lg mx-auto bg-white rounded-xl shadow-sm p-6">
+      <h2 class="text-lg font-bold mb-1">상담 신청서</h2>
+      <p class="text-xs text-slate-400 mb-4">상담을 위한 기초 정보를 적어주세요. 정식 등록은 상담 후 진행됩니다.</p>
+      <form @submit.prevent="submitLead" class="space-y-3">
         <div>
           <label class="lbl">지점</label>
-          <select v-model="signupForm.branch_id" class="input">
+          <select v-model="leadForm.branch_id" class="input">
             <option :value="null" disabled>지점 선택</option>
             <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
           </select>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="lbl">아이디</label>
-            <input v-model="signupForm.username" class="input" />
+            <label class="lbl">학부모 이름</label>
+            <input v-model="leadForm.parent_name" class="input" />
           </div>
           <div>
-            <label class="lbl">비밀번호 (6자 이상)</label>
-            <input v-model="signupForm.password" type="password" class="input" />
+            <label class="lbl">학부모 연락처</label>
+            <input v-model="leadForm.parent_phone" class="input" placeholder="010-0000-0000" />
           </div>
         </div>
         <div>
-          <label class="lbl">연락처 (선택)</label>
-          <input v-model="signupForm.contact" class="input" placeholder="010-0000-0000" />
+          <label class="lbl">자녀 이름</label>
+          <input v-model="leadForm.student_name" class="input" />
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="lbl">학교 구분</label>
+            <select v-model="leadForm.school_type" class="input">
+              <option value="">선택</option>
+              <option value="ELEMENTARY">초등</option>
+              <option value="MIDDLE">중등</option>
+              <option value="HIGH">고등</option>
+              <option value="ETC">기타</option>
+            </select>
+          </div>
+          <div>
+            <label class="lbl">학교 이름</label>
+            <input v-model="leadForm.school_name" class="input" />
+          </div>
+          <div>
+            <label class="lbl">학년</label>
+            <input v-model="leadForm.grade" class="input" placeholder="초3" />
+          </div>
         </div>
         <div>
-          <label class="lbl">메모 (선택)</label>
-          <input v-model="signupForm.memo" class="input" placeholder="요청사항 등" />
+          <label class="lbl">연락 선호 (선택)</label>
+          <select v-model="leadForm.contact_preference" class="input">
+            <option value="PHONE_OK">전화 가능</option>
+            <option value="MESSAGE_PREFERRED">문자 선호</option>
+            <option value="MESSAGE_ONLY">문자만</option>
+            <option value="KAKAO_PREFERRED">카카오 선호</option>
+          </select>
         </div>
-        <button class="btn-primary w-full">가입 신청</button>
+        <div>
+          <label class="lbl">관심·궁금한 사항 (선택)</label>
+          <textarea v-model="leadForm.interest" rows="3" class="input" placeholder="문의하실 내용을 적어주세요."></textarea>
+        </div>
+        <p class="text-[11px] text-slate-400">제출 시 상담 목적의 개인정보 수집·이용에 동의하는 것으로 간주됩니다.</p>
+        <button class="btn-primary w-full">상담 신청</button>
       </form>
     </section>
 
@@ -152,40 +169,75 @@
       </div>
     </section>
 
-    <!-- ============ 관리자: 가입 승인 ============ -->
-    <section v-if="tab==='approve'">
+    <!-- ============ 관리자: 상담·등록 ============ -->
+    <section v-if="tab==='leadmgr'">
       <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-bold">가입 승인</h2>
-        <select v-model="approveFilter" @change="loadSignups" class="input w-32">
-          <option value="PENDING">대기</option>
-          <option value="APPROVED">승인됨</option>
-          <option value="REJECTED">반려됨</option>
+        <h2 class="text-lg font-bold">상담 · 등록</h2>
+        <select v-model="leadFilter" @change="loadLeads" class="input w-32">
+          <option value="">전체</option>
+          <option value="NEW">신규</option>
+          <option value="COUNSELING">상담중</option>
+          <option value="CONVERTED">등록완료</option>
+          <option value="CLOSED">종결</option>
         </select>
       </div>
-      <div v-if="signups.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">목록이 없습니다.</div>
+      <div v-if="leads.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">상담 신청이 없습니다.</div>
       <div class="space-y-3">
-        <div v-for="r in signups" :key="r.id" class="bg-white rounded-xl shadow-sm p-4">
-          <div class="flex items-start justify-between gap-3">
+        <div v-for="r in leads" :key="r.id" class="bg-white rounded-xl shadow-sm p-4">
+          <div class="flex items-start justify-between gap-3 cursor-pointer" @click="toggleLead(r)">
             <div>
-              <div class="font-semibold">{{ r.applicant_name }}
-                <span class="text-xs font-normal text-slate-400">@{{ r.username }}</span>
+              <div class="font-semibold">{{ r.student_name }}
+                <span class="text-xs font-normal text-slate-400">· 학부모 {{ r.parent_name }}</span>
               </div>
               <div class="text-sm text-slate-500 mt-1">
-                {{ roleLabel(r.requested_role) }} · {{ r.branch?.name || '지점 미정' }}
-                <span v-if="r.contact"> · {{ r.contact }}</span>
+                {{ r.branch?.name }} · {{ schoolLabel(r.school_type) }} {{ r.grade }}
+                <span v-if="r.school_name"> · {{ r.school_name }}</span>
               </div>
-              <div v-if="r.memo" class="text-xs text-slate-400 mt-1">메모: {{ r.memo }}</div>
-              <div v-if="r.status==='REJECTED' && r.reject_reason" class="text-xs text-rose-500 mt-1">반려사유: {{ r.reject_reason }}</div>
+              <div class="text-sm text-slate-500">{{ r.parent_phone }} <span class="text-xs text-slate-400">({{ prefLabel(r.contact_preference) }})</span></div>
+              <div v-if="r.interest" class="text-xs text-slate-400 mt-1">문의: {{ r.interest }}</div>
             </div>
             <div class="text-right shrink-0">
               <div class="text-xs text-slate-400">{{ (r.create_time||'').slice(0,10) }}</div>
-              <div v-if="r.status==='PENDING'" class="mt-2 flex gap-2">
-                <button @click="approve(r)" class="px-3 py-1 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700">승인</button>
-                <button @click="reject(r)" class="px-3 py-1 rounded bg-rose-100 text-rose-700 text-sm hover:bg-rose-200">반려</button>
+              <span :class="['mt-2 inline-block px-2 py-0.5 rounded text-xs', leadBadge(r.status).cls]">{{ leadBadge(r.status).label }}</span>
+              <div v-if="r.status==='CONVERTED'" class="text-[11px] text-emerald-600 mt-1">@{{ r.converted_username }}</div>
+            </div>
+          </div>
+
+          <!-- 펼침: 상담 로그 + 액션 -->
+          <div v-if="openLeadId===r.id" class="mt-4 border-t pt-3 space-y-3">
+            <!-- 상담 로그 -->
+            <div>
+              <div class="text-xs font-semibold text-slate-500 mb-1">상담 기록</div>
+              <ul class="space-y-1">
+                <li v-for="g in r.logs" :key="g.id" class="text-sm bg-slate-50 rounded px-3 py-1.5">
+                  <span class="text-xs text-slate-400">{{ (g.create_time||'').slice(0,10) }} · {{ g.channel }}</span>
+                  <div>{{ g.summary }}</div>
+                </li>
+                <li v-if="r.logs.length===0" class="text-xs text-slate-400">기록 없음</li>
+              </ul>
+              <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED'" class="flex gap-2 mt-2">
+                <input v-model="noteText" @keyup.enter="addNote(r)" placeholder="상담 내용 입력" class="input" />
+                <button @click="addNote(r)" class="btn-secondary text-sm whitespace-nowrap">기록 추가</button>
               </div>
-              <span v-else :class="['mt-2 inline-block px-2 py-0.5 rounded text-xs', r.status==='APPROVED'?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700']">
-                {{ r.status==='APPROVED'?'승인됨':'반려됨' }}
-              </span>
+            </div>
+
+            <!-- 액션 -->
+            <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED'" class="flex flex-wrap gap-2">
+              <button @click="showConvert = showConvert===r.id ? null : r.id" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">등록 전환</button>
+              <button @click="closeLead(r)" class="px-3 py-1.5 rounded bg-slate-200 text-slate-700 text-sm hover:bg-slate-300">종결</button>
+            </div>
+
+            <!-- 등록 전환 폼 -->
+            <div v-if="showConvert===r.id && r.status!=='CONVERTED'" class="bg-indigo-50 rounded-lg p-3 space-y-2">
+              <div class="text-xs font-semibold text-indigo-700">등록 전환 — 학생 계정 생성</div>
+              <div class="grid grid-cols-2 gap-2">
+                <input v-model="convertForm.login_id" placeholder="로그인 아이디" class="input" />
+                <input v-model="convertForm.password" type="text" placeholder="비밀번호(6자+)" class="input" />
+                <input v-model="convertForm.birth_date" type="date" class="input" />
+                <input v-model="convertForm.student_phone" placeholder="학생 연락처(선택)" class="input" />
+              </div>
+              <input v-model="convertForm.address" placeholder="주소(선택)" class="input" />
+              <button @click="convertLead(r)" class="btn-primary w-full text-sm">계정 생성 · 등록 완료</button>
             </div>
           </div>
         </div>
@@ -364,9 +416,10 @@ createApp({
       days: ['월','화','수','목','금','토','일'],
       attStatuses: ['PRESENT','LATE','ABSENT','EARLY_LEAVE','EXCUSED'],
       loginForm: { username:'', password:'' },
-      signupForm: { real_name:'', role:'STUDENT', branch_id:null, username:'', password:'', contact:'', memo:'' },
+      leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', contact_preference:'PHONE_OK', interest:'' },
       myClasses: [], myAtt: [],
-      approveFilter: 'PENDING', signups: [],
+      leadFilter: '', leads: [], openLeadId: null, noteText: '',
+      showConvert: null, convertForm: { login_id:'', password:'', birth_date:'', address:'', student_phone:'' },
       classes: [], sel: null, roster: [],
       classForm: { name:'', branch_id:null, track:'', level:'' },
       slotForm: { day_of_week:0, start_time:'', end_time:'', room:'' },
@@ -384,8 +437,8 @@ createApp({
       return '학생/학부모';
     },
     tabs(){
-      if (!this.me) return [ {key:'login',label:'로그인'}, {key:'signup',label:'가입 신청'} ];
-      if (this.isStaff) return [ {key:'approve',label:'가입 승인'}, {key:'classes',label:'반·시간표·출결'}, {key:'me',label:'내 정보'} ];
+      if (!this.me) return [ {key:'login',label:'로그인'}, {key:'lead',label:'상담 신청'} ];
+      if (this.isStaff) return [ {key:'leadmgr',label:'상담·등록'}, {key:'classes',label:'반·시간표·출결'}, {key:'me',label:'내 정보'} ];
       return [ {key:'timetable',label:'내 시간표'}, {key:'attendance',label:'내 출결'}, {key:'me',label:'내 정보'} ];
     },
   },
@@ -399,9 +452,17 @@ createApp({
     onTab(key){
       if (key==='timetable') this.loadMyTimetable();
       else if (key==='attendance') this.loadMyAttendance();
-      else if (key==='approve') this.loadSignups();
+      else if (key==='leadmgr') this.loadLeads();
       else if (key==='classes') this.loadClasses();
     },
+    schoolLabel(t){ return ({ELEMENTARY:'초등',MIDDLE:'중등',HIGH:'고등',ETC:'기타'})[t] || ''; },
+    prefLabel(p){ return ({PHONE_OK:'전화 가능',MESSAGE_PREFERRED:'문자 선호',MESSAGE_ONLY:'문자만',KAKAO_PREFERRED:'카카오 선호'})[p] || p || ''; },
+    leadBadge(s){ return ({
+      NEW:{label:'신규',cls:'bg-sky-50 text-sky-700'},
+      COUNSELING:{label:'상담중',cls:'bg-amber-50 text-amber-700'},
+      CONVERTED:{label:'등록완료',cls:'bg-emerald-50 text-emerald-700'},
+      CLOSED:{label:'종결',cls:'bg-slate-100 text-slate-500'},
+    })[s] || {label:s,cls:'bg-slate-100'}; },
     async boot(){
       try { this.me = await api('GET','/api/profile'); } catch(e){ this.me = null; }
       try { this.branches = await api('GET','/api/academy/branches'); } catch(e){}
@@ -417,28 +478,46 @@ createApp({
       } catch(e){ this.notify(e.message, false); }
     },
     async logout(){ try { await api('GET','/api/logout'); } catch(e){} this.me=null; this.tab='login'; },
-    async submitSignup(){
+    async submitLead(){
       try {
-        const f = this.signupForm;
+        const f = this.leadForm;
         if (!f.branch_id) return this.notify('지점을 선택하세요.', false);
-        await api('POST','/api/academy/signup', f);
-        this.notify('가입 신청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.');
-        this.signupForm = { real_name:'', role:'STUDENT', branch_id:null, username:'', password:'', contact:'', memo:'' };
+        if (!f.parent_name || !f.parent_phone || !f.student_name) return this.notify('학부모 이름·연락처·자녀 이름은 필수입니다.', false);
+        await api('POST','/api/academy/lead', f);
+        this.notify('상담 신청이 접수되었습니다. 곧 연락드리겠습니다.');
+        this.leadForm = { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', contact_preference:'PHONE_OK', interest:'' };
       } catch(e){ this.notify(e.message, false); }
     },
     async loadMyTimetable(){ try { this.myClasses = await api('GET','/api/academy/my_timetable'); } catch(e){ this.notify(e.message,false); } },
     async loadMyAttendance(){ try { this.myAtt = await api('GET','/api/academy/my_attendance'); } catch(e){ this.notify(e.message,false); } },
-    async loadSignups(){
-      try { const d = await api('GET','/api/admin/academy/signup_request?limit=250&status='+this.approveFilter); this.signups = d.results || d; }
+    async loadLeads(){
+      try { const d = await api('GET','/api/admin/academy/lead?limit=250&status='+this.leadFilter); this.leads = d.results || d; }
       catch(e){ this.notify(e.message,false); }
     },
-    async approve(r){
-      try { await api('POST','/api/admin/academy/signup_request/approve', { id:r.id }); this.notify(r.applicant_name+' 승인 완료'); this.loadSignups(); }
+    toggleLead(r){ this.openLeadId = this.openLeadId===r.id ? null : r.id; this.showConvert=null; this.noteText=''; },
+    replaceLead(updated){ const i=this.leads.findIndex(x=>x.id===updated.id); if(i>=0) this.leads.splice(i,1,updated); },
+    async addNote(r){
+      if (!this.noteText.trim()) return;
+      try { const d = await api('POST','/api/admin/academy/lead/note', { lead_id:r.id, summary:this.noteText }); this.replaceLead(d); this.noteText=''; this.notify('상담 기록이 추가되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
-    async reject(r){
-      const reason = prompt('반려 사유 (선택)') ?? '';
-      try { await api('POST','/api/admin/academy/signup_request/reject', { id:r.id, reason }); this.notify(r.applicant_name+' 반려 처리'); this.loadSignups(); }
+    async convertLead(r){
+      try {
+        const f = this.convertForm;
+        if (!f.login_id || !f.password) return this.notify('로그인 아이디와 비밀번호를 입력하세요.', false);
+        const body = { lead_id:r.id, login_id:f.login_id, password:f.password };
+        if (f.birth_date) body.birth_date = f.birth_date;
+        if (f.address) body.address = f.address;
+        if (f.student_phone) body.student_phone = f.student_phone;
+        const d = await api('POST','/api/admin/academy/lead/convert', body);
+        this.replaceLead(d); this.showConvert=null;
+        this.convertForm = { login_id:'', password:'', birth_date:'', address:'', student_phone:'' };
+        this.notify(r.student_name+' 등록 완료 (계정 @'+d.converted_username+')');
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async closeLead(r){
+      const reason = prompt('종결 사유 (선택)') ?? '';
+      try { const d = await api('POST','/api/admin/academy/lead/close', { lead_id:r.id, reason }); this.replaceLead(d); this.notify('종결 처리되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
     async loadClasses(){

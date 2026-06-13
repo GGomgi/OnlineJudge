@@ -4,10 +4,10 @@ from utils.api import APIView, validate_serializer
 
 from account.models import User, UserProfile
 from ..models import (AcademyProfile, Branch, SignupRequest, CourseClass,
-                      AttendanceRecord)
+                      AttendanceRecord, Lead)
 from ..serializers import (AcademySignupSerializer, BranchSerializer,
                            SignupRequestSerializer, CourseClassSerializer,
-                           ClassSessionSerializer)
+                           ClassSessionSerializer, LeadCreateSerializer)
 from account.decorators import login_required
 
 
@@ -50,6 +50,28 @@ class AcademySignupAPI(APIView):
                 memo=data.get("memo", "") or "",
             )
         return self.success("Signup request submitted")
+
+
+class LeadCreateAPI(APIView):
+    @validate_serializer(LeadCreateSerializer)
+    def post(self, request):
+        """상담 신청서 접수(무로그인). 계정은 생성하지 않는다(등록 전환 시 생성)."""
+        data = request.data
+        branch = Branch.objects.filter(id=data["branch_id"], is_active=True).first()
+        if not branch:
+            return self.error("Invalid branch")
+        Lead.objects.create(
+            branch=branch,
+            parent_name=data["parent_name"],
+            parent_phone=data["parent_phone"],
+            student_name=data["student_name"],
+            school_type=data.get("school_type", "") or "",
+            school_name=data.get("school_name", "") or "",
+            grade=data.get("grade", "") or "",
+            interest=data.get("interest", "") or "",
+            contact_preference=data.get("contact_preference", "") or "PHONE_OK",
+        )
+        return self.success("상담 신청이 접수되었습니다.")
 
 
 class MySignupStatusAPI(APIView):
