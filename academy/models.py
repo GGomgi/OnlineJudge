@@ -230,7 +230,11 @@ class LeadStatus(object):
 
 
 CONTACT_PREFERENCES = ["PHONE_OK", "MESSAGE_PREFERRED", "MESSAGE_ONLY", "KAKAO_PREFERRED"]
-SCHOOL_TYPES = ["ELEMENTARY", "MIDDLE", "HIGH", "ETC"]
+SCHOOL_TYPES = ["ELEMENTARY", "MIDDLE", "HIGH", "UNIVERSITY", "ETC"]
+
+# 등록 과정(입회원 신청서). LANG 선택 시 program_language 에 세부 언어 저장.
+PROGRAM_TYPES = ["LANG", "WEB", "PROJECT", "COMPETITION", "ETC"]
+PROGRAM_LANGUAGES = ["Python", "C", "C++", "Java", "C#"]
 
 # 상담 목적(필수). ETC 선택 시 purpose_detail 에 직접 입력값 저장.
 COUNSELING_PURPOSES = ["SELF_DEV", "ADMISSION", "COMPETITION", "CAREER", "ETC"]
@@ -301,6 +305,12 @@ class StudentProfile(models.Model):
     grade = models.CharField(max_length=16, blank=True, default="")
     enrollment_date = models.DateField(null=True, blank=True)
     enrollment_status = models.CharField(max_length=16, default=EnrollmentStatus.ENROLLED)
+    # 등록 과정·교육 일정(입회원 신청서)
+    program = models.CharField(max_length=16, blank=True, default="")
+    program_language = models.CharField(max_length=16, blank=True, default="")
+    weekly_sessions = models.PositiveSmallIntegerField(null=True, blank=True)
+    # 교육 요일·시간 (회수만큼). JSON 문자열 [{"day":0,"time":"16:00"}, ...]
+    class_schedule = models.TextField(blank=True, default="")
     memo = models.TextField(blank=True, default="")
     # 개인정보 수집·이용·제공 동의(법정대리인 동의서)
     consent_privacy = models.BooleanField(default=False)

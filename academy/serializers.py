@@ -283,6 +283,11 @@ class ConvertLeadSerializer(serializers.Serializer):
     zipcode = serializers.CharField(max_length=16, required=False, allow_blank=True)
     address = serializers.CharField(max_length=255)
     address_detail = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    # 등록 과정·교육 일정
+    program = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    program_language = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    weekly_sessions = serializers.IntegerField(required=False, allow_null=True)
+    class_schedule = serializers.CharField(required=False, allow_blank=True)
     # 개인정보 동의(법정대리인)
     consent_privacy = serializers.BooleanField()
     consent_guardian_name = serializers.CharField(max_length=64)

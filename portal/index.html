@@ -63,8 +63,11 @@
     </section>
 
     <!-- ============ 상담 신청서 ============ -->
-    <section v-if="tab==='lead'" class="max-w-lg mx-auto bg-white rounded-xl shadow-sm p-6">
-      <h2 class="text-lg font-bold mb-1">상담 신청서</h2>
+    <section v-if="tab==='lead' || (tab==='leadmgr' && showLeadForm)" class="max-w-lg mx-auto bg-white rounded-xl shadow-sm p-6">
+      <div class="flex items-center justify-between mb-1">
+        <h2 class="text-lg font-bold">상담 신청서</h2>
+        <button v-if="showLeadForm" @click="closeLeadForm" class="text-xs text-slate-400 hover:text-slate-600">← 목록으로</button>
+      </div>
       <p class="text-xs text-slate-400 mb-4">상담을 위한 기초 정보를 적어주세요. 정식 등록은 상담 후 진행됩니다.</p>
       <form @submit.prevent="submitLead" class="space-y-3">
         <div>
@@ -97,6 +100,7 @@
               <option value="ELEMENTARY">초등</option>
               <option value="MIDDLE">중등</option>
               <option value="HIGH">고등</option>
+              <option value="UNIVERSITY">대학생</option>
               <option value="ETC">기타</option>
             </select>
           </div>
@@ -176,16 +180,19 @@
     </section>
 
     <!-- ============ 관리자: 상담·등록 ============ -->
-    <section v-if="tab==='leadmgr' && !convertingLead">
-      <div class="flex items-center justify-between mb-3">
+    <section v-if="tab==='leadmgr' && !convertingLead && !showLeadForm">
+      <div class="flex items-center justify-between mb-3 gap-2">
         <h2 class="text-lg font-bold">상담 · 등록</h2>
-        <select v-model="leadFilter" @change="loadLeads" class="input w-32">
+        <div class="flex items-center gap-2">
+          <button @click="openLeadForm" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 상담 등록</button>
+          <select v-model="leadFilter" @change="loadLeads" class="input w-32">
           <option value="">전체</option>
           <option value="NEW">신규</option>
           <option value="COUNSELING">상담중</option>
           <option value="CONVERTED">등록완료</option>
           <option value="CLOSED">종결</option>
-        </select>
+          </select>
+        </div>
       </div>
       <div v-if="leads.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">상담 신청이 없습니다.</div>
       <div class="space-y-3">
@@ -217,13 +224,15 @@
               <ul class="space-y-1">
                 <li v-for="g in r.logs" :key="g.id" class="text-sm bg-slate-50 rounded px-3 py-1.5">
                   <span class="text-xs text-slate-400">{{ (g.create_time||'').slice(0,10) }} · {{ g.channel }}</span>
-                  <div>{{ g.summary }}</div>
+                  <div class="whitespace-pre-wrap">{{ g.summary }}</div>
                 </li>
                 <li v-if="r.logs.length===0" class="text-xs text-slate-400">기록 없음</li>
               </ul>
-              <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED'" class="flex gap-2 mt-2">
-                <input v-model="noteText" @keyup.enter="addNote(r)" placeholder="상담 내용 입력" class="input" />
-                <button @click="addNote(r)" class="btn-secondary text-sm whitespace-nowrap">기록 추가</button>
+              <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED'" class="mt-2 space-y-2">
+                <textarea v-model="noteText" rows="3" placeholder="상담 내용 입력 (여러 줄 작성 가능)" class="input"></textarea>
+                <div class="flex justify-end">
+                  <button @click="addNote(r)" class="btn-secondary text-sm whitespace-nowrap">기록 추가</button>
+                </div>
               </div>
             </div>
 
@@ -292,11 +301,56 @@
           <div class="space-y-2">
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">주소 <span class="text-rose-500">*</span></div>
             <div class="flex gap-2">
-              <input :value="convertForm.zipcode" class="input w-28 bg-slate-50" readonly placeholder="우편번호" />
+              <input :value="convertForm.zipcode" @click="openPostcode" readonly placeholder="우편번호"
+                     class="input w-28 bg-slate-50 cursor-pointer" />
               <button type="button" @click="openPostcode" class="btn-secondary text-sm whitespace-nowrap">우편번호 검색</button>
             </div>
-            <input :value="convertForm.address" class="input bg-slate-50" readonly placeholder="도로명/지번 주소" />
+            <input :value="convertForm.address" @click="openPostcode" readonly placeholder="도로명/지번 주소 (클릭하여 검색)"
+                   class="input bg-slate-50 cursor-pointer" />
             <input v-model="convertForm.address_detail" class="input" placeholder="상세주소 (동/호 등)" />
+          </div>
+
+          <!-- 등록 과정 · 교육 일정 -->
+          <div class="space-y-3">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">등록 과정 · 교육 일정</div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="lbl">등록 과정 <span class="text-rose-500">*</span></label>
+                <select v-model="convertForm.program" class="input">
+                  <option value="" disabled>선택</option>
+                  <option value="LANG">프로그래밍언어</option>
+                  <option value="WEB">웹</option>
+                  <option value="PROJECT">프로젝트</option>
+                  <option value="COMPETITION">대회</option>
+                  <option value="ETC">기타</option>
+                </select>
+              </div>
+              <div v-if="convertForm.program==='LANG'">
+                <label class="lbl">언어 <span class="text-rose-500">*</span></label>
+                <select v-model="convertForm.program_language" class="input">
+                  <option value="" disabled>선택</option>
+                  <option v-for="lang in programLanguages" :key="lang" :value="lang">{{ lang }}</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="lbl">주 교육 회수 <span class="text-rose-500">*</span></label>
+              <select v-model.number="convertForm.weekly_sessions" @change="syncSchedule" class="input w-32">
+                <option :value="0" disabled>선택</option>
+                <option v-for="n in 7" :key="n" :value="n">주 {{ n }}회</option>
+              </select>
+            </div>
+            <div v-if="convertForm.weekly_sessions > 0" class="space-y-2">
+              <label class="lbl">교육 요일 · 시간 (회수만큼 입력) <span class="text-rose-500">*</span></label>
+              <div v-for="(row,i) in convertForm.schedule" :key="i" class="flex items-center gap-2">
+                <span class="text-xs text-slate-400 w-12 shrink-0">{{ i+1 }}회차</span>
+                <select v-model.number="row.day" class="input w-24">
+                  <option :value="-1" disabled>요일</option>
+                  <option v-for="(d,di) in days" :key="di" :value="di">{{ d }}</option>
+                </select>
+                <input v-model="row.time" type="time" class="input w-32" />
+              </div>
+            </div>
           </div>
 
           <!-- 계정 -->
@@ -533,8 +587,10 @@ createApp({
       leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' },
       myClasses: [], myAtt: [],
       leadFilter: '', leads: [], openLeadId: null, noteText: '',
+      showLeadForm: false,
+      programLanguages: ['Python','C','C++','Java','C#'],
       convertingLead: null,
-      convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', login_id:'', password:'', consent_privacy:false, consent_guardian_name:'' },
+      convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program:'', program_language:'', weekly_sessions:0, schedule:[], login_id:'', password:'', consent_privacy:false, consent_guardian_name:'' },
       sig: { drawing:false, ctx:null, hasInk:false },
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
       classes: [], sel: null, roster: [],
@@ -572,7 +628,7 @@ createApp({
       else if (key==='leadmgr') this.loadLeads();
       else if (key==='classes') this.loadClasses();
     },
-    schoolLabel(t){ return ({ELEMENTARY:'초등',MIDDLE:'중등',HIGH:'고등',ETC:'기타'})[t] || ''; },
+    schoolLabel(t){ return ({ELEMENTARY:'초등',MIDDLE:'중등',HIGH:'고등',UNIVERSITY:'대학생',ETC:'기타'})[t] || ''; },
     purposeLabel(r){
       const m = {SELF_DEV:'자기개발(흥미 및 취미)',ADMISSION:'입시',COMPETITION:'대회',CAREER:'진로선택(개발자)',ETC:'직접 입력'};
       if (r.purpose==='ETC') return r.purpose_detail || '직접 입력';
@@ -620,14 +676,21 @@ createApp({
         if (!f.purpose) return this.notify('상담 목적을 선택하세요.', false);
         if (f.purpose==='ETC' && !f.purpose_detail.trim()) return this.notify('상담 목적을 직접 입력해주세요.', false);
         await api('POST','/api/academy/lead', f);
-        this.notify('상담 신청이 접수되었습니다. 곧 연락드리겠습니다.');
+        this.notify('상담 신청이 접수되었습니다.' + (this.showLeadForm ? '' : ' 곧 연락드리겠습니다.'));
         this.leadForm = { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
+        if (this.showLeadForm) { this.showLeadForm = false; this.loadLeads(); }
       } catch(e){ this.notify(e.message, false); }
     },
+    openLeadForm(){
+      this.showLeadForm = true;
+      this.leadForm = { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
+      this.flash.msg = '';
+    },
+    closeLeadForm(){ this.showLeadForm = false; this.flash.msg = ''; },
     async loadMyTimetable(){ try { this.myClasses = await api('GET','/api/academy/my_timetable'); } catch(e){ this.notify(e.message,false); } },
     async loadMyAttendance(){ try { this.myAtt = await api('GET','/api/academy/my_attendance'); } catch(e){ this.notify(e.message,false); } },
     async loadLeads(){
-      this.convertingLead = null;
+      this.convertingLead = null; this.showLeadForm = false;
       try { const d = await api('GET','/api/admin/academy/lead?limit=250&status='+this.leadFilter); this.leads = d.results || d; }
       catch(e){ this.notify(e.message,false); }
     },
@@ -644,11 +707,19 @@ createApp({
         student_name: r.student_name, gender:'', birth_date:'',
         parent_phone: r.parent_phone, school_type: r.school_type||'', school_name: r.school_name||'', grade: r.grade||'',
         student_phone:'', zipcode:'', address:'', address_detail:'',
+        program:'', program_language:'', weekly_sessions:0, schedule:[],
         login_id:'', password:'', consent_privacy:false, consent_guardian_name:'',
       };
       this.$nextTick(()=> this.sigInit());
     },
     closeConvert(){ this.convertingLead = null; },
+    syncSchedule(){
+      const n = this.convertForm.weekly_sessions || 0;
+      const cur = this.convertForm.schedule;
+      const next = [];
+      for (let i=0; i<n; i++) next.push(cur[i] || { day:-1, time:'' });
+      this.convertForm.schedule = next;
+    },
     genLoginId(){
       const name = (this.convertForm.student_name||'').replace(/\s/g,'');
       const bd = this.convertForm.birth_date;
@@ -681,6 +752,13 @@ createApp({
       if (!f.login_id || !f.password) return this.notify('아이디·비밀번호를 확인하세요(비밀번호 6자 이상).', false);
       if (!f.student_phone) return this.notify('학생 휴대폰을 입력하세요. (보호자번호와 동일 버튼 사용 가능)', false);
       if (!f.zipcode || !f.address) return this.notify('우편번호 검색으로 주소를 입력하세요.', false);
+      if (!f.program) return this.notify('등록 과정을 선택하세요.', false);
+      if (f.program==='LANG' && !f.program_language) return this.notify('프로그래밍 언어를 선택하세요.', false);
+      if (!f.weekly_sessions) return this.notify('주 교육 회수를 선택하세요.', false);
+      if (f.schedule.length !== f.weekly_sessions || f.schedule.some(s=>s.day<0 || !s.time))
+        return this.notify('교육 요일과 시간을 회수만큼 모두 입력하세요.', false);
+      if (new Set(f.schedule.map(s=>s.day)).size !== f.schedule.length)
+        return this.notify('교육 요일이 중복되었습니다.', false);
       if (!f.consent_privacy) return this.notify('개인정보 수집·이용에 동의해 주세요.', false);
       if (!f.consent_guardian_name) return this.notify('법정대리인 성명을 입력하세요.', false);
       if (!this.sig.hasInk) return this.notify('서명을 입력해 주세요.', false);
@@ -689,6 +767,9 @@ createApp({
           lead_id: r.id, login_id: f.login_id, password: f.password, birth_date: f.birth_date,
           gender: f.gender || '', student_phone: f.student_phone, zipcode: f.zipcode,
           address: f.address, address_detail: f.address_detail || '',
+          program: f.program, program_language: f.program==='LANG' ? f.program_language : '',
+          weekly_sessions: f.weekly_sessions,
+          class_schedule: JSON.stringify(f.schedule),
           consent_privacy: true, consent_guardian_name: f.consent_guardian_name,
           consent_signature: this.$refs.sig.toDataURL('image/png'),
           consent_date: this.today.y + '-' + String(this.today.m).padStart(2,'0') + '-' + String(this.today.d).padStart(2,'0'),
