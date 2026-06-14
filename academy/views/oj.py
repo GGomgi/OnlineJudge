@@ -75,6 +75,27 @@ class LeadCreateAPI(APIView):
         return self.success("상담 신청이 접수되었습니다.")
 
 
+class MyAcademyProfileAPI(APIView):
+    @login_required
+    def get(self, request):
+        """로그인 사용자의 학원 역할/소속 지점. 직원 화면 기본값(지점 prefill) 등에 사용."""
+        from ..models import ACADEMY_ROLE_CHOICES
+        profile = AcademyProfile.objects.select_related("branch").filter(user=request.user).first()
+        if not profile:
+            return self.success(None)
+        role_label = dict(ACADEMY_ROLE_CHOICES).get(profile.role, profile.role)
+        branch = None
+        if profile.branch_id and profile.branch:
+            branch = {"id": profile.branch.id, "code": profile.branch.code, "name": profile.branch.name}
+        return self.success({
+            "role": profile.role,
+            "role_label": role_label,
+            "branch": branch,
+            "is_all_branch": profile.is_all_branch(),
+            "is_staff_role": profile.is_staff_role(),
+        })
+
+
 class MySignupStatusAPI(APIView):
     @login_required
     def get(self, request):

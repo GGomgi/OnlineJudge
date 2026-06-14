@@ -578,6 +578,7 @@ createApp({
   data(){
     return {
       me: null,
+      myProfile: null,
       branches: [],
       tab: 'login',
       flash: { msg:'', ok:true },
@@ -653,9 +654,14 @@ createApp({
       CONVERTED:{label:'등록완료',cls:'bg-emerald-50 text-emerald-700'},
       CLOSED:{label:'종결',cls:'bg-slate-100 text-slate-500'},
     })[s] || {label:s,cls:'bg-slate-100'}; },
+    async loadMyProfile(){
+      try { this.myProfile = await api('GET','/api/academy/my_profile'); }
+      catch(e){ this.myProfile = null; }
+    },
     async boot(){
       try { this.me = await api('GET','/api/profile'); } catch(e){ this.me = null; }
       try { this.branches = await api('GET','/api/academy/branches'); } catch(e){}
+      if (this.me) await this.loadMyProfile();
       this.tab = this.me ? this.tabs[0].key : 'login';
       this.onTab(this.tab);
     },
@@ -663,11 +669,12 @@ createApp({
       try {
         await api('POST','/api/login', { username:this.loginForm.username, password:this.loginForm.password });
         this.me = await api('GET','/api/profile');
+        await this.loadMyProfile();
         this.notify('로그인되었습니다.');
         this.tab = this.tabs[0].key; this.onTab(this.tab);
       } catch(e){ this.notify(e.message, false); }
     },
-    async logout(){ try { await api('GET','/api/logout'); } catch(e){} this.me=null; this.tab='login'; },
+    async logout(){ try { await api('GET','/api/logout'); } catch(e){} this.me=null; this.myProfile=null; this.tab='login'; },
     async submitLead(){
       try {
         const f = this.leadForm;
@@ -683,7 +690,9 @@ createApp({
     },
     openLeadForm(){
       this.showLeadForm = true;
-      this.leadForm = { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
+      // 로그인한 직원의 소속 지점을 기본 선택(전지점 역할/미배정은 선택값 없음)
+      const defBranch = (this.myProfile && this.myProfile.branch) ? this.myProfile.branch.id : null;
+      this.leadForm = { branch_id:defBranch, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
       this.flash.msg = '';
     },
     closeLeadForm(){ this.showLeadForm = false; this.flash.msg = ''; },
