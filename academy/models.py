@@ -308,6 +308,7 @@ class StudentProfile(models.Model):
     # 등록 과정·교육 일정(입회원 신청서)
     program = models.CharField(max_length=16, blank=True, default="")
     program_language = models.CharField(max_length=16, blank=True, default="")
+    program_custom = models.CharField(max_length=255, blank=True, default="")  # 개인맞춤(allow_custom) 자유 입력
     weekly_sessions = models.PositiveSmallIntegerField(null=True, blank=True)
     # 교육 요일·시간 (회수만큼). JSON 문자열 [{"day":0,"time":"16:00"}, ...]
     class_schedule = models.TextField(blank=True, default="")
@@ -322,3 +323,43 @@ class StudentProfile(models.Model):
 
     class Meta:
         db_table = "academy_student_profile"
+
+
+# ── 관리자 편집 가능 선택 목록(옵션 마스터) ──
+
+class OptionCategory(object):
+    """포털 드롭다운에 쓰이는 선택 목록 카테고리 코드."""
+    PROGRAM = "program"                    # 입회원: 등록 과정
+    PROGRAM_LANGUAGE = "program_language"  # 입회원: 언어
+    SCHOOL_TYPE = "school_type"            # 상담: 학교 구분
+    COUNSELING_PURPOSE = "counseling_purpose"  # 상담: 상담 목적
+
+
+OPTION_CATEGORIES = [
+    (OptionCategory.PROGRAM, "등록 과정"),
+    (OptionCategory.PROGRAM_LANGUAGE, "언어"),
+    (OptionCategory.SCHOOL_TYPE, "학교 구분"),
+    (OptionCategory.COUNSELING_PURPOSE, "상담 목적"),
+]
+OPTION_CATEGORY_VALUES = [c[0] for c in OPTION_CATEGORIES]
+
+
+class OptionItem(models.Model):
+    """포털 선택 목록(드롭다운) 항목. 관리자가 수정·추가·삭제한다.
+    `value` 는 레코드에 저장되는 코드, `label` 은 화면 표시명.
+    `allow_custom` 이면 해당 항목 선택 시 자유 입력란을 노출한다(예: 개인맞춤·직접 입력)."""
+    category = models.CharField(max_length=32)
+    value = models.CharField(max_length=32)
+    label = models.CharField(max_length=64)
+    order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    allow_custom = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_option_item"
+        unique_together = ("category", "value")
+        ordering = ["category", "order", "id"]
+
+    def __str__(self):
+        return f"{self.category}:{self.value}"

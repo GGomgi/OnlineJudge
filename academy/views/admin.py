@@ -19,7 +19,8 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       ALL_BRANCH_ROLES, STAFF_ROLES, Branch,
                       SignupRequest, SignupStatus, CourseClass, ClassEnrollment,
                       TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
-                      Lead, LeadStatus, CounselingLog, StudentProfile, EnrollmentStatus)
+                      Lead, LeadStatus, CounselingLog, StudentProfile, EnrollmentStatus,
+                      OptionItem)
 from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            SignupRejectSerializer, AssignRoleSerializer,
                            CreateStaffSerializer, StaffStatusSerializer,
@@ -30,7 +31,9 @@ from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            GenerateSessionsSerializer, AttendanceRecordSerializer,
                            MarkAttendanceSerializer, _student_brief,
                            LeadSerializer, AddCounselingNoteSerializer,
-                           ConvertLeadSerializer, CloseLeadSerializer)
+                           ConvertLeadSerializer, CloseLeadSerializer,
+                           OptionItemSerializer, CreateOptionSerializer,
+                           UpdateOptionSerializer)
 from ..services import apply_role, staff_scope, can_manage_branch
 
 
@@ -602,6 +605,7 @@ class ConvertLeadAdminAPI(APIView):
                 enrollment_status=EnrollmentStatus.ENROLLED,
                 program=data.get("program", "") or "",
                 program_language=data.get("program_language", "") or "",
+                program_custom=data.get("program_custom", "") or "",
                 weekly_sessions=data.get("weekly_sessions"),
                 class_schedule=data.get("class_schedule", "") or "",
                 consent_privacy=bool(data.get("consent_privacy")),
@@ -631,3 +635,69 @@ class CloseLeadAdminAPI(APIView):
         lead.close_reason = data.get("reason", "") or ""
         lead.save()
         return self.success(LeadSerializer(lead).data)
+
+
+class OptionAdminAPI(APIView):
+    """포털 선택 목록(드롭다운) 관리. 전사 공통 값이라 본부/인사 관리자만 편집 가능."""
+
+    def _require_hq(self, request):
+        actor_all, _, _ = staff_scope(request.user)
+        return actor_all
+
+    @admin_role_required
+    def get(self, request):
+        """카테고리별 옵션 목록(비활성 포함). category 미지정 시 전체."""
+        if not self._require_hq(request):
+            return self.error("본부/인사 관리자만 목록을 관리할 수 있습니다.")
+        qs = OptionItem.objects.all()
+        category = request.GET.get("category")
+        if category:
+            qs = qs.filter(category=category)
+        return self.success(OptionItemSerializer(qs, many=True).data)
+
+    @validate_serializer(CreateOptionSerializer)
+    @admin_role_required
+    def post(self, request):
+        if not self._require_hq(request):
+            return self.error("본부/인사 관리자만 목록을 관리할 수 있습니다.")
+        data = request.data
+        value = data["value"].strip()
+        if not value:
+            return self.error("값(코드)을 입력하세요.")
+        if OptionItem.objects.filter(category=data["category"], value=value).exists():
+            return self.error("이미 존재하는 값입니다.")
+        opt = OptionItem.objects.create(
+            category=data["category"], value=value, label=data["label"],
+            order=data.get("order") or 0, allow_custom=bool(data.get("allow_custom")))
+        return self.success(OptionItemSerializer(opt).data)
+
+    @validate_serializer(UpdateOptionSerializer)
+    @admin_role_required
+    def put(self, request):
+        if not self._require_hq(request):
+            return self.error("본부/인사 관리자만 목록을 관리할 수 있습니다.")
+        data = request.data
+        opt = OptionItem.objects.filter(id=data["id"]).first()
+        if not opt:
+            return self.error("Option does not exist")
+        # value(코드)는 기존 레코드 참조 보호를 위해 변경 불가. label/order/활성/맞춤만 수정.
+        if "label" in data:
+            opt.label = data["label"]
+        if "order" in data:
+            opt.order = data["order"]
+        if "is_active" in data:
+            opt.is_active = data["is_active"]
+        if "allow_custom" in data:
+            opt.allow_custom = data["allow_custom"]
+        opt.save()
+        return self.success(OptionItemSerializer(opt).data)
+
+    @admin_role_required
+    def delete(self, request):
+        if not self._require_hq(request):
+            return self.error("본부/인사 관리자만 목록을 관리할 수 있습니다.")
+        opt = OptionItem.objects.filter(id=request.GET.get("id")).first()
+        if not opt:
+            return self.error("Option does not exist")
+        opt.delete()
+        return self.success("Deleted")

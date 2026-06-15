@@ -4,7 +4,7 @@ from utils.api import APIView, validate_serializer
 
 from account.models import User, UserProfile
 from ..models import (AcademyProfile, Branch, SignupRequest, CourseClass,
-                      AttendanceRecord, Lead)
+                      AttendanceRecord, Lead, OptionItem)
 from ..serializers import (AcademySignupSerializer, BranchSerializer,
                            SignupRequestSerializer, CourseClassSerializer,
                            ClassSessionSerializer, LeadCreateSerializer)
@@ -16,6 +16,17 @@ class BranchListAPI(APIView):
         """가입 폼 등에서 사용하는 활성 지점 목록(공개)."""
         branches = Branch.objects.filter(is_active=True)
         return self.success(BranchSerializer(branches, many=True).data)
+
+
+class OptionListAPI(APIView):
+    def get(self, request):
+        """포털 폼에서 쓰는 선택 목록(활성). 카테고리별로 묶어서 반환(공개).
+        상담 신청서는 비로그인 작성이라 공개 조회를 허용한다."""
+        result = {}
+        for opt in OptionItem.objects.filter(is_active=True).order_by("category", "order", "id"):
+            result.setdefault(opt.category, []).append(
+                {"value": opt.value, "label": opt.label, "allow_custom": opt.allow_custom})
+        return self.success(result)
 
 
 class AcademySignupAPI(APIView):

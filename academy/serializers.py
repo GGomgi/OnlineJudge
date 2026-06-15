@@ -4,7 +4,8 @@ from .models import (AcademyRole, ACADEMY_ROLE_CHOICES, SELF_SIGNUP_ROLES,
                      STAFF_ROLES, Branch, SignupRequest, CourseClass, ClassEnrollment,
                      TimetableSlot, ClassSession, AttendanceRecord,
                      ATTENDANCE_STATUS_VALUES, Lead, CounselingLog,
-                     CONTACT_PREFERENCES, SCHOOL_TYPES, COUNSELING_PURPOSES)
+                     CONTACT_PREFERENCES, SCHOOL_TYPES, COUNSELING_PURPOSES,
+                     OptionItem, OPTION_CATEGORY_VALUES)
 
 ALL_ROLE_VALUES = [c[0] for c in ACADEMY_ROLE_CHOICES]
 WEEKDAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"]
@@ -300,6 +301,7 @@ class ConvertLeadSerializer(serializers.Serializer):
     # 등록 과정·교육 일정
     program = serializers.CharField(max_length=16, required=False, allow_blank=True)
     program_language = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    program_custom = serializers.CharField(max_length=255, required=False, allow_blank=True)
     weekly_sessions = serializers.IntegerField(required=False, allow_null=True)
     class_schedule = serializers.CharField(required=False, allow_blank=True)
     # 개인정보 동의(법정대리인)
@@ -317,3 +319,27 @@ class ConvertLeadSerializer(serializers.Serializer):
 class CloseLeadSerializer(serializers.Serializer):
     lead_id = serializers.IntegerField()
     reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+
+# ── 선택 목록(옵션 마스터) ──
+
+class OptionItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OptionItem
+        fields = ["id", "category", "value", "label", "order", "is_active", "allow_custom"]
+
+
+class CreateOptionSerializer(serializers.Serializer):
+    category = serializers.ChoiceField(choices=OPTION_CATEGORY_VALUES)
+    value = serializers.CharField(max_length=32)
+    label = serializers.CharField(max_length=64)
+    order = serializers.IntegerField(required=False, default=0)
+    allow_custom = serializers.BooleanField(required=False, default=False)
+
+
+class UpdateOptionSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    label = serializers.CharField(max_length=64, required=False)
+    order = serializers.IntegerField(required=False)
+    is_active = serializers.BooleanField(required=False)
+    allow_custom = serializers.BooleanField(required=False)
