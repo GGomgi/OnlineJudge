@@ -20,7 +20,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       SignupRequest, SignupStatus, CourseClass, ClassEnrollment,
                       TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
                       Lead, LeadStatus, CounselingLog, StudentProfile, EnrollmentStatus,
-                      OptionItem, StudentTimetable, LessonType)
+                      OptionItem, StudentTimetable, LessonType, GuardianStudent)
 from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            SignupRejectSerializer, AssignRoleSerializer,
                            CreateStaffSerializer, StaffStatusSerializer,
@@ -33,9 +33,48 @@ from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            LeadSerializer, AddCounselingNoteSerializer,
                            ConvertLeadSerializer, CloseLeadSerializer,
                            OptionItemSerializer, CreateOptionSerializer,
-                           UpdateOptionSerializer, StudentTimetableSerializer,
+                           UpdateOptionSerializer, ReorderOptionSerializer,
+                           StudentTimetableSerializer,
                            CreateStudentTimetableSerializer, EditStudentTimetableSerializer)
 import json as _json
+
+
+def _norm_phone(v):
+    """전화번호에서 숫자만 추출(학부모 매칭 키)."""
+    return "".join(ch for ch in (v or "") if ch.isdigit())
+
+
+def get_or_create_guardian(student, lead, branch, login_id="", password=""):
+    """학생의 학부모(보호자) 계정을 전화번호로 찾거나 생성하고 자녀로 연결한다(11 §9).
+    동일 전화번호의 학부모가 이미 있으면(형제 등록 등) 그 계정에 연결만 한다."""
+    norm = _norm_phone(lead.parent_phone)
+    parent_user = None
+    if norm:
+        prof = AcademyProfile.objects.select_related("user").filter(
+            role=AcademyRole.PARENT, phone=norm).first()
+        if prof:
+            parent_user = prof.user
+    if parent_user is None:
+        username = (login_id or "").strip().lower() or ("p" + norm if norm else "")
+        if not username:
+            return None  # 전화번호도 아이디도 없으면 학부모 계정 생략
+        if User.objects.filter(username=username).exists():
+            # 충돌 시 일련번호 부여
+            base, i = username, 1
+            while User.objects.filter(username=username).exists():
+                i += 1
+                username = "%s%d" % (base, i)
+        pw = (password or "").strip() or (norm or username)
+        parent_user = User.objects.create(username=username, is_disabled=False)
+        parent_user.set_password(pw)
+        parent_user.save()
+        UserProfile.objects.create(user=parent_user, real_name=lead.parent_name or "학부모")
+        profile = apply_role(parent_user, AcademyRole.PARENT, branch)
+        profile.phone = norm
+        profile.save(update_fields=["phone"])
+    GuardianStudent.objects.get_or_create(parent=parent_user, student=student,
+                                          defaults={"relation": "학부모"})
+    return parent_user
 from ..services import apply_role, staff_scope, can_manage_branch
 
 
@@ -657,10 +696,19 @@ class ConvertLeadAdminAPI(APIView):
                 StudentTimetable.objects.create(
                     student=user, branch=lead.branch, class_type=LessonType.PRIVATE,
                     weekday=wd, start_time=tm, duration_minutes=60)
+            # 학부모(보호자) 계정 생성/연결 — 자녀 기록 열람용(11 §9)
+            parent_user = get_or_create_guardian(
+                user, lead, lead.branch,
+                login_id=data.get("parent_login_id", ""),
+                password=data.get("parent_password", ""))
             lead.status = LeadStatus.CONVERTED
             lead.converted_user = user
             lead.save()
-        return self.success(LeadSerializer(lead).data)
+        result = LeadSerializer(lead).data
+        if parent_user is not None:
+            result["parent_account"] = {"username": parent_user.username,
+                                        "is_new": parent_user.last_login is None}
+        return self.success(result)
 
 
 class CloseLeadAdminAPI(APIView):
@@ -745,6 +793,21 @@ class OptionAdminAPI(APIView):
             return self.error("Option does not exist")
         opt.delete()
         return self.success("Deleted")
+
+
+class OptionReorderAPI(APIView):
+    @validate_serializer(ReorderOptionSerializer)
+    @admin_role_required
+    def post(self, request):
+        """카테고리 내 항목 순서를 ids 배열 순서대로 0,1,2…로 재설정."""
+        actor_all, _, _ = staff_scope(request.user)
+        if not actor_all:
+            return self.error("본부/인사 관리자만 목록을 관리할 수 있습니다.")
+        data = request.data
+        for idx, oid in enumerate(data["ids"]):
+            OptionItem.objects.filter(id=oid, category=data["category"]).update(order=idx)
+        qs = OptionItem.objects.filter(category=data["category"])
+        return self.success(OptionItemSerializer(qs, many=True).data)
 
 
 class StudentTimetableAdminAPI(APIView):

@@ -66,6 +66,8 @@ class AcademyProfile(models.Model):
                                related_name="members")
     # 직원 사번(지점2+일련3, 04 명명). 직원 계정의 로그인 아이디로도 사용. 학생/학부모는 빈 값.
     staff_no = models.CharField(max_length=16, blank=True, default="")
+    # 연락처(학부모 계정 매칭용: 동일 전화번호=동일 학부모, 11 §9 다자녀). 숫자만 정규화 저장.
+    phone = models.CharField(max_length=32, blank=True, default="")
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 
@@ -325,6 +327,21 @@ class StudentProfile(models.Model):
 
     class Meta:
         db_table = "academy_student_profile"
+
+
+class GuardianStudent(models.Model):
+    """학부모(보호자) 계정 ↔ 학생 계정 1:N 매핑(11 §9). 동일 전화번호의 학부모는
+    하나의 계정으로 다자녀를 연결한다."""
+    parent = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                               related_name="children_links")
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="guardian_links")
+    relation = models.CharField(max_length=16, blank=True, default="학부모")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_guardian_student"
+        unique_together = ("parent", "student")
 
 
 # ── 관리자 편집 가능 선택 목록(옵션 마스터) ──

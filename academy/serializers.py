@@ -304,6 +304,9 @@ class ConvertLeadSerializer(serializers.Serializer):
     program_custom = serializers.CharField(max_length=255, required=False, allow_blank=True)
     weekly_sessions = serializers.IntegerField(required=False, allow_null=True)
     class_schedule = serializers.CharField(required=False, allow_blank=True)
+    # 학부모(보호자) 계정 — 자녀 기록 열람용. 미입력 시 전화번호로 자동 생성/연결(11 §9)
+    parent_login_id = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    parent_password = serializers.CharField(max_length=128, required=False, allow_blank=True)
     # 개인정보 동의(법정대리인)
     consent_privacy = serializers.BooleanField()
     consent_guardian_name = serializers.CharField(max_length=64)
@@ -343,6 +346,11 @@ class UpdateOptionSerializer(serializers.Serializer):
     order = serializers.IntegerField(required=False)
     is_active = serializers.BooleanField(required=False)
     allow_custom = serializers.BooleanField(required=False)
+
+
+class ReorderOptionSerializer(serializers.Serializer):
+    category = serializers.ChoiceField(choices=OPTION_CATEGORY_VALUES)
+    ids = serializers.ListField(child=serializers.IntegerField())
 
 
 # ── 개별 수업 시간표 (12) ──

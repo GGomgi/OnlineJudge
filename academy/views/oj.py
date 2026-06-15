@@ -4,9 +4,9 @@ from django.db.models import Q
 from utils.api import APIView, validate_serializer
 
 from account.models import User, UserProfile
-from ..models import (AcademyProfile, Branch, SignupRequest, CourseClass,
+from ..models import (AcademyProfile, AcademyRole, Branch, SignupRequest, CourseClass,
                       AttendanceRecord, Lead, OptionItem)
-from ..models import StudentTimetable
+from ..models import StudentTimetable, GuardianStudent
 from ..serializers import (AcademySignupSerializer, BranchSerializer,
                            SignupRequestSerializer, CourseClassSerializer,
                            ClassSessionSerializer, LeadCreateSerializer,
@@ -110,6 +110,57 @@ class MyAcademyProfileAPI(APIView):
         })
 
 
+def _resolve_target(request):
+    """조회 대상 사용자: 기본은 본인. 학부모가 student_id 로 자녀를 지정하면
+    보호자 연결을 확인하고 그 자녀를 반환. 권한 없으면 None."""
+    user = request.user
+    student_id = request.GET.get("student_id")
+    if not student_id:
+        return user
+    if str(student_id) == str(user.id):
+        return user
+    link = GuardianStudent.objects.filter(parent=user, student_id=student_id).select_related("student").first()
+    if link:
+        return link.student
+    return None
+
+
+class MyChildrenAPI(APIView):
+    @login_required
+    def get(self, request):
+        """학부모 로그인 시 연결된 자녀 목록(11 §9 자녀 스위처용)."""
+        links = GuardianStudent.objects.filter(parent=request.user).select_related("student")
+        children = []
+        for l in links:
+            s = l.student
+            real_name = ""
+            try:
+                real_name = s.userprofile.real_name or ""
+            except Exception:
+                real_name = ""
+            children.append({"id": s.id, "username": s.username, "real_name": real_name,
+                             "relation": l.relation})
+        return self.success(children)
+
+
+class GuardianMeAPI(APIView):
+    @login_required
+    def get(self, request):
+        """학부모 본인 기본정보(상담 신청서 자동 채움용). 학부모가 아니면 null."""
+        profile = AcademyProfile.objects.select_related("branch").filter(user=request.user).first()
+        if not profile or profile.role != AcademyRole.PARENT:
+            return self.success(None)
+        real_name = ""
+        try:
+            real_name = request.user.userprofile.real_name or ""
+        except Exception:
+            real_name = ""
+        branch = None
+        if profile.branch_id and profile.branch:
+            branch = {"id": profile.branch.id, "code": profile.branch.code, "name": profile.branch.name}
+        return self.success({"parent_name": real_name, "parent_phone": profile.phone, "branch": branch})
+
+
 class MySignupStatusAPI(APIView):
     @login_required
     def get(self, request):
@@ -124,8 +175,11 @@ class MyTimetableAPI(APIView):
     @login_required
     def get(self, request):
         """내 시간표: 개별 수업 시간표 + 그룹(특강) 반.
-        학생=본인 개별 슬롯/수강 반, 강사=담당 개별 슬롯/담당 반."""
-        user = request.user
+        학생=본인 개별 슬롯/수강 반, 강사=담당 개별 슬롯/담당 반.
+        학부모는 student_id 로 자녀 시간표 조회."""
+        user = _resolve_target(request)
+        if user is None:
+            return self.error("권한이 없습니다.")
         # 개별 수업 시간표(학생 본인 또는 담당 강사)
         individual = StudentTimetable.objects.select_related(
             "student", "branch", "instructor").exclude(status="ENDED").filter(
@@ -144,8 +198,11 @@ class MyTimetableAPI(APIView):
 class MyAttendanceAPI(APIView):
     @login_required
     def get(self, request):
-        """본인 출결 내역(최근순). class_id 로 특정 반 필터 가능."""
-        qs = AttendanceRecord.objects.filter(student=request.user).select_related(
+        """본인(또는 학부모의 자녀) 출결 내역(최근순). class_id 로 특정 반 필터 가능."""
+        target = _resolve_target(request)
+        if target is None:
+            return self.error("권한이 없습니다.")
+        qs = AttendanceRecord.objects.filter(student=target).select_related(
             "session", "session__course_class", "session__course_class__branch")
         class_id = request.GET.get("class_id")
         if class_id:

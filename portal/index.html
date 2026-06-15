@@ -68,7 +68,15 @@
         <h2 class="text-lg font-bold">상담 신청서</h2>
         <button v-if="showLeadForm" @click="closeLeadForm" class="text-xs text-slate-400 hover:text-slate-600">← 목록으로</button>
       </div>
-      <p class="text-xs text-slate-400 mb-4">상담을 위한 기초 정보를 적어주세요. 정식 등록은 상담 후 진행됩니다.</p>
+      <p class="text-xs text-slate-400 mb-3">상담을 위한 기초 정보를 적어주세요. 정식 등록은 상담 후 진행됩니다.</p>
+      <div v-if="!me" class="mb-4 text-xs">
+        <button type="button" @click="showParentLogin=!showParentLogin" class="text-indigo-600 hover:underline">기존 학부모이신가요? 로그인하면 학부모 정보가 자동 입력됩니다 ▾</button>
+        <div v-if="showParentLogin" class="mt-2 flex flex-wrap gap-2 items-center bg-slate-50 rounded-lg p-2">
+          <input v-model="parentLogin.id" placeholder="학부모 아이디" class="input flex-1" autocomplete="username" />
+          <input v-model="parentLogin.pw" type="password" @keyup.enter="loginFromLead" placeholder="비밀번호" class="input flex-1" autocomplete="current-password" />
+          <button type="button" @click="loginFromLead" class="btn-secondary text-xs whitespace-nowrap">불러오기</button>
+        </div>
+      </div>
       <form @submit.prevent="submitLead" class="space-y-3">
         <div>
           <label class="lbl">지점</label>
@@ -125,6 +133,51 @@
         <p class="text-[11px] text-slate-400">제출 시 상담 목적의 개인정보 수집·이용에 동의하는 것으로 간주됩니다.</p>
         <button class="btn-primary w-full">상담 신청</button>
       </form>
+    </section>
+
+    <!-- ============ 학부모: 자녀 ============ -->
+    <section v-if="tab==='children'">
+      <h2 class="text-lg font-bold mb-3">자녀</h2>
+      <div v-if="children.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">연결된 자녀가 없습니다.</div>
+      <div v-else>
+        <div class="flex gap-2 flex-wrap mb-4">
+          <button v-for="ch in children" :key="ch.id" @click="selectChild(ch)"
+            :class="['px-4 py-2 rounded-lg text-sm', childSel && childSel.id===ch.id ? 'bg-indigo-600 text-white':'bg-white text-slate-600 hover:bg-slate-50 border']">
+            {{ ch.real_name || ch.username }}
+          </button>
+        </div>
+        <template v-if="childSel">
+          <h3 class="text-sm font-semibold text-slate-600 mb-2">{{ childSel.real_name || childSel.username }} · 개별 수업</h3>
+          <div v-if="childTt.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-4 mb-5">등록된 개별 수업이 없습니다.</div>
+          <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-slate-500 text-xs"><tr><th class="text-left px-4 py-2">요일</th><th class="text-left px-4 py-2">시간</th><th class="text-left px-4 py-2">과목</th><th class="text-left px-4 py-2">강사</th></tr></thead>
+              <tbody>
+                <tr v-for="s in childTt" :key="s.id" class="border-t">
+                  <td class="px-4 py-2"><span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-xs font-medium">{{ s.day_name }}</span></td>
+                  <td class="px-4 py-2">{{ hm(s.start_time) }} ~ {{ s.end_time }} <span class="text-xs text-slate-400">({{ s.duration_minutes }}분)</span></td>
+                  <td class="px-4 py-2">{{ s.subject || '-' }}</td>
+                  <td class="px-4 py-2 text-slate-500">{{ s.instructor ? (s.instructor.real_name||s.instructor.username) : '미배정' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <h3 class="text-sm font-semibold text-slate-600 mb-2">출결</h3>
+          <div v-if="childAtt.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-4">출결 기록이 없습니다.</div>
+          <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-slate-500 text-xs"><tr><th class="text-left px-4 py-2">날짜</th><th class="text-left px-4 py-2">반</th><th class="text-left px-4 py-2">상태</th></tr></thead>
+              <tbody>
+                <tr v-for="(r,i) in childAtt" :key="i" class="border-t">
+                  <td class="px-4 py-2">{{ r.session.date }}</td>
+                  <td class="px-4 py-2">{{ r.session.class_name }}</td>
+                  <td class="px-4 py-2"><span :class="attClass(r.status)">{{ attLabel(r.status) }}</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+      </div>
     </section>
 
     <!-- ============ 내 시간표 ============ -->
@@ -290,7 +343,7 @@
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="lbl">생년월일 <span class="text-rose-500">*</span></label>
-                <input v-model="convertForm.birth_date" @change="genLoginId" type="date" class="input" />
+                <input v-model="convertForm.birth_date" @change="checkBirth" type="date" min="1900-01-01" :max="todayStr" class="input" />
               </div>
               <div>
                 <label class="lbl">보호자 연락처</label>
@@ -322,7 +375,7 @@
             </div>
             <input :value="convertForm.address" @click="openPostcode" readonly placeholder="도로명/지번 주소 (클릭하여 검색)"
                    class="input bg-slate-50 cursor-pointer" />
-            <input v-model="convertForm.address_detail" class="input" placeholder="상세주소 (동/호 등)" />
+            <input v-model="convertForm.address_detail" ref="addrDetail" class="input" placeholder="상세주소 (동/호 등)" />
           </div>
 
           <!-- 등록 과정 · 교육 일정 -->
@@ -361,14 +414,14 @@
                   <option :value="-1" disabled>요일</option>
                   <option v-for="(d,di) in days" :key="di" :value="di">{{ d }}</option>
                 </select>
-                <input v-model="row.time" type="time" class="input w-32" />
+                <input v-model="row.time" @input="blurIfTimeComplete" type="time" class="input w-32" />
               </div>
             </div>
           </div>
 
           <!-- 계정 -->
           <div class="space-y-2">
-            <div class="text-sm font-semibold text-slate-700 border-b pb-1">로그인 계정</div>
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">학생 로그인 계정</div>
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="lbl">아이디 (이름+생일 자동)</label>
@@ -379,6 +432,22 @@
                 <input v-model="convertForm.password" type="text" class="input" />
               </div>
             </div>
+          </div>
+
+          <!-- 학부모 계정 -->
+          <div class="space-y-2">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">학부모 계정 <span class="text-xs font-normal text-slate-400">(자녀 기록 열람용)</span></div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="lbl">학부모 아이디 (연락처 자동)</label>
+                <input v-model="convertForm.parent_login_id" class="input" />
+              </div>
+              <div>
+                <label class="lbl">학부모 비밀번호 <span class="text-slate-400">(미입력 시 연락처)</span></label>
+                <input v-model="convertForm.parent_password" type="text" class="input" placeholder="미입력 시 연락처 숫자" />
+              </div>
+            </div>
+            <p class="text-[11px] text-slate-400">이미 등록된 형제가 있으면(같은 연락처) <b>기존 학부모 계정에 자동 연결</b>되어 새로 만들지 않습니다.</p>
           </div>
 
           <!-- 개인정보 동의서 -->
@@ -417,9 +486,12 @@
             </div>
           </div>
 
-          <div class="flex gap-2 pt-2">
-            <button @click="closeConvert" class="btn-secondary flex-1">취소</button>
-            <button @click="submitConvert" class="btn-primary flex-1">계정 생성 · 등록 완료</button>
+          <div ref="convertSubmit" class="pt-2 space-y-2">
+            <div v-if="convertError" class="px-4 py-3 rounded bg-rose-50 text-rose-700 border border-rose-200 text-sm">{{ convertError }}</div>
+            <div class="flex gap-2">
+              <button @click="closeConvert" class="btn-secondary flex-1">취소</button>
+              <button @click="submitConvert" class="btn-primary flex-1">계정 생성 · 등록 완료</button>
+            </div>
           </div>
         </div>
       </div>
@@ -693,19 +765,24 @@
         <table class="w-full text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
+              <th class="px-3 py-2 text-left w-24">순서</th>
               <th class="px-3 py-2 text-left">표시명</th>
               <th class="px-3 py-2 text-left">값(코드)</th>
-              <th class="px-3 py-2 text-left w-20">순서</th>
               <th class="px-3 py-2 text-center">자유입력</th>
               <th class="px-3 py-2 text-center">활성</th>
               <th class="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="o in optList" :key="o.id" class="border-t align-middle">
+            <tr v-for="(o,i) in optList" :key="o.id" class="border-t align-middle"
+                @dragover.prevent @drop="onOptDrop(i)">
+              <td class="px-3 py-2 whitespace-nowrap">
+                <span draggable="true" @dragstart="onOptDragStart(i)" class="cursor-move text-slate-400 mr-1 select-none" title="드래그하여 이동">⠿</span>
+                <button @click="moveOption(i,-1)" :disabled="i===0" class="text-slate-500 disabled:text-slate-200 px-1">▲</button>
+                <button @click="moveOption(i,1)" :disabled="i===optList.length-1" class="text-slate-500 disabled:text-slate-200 px-1">▼</button>
+              </td>
               <td class="px-3 py-2"><input v-model="o.label" class="input py-1" /></td>
               <td class="px-3 py-2 text-slate-400 whitespace-nowrap">{{ o.value }}</td>
-              <td class="px-3 py-2"><input v-model.number="o.order" type="number" class="input py-1 w-16" /></td>
               <td class="px-3 py-2 text-center"><input type="checkbox" v-model="o.allow_custom" class="w-4 h-4" /></td>
               <td class="px-3 py-2 text-center"><input type="checkbox" v-model="o.is_active" class="w-4 h-4" /></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
@@ -717,9 +794,9 @@
           </tbody>
           <tfoot>
             <tr class="border-t bg-slate-50">
+              <td class="px-3 py-2 text-xs text-slate-300">신규</td>
               <td class="px-3 py-2"><input v-model="optNewForm.label" placeholder="표시명(예: 게임)" class="input py-1" /></td>
               <td class="px-3 py-2"><input v-model="optNewForm.value" placeholder="값(영문 코드)" class="input py-1" /></td>
-              <td class="px-3 py-2"></td>
               <td class="px-3 py-2 text-center"><input type="checkbox" v-model="optNewForm.allow_custom" class="w-4 h-4" /></td>
               <td class="px-3 py-2"></td>
               <td class="px-3 py-2 text-right"><button @click="addOption" class="text-xs text-indigo-600 hover:underline font-semibold">+ 추가</button></td>
@@ -784,8 +861,11 @@ createApp({
       leadFilter: '', leads: [], openLeadId: null, noteText: '',
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
-      convertingLead: null,
-      convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program:'', program_language:'', program_custom:'', weekly_sessions:0, schedule:[], login_id:'', password:'', consent_privacy:false, consent_guardian_name:'' },
+      convertingLead: null, convertError: '',
+      convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program:'', program_language:'', program_custom:'', weekly_sessions:0, schedule:[], login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
+      children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
+      showParentLogin: false, parentLogin: { id:'', pw:'' },
+      dragIndex: null,
       sig: { drawing:false, ctx:null, hasInk:false },
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
       staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null },
@@ -820,6 +900,8 @@ createApp({
              !!(this.myProfile && this.myProfile.is_all_branch);
     },
     canManageOptions(){ return this.isActorAllBranch; },
+    isParent(){ return !!(this.myProfile && this.myProfile.role === 'PARENT'); },
+    todayStr(){ return this.today.y + '-' + String(this.today.m).padStart(2,'0') + '-' + String(this.today.d).padStart(2,'0'); },
     staffRoleOptions(){
       const all = [
         {v:'HQ_ADMIN', l:'본부 관리자', allBranch:true},
@@ -846,6 +928,7 @@ createApp({
         t.push({key:'me',label:'내 정보'});
         return t;
       }
+      if (this.isParent) return [ {key:'children',label:'자녀'}, {key:'lead',label:'상담 신청'}, {key:'me',label:'내 정보'} ];
       return [ {key:'timetable',label:'내 시간표'}, {key:'attendance',label:'내 출결'}, {key:'me',label:'내 정보'} ];
     },
   },
@@ -887,8 +970,68 @@ createApp({
       else if (key==='staff') this.loadStaff();
       else if (key==='options') this.loadOptionAdmin();
       else if (key==='indtt') this.loadTtInstructors();
-      else if (key==='lead') this.loadOptions();
+      else if (key==='children') this.loadChildren();
+      else if (key==='lead'){ this.loadOptions(); if (this.isParent) this.prefillLeadFromGuardian(); }
     },
+    async loadChildren(){
+      try { this.children = await api('GET','/api/academy/my_children'); if (this.children.length && !this.childSel) this.selectChild(this.children[0]); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async selectChild(ch){
+      this.childSel = ch;
+      try {
+        const d = await api('GET','/api/academy/my_timetable?student_id='+ch.id);
+        this.childTt = d.individual||[]; this.childGroups = d.groups||[];
+        this.childAtt = await api('GET','/api/academy/my_attendance?student_id='+ch.id);
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async prefillLeadFromGuardian(){
+      try {
+        const g = await api('GET','/api/academy/guardian_me');
+        if (g){ this.leadForm.parent_name = g.parent_name||''; this.leadForm.parent_phone = g.parent_phone ? this.formatPhone(g.parent_phone) : ''; if (g.branch) this.leadForm.branch_id = g.branch.id; }
+      } catch(e){}
+    },
+    async loginFromLead(){
+      if (!this.parentLogin.id || !this.parentLogin.pw) return this.notify('아이디와 비밀번호를 입력하세요.', false);
+      try {
+        await api('POST','/api/login', { username:this.parentLogin.id, password:this.parentLogin.pw });
+        this.me = await api('GET','/api/profile');
+        await this.loadMyProfile();
+        this.parentLogin = { id:'', pw:'' }; this.showParentLogin = false;
+        this.tab = 'lead';
+        await this.prefillLeadFromGuardian();
+        this.notify(this.isParent ? '학부모 정보를 불러왔습니다. 추가 자녀 정보를 작성해 신청해주세요.' : '로그인되었습니다.');
+      } catch(e){ this.notify(e.message, false); }
+    },
+    async reorderOptions(){
+      try { const d = await api('POST','/api/admin/academy/options/reorder', { category:this.optCategory, ids:this.optList.map(o=>o.id) }); this.optList = d.results || d; await this.loadOptions(); }
+      catch(e){ this.notify(e.message,false); this.loadOptionAdmin(); }
+    },
+    moveOption(i, dir){
+      const j = i + dir; if (j < 0 || j >= this.optList.length) return;
+      const a = this.optList; const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+      this.reorderOptions();
+    },
+    onOptDragStart(i){ this.dragIndex = i; },
+    onOptDrop(i){
+      if (this.dragIndex===null || this.dragIndex===i) { this.dragIndex=null; return; }
+      const a = this.optList; const m = a.splice(this.dragIndex,1)[0]; a.splice(i,0,m);
+      this.dragIndex = null; this.reorderOptions();
+    },
+    checkBirth(){
+      const bd = this.convertForm.birth_date;
+      if (!bd) return;
+      const y = parseInt((bd.split('-')[0]||''), 10);
+      const cur = this.today.y;
+      if (isNaN(y) || y < 1900 || y > cur) {
+        this.convertError = '생년월일의 연도를 4자리로 정확히 입력하세요. (예: 2012)';
+        this.convertForm.birth_date = ''; this.convertForm.login_id = '';
+        return;
+      }
+      this.convertError = '';
+      this.genLoginId();
+    },
+    blurIfTimeComplete(e){ if (/^\d{2}:\d{2}$/.test(e.target.value)) e.target.blur(); },
     async loadTtInstructors(){
       try { const d = await api('GET','/api/admin/academy/staff'); this.ttInstructors = d.results || d; } catch(e){}
     },
@@ -1062,7 +1205,7 @@ createApp({
         if (!f.purpose) return this.notify('상담 목적을 선택하세요.', false);
         if (this.optAllowCustom('counseling_purpose', f.purpose) && !(f.purpose_detail||'').trim()) return this.notify('상담 목적을 직접 입력해주세요.', false);
         await api('POST','/api/academy/lead', f);
-        this.notify('상담 신청이 접수되었습니다.' + (this.showLeadForm ? '' : ' 곧 연락드리겠습니다.'));
+        this.notify('상담 신청이 접수되었습니다.');
         this.leadForm = { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
         if (this.showLeadForm) { this.showLeadForm = false; this.loadLeads(); }
       } catch(e){ this.notify(e.message, false); }
@@ -1091,17 +1234,21 @@ createApp({
     },
     openConvert(r){
       this.convertingLead = r;
+      this.convertError = '';
+      const phoneDigits = String(r.parent_phone||'').replace(/\D/g,'');
       this.convertForm = {
         student_name: r.student_name, gender:'', birth_date:'',
         parent_phone: r.parent_phone, school_type: r.school_type||'', school_name: r.school_name||'', grade: r.grade||'',
         student_phone:'', zipcode:'', address:'', address_detail:'',
         program:'', program_language:'', program_custom:'', weekly_sessions:0, schedule:[],
-        login_id:'', password:'', consent_privacy:false, consent_guardian_name:'',
+        login_id:'', password:'',
+        parent_login_id: phoneDigits, parent_password:'',
+        consent_privacy:false, consent_guardian_name:'',
       };
       this.loadOptions();
       this.$nextTick(()=> this.sigInit());
     },
-    closeConvert(){ if (this.convertDirty() && !this.confirmLeave()) return; this.convertingLead = null; },
+    closeConvert(){ if (this.convertDirty() && !this.confirmLeave()) return; this.convertingLead = null; this.convertError = ''; },
     syncSchedule(){
       const n = this.convertForm.weekly_sessions || 0;
       const cur = this.convertForm.schedule;
@@ -1120,6 +1267,8 @@ createApp({
       new daum.Postcode({ oncomplete: (data) => {
         this.convertForm.zipcode = data.zonecode;
         this.convertForm.address = data.roadAddress || data.jibunAddress;
+        // 선택 후 자동으로 상세주소 입력칸에 포커스
+        this.$nextTick(()=>{ if (this.$refs.addrDetail) this.$refs.addrDetail.focus(); });
       }}).open();
     },
     sigInit(){
@@ -1134,24 +1283,28 @@ createApp({
     sigMove(e){ if(!this.sig.drawing) return; const p=this.sigPos(e); this.sig.ctx.lineTo(p.x,p.y); this.sig.ctx.stroke(); this.sig.hasInk=true; },
     sigEnd(){ this.sig.drawing=false; },
     sigClear(){ this.sigInit(); },
+    failConvert(msg){ this.convertError = msg; try { this.$refs.convertSubmit.scrollIntoView({block:'center'}); } catch(e){} return; },
     async submitConvert(){
       const f = this.convertForm, r = this.convertingLead;
-      if (!f.birth_date) return this.notify('생년월일을 입력하세요.', false);
+      this.convertError = '';
+      if (!f.birth_date) return this.failConvert('생년월일을 입력하세요. (연도 4자리)');
+      { const y = parseInt((f.birth_date.split('-')[0]||''),10); if (isNaN(y)||y<1900||y>this.today.y) return this.failConvert('생년월일의 연도를 4자리로 정확히 입력하세요. (예: 2012)'); }
       if (!f.login_id) this.genLoginId();
-      if (!f.login_id || !f.password) return this.notify('아이디·비밀번호를 확인하세요(비밀번호 6자 이상).', false);
-      if (!f.student_phone) return this.notify('학생 휴대폰을 입력하세요. (보호자번호와 동일 버튼 사용 가능)', false);
-      if (!f.zipcode || !f.address) return this.notify('우편번호 검색으로 주소를 입력하세요.', false);
-      if (!f.program) return this.notify('등록 과정을 선택하세요.', false);
-      if (f.program==='LANG' && !f.program_language) return this.notify('프로그래밍 언어를 선택하세요.', false);
-      if (this.optAllowCustom('program', f.program) && !(f.program_custom||'').trim()) return this.notify('등록 과정을 직접 입력해주세요.', false);
-      if (!f.weekly_sessions) return this.notify('주 교육 회수를 선택하세요.', false);
+      if (!f.login_id || !f.password) return this.failConvert('아이디·비밀번호를 확인하세요.');
+      if (f.password.length < 6) return this.failConvert('비밀번호는 6자 이상이어야 합니다.');
+      if (!f.student_phone) return this.failConvert('학생 휴대폰을 입력하세요. (보호자번호와 동일 버튼 사용 가능)');
+      if (!f.zipcode || !f.address) return this.failConvert('우편번호 검색으로 주소를 입력하세요.');
+      if (!f.program) return this.failConvert('등록 과정을 선택하세요.');
+      if (f.program==='LANG' && !f.program_language) return this.failConvert('프로그래밍 언어를 선택하세요.');
+      if (this.optAllowCustom('program', f.program) && !(f.program_custom||'').trim()) return this.failConvert('등록 과정을 직접 입력해주세요.');
+      if (!f.weekly_sessions) return this.failConvert('주 교육 회수를 선택하세요.');
       if (f.schedule.length !== f.weekly_sessions || f.schedule.some(s=>s.day<0 || !s.time))
-        return this.notify('교육 요일과 시간을 회수만큼 모두 입력하세요.', false);
+        return this.failConvert('교육 요일과 시간을 회수만큼 모두 입력하세요.');
       if (new Set(f.schedule.map(s=>s.day)).size !== f.schedule.length)
-        return this.notify('교육 요일이 중복되었습니다.', false);
-      if (!f.consent_privacy) return this.notify('개인정보 수집·이용에 동의해 주세요.', false);
-      if (!f.consent_guardian_name) return this.notify('법정대리인 성명을 입력하세요.', false);
-      if (!this.sig.hasInk) return this.notify('서명을 입력해 주세요.', false);
+        return this.failConvert('교육 요일이 중복되었습니다.');
+      if (!f.consent_privacy) return this.failConvert('개인정보 수집·이용에 동의해 주세요.');
+      if (!f.consent_guardian_name) return this.failConvert('법정대리인 성명을 입력하세요.');
+      if (!this.sig.hasInk) return this.failConvert('서명을 입력해 주세요.');
       try {
         const body = {
           lead_id: r.id, login_id: f.login_id, password: f.password, birth_date: f.birth_date,
@@ -1161,14 +1314,17 @@ createApp({
           program_custom: this.optAllowCustom('program', f.program) ? (f.program_custom||'') : '',
           weekly_sessions: f.weekly_sessions,
           class_schedule: JSON.stringify(f.schedule),
+          parent_login_id: f.parent_login_id || '', parent_password: f.parent_password || '',
           consent_privacy: true, consent_guardian_name: f.consent_guardian_name,
           consent_signature: this.$refs.sig.toDataURL('image/png'),
-          consent_date: this.today.y + '-' + String(this.today.m).padStart(2,'0') + '-' + String(this.today.d).padStart(2,'0'),
+          consent_date: this.todayStr,
         };
         const d = await api('POST','/api/admin/academy/lead/convert', body);
-        this.replaceLead(d); this.convertingLead = null;
-        this.notify(d.student_name+' 등록 완료 (계정 @'+d.converted_username+')');
-      } catch(e){ this.notify(e.message,false); }
+        this.replaceLead(d); this.convertingLead = null; this.convertError = '';
+        let msg = d.student_name+' 등록 완료 (학생 @'+d.converted_username+')';
+        if (d.parent_account) msg += ' · 학부모 계정 @'+d.parent_account.username;
+        this.notify(msg);
+      } catch(e){ this.failConvert(e.message); }
     },
     async closeLead(r){
       const reason = prompt('종결 사유 (선택)') ?? '';
