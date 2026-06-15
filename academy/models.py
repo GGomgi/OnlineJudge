@@ -64,6 +64,8 @@ class AcademyProfile(models.Model):
     # 주(主) 소속 지점. 전지점 역할(HQ/HR) 또는 미배정은 null.
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
                                related_name="members")
+    # 직원 사번(지점2+일련3, 04 명명). 직원 계정의 로그인 아이디로도 사용. 학생/학부모는 빈 값.
+    staff_no = models.CharField(max_length=16, blank=True, default="")
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 
@@ -342,6 +344,44 @@ OPTION_CATEGORIES = [
     (OptionCategory.COUNSELING_PURPOSE, "상담 목적"),
 ]
 OPTION_CATEGORY_VALUES = [c[0] for c in OPTION_CATEGORIES]
+
+
+# ── 개별 수업 시간표 (12) ──
+
+class LessonType(object):
+    PRIVATE = "PRIVATE"  # 개별 수업(기본)
+    GROUP = "GROUP"      # 그룹/특강
+
+
+class TimetableStatus(object):
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    ENDED = "ENDED"
+
+
+class StudentTimetable(models.Model):
+    """학생별 개별 수업 시간표 슬롯(12). 학원 기본 운영이 개별 수업이므로
+    반(CourseClass)과 별개로 학생마다 요일/시작시간/수업길이/담당강사를 둔다.
+    그룹/특강은 기존 반(CourseClass)으로 운영."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="timetables")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="student_timetables")
+    class_type = models.CharField(max_length=16, default=LessonType.PRIVATE)
+    # 0=월 ... 6=일 (date.weekday() 기준)
+    weekday = models.PositiveSmallIntegerField()
+    start_time = models.TimeField()
+    duration_minutes = models.PositiveSmallIntegerField(default=60)
+    instructor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="instructing_timetables")
+    subject = models.CharField(max_length=64, blank=True, default="")  # 수업 내용/과정
+    room = models.CharField(max_length=64, blank=True, default="")
+    status = models.CharField(max_length=16, default=TimetableStatus.ACTIVE)
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_student_timetable"
+        ordering = ["weekday", "start_time"]
 
 
 class OptionItem(models.Model):

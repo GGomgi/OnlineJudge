@@ -1,13 +1,16 @@
 from django.db import transaction
+from django.db.models import Q
 
 from utils.api import APIView, validate_serializer
 
 from account.models import User, UserProfile
 from ..models import (AcademyProfile, Branch, SignupRequest, CourseClass,
                       AttendanceRecord, Lead, OptionItem)
+from ..models import StudentTimetable
 from ..serializers import (AcademySignupSerializer, BranchSerializer,
                            SignupRequestSerializer, CourseClassSerializer,
-                           ClassSessionSerializer, LeadCreateSerializer)
+                           ClassSessionSerializer, LeadCreateSerializer,
+                           StudentTimetableSerializer)
 from account.decorators import login_required
 
 
@@ -120,14 +123,22 @@ class MySignupStatusAPI(APIView):
 class MyTimetableAPI(APIView):
     @login_required
     def get(self, request):
-        """내 시간표: 학생은 수강 중인 반, 강사는 담당 반의 반·시간표를 반환."""
+        """내 시간표: 개별 수업 시간표 + 그룹(특강) 반.
+        학생=본인 개별 슬롯/수강 반, 강사=담당 개별 슬롯/담당 반."""
         user = request.user
-        # 담당 강사로 배정된 반 + 수강 중인 반(중복 제거)
+        # 개별 수업 시간표(학생 본인 또는 담당 강사)
+        individual = StudentTimetable.objects.select_related(
+            "student", "branch", "instructor").exclude(status="ENDED").filter(
+            Q(student=user) | Q(instructor=user))
+        # 그룹/특강 반: 담당 강사 + 수강 중(중복 제거)
         teaching = CourseClass.objects.filter(instructor=user, is_active=True)
         enrolled = CourseClass.objects.filter(
             enrollments__student=user, enrollments__is_active=True, is_active=True)
         classes = (teaching | enrolled).distinct().select_related("branch", "instructor")
-        return self.success(CourseClassSerializer(classes, many=True).data)
+        return self.success({
+            "individual": StudentTimetableSerializer(individual, many=True).data,
+            "groups": CourseClassSerializer(classes, many=True).data,
+        })
 
 
 class MyAttendanceAPI(APIView):

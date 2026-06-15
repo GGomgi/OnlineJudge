@@ -20,7 +20,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       SignupRequest, SignupStatus, CourseClass, ClassEnrollment,
                       TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
                       Lead, LeadStatus, CounselingLog, StudentProfile, EnrollmentStatus,
-                      OptionItem)
+                      OptionItem, StudentTimetable, LessonType)
 from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            SignupRejectSerializer, AssignRoleSerializer,
                            CreateStaffSerializer, StaffStatusSerializer,
@@ -33,7 +33,9 @@ from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            LeadSerializer, AddCounselingNoteSerializer,
                            ConvertLeadSerializer, CloseLeadSerializer,
                            OptionItemSerializer, CreateOptionSerializer,
-                           UpdateOptionSerializer)
+                           UpdateOptionSerializer, StudentTimetableSerializer,
+                           CreateStudentTimetableSerializer, EditStudentTimetableSerializer)
+import json as _json
 from ..services import apply_role, staff_scope, can_manage_branch
 
 
@@ -152,6 +154,26 @@ class AssignRoleAPI(APIView):
                              "branch_id": branch.id if branch else None})
 
 
+def _staff_no_prefix(role, branch):
+    """사번 앞 2자리: 전지점 역할/미배정은 00, 그 외는 지점 코드 숫자(예: B002→02)."""
+    if role in ALL_BRANCH_ROLES or branch is None:
+        return "00"
+    digits = "".join(ch for ch in (branch.code or "") if ch.isdigit())
+    n = int(digits) if digits else 0
+    return "%02d" % (n % 100)
+
+
+def gen_staff_no(role, branch):
+    """지점 prefix + 일련 3자리 사번 생성(지점별 최대값+1)."""
+    prefix = _staff_no_prefix(role, branch)
+    maxseq = 0
+    for p in AcademyProfile.objects.filter(staff_no__startswith=prefix).exclude(staff_no=""):
+        tail = p.staff_no[len(prefix):]
+        if tail.isdigit():
+            maxseq = max(maxseq, int(tail))
+    return "%s%03d" % (prefix, maxseq + 1)
+
+
 def _staff_brief(profile):
     u = profile.user
     real_name = ""
@@ -164,6 +186,7 @@ def _staff_brief(profile):
         branch = {"id": profile.branch.id, "code": profile.branch.code, "name": profile.branch.name}
     return {
         "user_id": u.id, "username": u.username, "real_name": real_name,
+        "staff_no": profile.staff_no or u.username,
         "role": profile.role, "role_label": dict(ACADEMY_ROLE_CHOICES).get(profile.role, profile.role),
         "branch": branch, "is_active": not u.is_disabled,
     }
@@ -205,19 +228,23 @@ class StaffAdminAPI(APIView):
             if not can_manage_branch(request.user, branch.id):
                 return self.error("No permission for this branch")
 
-        username = data["username"].lower()
-        if User.objects.filter(username=username).exists():
-            return self.error("Username already exists")
         email = (data.get("email") or "").lower() or None
         if email and User.objects.filter(email=email).exists():
             return self.error("Email already exists")
 
         with transaction.atomic():
-            user = User.objects.create(username=username, email=email, is_disabled=False)
+            # 사번을 로그인 아이디로 자동 생성(중복 시 다음 일련번호로 재시도)
+            staff_no = gen_staff_no(role, branch)
+            while User.objects.filter(username=staff_no).exists():
+                prefix, tail = staff_no[:2], staff_no[2:]
+                staff_no = "%s%03d" % (prefix, (int(tail) if tail.isdigit() else 0) + 1)
+            user = User.objects.create(username=staff_no, email=email, is_disabled=False)
             user.set_password(data["password"])
             user.save()
             UserProfile.objects.create(user=user, real_name=data["real_name"])
             profile = apply_role(user, role, branch)
+            profile.staff_no = staff_no
+            profile.save(update_fields=["staff_no"])
         profile = AcademyProfile.objects.select_related("user", "branch").get(pk=profile.pk)
         return self.success(_staff_brief(profile))
 
@@ -613,6 +640,23 @@ class ConvertLeadAdminAPI(APIView):
                 consent_signature=data.get("consent_signature", "") or "",
                 consent_date=data.get("consent_date") or now().date(),
             )
+            # 입회원 신청서의 요일/시간(class_schedule)으로 개별 시간표 자동 생성(12)
+            schedule_raw = data.get("class_schedule") or ""
+            try:
+                schedule = _json.loads(schedule_raw) if schedule_raw else []
+            except (ValueError, TypeError):
+                schedule = []
+            for row in schedule:
+                try:
+                    wd = int(row.get("day"))
+                    tm = (row.get("time") or "").strip()
+                except (AttributeError, TypeError, ValueError):
+                    continue
+                if not (0 <= wd <= 6) or not tm:
+                    continue
+                StudentTimetable.objects.create(
+                    student=user, branch=lead.branch, class_type=LessonType.PRIVATE,
+                    weekday=wd, start_time=tm, duration_minutes=60)
             lead.status = LeadStatus.CONVERTED
             lead.converted_user = user
             lead.save()
@@ -700,4 +744,87 @@ class OptionAdminAPI(APIView):
         if not opt:
             return self.error("Option does not exist")
         opt.delete()
+        return self.success("Deleted")
+
+
+class StudentTimetableAdminAPI(APIView):
+    """학생별 개별 수업 시간표(12) 관리. 지점 스코프."""
+
+    def _branch_ok(self, request, branch_id):
+        return can_manage_branch(request.user, branch_id)
+
+    @admin_role_required
+    def get(self, request):
+        """student_id 로 특정 학생의 시간표, 또는 branch/weekday 로 지점 전체 조회."""
+        qs = StudentTimetable.objects.select_related(
+            "student", "branch", "instructor").exclude(status="ENDED")
+        student_id = request.GET.get("student_id")
+        if student_id:
+            qs = qs.filter(student_id=student_id)
+        weekday = request.GET.get("weekday")
+        if weekday not in (None, ""):
+            qs = qs.filter(weekday=weekday)
+        all_branch, branch_id, role = staff_scope(request.user)
+        if not all_branch:
+            if branch_id is None:
+                return self.error("No branch scope assigned")
+            qs = qs.filter(branch_id=branch_id)
+        return self.success(StudentTimetableSerializer(qs, many=True).data)
+
+    @validate_serializer(CreateStudentTimetableSerializer)
+    @admin_role_required
+    def post(self, request):
+        data = request.data
+        student = User.objects.filter(id=data["student_id"]).first()
+        if not student:
+            return self.error("Student does not exist")
+        profile = getattr(student, "academy_profile", None)
+        branch = profile.branch if profile else None
+        if not branch:
+            return self.error("학생의 소속 지점이 없습니다.")
+        if not self._branch_ok(request, branch.id):
+            return self.error("No permission for this branch")
+        instructor = None
+        if data.get("instructor_id"):
+            instructor = User.objects.filter(id=data["instructor_id"]).first()
+        # 동일 학생 같은 요일/시각 중복 방지
+        if StudentTimetable.objects.filter(student=student, weekday=data["weekday"],
+                                           start_time=data["start_time"]).exclude(status="ENDED").exists():
+            return self.error("같은 요일·시각에 이미 수업이 있습니다.")
+        slot = StudentTimetable.objects.create(
+            student=student, branch=branch,
+            class_type=data.get("class_type") or LessonType.PRIVATE,
+            weekday=data["weekday"], start_time=data["start_time"],
+            duration_minutes=data.get("duration_minutes") or 60,
+            instructor=instructor, subject=data.get("subject", "") or "",
+            room=data.get("room", "") or "")
+        slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=slot.pk)
+        return self.success(StudentTimetableSerializer(slot).data)
+
+    @validate_serializer(EditStudentTimetableSerializer)
+    @admin_role_required
+    def put(self, request):
+        data = request.data
+        slot = StudentTimetable.objects.select_related("branch").filter(id=data["id"]).first()
+        if not slot:
+            return self.error("Timetable does not exist")
+        if not self._branch_ok(request, slot.branch_id):
+            return self.error("No permission for this branch")
+        for f in ("weekday", "start_time", "duration_minutes", "subject", "room", "status"):
+            if f in data:
+                setattr(slot, f, data[f])
+        if "instructor_id" in data:
+            slot.instructor = User.objects.filter(id=data["instructor_id"]).first() if data["instructor_id"] else None
+        slot.save()
+        slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=slot.pk)
+        return self.success(StudentTimetableSerializer(slot).data)
+
+    @admin_role_required
+    def delete(self, request):
+        slot = StudentTimetable.objects.select_related("branch").filter(id=request.GET.get("id")).first()
+        if not slot:
+            return self.error("Timetable does not exist")
+        if not self._branch_ok(request, slot.branch_id):
+            return self.error("No permission for this branch")
+        slot.delete()
         return self.success("Deleted")

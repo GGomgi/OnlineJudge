@@ -130,7 +130,30 @@
     <!-- ============ 내 시간표 ============ -->
     <section v-if="tab==='timetable'">
       <h2 class="text-lg font-bold mb-3">내 시간표</h2>
-      <div v-if="myClasses.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">배정된 반이 없습니다.</div>
+
+      <!-- 개별 수업 -->
+      <h3 class="text-sm font-semibold text-slate-600 mb-2">개별 수업</h3>
+      <div v-if="myInd.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-4 mb-5">등록된 개별 수업이 없습니다.</div>
+      <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs">
+            <tr><th class="text-left px-4 py-2">요일</th><th class="text-left px-4 py-2">시간</th><th class="text-left px-4 py-2">과목</th><th class="text-left px-4 py-2">강사</th><th class="text-left px-4 py-2">학생</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in myInd" :key="s.id" class="border-t">
+              <td class="px-4 py-2"><span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-xs font-medium">{{ s.day_name }}</span></td>
+              <td class="px-4 py-2">{{ hm(s.start_time) }} ~ {{ s.end_time }} <span class="text-xs text-slate-400">({{ s.duration_minutes }}분)</span></td>
+              <td class="px-4 py-2">{{ s.subject || '-' }}</td>
+              <td class="px-4 py-2 text-slate-500">{{ s.instructor ? (s.instructor.real_name || s.instructor.username) : '미배정' }}</td>
+              <td class="px-4 py-2 text-slate-500">{{ s.student ? (s.student.real_name || s.student.username) : '' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 그룹/특강 -->
+      <h3 class="text-sm font-semibold text-slate-600 mb-2">그룹 · 특강</h3>
+      <div v-if="myClasses.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-4">참여 중인 그룹/특강이 없습니다.</div>
       <div class="grid sm:grid-cols-2 gap-4">
         <div v-for="c in myClasses" :key="c.id" class="bg-white rounded-xl shadow-sm p-4">
           <div class="flex items-center justify-between">
@@ -402,6 +425,68 @@
       </div>
     </section>
 
+    <!-- ============ 관리자: 개별 시간표 ============ -->
+    <section v-if="tab==='indtt'">
+      <h2 class="text-lg font-bold mb-1">개별 시간표</h2>
+      <p class="text-xs text-slate-400 mb-3">학생을 검색해 개별 수업의 요일·시간·수업길이·담당 강사를 관리합니다. 입회원 신청서에서 입력한 요일/시간은 등록 시 자동 생성됩니다.</p>
+
+      <!-- 학생 검색 -->
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4 max-w-lg">
+        <div class="flex gap-2">
+          <input v-model="ttSearch" @keyup.enter="searchTtStudent" placeholder="학생 아이디/이름 검색" class="input" />
+          <button @click="searchTtStudent" class="btn-secondary text-sm whitespace-nowrap">검색</button>
+        </div>
+        <ul v-if="ttResults.length" class="mt-2 border rounded divide-y">
+          <li v-for="u in ttResults" :key="u.id" class="px-3 py-1.5 text-sm flex items-center justify-between">
+            <span>{{ u.username }}</span>
+            <button @click="selectTtStudent(u)" class="text-xs text-indigo-600 hover:underline">선택</button>
+          </li>
+        </ul>
+      </div>
+
+      <template v-if="ttStudent">
+        <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+          <div class="px-4 py-3 border-b font-semibold text-sm">{{ ttStudent.username }} 님의 개별 수업</div>
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs">
+              <tr>
+                <th class="px-3 py-2 text-left w-20">요일</th>
+                <th class="px-3 py-2 text-left">시작</th>
+                <th class="px-3 py-2 text-left">수업길이</th>
+                <th class="px-3 py-2 text-left">담당 강사</th>
+                <th class="px-3 py-2 text-left">과목</th>
+                <th class="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in ttList" :key="s.id" class="border-t align-middle">
+                <td class="px-3 py-2"><select v-model.number="s.weekday" class="input py-1 w-16"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
+                <td class="px-3 py-2"><input v-model="s.start_time" type="time" class="input py-1 w-28" /></td>
+                <td class="px-3 py-2"><select v-model.number="s.duration_minutes" class="input py-1 w-20"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
+                <td class="px-3 py-2"><select v-model.number="s._instructor_id" class="input py-1 w-28"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></td>
+                <td class="px-3 py-2"><input v-model="s.subject" class="input py-1" placeholder="과목" /></td>
+                <td class="px-3 py-2 text-right whitespace-nowrap">
+                  <button @click="saveTt(s)" class="text-xs text-indigo-600 hover:underline">저장</button>
+                  <button @click="delTt(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
+                </td>
+              </tr>
+              <tr v-if="ttList.length===0"><td colspan="6" class="px-3 py-6 text-center text-xs text-slate-400">등록된 개별 수업이 없습니다.</td></tr>
+            </tbody>
+            <tfoot>
+              <tr class="border-t bg-slate-50">
+                <td class="px-3 py-2"><select v-model.number="ttForm.weekday" class="input py-1 w-16"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
+                <td class="px-3 py-2"><input v-model="ttForm.start_time" type="time" class="input py-1 w-28" /></td>
+                <td class="px-3 py-2"><select v-model.number="ttForm.duration_minutes" class="input py-1 w-20"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
+                <td class="px-3 py-2"><select v-model.number="ttForm.instructor_id" class="input py-1 w-28"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></td>
+                <td class="px-3 py-2"><input v-model="ttForm.subject" class="input py-1" placeholder="과목" /></td>
+                <td class="px-3 py-2 text-right"><button @click="addTt" class="text-xs text-indigo-600 hover:underline font-semibold">+ 추가</button></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </template>
+    </section>
+
     <!-- ============ 관리자: 반/시간표/출결 ============ -->
     <section v-if="tab==='classes'">
       <div class="grid md:grid-cols-3 gap-4">
@@ -534,7 +619,6 @@
             <h3 class="font-semibold mb-2 text-sm">직원 계정 생성</h3>
             <div class="space-y-2">
               <input v-model="staffForm.real_name" placeholder="이름" class="input" />
-              <input v-model="staffForm.username" placeholder="아이디(영문/숫자)" class="input" autocomplete="off" />
               <input v-model="staffForm.password" type="text" placeholder="비밀번호(6자 이상)" class="input" autocomplete="new-password" />
               <select v-model="staffForm.role" class="input">
                 <option value="" disabled>역할 선택</option>
@@ -548,7 +632,7 @@
               <button @click="createStaff" class="btn-primary w-full text-sm">계정 생성</button>
             </div>
           </div>
-          <p class="text-[11px] text-slate-400 mt-2 px-1">역할/지점은 목록에서 변경(역할 적용)할 수 있습니다. 본부·인사 관리자(전지점)는 본부 권한자만 부여 가능합니다.</p>
+          <p class="text-[11px] text-slate-400 mt-2 px-1">로그인 아이디는 <b>사번이 자동 생성</b>됩니다(지점2+일련3, 예: 02001). 역할/지점은 목록에서 변경(역할 적용)할 수 있습니다. 본부·인사 관리자(전지점)는 본부 권한자만 부여 가능합니다.</p>
         </div>
         <!-- 직원 목록 -->
         <div class="md:col-span-2">
@@ -557,7 +641,7 @@
               <thead class="bg-slate-50 text-slate-500 text-xs">
                 <tr>
                   <th class="text-left px-3 py-2">이름</th>
-                  <th class="text-left px-3 py-2">아이디</th>
+                  <th class="text-left px-3 py-2">사번</th>
                   <th class="text-left px-3 py-2">역할</th>
                   <th class="text-left px-3 py-2">지점</th>
                   <th class="text-left px-3 py-2">상태</th>
@@ -567,7 +651,7 @@
               <tbody>
                 <tr v-for="s in staff" :key="s.user_id" class="border-t align-middle">
                   <td class="px-3 py-2">{{ s.real_name || '-' }}</td>
-                  <td class="px-3 py-2">{{ s.username }}</td>
+                  <td class="px-3 py-2 font-mono">{{ s.staff_no }}</td>
                   <td class="px-3 py-2">
                     <select v-model="s._role" class="input py-1 text-xs w-32">
                       <option v-for="r in staffRoleOptions" :key="r.v" :value="r.v">{{ r.l }}</option>
@@ -696,7 +780,7 @@ createApp({
       attStatuses: ['PRESENT','LATE','ABSENT','EARLY_LEAVE','EXCUSED'],
       loginForm: { username:'', password:'' },
       leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' },
-      myClasses: [], myAtt: [],
+      myClasses: [], myInd: [], myAtt: [],
       leadFilter: '', leads: [], openLeadId: null, noteText: '',
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
@@ -704,7 +788,7 @@ createApp({
       convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program:'', program_language:'', program_custom:'', weekly_sessions:0, schedule:[], login_id:'', password:'', consent_privacy:false, consent_guardian_name:'' },
       sig: { drawing:false, ctx:null, hasInk:false },
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
-      staff: [], staffForm: { real_name:'', username:'', password:'', role:'', branch_id:null },
+      staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null },
       options: {},
       optionCategories: [
         {v:'program', l:'등록 과정 (입회원)'},
@@ -713,6 +797,9 @@ createApp({
         {v:'counseling_purpose', l:'상담 목적 (상담)'},
       ],
       optCategory: 'program', optList: [], optNewForm: { value:'', label:'', allow_custom:false },
+      durations: [60, 90, 120],
+      ttStudent: null, ttSearch: '', ttResults: [], ttList: [], ttInstructors: [],
+      ttForm: { weekday:0, start_time:'', duration_minutes:60, instructor_id:null, subject:'' },
       classes: [], sel: null, roster: [],
       classForm: { name:'', branch_id:null, track:'', level:'' },
       slotForm: { day_of_week:0, start_time:'', end_time:'', room:'' },
@@ -753,7 +840,7 @@ createApp({
     tabs(){
       if (!this.me) return [ {key:'login',label:'로그인'}, {key:'lead',label:'상담 신청'} ];
       if (this.isStaff){
-        const t = [ {key:'leadmgr',label:'상담·등록'}, {key:'classes',label:'반·시간표·출결'} ];
+        const t = [ {key:'leadmgr',label:'상담·등록'}, {key:'indtt',label:'개별 시간표'}, {key:'classes',label:'그룹·특강'} ];
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
         if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
         t.push({key:'me',label:'내 정보'});
@@ -783,7 +870,7 @@ createApp({
       return !!(f.birth_date||f.gender||f.student_phone||f.zipcode||f.address||f.address_detail||f.program||f.program_custom||f.weekly_sessions||f.password||f.consent_guardian_name||(this.sig&&this.sig.hasInk));
     },
     noteDirty(){ return !!(this.noteText && this.noteText.trim()); },
-    staffFormDirty(){ const f=this.staffForm; return !!(f.real_name||f.username||f.password); },
+    staffFormDirty(){ const f=this.staffForm; return !!(f.real_name||f.password); },
     isDirty(){
       if (this.convertingLead) return this.convertDirty();
       if (this.tab==='lead' || this.showLeadForm) return this.leadFormDirty();
@@ -799,14 +886,58 @@ createApp({
       else if (key==='classes') this.loadClasses();
       else if (key==='staff') this.loadStaff();
       else if (key==='options') this.loadOptionAdmin();
+      else if (key==='indtt') this.loadTtInstructors();
       else if (key==='lead') this.loadOptions();
+    },
+    async loadTtInstructors(){
+      try { const d = await api('GET','/api/admin/academy/staff'); this.ttInstructors = d.results || d; } catch(e){}
+    },
+    async searchTtStudent(){
+      if (!this.ttSearch.trim()) return;
+      try {
+        const d = await api('GET','/api/admin/user?paging=true&page=1&limit=8&keyword='+encodeURIComponent(this.ttSearch));
+        this.ttResults = (d.results || d).filter(u=>u.admin_type==='Regular User');
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async selectTtStudent(u){
+      this.ttStudent = u; this.ttResults = []; this.ttSearch = '';
+      this.ttForm = { weekday:0, start_time:'', duration_minutes:60, instructor_id:null, subject:'' };
+      await this.loadTt();
+    },
+    async loadTt(){
+      if (!this.ttStudent) return;
+      try { const d = await api('GET','/api/admin/academy/student_timetable?student_id='+this.ttStudent.id); this.ttList = (d.results || d).map(s=>({ ...s, _instructor_id: s.instructor ? s.instructor.id : null })); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async addTt(){
+      const f = this.ttForm;
+      if (!f.start_time) return this.notify('시작 시각을 입력하세요.', false);
+      try {
+        const body = { student_id:this.ttStudent.id, weekday:f.weekday, start_time:f.start_time, duration_minutes:f.duration_minutes, subject:f.subject };
+        if (f.instructor_id) body.instructor_id = f.instructor_id;
+        await api('POST','/api/admin/academy/student_timetable', body);
+        this.notify('개별 수업이 추가되었습니다.');
+        this.ttForm = { weekday:0, start_time:'', duration_minutes:60, instructor_id:null, subject:'' };
+        this.loadTt();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async saveTt(s){
+      try {
+        await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, subject:s.subject });
+        this.notify('저장되었습니다.'); this.loadTt();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async delTt(s){
+      if (!window.confirm('이 수업 시간을 삭제하시겠습니까?')) return;
+      try { await api('DELETE','/api/admin/academy/student_timetable?id='+s.id); this.loadTt(); }
+      catch(e){ this.notify(e.message,false); }
     },
     async loadOptions(){ try { this.options = await api('GET','/api/academy/options'); } catch(e){} },
     isAllBranchRole(role){ return role==='HQ_ADMIN' || role==='HR_ADMIN'; },
     async loadStaff(){
       // 지점 소속 직원이면 생성 폼 지점 기본값을 본인 지점으로
       const defBranch = (this.myProfile && this.myProfile.branch) ? this.myProfile.branch.id : null;
-      this.staffForm = { real_name:'', username:'', password:'', role:'', branch_id:defBranch };
+      this.staffForm = { real_name:'', password:'', role:'', branch_id:defBranch };
       try {
         const d = await api('GET','/api/admin/academy/staff');
         this.staff = (d.results || d).map(s=>({ ...s, _role:s.role, _branch_id: s.branch ? s.branch.id : null }));
@@ -814,15 +945,15 @@ createApp({
     },
     async createStaff(){
       const f = this.staffForm;
-      if (!f.real_name || !f.username || !f.password) return this.notify('이름·아이디·비밀번호를 입력하세요.', false);
+      if (!f.real_name || !f.password) return this.notify('이름·비밀번호를 입력하세요.', false);
       if (f.password.length < 6) return this.notify('비밀번호는 6자 이상입니다.', false);
       if (!f.role) return this.notify('역할을 선택하세요.', false);
       if (!this.isAllBranchRole(f.role) && !f.branch_id) return this.notify('지점을 선택하세요.', false);
       try {
-        const body = { real_name:f.real_name, username:f.username, password:f.password, role:f.role };
+        const body = { real_name:f.real_name, password:f.password, role:f.role };
         if (!this.isAllBranchRole(f.role)) body.branch_id = f.branch_id;
-        await api('POST','/api/admin/academy/staff', body);
-        this.notify(f.username + ' 직원 계정이 생성되었습니다.');
+        const d = await api('POST','/api/admin/academy/staff', body);
+        this.notify('직원 계정이 생성되었습니다. 사번(로그인 아이디): ' + d.staff_no);
         this.loadStaff();
       } catch(e){ this.notify(e.message,false); }
     },
@@ -944,7 +1075,7 @@ createApp({
       this.flash.msg = '';
     },
     closeLeadForm(){ if (this.leadFormDirty() && !this.confirmLeave()) return; this.showLeadForm = false; this.flash.msg = ''; },
-    async loadMyTimetable(){ try { this.myClasses = await api('GET','/api/academy/my_timetable'); } catch(e){ this.notify(e.message,false); } },
+    async loadMyTimetable(){ try { const d = await api('GET','/api/academy/my_timetable'); this.myInd = d.individual||[]; this.myClasses = d.groups||[]; } catch(e){ this.notify(e.message,false); } },
     async loadMyAttendance(){ try { this.myAtt = await api('GET','/api/academy/my_attendance'); } catch(e){ this.notify(e.message,false); } },
     async loadLeads(){
       this.convertingLead = null; this.showLeadForm = false;

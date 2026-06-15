@@ -5,7 +5,7 @@ from .models import (AcademyRole, ACADEMY_ROLE_CHOICES, SELF_SIGNUP_ROLES,
                      TimetableSlot, ClassSession, AttendanceRecord,
                      ATTENDANCE_STATUS_VALUES, Lead, CounselingLog,
                      CONTACT_PREFERENCES, SCHOOL_TYPES, COUNSELING_PURPOSES,
-                     OptionItem, OPTION_CATEGORY_VALUES)
+                     OptionItem, OPTION_CATEGORY_VALUES, StudentTimetable, LessonType)
 
 ALL_ROLE_VALUES = [c[0] for c in ACADEMY_ROLE_CHOICES]
 WEEKDAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"]
@@ -71,7 +71,7 @@ class AssignRoleSerializer(serializers.Serializer):
 
 
 class CreateStaffSerializer(serializers.Serializer):
-    username = serializers.CharField(max_length=32)
+    # 로그인 아이디(username)는 사번으로 자동 생성한다. 입력받지 않음.
     password = serializers.CharField(min_length=6, max_length=128)
     real_name = serializers.CharField(max_length=64)
     role = serializers.ChoiceField(choices=sorted(STAFF_ROLES))
@@ -343,3 +343,72 @@ class UpdateOptionSerializer(serializers.Serializer):
     order = serializers.IntegerField(required=False)
     is_active = serializers.BooleanField(required=False)
     allow_custom = serializers.BooleanField(required=False)
+
+
+# ── 개별 수업 시간표 (12) ──
+
+def _add_minutes(t, minutes):
+    if not t:
+        return None
+    total = t.hour * 60 + t.minute + (minutes or 0)
+    total %= 24 * 60
+    return "%02d:%02d" % (total // 60, total % 60)
+
+
+class StudentTimetableSerializer(serializers.ModelSerializer):
+    student = serializers.SerializerMethodField()
+    branch = serializers.SerializerMethodField()
+    instructor = serializers.SerializerMethodField()
+    day_name = serializers.SerializerMethodField()
+    end_time = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StudentTimetable
+        fields = ["id", "student", "branch", "class_type", "weekday", "day_name",
+                  "start_time", "duration_minutes", "end_time", "instructor",
+                  "subject", "room", "status", "create_time"]
+
+    def get_student(self, obj):
+        return _student_brief(obj.student)
+
+    def get_branch(self, obj):
+        b = obj.branch
+        return {"id": b.id, "code": b.code, "name": b.name} if obj.branch_id else None
+
+    def get_instructor(self, obj):
+        if not obj.instructor_id:
+            return None
+        real_name = ""
+        try:
+            real_name = obj.instructor.userprofile.real_name or ""
+        except Exception:
+            real_name = ""
+        return {"id": obj.instructor.id, "username": obj.instructor.username, "real_name": real_name}
+
+    def get_day_name(self, obj):
+        return WEEKDAY_NAMES[obj.weekday] if 0 <= obj.weekday <= 6 else ""
+
+    def get_end_time(self, obj):
+        return _add_minutes(obj.start_time, obj.duration_minutes)
+
+
+class CreateStudentTimetableSerializer(serializers.Serializer):
+    student_id = serializers.IntegerField()
+    weekday = serializers.IntegerField(min_value=0, max_value=6)
+    start_time = serializers.TimeField()
+    duration_minutes = serializers.IntegerField(min_value=10, max_value=600, required=False, default=60)
+    instructor_id = serializers.IntegerField(required=False, allow_null=True)
+    subject = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    room = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    class_type = serializers.ChoiceField(choices=[LessonType.PRIVATE, LessonType.GROUP], required=False)
+
+
+class EditStudentTimetableSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    weekday = serializers.IntegerField(min_value=0, max_value=6, required=False)
+    start_time = serializers.TimeField(required=False)
+    duration_minutes = serializers.IntegerField(min_value=10, max_value=600, required=False)
+    instructor_id = serializers.IntegerField(required=False, allow_null=True)
+    subject = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    room = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=["ACTIVE", "PAUSED", "ENDED"], required=False)
