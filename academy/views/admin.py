@@ -15,12 +15,14 @@ from utils.api import APIView, validate_serializer
 
 from account.decorators import admin_role_required
 from account.models import User, UserProfile
-from ..models import (AcademyProfile, AcademyRole, ALL_BRANCH_ROLES, Branch,
+from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
+                      ALL_BRANCH_ROLES, STAFF_ROLES, Branch,
                       SignupRequest, SignupStatus, CourseClass, ClassEnrollment,
                       TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
                       Lead, LeadStatus, CounselingLog, StudentProfile, EnrollmentStatus)
 from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            SignupRejectSerializer, AssignRoleSerializer,
+                           CreateStaffSerializer, StaffStatusSerializer,
                            CourseClassSerializer, CreateClassSerializer,
                            EditClassSerializer, EnrollSerializer,
                            EnrollmentSerializer, SetTimetableSlotSerializer,
@@ -145,6 +147,100 @@ class AssignRoleAPI(APIView):
         apply_role(target, role, branch)
         return self.success({"user_id": target.id, "role": role,
                              "branch_id": branch.id if branch else None})
+
+
+def _staff_brief(profile):
+    u = profile.user
+    real_name = ""
+    try:
+        real_name = u.userprofile.real_name or ""
+    except Exception:
+        real_name = ""
+    branch = None
+    if profile.branch_id and profile.branch:
+        branch = {"id": profile.branch.id, "code": profile.branch.code, "name": profile.branch.name}
+    return {
+        "user_id": u.id, "username": u.username, "real_name": real_name,
+        "role": profile.role, "role_label": dict(ACADEMY_ROLE_CHOICES).get(profile.role, profile.role),
+        "branch": branch, "is_active": not u.is_disabled,
+    }
+
+
+class StaffAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """직원(교직원 역할) 계정 목록. 전지점 역할은 전체, 지점 역할은 자기 지점만."""
+        all_branch, branch_id, role = staff_scope(request.user)
+        if not all_branch and branch_id is None:
+            return self.error("No branch scope assigned")
+        qs = AcademyProfile.objects.select_related("user", "branch").filter(role__in=STAFF_ROLES)
+        if not all_branch:
+            qs = qs.filter(branch_id=branch_id)
+        qs = qs.order_by("branch_id", "role", "user__username")
+        return self.success([_staff_brief(p) for p in qs])
+
+    @validate_serializer(CreateStaffSerializer)
+    @admin_role_required
+    def post(self, request):
+        """직원 계정 생성(활성). 역할/지점 부여 + admin_type 동기화."""
+        data = request.data
+        role = data["role"]
+        if role not in STAFF_ROLES:
+            return self.error("Invalid staff role")
+
+        actor_all, actor_branch, actor_role = staff_scope(request.user)
+        if role in ALL_BRANCH_ROLES and not actor_all:
+            return self.error("Only HQ admin can grant this role")
+
+        branch = None
+        if role not in ALL_BRANCH_ROLES:
+            if not data.get("branch_id"):
+                return self.error("Branch is required for this role")
+            branch = Branch.objects.filter(id=data["branch_id"], is_active=True).first()
+            if not branch:
+                return self.error("Invalid branch")
+            if not can_manage_branch(request.user, branch.id):
+                return self.error("No permission for this branch")
+
+        username = data["username"].lower()
+        if User.objects.filter(username=username).exists():
+            return self.error("Username already exists")
+        email = (data.get("email") or "").lower() or None
+        if email and User.objects.filter(email=email).exists():
+            return self.error("Email already exists")
+
+        with transaction.atomic():
+            user = User.objects.create(username=username, email=email, is_disabled=False)
+            user.set_password(data["password"])
+            user.save()
+            UserProfile.objects.create(user=user, real_name=data["real_name"])
+            profile = apply_role(user, role, branch)
+        profile = AcademyProfile.objects.select_related("user", "branch").get(pk=profile.pk)
+        return self.success(_staff_brief(profile))
+
+
+class StaffStatusAPI(APIView):
+    @validate_serializer(StaffStatusSerializer)
+    @admin_role_required
+    def post(self, request):
+        """직원 계정 활성/비활성 전환."""
+        data = request.data
+        profile = AcademyProfile.objects.select_related("user", "branch").filter(
+            user_id=data["user_id"], role__in=STAFF_ROLES).first()
+        if not profile:
+            return self.error("Staff does not exist")
+        if profile.user_id == request.user.id:
+            return self.error("본인 계정은 변경할 수 없습니다.")
+        if profile.is_all_branch():
+            actor_all, _, _ = staff_scope(request.user)
+            if not actor_all:
+                return self.error("No permission")
+        elif not can_manage_branch(request.user, profile.branch_id):
+            return self.error("No permission for this branch")
+
+        profile.user.is_disabled = not data["is_active"]
+        profile.user.save()
+        return self.success(_staff_brief(profile))
 
 
 class ClassAdminAPI(APIView):

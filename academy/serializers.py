@@ -1,7 +1,7 @@
 from utils.api import serializers
 
 from .models import (AcademyRole, ACADEMY_ROLE_CHOICES, SELF_SIGNUP_ROLES,
-                     Branch, SignupRequest, CourseClass, ClassEnrollment,
+                     STAFF_ROLES, Branch, SignupRequest, CourseClass, ClassEnrollment,
                      TimetableSlot, ClassSession, AttendanceRecord,
                      ATTENDANCE_STATUS_VALUES, Lead, CounselingLog,
                      CONTACT_PREFERENCES, SCHOOL_TYPES, COUNSELING_PURPOSES)
@@ -67,6 +67,20 @@ class AssignRoleSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
     role = serializers.ChoiceField(choices=ALL_ROLE_VALUES)
     branch_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class CreateStaffSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=32)
+    password = serializers.CharField(min_length=6, max_length=128)
+    real_name = serializers.CharField(max_length=64)
+    role = serializers.ChoiceField(choices=sorted(STAFF_ROLES))
+    branch_id = serializers.IntegerField(required=False, allow_null=True)
+    email = serializers.EmailField(max_length=64, required=False, allow_blank=True)
+
+
+class StaffStatusSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
+    is_active = serializers.BooleanField()
 
 
 class TimetableSlotSerializer(serializers.ModelSerializer):
