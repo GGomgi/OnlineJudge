@@ -399,24 +399,42 @@
             </div>
             <input v-if="optAllowCustom('program', convertForm.program)" v-model="convertForm.program_custom"
                    class="input" placeholder="등록 과정을 직접 입력해주세요. (개인맞춤)" />
-            <div>
-              <label class="lbl">주 교육 회수 <span class="text-rose-500">*</span></label>
-              <select v-model.number="convertForm.weekly_sessions" @change="syncSchedule" class="input w-32">
-                <option :value="0" disabled>선택</option>
-                <option v-for="n in 7" :key="n" :value="n">주 {{ n }}회</option>
-              </select>
-            </div>
-            <div v-if="convertForm.weekly_sessions > 0" class="space-y-2">
-              <label class="lbl">교육 요일 · 시간 (회수만큼 입력) <span class="text-rose-500">*</span></label>
-              <div v-for="(row,i) in convertForm.schedule" :key="i" class="flex items-center gap-2">
-                <span class="text-xs text-slate-400 w-12 shrink-0">{{ i+1 }}회차</span>
-                <select v-model.number="row.day" class="input w-24">
-                  <option :value="-1" disabled>요일</option>
-                  <option v-for="(d,di) in days" :key="di" :value="di">{{ d }}</option>
+            <label class="flex items-center gap-2 text-sm bg-amber-50 rounded-lg px-3 py-2">
+              <input type="checkbox" v-model="convertForm.schedule_pending" class="w-4 h-4" />
+              <span>교육 일정 <b>추후 안내</b> (기존 학원 스케줄 정리 후 요일·시간 안내) — 체크 시 아래 입력 생략</span>
+            </label>
+            <template v-if="!convertForm.schedule_pending">
+              <div>
+                <label class="lbl">주 교육 회수 <span class="text-rose-500">*</span></label>
+                <select v-model.number="convertForm.weekly_sessions" @change="syncSchedule" class="input w-32">
+                  <option :value="0" disabled>선택</option>
+                  <option v-for="n in 7" :key="n" :value="n">주 {{ n }}회</option>
                 </select>
-                <input v-model="row.time" @input="blurIfTimeComplete" type="time" class="input w-32" />
               </div>
-            </div>
+              <p v-if="convertForm.weekly_sessions > 0" class="text-xs text-indigo-600">수업 1회 <b>{{ lessonDurationMin }}분</b> (학교급·횟수 기준 자동 적용)</p>
+              <div v-if="convertForm.weekly_sessions > 0" class="space-y-2">
+                <label class="lbl">교육 요일 · 시간 (회수만큼 입력) <span class="text-rose-500">*</span></label>
+                <div v-for="(row,i) in convertForm.schedule" :key="i" class="flex items-center gap-1.5 flex-wrap">
+                  <span class="text-xs text-slate-400 w-10 shrink-0">{{ i+1 }}회</span>
+                  <select v-model.number="row.day" class="input w-16 px-1">
+                    <option :value="-1" disabled>요일</option>
+                    <option v-for="(d,di) in days" :key="di" :value="di">{{ d }}</option>
+                  </select>
+                  <select v-model="row.ampm" class="input w-16 px-1">
+                    <option value="AM">오전</option>
+                    <option value="PM">오후</option>
+                  </select>
+                  <select v-model.number="row.hour" class="input w-16 px-1">
+                    <option :value="null" disabled>시</option>
+                    <option v-for="h in hours12" :key="h" :value="h">{{ h }}시</option>
+                  </select>
+                  <select v-model.number="row.min" class="input w-16 px-1">
+                    <option :value="null" disabled>분</option>
+                    <option v-for="m in minutes" :key="m" :value="m">{{ String(m).padStart(2,'0') }}분</option>
+                  </select>
+                </div>
+              </div>
+            </template>
           </div>
 
           <!-- 계정 -->
@@ -774,10 +792,12 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(o,i) in optList" :key="o.id" class="border-t align-middle"
-                @dragover.prevent @drop="onOptDrop(i)">
+            <tr v-for="(o,i) in optList" :key="o.id"
+                class="border-t align-middle transition-colors"
+                :class="{ 'opacity-40': dragIndex===i, 'bg-indigo-50': dragOverIndex===i && dragIndex!==null && dragIndex!==i }"
+                @dragover.prevent="dragOverIndex=i" @drop="onOptDrop(i)" @dragend="onOptDragEnd">
               <td class="px-3 py-2 whitespace-nowrap">
-                <span draggable="true" @dragstart="onOptDragStart(i)" class="cursor-move text-slate-400 mr-1 select-none" title="드래그하여 이동">⠿</span>
+                <span draggable="true" @dragstart="onOptDragStart(i, $event)" @dragend="onOptDragEnd" class="cursor-move text-slate-400 mr-1 select-none" title="드래그하여 이동">⠿</span>
                 <button @click="moveOption(i,-1)" :disabled="i===0" class="text-slate-500 disabled:text-slate-200 px-1">▲</button>
                 <button @click="moveOption(i,1)" :disabled="i===optList.length-1" class="text-slate-500 disabled:text-slate-200 px-1">▼</button>
               </td>
@@ -862,10 +882,12 @@ createApp({
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
       convertingLead: null, convertError: '',
-      convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program:'', program_language:'', program_custom:'', weekly_sessions:0, schedule:[], login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
+      hours12: [1,2,3,4,5,6,7,8,9,10,11,12],
+      minutes: [0,5,10,15,20,25,30,35,40,45,50,55],
+      convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program:'', program_language:'', program_custom:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
       showParentLogin: false, parentLogin: { id:'', pw:'' },
-      dragIndex: null,
+      dragIndex: null, dragOverIndex: null,
       sig: { drawing:false, ctx:null, hasInk:false },
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
       staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null },
@@ -902,6 +924,11 @@ createApp({
     canManageOptions(){ return this.isActorAllBranch; },
     isParent(){ return !!(this.myProfile && this.myProfile.role === 'PARENT'); },
     todayStr(){ return this.today.y + '-' + String(this.today.m).padStart(2,'0') + '-' + String(this.today.d).padStart(2,'0'); },
+    lessonDurationMin(){
+      const st = this.convertForm.school_type, w = this.convertForm.weekly_sessions || 1;
+      if (st==='ELEMENTARY') return w<=1 ? 90 : 60;
+      return w<=1 ? 120 : 90;
+    },
     staffRoleOptions(){
       const all = [
         {v:'HQ_ADMIN', l:'본부 관리자', allBranch:true},
@@ -1012,12 +1039,18 @@ createApp({
       const a = this.optList; const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
       this.reorderOptions();
     },
-    onOptDragStart(i){ this.dragIndex = i; },
-    onOptDrop(i){
-      if (this.dragIndex===null || this.dragIndex===i) { this.dragIndex=null; return; }
-      const a = this.optList; const m = a.splice(this.dragIndex,1)[0]; a.splice(i,0,m);
-      this.dragIndex = null; this.reorderOptions();
+    onOptDragStart(i, ev){
+      this.dragIndex = i;
+      try { const tr = ev.target.closest('tr'); if (tr && ev.dataTransfer){ ev.dataTransfer.effectAllowed='move'; ev.dataTransfer.setDragImage(tr, 24, 16); } } catch(e){}
     },
+    onOptDrop(i){
+      const from = this.dragIndex;
+      this.dragOverIndex = null; this.dragIndex = null;
+      if (from===null || from===i) return;
+      const a = this.optList; const m = a.splice(from,1)[0]; a.splice(i,0,m);
+      this.reorderOptions();
+    },
+    onOptDragEnd(){ this.dragIndex = null; this.dragOverIndex = null; },
     checkBirth(){
       const bd = this.convertForm.birth_date;
       if (!bd) return;
@@ -1240,7 +1273,7 @@ createApp({
         student_name: r.student_name, gender:'', birth_date:'',
         parent_phone: r.parent_phone, school_type: r.school_type||'', school_name: r.school_name||'', grade: r.grade||'',
         student_phone:'', zipcode:'', address:'', address_detail:'',
-        program:'', program_language:'', program_custom:'', weekly_sessions:0, schedule:[],
+        program:'', program_language:'', program_custom:'', weekly_sessions:0, schedule:[], schedule_pending:false,
         login_id:'', password:'',
         parent_login_id: phoneDigits, parent_password:'',
         consent_privacy:false, consent_guardian_name:'',
@@ -1253,8 +1286,15 @@ createApp({
       const n = this.convertForm.weekly_sessions || 0;
       const cur = this.convertForm.schedule;
       const next = [];
-      for (let i=0; i<n; i++) next.push(cur[i] || { day:-1, time:'' });
+      for (let i=0; i<n; i++) next.push(cur[i] || { day:-1, ampm:'PM', hour:null, min:null });
       this.convertForm.schedule = next;
+    },
+    to24(ampm, hour, min){
+      if (hour===null || min===null) return '';
+      let h = parseInt(hour,10);
+      if (ampm==='PM' && h!==12) h+=12;
+      if (ampm==='AM' && h===12) h=0;
+      return String(h).padStart(2,'0')+':'+String(min).padStart(2,'0');
     },
     genLoginId(){
       const name = (this.convertForm.student_name||'').replace(/\s/g,'');
@@ -1297,11 +1337,13 @@ createApp({
       if (!f.program) return this.failConvert('등록 과정을 선택하세요.');
       if (f.program==='LANG' && !f.program_language) return this.failConvert('프로그래밍 언어를 선택하세요.');
       if (this.optAllowCustom('program', f.program) && !(f.program_custom||'').trim()) return this.failConvert('등록 과정을 직접 입력해주세요.');
-      if (!f.weekly_sessions) return this.failConvert('주 교육 회수를 선택하세요.');
-      if (f.schedule.length !== f.weekly_sessions || f.schedule.some(s=>s.day<0 || !s.time))
-        return this.failConvert('교육 요일과 시간을 회수만큼 모두 입력하세요.');
-      if (new Set(f.schedule.map(s=>s.day)).size !== f.schedule.length)
-        return this.failConvert('교육 요일이 중복되었습니다.');
+      if (!f.schedule_pending) {
+        if (!f.weekly_sessions) return this.failConvert('주 교육 회수를 선택하세요. (미정이면 "교육 일정 추후 안내"를 체크)');
+        if (f.schedule.length !== f.weekly_sessions || f.schedule.some(s=>s.day<0 || s.hour===null || s.min===null))
+          return this.failConvert('교육 요일과 시간(오전/오후·시·분)을 회수만큼 모두 선택하세요.');
+        if (new Set(f.schedule.map(s=>s.day)).size !== f.schedule.length)
+          return this.failConvert('교육 요일이 중복되었습니다.');
+      }
       if (!f.consent_privacy) return this.failConvert('개인정보 수집·이용에 동의해 주세요.');
       if (!f.consent_guardian_name) return this.failConvert('법정대리인 성명을 입력하세요.');
       if (!this.sig.hasInk) return this.failConvert('서명을 입력해 주세요.');
@@ -1312,8 +1354,9 @@ createApp({
           address: f.address, address_detail: f.address_detail || '',
           program: f.program, program_language: f.program==='LANG' ? f.program_language : '',
           program_custom: this.optAllowCustom('program', f.program) ? (f.program_custom||'') : '',
-          weekly_sessions: f.weekly_sessions,
-          class_schedule: JSON.stringify(f.schedule),
+          weekly_sessions: f.schedule_pending ? null : f.weekly_sessions,
+          class_schedule: JSON.stringify(f.schedule_pending ? [] : f.schedule.map(s=>({ day:s.day, time:this.to24(s.ampm,s.hour,s.min) }))),
+          schedule_pending: f.schedule_pending,
           parent_login_id: f.parent_login_id || '', parent_password: f.parent_password || '',
           consent_privacy: true, consent_guardian_name: f.consent_guardian_name,
           consent_signature: this.$refs.sig.toDataURL('image/png'),

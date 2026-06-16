@@ -44,6 +44,15 @@ def _norm_phone(v):
     return "".join(ch for ch in (v or "") if ch.isdigit())
 
 
+def lesson_duration(school_type, weekly):
+    """학교급·주횟수별 수업 1회 길이(분). 초등 이하는 주1회 90/주2+ 60,
+    중등 이상(및 기타)은 주1회 120/주2+ 90."""
+    weekly = weekly or 1
+    if school_type == "ELEMENTARY":
+        return 90 if weekly <= 1 else 60
+    return 120 if weekly <= 1 else 90
+
+
 def get_or_create_guardian(student, lead, branch, login_id="", password=""):
     """학생의 학부모(보호자) 계정을 전화번호로 찾거나 생성하고 자녀로 연결한다(11 §9).
     동일 전화번호의 학부모가 이미 있으면(형제 등록 등) 그 계정에 연결만 한다."""
@@ -674,28 +683,32 @@ class ConvertLeadAdminAPI(APIView):
                 program_custom=data.get("program_custom", "") or "",
                 weekly_sessions=data.get("weekly_sessions"),
                 class_schedule=data.get("class_schedule", "") or "",
+                schedule_pending=bool(data.get("schedule_pending")),
                 consent_privacy=bool(data.get("consent_privacy")),
                 consent_guardian_name=data.get("consent_guardian_name", "") or "",
                 consent_signature=data.get("consent_signature", "") or "",
                 consent_date=data.get("consent_date") or now().date(),
             )
-            # 입회원 신청서의 요일/시간(class_schedule)으로 개별 시간표 자동 생성(12)
+            # 입회원 신청서의 요일/시간(class_schedule)으로 개별 시간표 자동 생성(12).
+            # '추후 안내'면 미생성. 수업 길이는 학교급·주횟수 규칙으로 자동 계산.
             schedule_raw = data.get("class_schedule") or ""
             try:
                 schedule = _json.loads(schedule_raw) if schedule_raw else []
             except (ValueError, TypeError):
                 schedule = []
-            for row in schedule:
-                try:
-                    wd = int(row.get("day"))
-                    tm = (row.get("time") or "").strip()
-                except (AttributeError, TypeError, ValueError):
-                    continue
-                if not (0 <= wd <= 6) or not tm:
-                    continue
-                StudentTimetable.objects.create(
-                    student=user, branch=lead.branch, class_type=LessonType.PRIVATE,
-                    weekday=wd, start_time=tm, duration_minutes=60)
+            if not data.get("schedule_pending"):
+                dur = lesson_duration(lead.school_type, data.get("weekly_sessions"))
+                for row in schedule:
+                    try:
+                        wd = int(row.get("day"))
+                        tm = (row.get("time") or "").strip()
+                    except (AttributeError, TypeError, ValueError):
+                        continue
+                    if not (0 <= wd <= 6) or not tm:
+                        continue
+                    StudentTimetable.objects.create(
+                        student=user, branch=lead.branch, class_type=LessonType.PRIVATE,
+                        weekday=wd, start_time=tm, duration_minutes=dur)
             # 학부모(보호자) 계정 생성/연결 — 자녀 기록 열람용(11 §9)
             parent_user = get_or_create_guardian(
                 user, lead, lead.branch,

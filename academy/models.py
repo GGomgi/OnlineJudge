@@ -316,6 +316,8 @@ class StudentProfile(models.Model):
     weekly_sessions = models.PositiveSmallIntegerField(null=True, blank=True)
     # 교육 요일·시간 (회수만큼). JSON 문자열 [{"day":0,"time":"16:00"}, ...]
     class_schedule = models.TextField(blank=True, default="")
+    # 기존 학원 스케줄 미정 → 교육 일정 추후 안내(요일/시간 미입력, 개별 시간표 미생성)
+    schedule_pending = models.BooleanField(default=False)
     memo = models.TextField(blank=True, default="")
     # 개인정보 수집·이용·제공 동의(법정대리인 동의서)
     consent_privacy = models.BooleanField(default=False)
