@@ -381,24 +381,34 @@
           <!-- 등록 과정 · 교육 일정 -->
           <div class="space-y-3">
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">등록 과정 · 교육 일정</div>
-            <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="lbl">등록 과정 수 <span class="text-rose-500">*</span></label>
+              <select v-model.number="convertForm.program_count" @change="syncProgramCount" class="input w-32">
+                <option v-for="n in 4" :key="n" :value="n">{{ n }}개</option>
+              </select>
+            </div>
+            <div v-for="(p,pi) in convertForm.programs" :key="pi" class="grid items-end gap-1.5"
+                 style="grid-template-columns: 2.2rem 1fr 1fr;">
+              <span class="text-xs text-slate-400 pb-2">{{ pi+1 }}.</span>
               <div>
                 <label class="lbl">등록 과정 <span class="text-rose-500">*</span></label>
-                <select v-model="convertForm.program" class="input">
+                <select v-model="p.value" class="input px-1">
                   <option value="" disabled>선택</option>
                   <option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
                 </select>
               </div>
-              <div v-if="convertForm.program==='LANG'">
-                <label class="lbl">언어 <span class="text-rose-500">*</span></label>
-                <select v-model="convertForm.program_language" class="input">
-                  <option value="" disabled>선택</option>
+              <div>
+                <label class="lbl" v-if="p.value==='LANG'">언어 <span class="text-rose-500">*</span></label>
+                <label class="lbl" v-else-if="optAllowCustom('program', p.value)">직접 입력 <span class="text-rose-500">*</span></label>
+                <label class="lbl" v-else>&nbsp;</label>
+                <select v-if="p.value==='LANG'" v-model="p.language" class="input px-1">
+                  <option value="" disabled>언어</option>
                   <option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
                 </select>
+                <input v-else-if="optAllowCustom('program', p.value)" v-model="p.custom" class="input" placeholder="개인맞춤 내용" />
+                <div v-else class="text-xs text-slate-300 pb-2">-</div>
               </div>
             </div>
-            <input v-if="optAllowCustom('program', convertForm.program)" v-model="convertForm.program_custom"
-                   class="input" placeholder="등록 과정을 직접 입력해주세요. (개인맞춤)" />
             <label class="flex items-center gap-2 text-sm bg-amber-50 rounded-lg px-3 py-2">
               <input type="checkbox" v-model="convertForm.schedule_pending" class="w-4 h-4" />
               <span>교육 일정 <b>추후 안내</b> (기존 학원 스케줄 정리 후 요일·시간 안내) — 체크 시 아래 입력 생략</span>
@@ -413,10 +423,13 @@
               </div>
               <p v-if="convertForm.weekly_sessions > 0" class="text-xs text-indigo-600">수업 1회 <b>{{ lessonDurationMin }}분</b> (학교급·횟수 기준 자동 적용)</p>
               <div v-if="convertForm.weekly_sessions > 0" class="space-y-2">
-                <label class="lbl">교육 요일 · 시간 (회수만큼 입력) <span class="text-rose-500">*</span></label>
+                <label class="lbl">회차별 과정 · 요일 · 시간 <span class="text-rose-500">*</span></label>
                 <div v-for="(row,i) in convertForm.schedule" :key="i"
-                     class="grid items-center gap-1.5" style="grid-template-columns: 2.2rem 1fr 1fr 1fr 1fr;">
+                     class="grid items-center gap-1" style="grid-template-columns: 2rem 1.4fr 0.9fr 0.9fr 0.9fr 0.9fr auto;">
                   <span class="text-xs text-slate-400">{{ i+1 }}회</span>
+                  <select v-model.number="row.programIdx" class="input px-1" title="과정">
+                    <option v-for="(p,pi) in convertForm.programs" :key="pi" :value="pi">{{ composedProgramLabel(p) }}</option>
+                  </select>
                   <select v-model.number="row.day" class="input px-1">
                     <option :value="-1" disabled>요일</option>
                     <option v-for="(d,di) in days" :key="di" :value="di">{{ d }}</option>
@@ -433,7 +446,11 @@
                     <option :value="null" disabled>분</option>
                     <option v-for="m in minutes" :key="m" :value="m">{{ String(m).padStart(2,'0') }}분</option>
                   </select>
+                  <label class="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap" title="격주(2주에 1회)">
+                    <input type="checkbox" v-model="row.biweekly" class="w-3.5 h-3.5" />격주
+                  </label>
                 </div>
+                <p class="text-[11px] text-slate-400">과정을 격주로 번갈아 들으면, 같은 요일·시간에 과정만 다르게 두 줄을 두고 양쪽 모두 <b>격주</b>를 체크하세요.</p>
               </div>
             </template>
           </div>
@@ -541,15 +558,16 @@
         </template>
         <div v-else class="space-y-2">
           <div class="text-sm">학생: <b>{{ ttStudent.username }}</b> <button @click="ttStudent=null" class="text-xs text-slate-400 hover:underline ml-1">변경</button></div>
-          <div class="flex flex-wrap items-center gap-1.5">
-            <select v-model.number="ttForm.weekday" class="input w-16 px-1"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select>
-            <select v-model="ttForm.ampm" class="input w-16 px-1"><option value="AM">오전</option><option value="PM">오후</option></select>
-            <select v-model.number="ttForm.hour" class="input w-16 px-1"><option :value="null" disabled>시</option><option v-for="h in hours12" :key="h" :value="h">{{ h }}시</option></select>
-            <select v-model.number="ttForm.min" class="input w-16 px-1"><option :value="null" disabled>분</option><option v-for="m in minutes" :key="m" :value="m">{{ String(m).padStart(2,'0') }}분</option></select>
-            <select v-model.number="ttForm.duration_minutes" class="input w-20 px-1"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select>
-            <select v-model.number="ttForm.instructor_id" class="input w-28 px-1"><option :value="null">강사 미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select>
-            <input v-model="ttForm.subject" placeholder="과목" class="input w-24" />
-            <button @click="addTt" class="btn-primary text-sm">추가</button>
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
+            <select v-model.number="ttForm.weekday" class="input w-16 px-2 shrink-0"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select>
+            <select v-model="ttForm.ampm" class="input w-20 px-2 shrink-0"><option value="AM">오전</option><option value="PM">오후</option></select>
+            <select v-model.number="ttForm.hour" class="input w-16 px-2 shrink-0"><option :value="null" disabled>시</option><option v-for="h in hours12" :key="h" :value="h">{{ h }}시</option></select>
+            <select v-model.number="ttForm.min" class="input w-20 px-2 shrink-0"><option :value="null" disabled>분</option><option v-for="m in minutes" :key="m" :value="m">{{ String(m).padStart(2,'0') }}분</option></select>
+            <select v-model.number="ttForm.duration_minutes" class="input w-24 px-2 shrink-0"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select>
+            <select v-model="ttForm.program" class="input w-32 px-2 shrink-0"><option value="">과정 선택</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
+            <select v-model.number="ttForm.instructor_id" class="input w-28 px-2 shrink-0"><option :value="null">강사 미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select>
+            <select v-model="ttForm.frequency" class="input w-20 px-2 shrink-0"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select>
+            <button @click="addTt" class="btn-primary text-sm shrink-0">추가</button>
           </div>
         </div>
       </div>
@@ -558,10 +576,9 @@
       <div class="bg-white rounded-xl shadow-sm p-3 mb-3 flex flex-wrap items-end gap-2">
         <div><label class="lbl">학생</label><input v-model="ttFilter.name" placeholder="이름/아이디" class="input w-28" /></div>
         <div><label class="lbl">요일</label><select v-model="ttFilter.weekday" class="input w-20"><option value="">전체</option><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
-        <div><label class="lbl">시작 이상</label><input v-model="ttFilter.from" type="time" class="input w-28" /></div>
-        <div><label class="lbl">종료 이하</label><input v-model="ttFilter.to" type="time" class="input w-28" /></div>
+        <div><label class="lbl">이 시각에 수업 중</label><input v-model="ttFilter.at" type="time" class="input w-28" /></div>
         <div><label class="lbl">강사</label><select v-model="ttFilter.instructor_id" class="input w-28"><option value="">전체</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
-        <div><label class="lbl">과목</label><input v-model="ttFilter.subject" placeholder="과목" class="input w-24" /></div>
+        <div><label class="lbl">과정</label><select v-model="ttFilter.program" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
         <button @click="resetTtFilter" class="btn-secondary text-xs">초기화</button>
         <span class="text-xs text-slate-400 ml-auto self-center">{{ filteredTt.length }}건</span>
       </div>
@@ -572,28 +589,30 @@
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
               <th class="px-3 py-2 text-left">학생</th>
-              <th class="px-3 py-2 text-left w-16">요일</th>
+              <th class="px-3 py-2 text-left">요일</th>
               <th class="px-3 py-2 text-left">시작</th>
-              <th class="px-3 py-2 text-left w-20">길이</th>
+              <th class="px-3 py-2 text-left">길이</th>
+              <th class="px-3 py-2 text-left">과정</th>
               <th class="px-3 py-2 text-left">담당 강사</th>
-              <th class="px-3 py-2 text-left">과목</th>
+              <th class="px-3 py-2 text-left">반복</th>
               <th class="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="s in filteredTt" :key="s.id" class="border-t align-middle">
               <td class="px-3 py-2 whitespace-nowrap">{{ s.student.real_name || s.student.username }} <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span></td>
-              <td class="px-3 py-2"><select v-model.number="s.weekday" class="input py-1 w-14 px-1"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
+              <td class="px-3 py-2"><select v-model.number="s.weekday" class="input py-1 w-16 px-2"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
               <td class="px-3 py-2"><input v-model="s.start_time" type="time" class="input py-1 w-28" /></td>
-              <td class="px-3 py-2"><select v-model.number="s.duration_minutes" class="input py-1 w-20 px-1"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
-              <td class="px-3 py-2"><select v-model.number="s._instructor_id" class="input py-1 w-28 px-1"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></td>
-              <td class="px-3 py-2"><input v-model="s.subject" class="input py-1" placeholder="과목" /></td>
+              <td class="px-3 py-2"><select v-model.number="s.duration_minutes" class="input py-1 w-24 px-2"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
+              <td class="px-3 py-2"><select v-model="s.program" class="input py-1 w-32 px-2"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></td>
+              <td class="px-3 py-2"><select v-model.number="s._instructor_id" class="input py-1 w-28 px-2"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></td>
+              <td class="px-3 py-2"><select v-model="s.frequency" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
                 <button @click="saveTt(s)" class="text-xs text-indigo-600 hover:underline">저장</button>
                 <button @click="delTt(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
               </td>
             </tr>
-            <tr v-if="filteredTt.length===0"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 개별 수업이 없습니다.</td></tr>
+            <tr v-if="filteredTt.length===0"><td colspan="8" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 개별 수업이 없습니다.</td></tr>
           </tbody>
         </table>
       </div>
@@ -906,7 +925,7 @@ createApp({
       convertingLead: null, convertError: '',
       hours12: [1,2,3,4,5,6,7,8,9,10,11,12],
       minutes: [0,5,10,15,20,25,30,35,40,45,50,55],
-      convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program:'', program_language:'', program_custom:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
+      convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program_count:1, programs:[{value:'',language:'',custom:''}], weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
       showParentLogin: false, parentLogin: { id:'', pw:'' },
       dragIndex: null, dragOverIndex: null,
@@ -923,8 +942,8 @@ createApp({
       optCategory: 'program', optList: [], optNewForm: { value:'', label:'', allow_custom:false },
       durations: [60, 90, 120],
       ttStudent: null, ttSearch: '', ttResults: [], ttAll: [], ttInstructors: [], showTtAdd: false,
-      ttFilter: { name:'', weekday:'', from:'', to:'', instructor_id:'', subject:'' },
-      ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, subject:'' },
+      ttFilter: { name:'', weekday:'', at:'', instructor_id:'', program:'' },
+      ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' },
       classes: [], sel: null, roster: [],
       classForm: { name:'', branch_id:null, track:'', level:'' },
       slotForm: { day_of_week:0, start_time:'', end_time:'', room:'' },
@@ -958,10 +977,9 @@ createApp({
         if (f.name){ const n=((s.student.real_name||'')+' '+s.student.username).toLowerCase(); if(!n.includes(f.name.toLowerCase())) return false; }
         if (f.weekday!=='' && s.weekday!==Number(f.weekday)) return false;
         if (f.instructor_id!=='' && (!s.instructor || s.instructor.id!==Number(f.instructor_id))) return false;
-        if (f.subject && !(s.subject||'').toLowerCase().includes(f.subject.toLowerCase())) return false;
-        const st=(s.start_time||'').slice(0,5), en=(s.end_time||'').slice(0,5);
-        if (f.from && st < f.from) return false;
-        if (f.to && en > f.to) return false;
+        if (f.program && s.program!==f.program) return false;
+        // 특정 시각에 수업 중(시작 ≤ 시각 < 종료)인 학생만
+        if (f.at){ const st=(s.start_time||'').slice(0,5), en=(s.end_time||'').slice(0,5); if (!(st <= f.at && f.at < en)) return false; }
         return true;
       });
     },
@@ -1013,7 +1031,7 @@ createApp({
     },
     convertDirty(){
       const f=this.convertForm;
-      return !!(f.birth_date||f.gender||f.student_phone||f.zipcode||f.address||f.address_detail||f.program||f.program_custom||f.weekly_sessions||f.password||f.consent_guardian_name||(this.sig&&this.sig.hasInk));
+      return !!(f.birth_date||f.gender||f.student_phone||f.zipcode||f.address||f.address_detail||(f.programs&&f.programs[0]&&f.programs[0].value)||f.weekly_sessions||f.password||f.consent_guardian_name||(this.sig&&this.sig.hasInk));
     },
     noteDirty(){ return !!(this.noteText && this.noteText.trim()); },
     staffFormDirty(){ const f=this.staffForm; return !!(f.real_name||f.password); },
@@ -1108,7 +1126,7 @@ createApp({
       try { const d = await api('GET','/api/admin/academy/student_timetable'); this.ttAll = (d.results || d).map(s=>({ ...s, start_time: this.hm(s.start_time), _instructor_id: s.instructor ? s.instructor.id : null })); }
       catch(e){ this.notify(e.message,false); }
     },
-    resetTtFilter(){ this.ttFilter = { name:'', weekday:'', from:'', to:'', instructor_id:'', subject:'' }; },
+    resetTtFilter(){ this.ttFilter = { name:'', weekday:'', at:'', instructor_id:'', program:'' }; },
     toggleTtAdd(){ this.showTtAdd = !this.showTtAdd; if (!this.showTtAdd){ this.ttStudent=null; this.ttResults=[]; this.ttSearch=''; } },
     async searchTtStudent(){
       if (!this.ttSearch.trim()) return;
@@ -1119,23 +1137,23 @@ createApp({
     },
     selectTtStudent(u){
       this.ttStudent = u; this.ttResults = []; this.ttSearch = '';
-      this.ttForm = { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, subject:'' };
+      this.ttForm = { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' };
     },
     async addTt(){
       const f = this.ttForm;
       if (f.hour===null || f.min===null) return this.notify('시작 시각(오전/오후·시·분)을 선택하세요.', false);
       try {
-        const body = { student_id:this.ttStudent.id, weekday:f.weekday, start_time:this.to24(f.ampm,f.hour,f.min), duration_minutes:f.duration_minutes, subject:f.subject };
+        const body = { student_id:this.ttStudent.id, weekday:f.weekday, start_time:this.to24(f.ampm,f.hour,f.min), duration_minutes:f.duration_minutes, program:f.program, frequency:f.frequency };
         if (f.instructor_id) body.instructor_id = f.instructor_id;
         await api('POST','/api/admin/academy/student_timetable', body);
         this.notify('개별 수업이 추가되었습니다.');
-        this.ttForm = { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, subject:'' };
+        this.ttForm = { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' };
         this.loadAllTt();
       } catch(e){ this.notify(e.message,false); }
     },
     async saveTt(s){
       try {
-        await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, subject:s.subject });
+        await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, frequency:s.frequency });
         this.notify('저장되었습니다.'); this.loadAllTt();
       } catch(e){ this.notify(e.message,false); }
     },
@@ -1309,7 +1327,7 @@ createApp({
         student_name: r.student_name, gender:'', birth_date:'',
         parent_phone: r.parent_phone, school_type: r.school_type||'', school_name: r.school_name||'', grade: r.grade||'',
         student_phone:'', zipcode:'', address:'', address_detail:'',
-        program:'', program_language:'', program_custom:'', weekly_sessions:0, schedule:[], schedule_pending:false,
+        program_count:1, programs:[{value:'',language:'',custom:''}], weekly_sessions:0, schedule:[], schedule_pending:false,
         login_id:'', password:'',
         parent_login_id: phoneDigits, parent_password:'',
         consent_privacy:false, consent_guardian_name:'',
@@ -1318,11 +1336,24 @@ createApp({
       this.$nextTick(()=> this.sigInit());
     },
     closeConvert(){ if (this.convertDirty() && !this.confirmLeave()) return; this.convertingLead = null; this.convertError = ''; },
+    syncProgramCount(){
+      const n = this.convertForm.program_count || 1;
+      const cur = this.convertForm.programs;
+      const next = [];
+      for (let i=0; i<n; i++) next.push(cur[i] || { value:'', language:'', custom:'' });
+      this.convertForm.programs = next;
+    },
+    composedProgramLabel(p){
+      if (!p || !p.value) return '(과정 미선택)';
+      if (this.optAllowCustom('program', p.value)) return p.custom || '개인맞춤';
+      if (p.value==='LANG' && p.language) return this.optLabel('program','LANG')+'('+p.language+')';
+      return this.optLabel('program', p.value);
+    },
     syncSchedule(){
       const n = this.convertForm.weekly_sessions || 0;
       const cur = this.convertForm.schedule;
       const next = [];
-      for (let i=0; i<n; i++) next.push(cur[i] || { day:-1, ampm:'PM', hour:null, min:null });
+      for (let i=0; i<n; i++) next.push(cur[i] || { programIdx:0, day:-1, ampm:'PM', hour:null, min:null, biweekly:false });
       this.convertForm.schedule = next;
     },
     to24(ampm, hour, min){
@@ -1370,15 +1401,20 @@ createApp({
       if (f.password.length < 6) return this.failConvert('비밀번호는 6자 이상이어야 합니다.');
       if (!f.student_phone) return this.failConvert('학생 휴대폰을 입력하세요. (보호자번호와 동일 버튼 사용 가능)');
       if (!f.zipcode || !f.address) return this.failConvert('우편번호 검색으로 주소를 입력하세요.');
-      if (!f.program) return this.failConvert('등록 과정을 선택하세요.');
-      if (f.program==='LANG' && !f.program_language) return this.failConvert('프로그래밍 언어를 선택하세요.');
-      if (this.optAllowCustom('program', f.program) && !(f.program_custom||'').trim()) return this.failConvert('등록 과정을 직접 입력해주세요.');
+      for (let i=0;i<f.programs.length;i++){ const p=f.programs[i];
+        if (!p.value) return this.failConvert((i+1)+'번째 등록 과정을 선택하세요.');
+        if (p.value==='LANG' && !p.language) return this.failConvert((i+1)+'번째 과정의 프로그래밍 언어를 선택하세요.');
+        if (this.optAllowCustom('program', p.value) && !(p.custom||'').trim()) return this.failConvert((i+1)+'번째 과정(개인맞춤) 내용을 입력하세요.');
+      }
       if (!f.schedule_pending) {
         if (!f.weekly_sessions) return this.failConvert('주 교육 회수를 선택하세요. (미정이면 "교육 일정 추후 안내"를 체크)');
         if (f.schedule.length !== f.weekly_sessions || f.schedule.some(s=>s.day<0 || s.hour===null || s.min===null))
           return this.failConvert('교육 요일과 시간(오전/오후·시·분)을 회수만큼 모두 선택하세요.');
-        if (new Set(f.schedule.map(s=>s.day)).size !== f.schedule.length)
-          return this.failConvert('교육 요일이 중복되었습니다.');
+        // 같은 요일·시각 중복은 금지하되, 격주끼리는 허용(과정 번갈아 수강)
+        const seen={};
+        for (const s of f.schedule){ const k=s.day+'@'+this.to24(s.ampm,s.hour,s.min);
+          if (seen[k] && !(seen[k].biweekly && s.biweekly)) return this.failConvert('같은 요일·시각이 중복되었습니다. (격주 번갈아 수강이면 양쪽 모두 격주 체크)');
+          seen[k]=s; }
       }
       if (!f.consent_privacy) return this.failConvert('개인정보 수집·이용에 동의해 주세요.');
       if (!f.consent_guardian_name) return this.failConvert('법정대리인 성명을 입력하세요.');
@@ -1388,10 +1424,11 @@ createApp({
           lead_id: r.id, login_id: f.login_id, password: f.password, birth_date: f.birth_date,
           gender: f.gender || '', student_phone: f.student_phone, zipcode: f.zipcode,
           address: f.address, address_detail: f.address_detail || '',
-          program: f.program, program_language: f.program==='LANG' ? f.program_language : '',
-          program_custom: this.optAllowCustom('program', f.program) ? (f.program_custom||'') : '',
+          program: f.programs[0].value, program_language: f.programs[0].value==='LANG' ? f.programs[0].language : '',
+          program_custom: this.optAllowCustom('program', f.programs[0].value) ? (f.programs[0].custom||'') : '',
+          programs: JSON.stringify(f.programs),
           weekly_sessions: f.schedule_pending ? null : f.weekly_sessions,
-          class_schedule: JSON.stringify(f.schedule_pending ? [] : f.schedule.map(s=>({ day:s.day, time:this.to24(s.ampm,s.hour,s.min) }))),
+          class_schedule: JSON.stringify(f.schedule_pending ? [] : f.schedule.map(s=>{ const p=f.programs[s.programIdx]||f.programs[0]; return { day:s.day, time:this.to24(s.ampm,s.hour,s.min), program:(p?p.value:''), subject:this.composedProgramLabel(p), frequency:s.biweekly?'BIWEEKLY':'WEEKLY' }; })),
           schedule_pending: f.schedule_pending,
           parent_login_id: f.parent_login_id || '', parent_password: f.parent_password || '',
           consent_privacy: true, consent_guardian_name: f.consent_guardian_name,

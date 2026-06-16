@@ -309,10 +309,11 @@ class StudentProfile(models.Model):
     grade = models.CharField(max_length=16, blank=True, default="")
     enrollment_date = models.DateField(null=True, blank=True)
     enrollment_status = models.CharField(max_length=16, default=EnrollmentStatus.ENROLLED)
-    # 등록 과정·교육 일정(입회원 신청서)
+    # 등록 과정·교육 일정(입회원 신청서). 단일 과정(legacy) + 다중 과정(programs JSON).
     program = models.CharField(max_length=16, blank=True, default="")
     program_language = models.CharField(max_length=16, blank=True, default="")
     program_custom = models.CharField(max_length=255, blank=True, default="")  # 개인맞춤(allow_custom) 자유 입력
+    programs = models.TextField(blank=True, default="")  # JSON [{"value","language","custom"}] 다중 과정
     weekly_sessions = models.PositiveSmallIntegerField(null=True, blank=True)
     # 교육 요일·시간 (회수만큼). JSON 문자열 [{"day":0,"time":"16:00"}, ...]
     class_schedule = models.TextField(blank=True, default="")
@@ -378,6 +379,11 @@ class TimetableStatus(object):
     ENDED = "ENDED"
 
 
+class TimetableFrequency(object):
+    WEEKLY = "WEEKLY"      # 매주
+    BIWEEKLY = "BIWEEKLY"  # 격주(2주에 1회, 과정 번갈아 수강 등)
+
+
 class StudentTimetable(models.Model):
     """학생별 개별 수업 시간표 슬롯(12). 학원 기본 운영이 개별 수업이므로
     반(CourseClass)과 별개로 학생마다 요일/시작시간/수업길이/담당강사를 둔다.
@@ -392,7 +398,9 @@ class StudentTimetable(models.Model):
     duration_minutes = models.PositiveSmallIntegerField(default=60)
     instructor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="instructing_timetables")
-    subject = models.CharField(max_length=64, blank=True, default="")  # 수업 내용/과정
+    program = models.CharField(max_length=32, blank=True, default="")  # 등록 과정 코드(과목)
+    subject = models.CharField(max_length=64, blank=True, default="")  # 표시용 과정명(라벨)
+    frequency = models.CharField(max_length=16, default=TimetableFrequency.WEEKLY)  # 매주/격주
     room = models.CharField(max_length=64, blank=True, default="")
     status = models.CharField(max_length=16, default=TimetableStatus.ACTIVE)
     create_time = models.DateTimeField(auto_now_add=True)

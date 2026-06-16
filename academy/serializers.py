@@ -302,6 +302,7 @@ class ConvertLeadSerializer(serializers.Serializer):
     program = serializers.CharField(max_length=16, required=False, allow_blank=True)
     program_language = serializers.CharField(max_length=16, required=False, allow_blank=True)
     program_custom = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    programs = serializers.CharField(required=False, allow_blank=True)  # JSON 다중 과정
     weekly_sessions = serializers.IntegerField(required=False, allow_null=True)
     class_schedule = serializers.CharField(required=False, allow_blank=True)
     schedule_pending = serializers.BooleanField(required=False, default=False)
@@ -375,7 +376,7 @@ class StudentTimetableSerializer(serializers.ModelSerializer):
         model = StudentTimetable
         fields = ["id", "student", "branch", "class_type", "weekday", "day_name",
                   "start_time", "duration_minutes", "end_time", "instructor",
-                  "subject", "room", "status", "create_time"]
+                  "program", "subject", "frequency", "room", "status", "create_time"]
 
     def get_student(self, obj):
         return _student_brief(obj.student)
@@ -407,7 +408,9 @@ class CreateStudentTimetableSerializer(serializers.Serializer):
     start_time = serializers.TimeField()
     duration_minutes = serializers.IntegerField(min_value=10, max_value=600, required=False, default=60)
     instructor_id = serializers.IntegerField(required=False, allow_null=True)
+    program = serializers.CharField(max_length=32, required=False, allow_blank=True)
     subject = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    frequency = serializers.ChoiceField(choices=["WEEKLY", "BIWEEKLY"], required=False)
     room = serializers.CharField(max_length=64, required=False, allow_blank=True)
     class_type = serializers.ChoiceField(choices=[LessonType.PRIVATE, LessonType.GROUP], required=False)
 
@@ -418,6 +421,8 @@ class EditStudentTimetableSerializer(serializers.Serializer):
     start_time = serializers.TimeField(required=False)
     duration_minutes = serializers.IntegerField(min_value=10, max_value=600, required=False)
     instructor_id = serializers.IntegerField(required=False, allow_null=True)
+    program = serializers.CharField(max_length=32, required=False, allow_blank=True)
     subject = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    frequency = serializers.ChoiceField(choices=["WEEKLY", "BIWEEKLY"], required=False)
     room = serializers.CharField(max_length=64, required=False, allow_blank=True)
     status = serializers.ChoiceField(choices=["ACTIVE", "PAUSED", "ENDED"], required=False)

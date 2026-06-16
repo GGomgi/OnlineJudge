@@ -44,6 +44,14 @@ def _norm_phone(v):
     return "".join(ch for ch in (v or "") if ch.isdigit())
 
 
+def resolve_program_label(value):
+    """등록 과정 코드 → 표시 라벨(선택 목록 기준)."""
+    if not value:
+        return ""
+    o = OptionItem.objects.filter(category="program", value=value).first()
+    return o.label if o else value
+
+
 def lesson_duration(school_type, weekly):
     """학교급·주횟수별 수업 1회 길이(분). 초등 이하는 주1회 90/주2+ 60,
     중등 이상(및 기타)은 주1회 120/주2+ 90."""
@@ -683,6 +691,7 @@ class ConvertLeadAdminAPI(APIView):
                 program_custom=data.get("program_custom", "") or "",
                 weekly_sessions=data.get("weekly_sessions"),
                 class_schedule=data.get("class_schedule", "") or "",
+                programs=data.get("programs", "") or "",
                 schedule_pending=bool(data.get("schedule_pending")),
                 consent_privacy=bool(data.get("consent_privacy")),
                 consent_guardian_name=data.get("consent_guardian_name", "") or "",
@@ -706,9 +715,13 @@ class ConvertLeadAdminAPI(APIView):
                         continue
                     if not (0 <= wd <= 6) or not tm:
                         continue
+                    prog = (row.get("program") or "")
+                    freq = row.get("frequency") or "WEEKLY"
+                    subj = row.get("subject") or resolve_program_label(prog)
                     StudentTimetable.objects.create(
                         student=user, branch=lead.branch, class_type=LessonType.PRIVATE,
-                        weekday=wd, start_time=tm, duration_minutes=dur)
+                        weekday=wd, start_time=tm, duration_minutes=dur,
+                        program=prog, subject=subj, frequency=freq)
             # 학부모(보호자) 계정 생성/연결 — 자녀 기록 열람용(11 §9)
             parent_user = get_or_create_guardian(
                 user, lead, lead.branch,
@@ -863,16 +876,20 @@ class StudentTimetableAdminAPI(APIView):
         instructor = None
         if data.get("instructor_id"):
             instructor = User.objects.filter(id=data["instructor_id"]).first()
-        # 동일 학생 같은 요일/시각 중복 방지
+        prog = data.get("program", "") or ""
+        # 동일 학생·요일·시각·과정 중복 방지(과정이 다르면 같은 시간대 허용 — 격주 번갈아 수강 등)
         if StudentTimetable.objects.filter(student=student, weekday=data["weekday"],
-                                           start_time=data["start_time"]).exclude(status="ENDED").exists():
-            return self.error("같은 요일·시각에 이미 수업이 있습니다.")
+                                           start_time=data["start_time"], program=prog
+                                           ).exclude(status="ENDED").exists():
+            return self.error("같은 요일·시각에 같은 과정 수업이 이미 있습니다.")
         slot = StudentTimetable.objects.create(
             student=student, branch=branch,
             class_type=data.get("class_type") or LessonType.PRIVATE,
             weekday=data["weekday"], start_time=data["start_time"],
             duration_minutes=data.get("duration_minutes") or 60,
-            instructor=instructor, subject=data.get("subject", "") or "",
+            instructor=instructor, program=prog,
+            subject=data.get("subject") or resolve_program_label(prog),
+            frequency=data.get("frequency") or "WEEKLY",
             room=data.get("room", "") or "")
         slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=slot.pk)
         return self.success(StudentTimetableSerializer(slot).data)
@@ -886,9 +903,12 @@ class StudentTimetableAdminAPI(APIView):
             return self.error("Timetable does not exist")
         if not self._branch_ok(request, slot.branch_id):
             return self.error("No permission for this branch")
-        for f in ("weekday", "start_time", "duration_minutes", "subject", "room", "status"):
+        for f in ("weekday", "start_time", "duration_minutes", "subject", "room", "status", "frequency"):
             if f in data:
                 setattr(slot, f, data[f])
+        if "program" in data:
+            slot.program = data["program"] or ""
+            slot.subject = resolve_program_label(slot.program)
         if "instructor_id" in data:
             slot.instructor = User.objects.filter(id=data["instructor_id"]).first() if data["instructor_id"] else None
         slot.save()
