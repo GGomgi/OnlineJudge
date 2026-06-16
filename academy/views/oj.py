@@ -1,17 +1,57 @@
+import os
+import json as _json
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
+from django.utils.timezone import now
 
 from utils.api import APIView, validate_serializer
+from utils.shortcuts import rand_str
 
 from account.models import User, UserProfile
 from ..models import (AcademyProfile, AcademyRole, Branch, SignupRequest, CourseClass,
                       AttendanceRecord, Lead, OptionItem)
-from ..models import StudentTimetable, GuardianStudent
+from ..models import StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROLES
 from ..serializers import (AcademySignupSerializer, BranchSerializer,
                            SignupRequestSerializer, CourseClassSerializer,
                            ClassSessionSerializer, LeadCreateSerializer,
-                           StudentTimetableSerializer)
+                           StudentTimetableSerializer, SaveStaffProfileSerializer)
 from account.decorators import login_required
+
+
+def _parse_json_list(s):
+    try:
+        v = _json.loads(s) if s else []
+        return v if isinstance(v, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
+def _staff_profile_data(p):
+    return {
+        "address": p.address, "address_detail": p.address_detail, "phone": p.phone,
+        "resident_copy": p.resident_copy, "bankbook_copy": p.bankbook_copy,
+        "graduation_cert": p.graduation_cert, "transcript": p.transcript,
+        "dependents_decided": p.dependents_decided,
+        "dependents": _parse_json_list(p.dependents),
+        "emergency_contacts": _parse_json_list(p.emergency_contacts),
+        "sex_offense_consent": p.sex_offense_consent,
+        "sex_offense_signature": p.sex_offense_signature,
+        "sex_offense_date": str(p.sex_offense_date) if p.sex_offense_date else None,
+        "completed": p.is_complete(),
+    }
+
+
+# 직원 인사 정보 업로드 가능한 단일 파일 필드
+STAFF_FILE_FIELDS = {"resident_copy", "bankbook_copy", "graduation_cert", "transcript"}
+STAFF_UPLOAD_SUFFIXES = [".gif", ".jpg", ".jpeg", ".bmp", ".png", ".pdf"]
+
+
+def _is_staff_user(user):
+    prof = getattr(user, "academy_profile", None)
+    if prof and prof.role in STAFF_ROLES:
+        return True
+    return bool(user.is_admin_role())
 
 
 class BranchListAPI(APIView):
@@ -159,6 +199,86 @@ class GuardianMeAPI(APIView):
         if profile.branch_id and profile.branch:
             branch = {"id": profile.branch.id, "code": profile.branch.code, "name": profile.branch.name}
         return self.success({"parent_name": real_name, "parent_phone": profile.phone, "branch": branch})
+
+
+class StaffProfileAPI(APIView):
+    @login_required
+    def get(self, request):
+        """직원 본인 인사 정보 조회(+완료 여부). 직원이 아니면 null."""
+        if not _is_staff_user(request.user):
+            return self.success(None)
+        p = StaffProfile.objects.filter(user=request.user).first()
+        if not p:
+            p = StaffProfile.objects.create(user=request.user)
+        return self.success(_staff_profile_data(p))
+
+    @validate_serializer(SaveStaffProfileSerializer)
+    @login_required
+    def post(self, request):
+        """직원 본인 인사 정보 저장(주소·연락처 필수, 피부양자/비상연락망/동의)."""
+        if not _is_staff_user(request.user):
+            return self.error("직원만 사용할 수 있습니다.")
+        data = request.data
+        p, _ = StaffProfile.objects.get_or_create(user=request.user)
+        p.address = data["address"]
+        p.address_detail = data.get("address_detail", "") or ""
+        p.phone = data["phone"]
+        p.dependents_decided = bool(data.get("dependents_decided"))
+        if "dependents" in data:
+            p.dependents = data.get("dependents") or ""
+        if "emergency_contacts" in data:
+            p.emergency_contacts = data.get("emergency_contacts") or ""
+        p.sex_offense_consent = bool(data.get("sex_offense_consent"))
+        if data.get("sex_offense_signature"):
+            p.sex_offense_signature = data["sex_offense_signature"]
+            p.sex_offense_date = data.get("sex_offense_date") or now().date()
+        p.save()
+        return self.success(_staff_profile_data(p))
+
+
+class StaffProfileUploadAPI(APIView):
+    request_parsers = ()
+
+    @login_required
+    def post(self, request):
+        """인사 서류 파일 업로드(등본/통장사본/졸업·성적증명서, 피부양자 가족관계증명서).
+        field=필드명, file=파일. 피부양자 증명서는 field=family_cert & index=n."""
+        if not _is_staff_user(request.user):
+            return self.error("직원만 사용할 수 있습니다.")
+        field = request.POST.get("field", "")
+        f = request.FILES.get("file")
+        if not f:
+            return self.error("파일이 없습니다.")
+        if f.size > 8 * 1024 * 1024:
+            return self.error("파일이 너무 큽니다(최대 8MB).")
+        suffix = os.path.splitext(f.name)[-1].lower()
+        if suffix not in STAFF_UPLOAD_SUFFIXES:
+            return self.error("이미지(jpg/png 등) 또는 PDF만 업로드할 수 있습니다.")
+        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+        name = "hr_" + rand_str(16) + suffix
+        with open(os.path.join(settings.UPLOAD_DIR, name), "wb") as out:
+            for chunk in f:
+                out.write(chunk)
+        url = f"{settings.UPLOAD_PREFIX}/{name}"
+
+        p, _ = StaffProfile.objects.get_or_create(user=request.user)
+        if field in STAFF_FILE_FIELDS:
+            setattr(p, field, url)
+            p.save()
+        elif field == "family_cert":
+            try:
+                idx = int(request.POST.get("index"))
+            except (TypeError, ValueError):
+                return self.error("피부양자 번호가 올바르지 않습니다.")
+            deps = _parse_json_list(p.dependents)
+            if not (0 <= idx < len(deps)):
+                return self.error("피부양자 목록을 먼저 저장하세요.")
+            deps[idx]["family_cert"] = url
+            p.dependents = _json.dumps(deps, ensure_ascii=False)
+            p.save()
+        else:
+            return self.error("알 수 없는 필드입니다.")
+        return self.success({"field": field, "url": url, "completed": p.is_complete()})
 
 
 class MySignupStatusAPI(APIView):

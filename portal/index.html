@@ -44,6 +44,18 @@
     </div>
   </nav>
 
+  <!-- 인사 정보 등록 안내 모달(직원, 미완료 시 로그인마다) -->
+  <div v-if="needsOnboarding && tab!=='hr'" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-sm w-full p-6 text-center">
+      <div class="text-lg font-bold mb-2">인사 정보 등록</div>
+      <p class="text-sm text-slate-600 mb-5">아직 인사 정보 등록이 완료되지 않았습니다.<br>주소·연락처 등 필요한 정보와 서류를 등록해 주세요.</p>
+      <div class="flex gap-2">
+        <button @click="onboardingDismissed=true" class="btn-secondary flex-1">나중에</button>
+        <button @click="gotoOnboarding" class="btn-primary flex-1">등록하기</button>
+      </div>
+    </div>
+  </div>
+
   <main class="max-w-5xl mx-auto px-4 py-6">
     <!-- 알림 배너 -->
     <div v-if="flash.msg" :class="['mb-4 px-4 py-3 rounded text-sm',
@@ -558,16 +570,16 @@
         </template>
         <div v-else class="space-y-2">
           <div class="text-sm">학생: <b>{{ ttStudent.username }}</b> <button @click="ttStudent=null" class="text-xs text-slate-400 hover:underline ml-1">변경</button></div>
-          <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
-            <select v-model.number="ttForm.weekday" class="input w-16 px-2 shrink-0"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select>
-            <select v-model="ttForm.ampm" class="input w-20 px-2 shrink-0"><option value="AM">오전</option><option value="PM">오후</option></select>
-            <select v-model.number="ttForm.hour" class="input w-16 px-2 shrink-0"><option :value="null" disabled>시</option><option v-for="h in hours12" :key="h" :value="h">{{ h }}시</option></select>
-            <select v-model.number="ttForm.min" class="input w-20 px-2 shrink-0"><option :value="null" disabled>분</option><option v-for="m in minutes" :key="m" :value="m">{{ String(m).padStart(2,'0') }}분</option></select>
-            <select v-model.number="ttForm.duration_minutes" class="input w-24 px-2 shrink-0"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select>
-            <select v-model="ttForm.program" class="input w-32 px-2 shrink-0"><option value="">과정 선택</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
-            <select v-model.number="ttForm.instructor_id" class="input w-28 px-2 shrink-0"><option :value="null">강사 미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select>
-            <select v-model="ttForm.frequency" class="input w-20 px-2 shrink-0"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select>
-            <button @click="addTt" class="btn-primary text-sm shrink-0">추가</button>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <select v-model.number="ttForm.weekday" class="input w-14 px-1"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select>
+            <select v-model="ttForm.ampm" class="input w-16 px-1"><option value="AM">오전</option><option value="PM">오후</option></select>
+            <select v-model.number="ttForm.hour" class="input w-14 px-1"><option :value="null" disabled>시</option><option v-for="h in hours12" :key="h" :value="h">{{ h }}시</option></select>
+            <select v-model.number="ttForm.min" class="input w-16 px-1"><option :value="null" disabled>분</option><option v-for="m in minutes" :key="m" :value="m">{{ String(m).padStart(2,'0') }}분</option></select>
+            <select v-model.number="ttForm.duration_minutes" class="input w-20 px-1"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select>
+            <select v-model="ttForm.program" class="input w-28 px-1"><option value="">과정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
+            <select v-model.number="ttForm.instructor_id" class="input w-24 px-1"><option :value="null">강사</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select>
+            <select v-model="ttForm.frequency" class="input w-16 px-1"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select>
+            <button @click="addTt" class="btn-primary text-sm">추가</button>
           </div>
         </div>
       </div>
@@ -576,7 +588,8 @@
       <div class="bg-white rounded-xl shadow-sm p-3 mb-3 flex flex-wrap items-end gap-2">
         <div><label class="lbl">학생</label><input v-model="ttFilter.name" placeholder="이름/아이디" class="input w-28" /></div>
         <div><label class="lbl">요일</label><select v-model="ttFilter.weekday" class="input w-20"><option value="">전체</option><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
-        <div><label class="lbl">이 시각에 수업 중</label><input v-model="ttFilter.at" type="time" class="input w-28" /></div>
+        <div><label class="lbl">시작 이상</label><input v-model="ttFilter.from" @change="onFilterFrom" type="time" class="input w-28" /></div>
+        <div><label class="lbl">종료 이하</label><input v-model="ttFilter.to" type="time" class="input w-28" /></div>
         <div><label class="lbl">강사</label><select v-model="ttFilter.instructor_id" class="input w-28"><option value="">전체</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
         <div><label class="lbl">과정</label><select v-model="ttFilter.program" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
         <button @click="resetTtFilter" class="btn-secondary text-xs">초기화</button>
@@ -867,6 +880,85 @@
       </div>
     </section>
 
+    <!-- ============ 직원: 인사 정보 등록 ============ -->
+    <section v-if="tab==='hr'" class="max-w-2xl mx-auto">
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+          <div class="font-bold">인사 정보 등록</div>
+          <span v-if="staffProfile" :class="['text-xs px-2 py-0.5 rounded', staffProfile.completed ? 'bg-emerald-500' : 'bg-amber-500']">{{ staffProfile.completed ? '등록 완료' : '미완료' }}</span>
+        </div>
+        <div class="p-5 space-y-5">
+          <p class="text-xs text-slate-400">주소·연락처는 필수입니다. 서류는 사진 또는 PDF로 업로드하세요. 모두 등록될 때까지 로그인 시 안내가 표시됩니다.</p>
+
+          <!-- 기본 정보 -->
+          <div class="space-y-2">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">기본 정보</div>
+            <div><label class="lbl">주소 <span class="text-rose-500">*</span></label><input v-model="hrForm.address" class="input" placeholder="주소" /></div>
+            <input v-model="hrForm.address_detail" class="input" placeholder="상세주소 (선택)" />
+            <div><label class="lbl">연락처 <span class="text-rose-500">*</span></label>
+              <input :value="hrForm.phone" @input="hrForm.phone = formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
+          </div>
+
+          <!-- 서류 업로드 -->
+          <div class="space-y-2">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">서류 (사진/PDF)</div>
+            <div v-for="doc in [{f:'resident_copy',l:'주민등록등본'},{f:'bankbook_copy',l:'통장사본'},{f:'graduation_cert',l:'졸업증명서'},{f:'transcript',l:'성적증명서'}]" :key="doc.f"
+                 class="flex items-center gap-2 text-sm">
+              <span class="w-28 shrink-0">{{ doc.l }}</span>
+              <span v-if="hrFile(doc.f)" class="text-emerald-600 text-xs">업로드됨 · <a :href="hrFile(doc.f)" target="_blank" class="underline">보기</a></span>
+              <span v-else class="text-rose-400 text-xs">미등록</span>
+              <label class="btn-secondary text-xs cursor-pointer ml-auto">파일 선택<input type="file" class="hidden" accept="image/*,.pdf" @change="uploadStaffFile(doc.f, $event)"></label>
+            </div>
+          </div>
+
+          <!-- 4대보험 피부양자 -->
+          <div class="space-y-2">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">4대보험 피부양자</div>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" v-model="hrForm.dependents_decided" class="w-4 h-4"> 피부양자 등록 여부를 확인했습니다 (없으면 체크만)</label>
+            <div v-for="(d,i) in hrForm.dependents" :key="i" class="flex flex-wrap items-center gap-1.5 bg-slate-50 rounded-lg p-2">
+              <input v-model="d.name" placeholder="이름" class="input w-24" />
+              <input v-model="d.relation" placeholder="관계" class="input w-20" />
+              <span v-if="d.family_cert" class="text-emerald-600 text-xs">증명서 · <a :href="d.family_cert" target="_blank" class="underline">보기</a></span>
+              <label class="btn-secondary text-xs cursor-pointer">가족관계증명서<input type="file" class="hidden" accept="image/*,.pdf" @change="uploadDependentCert(i, $event)"></label>
+              <button @click="removeDependent(i)" class="text-xs text-rose-400 hover:underline">삭제</button>
+            </div>
+            <button @click="addDependent" class="text-xs text-indigo-600 hover:underline">+ 피부양자 추가</button>
+            <p class="text-[11px] text-slate-400">증명서 업로드는 <b>먼저 저장</b> 후 가능합니다.</p>
+          </div>
+
+          <!-- 비상연락망 -->
+          <div class="space-y-2">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">비상연락망 <span class="text-rose-500">*</span></div>
+            <div v-for="(c,i) in hrForm.emergency_contacts" :key="i" class="flex flex-wrap items-center gap-1.5">
+              <input v-model="c.name" placeholder="성함" class="input w-24" />
+              <input v-model="c.relation" placeholder="관계" class="input w-20" />
+              <input :value="c.phone" @input="c.phone = formatPhone($event.target.value)" inputmode="numeric" placeholder="전화번호" class="input w-36" />
+              <button @click="removeEmergency(i)" class="text-xs text-rose-400 hover:underline">삭제</button>
+            </div>
+            <button @click="addEmergency" class="text-xs text-indigo-600 hover:underline">+ 비상연락처 추가</button>
+          </div>
+
+          <!-- 성범죄조회 동의서 -->
+          <div class="space-y-2">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">성범죄·아동학대 조회 동의서</div>
+            <p class="text-[12px] text-slate-500 bg-slate-50 rounded-lg p-3">본인은 「아동·청소년의 성보호에 관한 법률」 등에 따라 취업 제한 대상 여부 확인을 위한 범죄경력(성범죄·아동학대) 조회에 동의합니다. (정식 양식·출력은 추후 제공)</p>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" v-model="hrForm.sex_offense_consent" class="w-4 h-4"> 위 조회에 동의합니다.</label>
+            <div>
+              <label class="lbl">서명</label>
+              <div class="border-2 border-dashed border-slate-300 rounded-lg bg-white inline-block">
+                <canvas ref="hrSig" width="360" height="120" class="touch-none rounded-lg"
+                  @pointerdown="hrSigStart" @pointermove="hrSigMove" @pointerup="hrSigEnd" @pointerleave="hrSigEnd"></canvas>
+              </div>
+              <div class="mt-1"><button type="button" @click="hrSigClear" class="text-xs text-slate-400 hover:text-slate-600">지우기</button>
+                <span v-if="staffProfile && staffProfile.sex_offense_signature" class="text-xs text-emerald-600 ml-2">서명 등록됨(새로 그리면 갱신)</span></div>
+            </div>
+          </div>
+
+          <div class="pt-2"><button @click="saveStaffProfile" class="btn-primary w-full">저장</button></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ 내 정보 ============ -->
     <section v-if="tab==='me' && me" class="max-w-md mx-auto bg-white rounded-xl shadow-sm p-6">
       <h2 class="text-lg font-bold mb-4">내 정보</h2>
@@ -929,6 +1021,9 @@ createApp({
       children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
       showParentLogin: false, parentLogin: { id:'', pw:'' },
       dragIndex: null, dragOverIndex: null,
+      staffProfile: null, onboardingDismissed: false,
+      hrForm: { address:'', address_detail:'', phone:'', dependents_decided:false, dependents:[], emergency_contacts:[], sex_offense_consent:false },
+      hrSig: { drawing:false, ctx:null, hasInk:false },
       sig: { drawing:false, ctx:null, hasInk:false },
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
       staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null },
@@ -942,7 +1037,7 @@ createApp({
       optCategory: 'program', optList: [], optNewForm: { value:'', label:'', allow_custom:false },
       durations: [60, 90, 120],
       ttStudent: null, ttSearch: '', ttResults: [], ttAll: [], ttInstructors: [], showTtAdd: false,
-      ttFilter: { name:'', weekday:'', at:'', instructor_id:'', program:'' },
+      ttFilter: { name:'', weekday:'', from:'', to:'', instructor_id:'', program:'' },
       ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' },
       classes: [], sel: null, roster: [],
       classForm: { name:'', branch_id:null, track:'', level:'' },
@@ -964,6 +1059,7 @@ createApp({
              !!(this.myProfile && this.myProfile.is_all_branch);
     },
     canManageOptions(){ return this.isActorAllBranch; },
+    needsOnboarding(){ return !!(this.me && this.isStaff && this.staffProfile && !this.staffProfile.completed && !this.onboardingDismissed); },
     isParent(){ return !!(this.myProfile && this.myProfile.role === 'PARENT'); },
     todayStr(){ return this.today.y + '-' + String(this.today.m).padStart(2,'0') + '-' + String(this.today.d).padStart(2,'0'); },
     lessonDurationMin(){
@@ -978,8 +1074,12 @@ createApp({
         if (f.weekday!=='' && s.weekday!==Number(f.weekday)) return false;
         if (f.instructor_id!=='' && (!s.instructor || s.instructor.id!==Number(f.instructor_id))) return false;
         if (f.program && s.program!==f.program) return false;
-        // 특정 시각에 수업 중(시작 ≤ 시각 < 종료)인 학생만
-        if (f.at){ const st=(s.start_time||'').slice(0,5), en=(s.end_time||'').slice(0,5); if (!(st <= f.at && f.at < en)) return false; }
+        // 시작 이상 ~ 종료 이하: 수업(시작~종료)이 [from, to] 구간과 겹치면 포함
+        if (f.from || f.to){
+          const st=(s.start_time||'').slice(0,5), en=(s.end_time||'').slice(0,5);
+          const lo=f.from||f.to, hi=f.to||f.from;
+          if (!(st <= hi && en >= lo)) return false;
+        }
         return true;
       });
     },
@@ -1006,6 +1106,7 @@ createApp({
         const t = [ {key:'leadmgr',label:'상담·등록'}, {key:'indtt',label:'개별 시간표'}, {key:'classes',label:'그룹·특강'} ];
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
         if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
+        t.push({key:'hr',label:'인사 정보'});
         t.push({key:'me',label:'내 정보'});
         return t;
       }
@@ -1052,8 +1153,69 @@ createApp({
       else if (key==='options') this.loadOptionAdmin();
       else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); }
       else if (key==='children') this.loadChildren();
+      else if (key==='hr'){ this.loadStaffProfile().then(()=> this.$nextTick(()=> this.hrSigInit())); }
       else if (key==='lead'){ this.loadOptions(); if (this.isParent) this.prefillLeadFromGuardian(); }
     },
+    async apiUpload(path, formData){
+      const res = await fetch(path, { method:'POST', credentials:'same-origin', headers:{ 'X-CSRFToken': getCookie('csrftoken') }, body: formData });
+      let json; try { json = await res.json(); } catch(e){ throw new Error('업로드 응답 오류 ('+res.status+')'); }
+      if (json.error){ const d=json.data; throw new Error(typeof d==='string'?d:(Object.values(d||{})[0]||json.error)); }
+      return json.data;
+    },
+    async loadStaffProfile(){
+      try {
+        const d = await api('GET','/api/academy/staff_profile');
+        this.staffProfile = d;
+        if (d) this.hrForm = { address:d.address||'', address_detail:d.address_detail||'', phone:d.phone||'', dependents_decided:!!d.dependents_decided, dependents:(d.dependents||[]).map(x=>({...x})), emergency_contacts:(d.emergency_contacts||[]).map(x=>({...x})), sex_offense_consent:!!d.sex_offense_consent };
+      } catch(e){ this.staffProfile = null; }
+    },
+    hrFile(field){ return this.staffProfile ? this.staffProfile[field] : ''; },
+    addDependent(){ this.hrForm.dependents.push({ name:'', relation:'', family_cert:'' }); },
+    removeDependent(i){ this.hrForm.dependents.splice(i,1); },
+    addEmergency(){ this.hrForm.emergency_contacts.push({ name:'', relation:'', phone:'' }); },
+    removeEmergency(i){ this.hrForm.emergency_contacts.splice(i,1); },
+    async saveStaffProfile(){
+      const f = this.hrForm;
+      if (!f.address.trim()) return this.notify('주소를 입력하세요.', false);
+      if (!f.phone.trim()) return this.notify('연락처를 입력하세요.', false);
+      try {
+        const body = {
+          address:f.address, address_detail:f.address_detail, phone:f.phone,
+          dependents_decided:f.dependents_decided,
+          dependents: JSON.stringify(f.dependents),
+          emergency_contacts: JSON.stringify(f.emergency_contacts),
+          sex_offense_consent: f.sex_offense_consent,
+        };
+        if (this.hrSig.hasInk) { body.sex_offense_signature = this.$refs.hrSig.toDataURL('image/png'); body.sex_offense_date = this.todayStr; }
+        this.staffProfile = await api('POST','/api/academy/staff_profile', body);
+        this.notify('인사 정보가 저장되었습니다.' + (this.staffProfile.completed ? ' (등록 완료)' : ''));
+      } catch(e){ this.notify(e.message, false); }
+    },
+    async uploadStaffFile(field, ev){
+      const file = ev.target.files[0]; if (!file) return;
+      try {
+        const fd = new FormData(); fd.append('field', field); fd.append('file', file);
+        const d = await this.apiUpload('/api/academy/staff_profile/upload', fd);
+        if (this.staffProfile){ this.staffProfile[field] = d.url; this.staffProfile.completed = d.completed; }
+        this.notify('업로드되었습니다.');
+      } catch(e){ this.notify(e.message, false); } finally { ev.target.value=''; }
+    },
+    async uploadDependentCert(i, ev){
+      const file = ev.target.files[0]; if (!file) return;
+      try {
+        const fd = new FormData(); fd.append('field','family_cert'); fd.append('index', i); fd.append('file', file);
+        const d = await this.apiUpload('/api/academy/staff_profile/upload', fd);
+        this.hrForm.dependents[i].family_cert = d.url;
+        await this.loadStaffProfile();
+        this.notify('가족관계증명서가 업로드되었습니다.');
+      } catch(e){ this.notify(e.message, false); } finally { ev.target.value=''; }
+    },
+    hrSigInit(){ const c=this.$refs.hrSig; if(!c) return; const ctx=c.getContext('2d'); ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.strokeStyle='#1e293b'; ctx.clearRect(0,0,c.width,c.height); this.hrSig.ctx=ctx; this.hrSig.hasInk=false; },
+    hrSigStart(e){ if(!this.hrSig.ctx) this.hrSigInit(); this.hrSig.drawing=true; const p=this.sigPos(e); this.hrSig.ctx.beginPath(); this.hrSig.ctx.moveTo(p.x,p.y); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); },
+    hrSigMove(e){ if(!this.hrSig.drawing) return; const p=this.sigPos(e); this.hrSig.ctx.lineTo(p.x,p.y); this.hrSig.ctx.stroke(); this.hrSig.hasInk=true; },
+    hrSigEnd(){ this.hrSig.drawing=false; },
+    hrSigClear(){ this.hrSigInit(); },
+    gotoOnboarding(){ this.onboardingDismissed=true; this.go('hr'); },
     async loadChildren(){
       try { this.children = await api('GET','/api/academy/my_children'); if (this.children.length && !this.childSel) this.selectChild(this.children[0]); }
       catch(e){ this.notify(e.message,false); }
@@ -1126,7 +1288,8 @@ createApp({
       try { const d = await api('GET','/api/admin/academy/student_timetable'); this.ttAll = (d.results || d).map(s=>({ ...s, start_time: this.hm(s.start_time), _instructor_id: s.instructor ? s.instructor.id : null })); }
       catch(e){ this.notify(e.message,false); }
     },
-    resetTtFilter(){ this.ttFilter = { name:'', weekday:'', at:'', instructor_id:'', program:'' }; },
+    resetTtFilter(){ this.ttFilter = { name:'', weekday:'', from:'', to:'', instructor_id:'', program:'' }; },
+    onFilterFrom(){ const f=this.ttFilter; if (f.from && (!f.to || f.to < f.from)) f.to = f.from; },
     toggleTtAdd(){ this.showTtAdd = !this.showTtAdd; if (!this.showTtAdd){ this.ttStudent=null; this.ttResults=[]; this.ttSearch=''; } },
     async searchTtStudent(){
       if (!this.ttSearch.trim()) return;
@@ -1270,7 +1433,7 @@ createApp({
       try { this.me = await api('GET','/api/profile'); } catch(e){ this.me = null; }
       try { this.branches = await api('GET','/api/academy/branches'); } catch(e){}
       await this.loadOptions();
-      if (this.me) await this.loadMyProfile();
+      if (this.me) { await this.loadMyProfile(); if (this.isStaff) await this.loadStaffProfile(); }
       this.tab = this.me ? this.tabs[0].key : 'login';
       this.onTab(this.tab);
     },
@@ -1279,11 +1442,13 @@ createApp({
         await api('POST','/api/login', { username:this.loginForm.username, password:this.loginForm.password });
         this.me = await api('GET','/api/profile');
         await this.loadMyProfile();
+        this.onboardingDismissed = false;
+        if (this.isStaff) await this.loadStaffProfile();
         this.notify('로그인되었습니다.');
         this.tab = this.tabs[0].key; this.onTab(this.tab);
       } catch(e){ this.notify(e.message, false); }
     },
-    async logout(){ try { await api('GET','/api/logout'); } catch(e){} this.me=null; this.myProfile=null; this.tab='login'; },
+    async logout(){ try { await api('GET','/api/logout'); } catch(e){} this.me=null; this.myProfile=null; this.staffProfile=null; this.onboardingDismissed=false; this.tab='login'; },
     async submitLead(){
       try {
         const f = this.leadForm;

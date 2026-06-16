@@ -355,6 +355,18 @@ class ReorderOptionSerializer(serializers.Serializer):
     ids = serializers.ListField(child=serializers.IntegerField())
 
 
+class SaveStaffProfileSerializer(serializers.Serializer):
+    address = serializers.CharField(max_length=255)
+    address_detail = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=32)
+    dependents_decided = serializers.BooleanField(required=False, default=False)
+    dependents = serializers.CharField(required=False, allow_blank=True)          # JSON
+    emergency_contacts = serializers.CharField(required=False, allow_blank=True)   # JSON
+    sex_offense_consent = serializers.BooleanField(required=False, default=False)
+    sex_offense_signature = serializers.CharField(required=False, allow_blank=True)
+    sex_offense_date = serializers.DateField(required=False, allow_null=True)
+
+
 # ── 개별 수업 시간표 (12) ──
 
 def _add_minutes(t, minutes):

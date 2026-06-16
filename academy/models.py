@@ -332,6 +332,50 @@ class StudentProfile(models.Model):
         db_table = "academy_student_profile"
 
 
+class StaffProfile(models.Model):
+    """직원 인사 정보(자체 등록). 본사/지점장이 계정만 간략 생성하고, 직원이 첫 로그인 후
+    직접 작성·업로드한다(22 인적사항, 58 문서 정책의 1차 구현형)."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="staff_profile")
+    address = models.CharField(max_length=255, blank=True, default="")          # 주소(필수)
+    address_detail = models.CharField(max_length=255, blank=True, default="")
+    phone = models.CharField(max_length=32, blank=True, default="")             # 연락처(필수)
+    resident_copy = models.CharField(max_length=255, blank=True, default="")     # 등본
+    bankbook_copy = models.CharField(max_length=255, blank=True, default="")     # 통장사본
+    graduation_cert = models.CharField(max_length=255, blank=True, default="")   # 졸업증명서
+    transcript = models.CharField(max_length=255, blank=True, default="")        # 성적증명서
+    # 4대보험 피부양자: 등록 여부 확정 + 목록 [{"name","relation","family_cert"}]
+    dependents_decided = models.BooleanField(default=False)
+    dependents = models.TextField(blank=True, default="")
+    # 비상연락망 [{"name","relation","phone"}]
+    emergency_contacts = models.TextField(blank=True, default="")
+    # 성범죄조회 동의서(추후 양식·출력). 우선 동의/서명만 수집.
+    sex_offense_consent = models.BooleanField(default=False)
+    sex_offense_signature = models.TextField(blank=True, default="")
+    sex_offense_date = models.DateField(null=True, blank=True)
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_staff_profile"
+
+    def is_complete(self):
+        import json as _j
+        try:
+            deps = _j.loads(self.dependents) if self.dependents else []
+        except (ValueError, TypeError):
+            deps = []
+        try:
+            emer = _j.loads(self.emergency_contacts) if self.emergency_contacts else []
+        except (ValueError, TypeError):
+            emer = []
+        deps_ok = self.dependents_decided and all(
+            (d.get("name") and d.get("family_cert")) for d in deps)
+        return bool(self.address and self.phone and self.resident_copy and self.bankbook_copy
+                    and self.graduation_cert and self.transcript and self.sex_offense_consent
+                    and self.sex_offense_signature and deps_ok and len(emer) >= 1)
+
+
 class GuardianStudent(models.Model):
     """학부모(보호자) 계정 ↔ 학생 계정 1:N 매핑(11 §9). 동일 전화번호의 학부모는
     하나의 계정으로 다자녀를 연결한다."""
