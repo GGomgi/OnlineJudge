@@ -11,7 +11,8 @@ from utils.shortcuts import rand_str
 from account.models import User, UserProfile
 from ..models import (AcademyProfile, AcademyRole, Branch, SignupRequest, CourseClass,
                       AttendanceRecord, Lead, OptionItem)
-from ..models import StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROLES
+from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROLES,
+                      HRNotice)
 from ..serializers import (AcademySignupSerializer, BranchSerializer,
                            SignupRequestSerializer, CourseClassSerializer,
                            ClassSessionSerializer, LeadCreateSerializer,
@@ -29,7 +30,7 @@ def _parse_json_list(s):
 
 def _staff_profile_data(p):
     return {
-        "address": p.address, "address_detail": p.address_detail, "phone": p.phone,
+        "zipcode": p.zipcode, "address": p.address, "address_detail": p.address_detail, "phone": p.phone,
         "resident_copy": p.resident_copy, "bankbook_copy": p.bankbook_copy,
         "graduation_cert": p.graduation_cert, "transcript": p.transcript,
         "dependents_decided": p.dependents_decided,
@@ -220,6 +221,9 @@ class StaffProfileAPI(APIView):
             return self.error("직원만 사용할 수 있습니다.")
         data = request.data
         p, _ = StaffProfile.objects.get_or_create(user=request.user)
+        old_deps = p.dependents or ""
+        old_decided = p.dependents_decided
+        p.zipcode = data.get("zipcode", "") or ""
         p.address = data["address"]
         p.address_detail = data.get("address_detail", "") or ""
         p.phone = data["phone"]
@@ -233,7 +237,24 @@ class StaffProfileAPI(APIView):
             p.sex_offense_signature = data["sex_offense_signature"]
             p.sex_offense_date = data.get("sex_offense_date") or now().date()
         p.save()
-        return self.success(_staff_profile_data(p))
+
+        # 4대보험 피부양자 변경 시 관리자에게 통보(쪽지)
+        dependents_changed = (p.dependents or "") != old_deps or p.dependents_decided != old_decided
+        if dependents_changed:
+            prof = getattr(request.user, "academy_profile", None)
+            real_name = ""
+            try:
+                real_name = request.user.userprofile.real_name or ""
+            except Exception:
+                real_name = ""
+            HRNotice.objects.create(
+                staff=request.user, branch=(prof.branch if prof else None),
+                kind="DEPENDENTS",
+                message=f"{real_name or request.user.username} 직원이 4대보험 피부양자 정보를 수정했습니다.")
+
+        result = _staff_profile_data(p)
+        result["dependents_changed"] = dependents_changed
+        return self.success(result)
 
 
 class StaffProfileUploadAPI(APIView):

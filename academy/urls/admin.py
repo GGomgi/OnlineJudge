@@ -1,6 +1,6 @@
 from django.conf.urls import url
 
-from ..views.admin import (AssignRoleAPI, StaffAdminAPI, StaffStatusAPI,
+from ..views.admin import (AssignRoleAPI, StaffAdminAPI, StaffStatusAPI, HRNoticeAdminAPI,
                            OptionAdminAPI, OptionReorderAPI, StudentTimetableAdminAPI, ClassAdminAPI,
                            ClassEnrollmentAdminAPI, TimetableSlotAdminAPI,
                            ClassSessionAdminAPI, GenerateSessionsAPI,
@@ -10,6 +10,7 @@ from ..views.admin import (AssignRoleAPI, StaffAdminAPI, StaffStatusAPI,
 urlpatterns = [
     url(r"^academy/staff/?$", StaffAdminAPI.as_view(), name="academy_staff"),
     url(r"^academy/staff/status/?$", StaffStatusAPI.as_view(), name="academy_staff_status"),
+    url(r"^academy/hr_notices/?$", HRNoticeAdminAPI.as_view(), name="academy_hr_notices"),
     url(r"^academy/options/?$", OptionAdminAPI.as_view(), name="academy_options"),
     url(r"^academy/options/reorder/?$", OptionReorderAPI.as_view(), name="academy_options_reorder"),
     url(r"^academy/student_timetable/?$", StudentTimetableAdminAPI.as_view(), name="academy_student_timetable"),

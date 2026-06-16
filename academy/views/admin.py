@@ -20,7 +20,8 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       SignupRequest, SignupStatus, CourseClass, ClassEnrollment,
                       TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
                       Lead, LeadStatus, CounselingLog, StudentProfile, EnrollmentStatus,
-                      OptionItem, StudentTimetable, LessonType, GuardianStudent)
+                      OptionItem, StudentTimetable, LessonType, GuardianStudent,
+                      StaffProfile, HRNotice)
 from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            SignupRejectSerializer, AssignRoleSerializer,
                            CreateStaffSerializer, StaffStatusSerializer,
@@ -240,11 +241,14 @@ def _staff_brief(profile):
     branch = None
     if profile.branch_id and profile.branch:
         branch = {"id": profile.branch.id, "code": profile.branch.code, "name": profile.branch.name}
+    hr = getattr(u, "staff_profile", None)
+    hr_completed = bool(hr and hr.is_complete())
     return {
         "user_id": u.id, "username": u.username, "real_name": real_name,
         "staff_no": profile.staff_no or u.username,
         "role": profile.role, "role_label": dict(ACADEMY_ROLE_CHOICES).get(profile.role, profile.role),
         "branch": branch, "is_active": not u.is_disabled,
+        "hr_completed": hr_completed,
     }
 
 
@@ -255,7 +259,8 @@ class StaffAdminAPI(APIView):
         all_branch, branch_id, role = staff_scope(request.user)
         if not all_branch and branch_id is None:
             return self.error("No branch scope assigned")
-        qs = AcademyProfile.objects.select_related("user", "branch").filter(role__in=STAFF_ROLES)
+        qs = AcademyProfile.objects.select_related(
+            "user", "user__staff_profile", "branch").filter(role__in=STAFF_ROLES)
         if not all_branch:
             qs = qs.filter(branch_id=branch_id)
         qs = qs.order_by("branch_id", "role", "user__username")
@@ -327,6 +332,37 @@ class StaffStatusAPI(APIView):
         profile.user.is_disabled = not data["is_active"]
         profile.user.save()
         return self.success(_staff_brief(profile))
+
+
+class HRNoticeAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """인사 변경 통보(미읽음) 목록. 지점 스코프."""
+        all_branch, branch_id, role = staff_scope(request.user)
+        qs = HRNotice.objects.select_related("staff", "branch").filter(is_read=False)
+        if not all_branch:
+            if branch_id is None:
+                return self.success([])
+            qs = qs.filter(branch_id=branch_id)
+        out = []
+        for n in qs[:100]:
+            out.append({"id": n.id, "message": n.message, "kind": n.kind,
+                        "branch": n.branch.name if n.branch_id else None,
+                        "create_time": str(n.create_time)[:16]})
+        return self.success(out)
+
+    @admin_role_required
+    def post(self, request):
+        """통보 읽음 처리(id 지정 시 단건, 없으면 스코프 내 전체)."""
+        all_branch, branch_id, role = staff_scope(request.user)
+        qs = HRNotice.objects.filter(is_read=False)
+        if not all_branch:
+            qs = qs.filter(branch_id=branch_id)
+        nid = request.data.get("id")
+        if nid:
+            qs = qs.filter(id=nid)
+        qs.update(is_read=True)
+        return self.success("Read")
 
 
 class ClassAdminAPI(APIView):

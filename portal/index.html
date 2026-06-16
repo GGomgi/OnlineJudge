@@ -56,6 +56,28 @@
     </div>
   </div>
 
+  <!-- 학생 선택 모달(개별 시간표 수업 추가) -->
+  <div v-if="showStudentModal" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-md w-full flex flex-col" style="max-height:80vh;">
+      <div class="px-4 py-3 border-b flex items-center justify-between">
+        <div class="font-bold text-sm">학생 선택 <span class="text-indigo-600">{{ studentModalSel.length }}명</span></div>
+        <button @click="showStudentModal=false" class="text-slate-400 text-xl leading-none">×</button>
+      </div>
+      <div class="p-3 border-b"><input v-model="studentModalFilter" placeholder="이름/아이디로 필터" class="input" /></div>
+      <div class="flex-1 overflow-y-auto px-3 py-1">
+        <label v-for="u in filteredStudentModal" :key="u.id" class="flex items-center gap-2 py-1.5 text-sm border-b cursor-pointer">
+          <input type="checkbox" :checked="studentModalSel.includes(u.id)" @change="toggleModalStudent(u)" class="w-4 h-4" />
+          <span>{{ u.real_name || '-' }} <span class="text-xs text-slate-400">@{{ u.username }}</span></span>
+        </label>
+        <div v-if="filteredStudentModal.length===0" class="text-xs text-slate-400 py-6 text-center">학생이 없습니다.</div>
+      </div>
+      <div class="p-3 border-t flex gap-2">
+        <button @click="showStudentModal=false" class="btn-secondary flex-1 text-sm">취소</button>
+        <button @click="confirmStudentModal" class="btn-primary flex-1 text-sm">{{ studentModalSel.length }}명 선택</button>
+      </div>
+    </div>
+  </div>
+
   <main class="max-w-5xl mx-auto px-4 py-6">
     <!-- 알림 배너 -->
     <div v-if="flash.msg" :class="['mb-4 px-4 py-3 rounded text-sm',
@@ -555,21 +577,14 @@
 
       <!-- 수업 추가 -->
       <div v-if="showTtAdd" class="bg-white rounded-xl shadow-sm p-4 mb-4">
-        <h3 class="font-semibold text-sm mb-2">수업 추가</h3>
-        <template v-if="!ttStudent">
-          <div class="flex gap-2 max-w-md">
-            <input v-model="ttSearch" @keyup.enter="searchTtStudent" placeholder="학생 아이디/이름 검색" class="input" />
-            <button @click="searchTtStudent" class="btn-secondary text-sm whitespace-nowrap">검색</button>
+        <h3 class="font-semibold text-sm mb-2">수업 추가 <span class="text-xs font-normal text-slate-400">(여러 학생에 동시 추가 가능)</span></h3>
+        <div class="space-y-2">
+          <!-- 학생 선택(모달) -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <input @click="openStudentModal" readonly placeholder="여기를 눌러 학생 선택 (전체 목록·필터)" class="input w-72 bg-slate-50 cursor-pointer" />
+            <span v-for="u in ttStudents" :key="u.id" class="text-xs bg-indigo-50 text-indigo-700 rounded px-2 py-1">{{ u.real_name || u.username }} <button @click="removeTtStudent(u)" class="ml-0.5 text-indigo-400 hover:text-indigo-700">×</button></span>
+            <span v-if="ttStudents.length" class="text-xs text-slate-400">{{ ttStudents.length }}명 선택됨</span>
           </div>
-          <ul v-if="ttResults.length" class="mt-2 border rounded divide-y max-w-md">
-            <li v-for="u in ttResults" :key="u.id" class="px-3 py-1.5 text-sm flex justify-between">
-              <span>{{ u.username }}</span>
-              <button @click="selectTtStudent(u)" class="text-xs text-indigo-600 hover:underline">선택</button>
-            </li>
-          </ul>
-        </template>
-        <div v-else class="space-y-2">
-          <div class="text-sm">학생: <b>{{ ttStudent.username }}</b> <button @click="ttStudent=null" class="text-xs text-slate-400 hover:underline ml-1">변경</button></div>
           <div class="flex flex-wrap items-center gap-1.5">
             <select v-model.number="ttForm.weekday" class="input w-14 px-1"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select>
             <select v-model="ttForm.ampm" class="input w-16 px-1"><option value="AM">오전</option><option value="PM">오후</option></select>
@@ -780,6 +795,20 @@
         </div>
         <!-- 직원 목록 -->
         <div class="md:col-span-2">
+          <!-- 인사 변경 통보 -->
+          <div v-if="hrNotices.length" class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+            <div class="flex items-center justify-between mb-1">
+              <div class="text-sm font-semibold text-amber-800">인사 변경 통보 ({{ hrNotices.length }})</div>
+              <button @click="markHrNotice(null)" class="text-xs text-amber-700 hover:underline">모두 읽음</button>
+            </div>
+            <ul class="space-y-1">
+              <li v-for="n in hrNotices" :key="n.id" class="text-xs text-amber-800 flex items-center justify-between gap-2">
+                <span>{{ n.message }} <span class="text-amber-500">· {{ n.create_time }}</span></span>
+                <button @click="markHrNotice(n.id)" class="text-amber-500 hover:text-amber-700 shrink-0">읽음</button>
+              </li>
+            </ul>
+          </div>
+          <div class="mb-2"><input v-model="staffFilter" placeholder="이름·사번·역할·지점 검색" class="input" /></div>
           <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
             <table class="w-full text-sm">
               <thead class="bg-slate-50 text-slate-500 text-xs">
@@ -788,12 +817,13 @@
                   <th class="text-left px-3 py-2">사번</th>
                   <th class="text-left px-3 py-2">역할</th>
                   <th class="text-left px-3 py-2">지점</th>
+                  <th class="text-left px-3 py-2">인사등록</th>
                   <th class="text-left px-3 py-2">상태</th>
                   <th class="px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="s in staff" :key="s.user_id" class="border-t align-middle">
+                <tr v-for="s in filteredStaff" :key="s.user_id" class="border-t align-middle">
                   <td class="px-3 py-2">{{ s.real_name || '-' }}</td>
                   <td class="px-3 py-2 font-mono">{{ s.staff_no }}</td>
                   <td class="px-3 py-2">
@@ -809,6 +839,10 @@
                     <span v-else class="text-xs text-slate-400">전지점</span>
                   </td>
                   <td class="px-3 py-2">
+                    <span v-if="s.hr_completed" class="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">완료</span>
+                    <span v-else class="text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700">미완료</span>
+                  </td>
+                  <td class="px-3 py-2">
                     <span :class="s.is_active ? 'text-emerald-600' : 'text-rose-500'">{{ s.is_active ? '활성' : '비활성' }}</span>
                   </td>
                   <td class="px-3 py-2 text-right whitespace-nowrap">
@@ -816,7 +850,7 @@
                     <button v-if="s.user_id!==me.user.id" @click="toggleStaffActive(s)" class="ml-2 text-xs text-slate-500 hover:underline">{{ s.is_active ? '비활성화' : '활성화' }}</button>
                   </td>
                 </tr>
-                <tr v-if="staff.length===0"><td colspan="6" class="px-3 py-6 text-center text-xs text-slate-400">직원 계정이 없습니다.</td></tr>
+                <tr v-if="filteredStaff.length===0"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">직원 계정이 없습니다.</td></tr>
               </tbody>
             </table>
           </div>
@@ -893,8 +927,13 @@
           <!-- 기본 정보 -->
           <div class="space-y-2">
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">기본 정보</div>
-            <div><label class="lbl">주소 <span class="text-rose-500">*</span></label><input v-model="hrForm.address" class="input" placeholder="주소" /></div>
-            <input v-model="hrForm.address_detail" class="input" placeholder="상세주소 (선택)" />
+            <label class="lbl">주소 <span class="text-rose-500">*</span></label>
+            <div class="flex gap-2">
+              <input :value="hrForm.zipcode" @click="openPostcode('hr')" readonly placeholder="우편번호" class="input w-28 bg-slate-50 cursor-pointer" />
+              <button type="button" @click="openPostcode('hr')" class="btn-secondary text-sm whitespace-nowrap">우편번호 검색</button>
+            </div>
+            <input :value="hrForm.address" @click="openPostcode('hr')" readonly placeholder="도로명/지번 주소 (클릭하여 검색)" class="input bg-slate-50 cursor-pointer" />
+            <input v-model="hrForm.address_detail" ref="hrAddrDetail" class="input" placeholder="상세주소 (선택)" />
             <div><label class="lbl">연락처 <span class="text-rose-500">*</span></label>
               <input :value="hrForm.phone" @input="hrForm.phone = formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
           </div>
@@ -914,6 +953,7 @@
           <!-- 4대보험 피부양자 -->
           <div class="space-y-2">
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">4대보험 피부양자</div>
+            <p class="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">⚠ 피부양자 정보를 변경·저장하면 <b>관리자에게 자동 통보</b>됩니다. (4대보험 신고 반영을 위해 관리자에게 보고 필요)</p>
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" v-model="hrForm.dependents_decided" class="w-4 h-4"> 피부양자 등록 여부를 확인했습니다 (없으면 체크만)</label>
             <div v-for="(d,i) in hrForm.dependents" :key="i" class="flex flex-wrap items-center gap-1.5 bg-slate-50 rounded-lg p-2">
               <input v-model="d.name" placeholder="이름" class="input w-24" />
@@ -1021,9 +1061,11 @@ createApp({
       children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
       showParentLogin: false, parentLogin: { id:'', pw:'' },
       dragIndex: null, dragOverIndex: null,
-      staffProfile: null, onboardingDismissed: false,
-      hrForm: { address:'', address_detail:'', phone:'', dependents_decided:false, dependents:[], emergency_contacts:[], sex_offense_consent:false },
+      staffProfile: null, onboardingDismissed: false, hrNotices: [],
+      hrForm: { zipcode:'', address:'', address_detail:'', phone:'', dependents_decided:false, dependents:[], emergency_contacts:[], sex_offense_consent:false },
       hrSig: { drawing:false, ctx:null, hasInk:false },
+      staffFilter: '',
+      ttStudents: [], showStudentModal: false, studentModalList: [], studentModalFilter: '', studentModalSel: [],
       sig: { drawing:false, ctx:null, hasInk:false },
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
       staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null },
@@ -1066,6 +1108,16 @@ createApp({
       const st = this.convertForm.school_type, w = this.convertForm.weekly_sessions || 1;
       if (st==='ELEMENTARY') return w<=1 ? 90 : 60;
       return w<=1 ? 120 : 90;
+    },
+    filteredStudentModal(){
+      const q = this.studentModalFilter.trim().toLowerCase();
+      if (!q) return this.studentModalList;
+      return this.studentModalList.filter(u=>((u.real_name||'')+' '+u.username).toLowerCase().includes(q));
+    },
+    filteredStaff(){
+      const q = this.staffFilter.trim().toLowerCase();
+      if (!q) return this.staff;
+      return this.staff.filter(s=>((s.real_name||'')+' '+s.staff_no+' '+s.role_label+' '+(s.branch?s.branch.name:'')).toLowerCase().includes(q));
     },
     filteredTt(){
       const f = this.ttFilter;
@@ -1166,7 +1218,7 @@ createApp({
       try {
         const d = await api('GET','/api/academy/staff_profile');
         this.staffProfile = d;
-        if (d) this.hrForm = { address:d.address||'', address_detail:d.address_detail||'', phone:d.phone||'', dependents_decided:!!d.dependents_decided, dependents:(d.dependents||[]).map(x=>({...x})), emergency_contacts:(d.emergency_contacts||[]).map(x=>({...x})), sex_offense_consent:!!d.sex_offense_consent };
+        if (d) this.hrForm = { zipcode:d.zipcode||'', address:d.address||'', address_detail:d.address_detail||'', phone:d.phone||'', dependents_decided:!!d.dependents_decided, dependents:(d.dependents||[]).map(x=>({...x})), emergency_contacts:(d.emergency_contacts||[]).map(x=>({...x})), sex_offense_consent:!!d.sex_offense_consent };
       } catch(e){ this.staffProfile = null; }
     },
     hrFile(field){ return this.staffProfile ? this.staffProfile[field] : ''; },
@@ -1180,7 +1232,7 @@ createApp({
       if (!f.phone.trim()) return this.notify('연락처를 입력하세요.', false);
       try {
         const body = {
-          address:f.address, address_detail:f.address_detail, phone:f.phone,
+          zipcode:f.zipcode, address:f.address, address_detail:f.address_detail, phone:f.phone,
           dependents_decided:f.dependents_decided,
           dependents: JSON.stringify(f.dependents),
           emergency_contacts: JSON.stringify(f.emergency_contacts),
@@ -1188,7 +1240,8 @@ createApp({
         };
         if (this.hrSig.hasInk) { body.sex_offense_signature = this.$refs.hrSig.toDataURL('image/png'); body.sex_offense_date = this.todayStr; }
         this.staffProfile = await api('POST','/api/academy/staff_profile', body);
-        this.notify('인사 정보가 저장되었습니다.' + (this.staffProfile.completed ? ' (등록 완료)' : ''));
+        if (this.staffProfile.dependents_changed) this.notify('저장되었습니다. 4대보험 피부양자 변경 사항은 관리자에게 통보되었습니다.');
+        else this.notify('인사 정보가 저장되었습니다.' + (this.staffProfile.completed ? ' (등록 완료)' : ''));
       } catch(e){ this.notify(e.message, false); }
     },
     async uploadStaffFile(field, ev){
@@ -1290,29 +1343,43 @@ createApp({
     },
     resetTtFilter(){ this.ttFilter = { name:'', weekday:'', from:'', to:'', instructor_id:'', program:'' }; },
     onFilterFrom(){ const f=this.ttFilter; if (f.from && (!f.to || f.to < f.from)) f.to = f.from; },
-    toggleTtAdd(){ this.showTtAdd = !this.showTtAdd; if (!this.showTtAdd){ this.ttStudent=null; this.ttResults=[]; this.ttSearch=''; } },
-    async searchTtStudent(){
-      if (!this.ttSearch.trim()) return;
+    toggleTtAdd(){ this.showTtAdd = !this.showTtAdd; if (!this.showTtAdd){ this.ttStudents=[]; } },
+    async loadAllStudents(){
+      if (this.studentModalList.length) return;
       try {
-        const d = await api('GET','/api/admin/user?paging=true&page=1&limit=8&keyword='+encodeURIComponent(this.ttSearch));
-        this.ttResults = (d.results || d).filter(u=>u.admin_type==='Regular User');
+        const d = await api('GET','/api/admin/user?paging=true&page=1&limit=1000&keyword=');
+        this.studentModalList = (d.results || d).filter(u=>u.admin_type==='Regular User');
       } catch(e){ this.notify(e.message,false); }
     },
-    selectTtStudent(u){
-      this.ttStudent = u; this.ttResults = []; this.ttSearch = '';
-      this.ttForm = { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' };
+    async openStudentModal(){
+      await this.loadAllStudents();
+      this.studentModalSel = this.ttStudents.map(u=>u.id);
+      this.studentModalFilter = '';
+      this.showStudentModal = true;
     },
+    toggleModalStudent(u){
+      const i = this.studentModalSel.indexOf(u.id);
+      if (i>=0) this.studentModalSel.splice(i,1); else this.studentModalSel.push(u.id);
+    },
+    confirmStudentModal(){
+      this.ttStudents = this.studentModalList.filter(u=>this.studentModalSel.includes(u.id));
+      this.showStudentModal = false;
+    },
+    removeTtStudent(u){ this.ttStudents = this.ttStudents.filter(x=>x.id!==u.id); },
     async addTt(){
       const f = this.ttForm;
+      if (this.ttStudents.length===0) return this.notify('학생을 선택하세요. (여러 명 동시 가능)', false);
       if (f.hour===null || f.min===null) return this.notify('시작 시각(오전/오후·시·분)을 선택하세요.', false);
-      try {
-        const body = { student_id:this.ttStudent.id, weekday:f.weekday, start_time:this.to24(f.ampm,f.hour,f.min), duration_minutes:f.duration_minutes, program:f.program, frequency:f.frequency };
-        if (f.instructor_id) body.instructor_id = f.instructor_id;
-        await api('POST','/api/admin/academy/student_timetable', body);
-        this.notify('개별 수업이 추가되었습니다.');
-        this.ttForm = { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' };
-        this.loadAllTt();
-      } catch(e){ this.notify(e.message,false); }
+      let ok=0, fail=0, lastErr='';
+      for (const stu of this.ttStudents){
+        try {
+          const body = { student_id:stu.id, weekday:f.weekday, start_time:this.to24(f.ampm,f.hour,f.min), duration_minutes:f.duration_minutes, program:f.program, frequency:f.frequency };
+          if (f.instructor_id) body.instructor_id = f.instructor_id;
+          await api('POST','/api/admin/academy/student_timetable', body); ok++;
+        } catch(e){ fail++; lastErr = e.message; }
+      }
+      this.notify(ok+'명 추가 완료'+(fail?(' · '+fail+'명 실패('+lastErr+')'):''), fail===0);
+      this.loadAllTt();
     },
     async saveTt(s){
       try {
@@ -1335,6 +1402,14 @@ createApp({
         const d = await api('GET','/api/admin/academy/staff');
         this.staff = (d.results || d).map(s=>({ ...s, _role:s.role, _branch_id: s.branch ? s.branch.id : null }));
       } catch(e){ this.notify(e.message,false); }
+      this.loadHrNotices();
+    },
+    async loadHrNotices(){
+      try { this.hrNotices = await api('GET','/api/admin/academy/hr_notices'); } catch(e){ this.hrNotices = []; }
+    },
+    async markHrNotice(id){
+      try { await api('POST','/api/admin/academy/hr_notices', id ? { id } : {}); this.loadHrNotices(); }
+      catch(e){ this.notify(e.message,false); }
     },
     async createStaff(){
       const f = this.staffForm;
@@ -1534,13 +1609,17 @@ createApp({
       if (name && bd) { const p = bd.split('-'); this.convertForm.login_id = name + p[1] + p[2]; }
     },
     useParentPhone(){ this.convertForm.student_phone = this.convertForm.parent_phone; },
-    openPostcode(){
+    openPostcode(target){
       if (typeof daum === 'undefined' || !daum.Postcode) return this.notify('주소 검색 모듈을 불러오지 못했습니다(인터넷 확인).', false);
       new daum.Postcode({ oncomplete: (data) => {
-        this.convertForm.zipcode = data.zonecode;
-        this.convertForm.address = data.roadAddress || data.jibunAddress;
-        // 선택 후 자동으로 상세주소 입력칸에 포커스
-        this.$nextTick(()=>{ if (this.$refs.addrDetail) this.$refs.addrDetail.focus(); });
+        const zip = data.zonecode, addr = data.roadAddress || data.jibunAddress;
+        if (target === 'hr'){
+          this.hrForm.zipcode = zip; this.hrForm.address = addr;
+          this.$nextTick(()=>{ if (this.$refs.hrAddrDetail) this.$refs.hrAddrDetail.focus(); });
+        } else {
+          this.convertForm.zipcode = zip; this.convertForm.address = addr;
+          this.$nextTick(()=>{ if (this.$refs.addrDetail) this.$refs.addrDetail.focus(); });
+        }
       }}).open();
     },
     sigInit(){

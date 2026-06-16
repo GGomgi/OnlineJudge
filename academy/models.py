@@ -337,6 +337,7 @@ class StaffProfile(models.Model):
     직접 작성·업로드한다(22 인적사항, 58 문서 정책의 1차 구현형)."""
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                 related_name="staff_profile")
+    zipcode = models.CharField(max_length=16, blank=True, default="")
     address = models.CharField(max_length=255, blank=True, default="")          # 주소(필수)
     address_detail = models.CharField(max_length=255, blank=True, default="")
     phone = models.CharField(max_length=32, blank=True, default="")             # 연락처(필수)
@@ -374,6 +375,23 @@ class StaffProfile(models.Model):
         return bool(self.address and self.phone and self.resident_copy and self.bankbook_copy
                     and self.graduation_cert and self.transcript and self.sex_offense_consent
                     and self.sex_offense_signature and deps_ok and len(emer) >= 1)
+
+
+class HRNotice(models.Model):
+    """인사 변경 통보(관리자 쪽지). 직원이 4대보험 피부양자 등 민감 항목을 수정하면
+    소속 지점 관리자(및 본사)에게 통보된다."""
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                              related_name="hr_notices")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="hr_notices")
+    kind = models.CharField(max_length=32, default="DEPENDENTS")
+    message = models.CharField(max_length=255, blank=True, default="")
+    is_read = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_hr_notice"
+        ordering = ["-create_time"]
 
 
 class GuardianStudent(models.Model):

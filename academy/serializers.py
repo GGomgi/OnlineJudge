@@ -356,6 +356,7 @@ class ReorderOptionSerializer(serializers.Serializer):
 
 
 class SaveStaffProfileSerializer(serializers.Serializer):
+    zipcode = serializers.CharField(max_length=16, required=False, allow_blank=True)
     address = serializers.CharField(max_length=255)
     address_detail = serializers.CharField(max_length=255, required=False, allow_blank=True)
     phone = serializers.CharField(max_length=32)
