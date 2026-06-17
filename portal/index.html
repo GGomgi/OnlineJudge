@@ -63,7 +63,10 @@
         <div class="font-bold text-sm">학생 선택 <span class="text-indigo-600">{{ studentModalSel.length }}명</span></div>
         <button @click="showStudentModal=false" class="text-slate-400 text-xl leading-none">×</button>
       </div>
-      <div class="p-3 border-b"><input v-model="studentModalFilter" placeholder="이름/아이디로 필터" class="input" /></div>
+      <div class="p-3 border-b space-y-2">
+        <input v-model="studentModalFilter" placeholder="이름/아이디로 필터" class="input" />
+        <label class="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" v-model="modalUnassignedOnly" class="w-4 h-4"> 시간표 미등록 학생만 보기</label>
+      </div>
       <div class="flex-1 overflow-y-auto px-3 py-1">
         <label v-for="u in filteredStudentModal" :key="u.id" class="flex items-center gap-2 py-1.5 text-sm border-b cursor-pointer">
           <input type="checkbox" :checked="studentModalSel.includes(u.id)" @change="toggleModalStudent(u)" class="w-4 h-4" />
@@ -576,27 +579,42 @@
       <p class="text-xs text-slate-400 mb-3">전체 학생의 개별 수업을 필터로 조회·관리합니다. 입회원 신청서의 요일/시간은 등록 시 자동 생성됩니다.</p>
 
       <!-- 수업 추가 -->
-      <div v-if="showTtAdd" class="bg-white rounded-xl shadow-sm p-4 mb-4">
-        <h3 class="font-semibold text-sm mb-2">수업 추가 <span class="text-xs font-normal text-slate-400">(여러 학생에 동시 추가 가능)</span></h3>
-        <div class="space-y-2">
-          <!-- 학생 선택(모달) -->
-          <div class="flex items-center gap-2 flex-wrap">
-            <input @click="openStudentModal" readonly placeholder="여기를 눌러 학생 선택 (전체 목록·필터)" class="input w-72 bg-slate-50 cursor-pointer" />
-            <span v-for="u in ttStudents" :key="u.id" class="text-xs bg-indigo-50 text-indigo-700 rounded px-2 py-1">{{ u.real_name || u.username }} <button @click="removeTtStudent(u)" class="ml-0.5 text-indigo-400 hover:text-indigo-700">×</button></span>
-            <span v-if="ttStudents.length" class="text-xs text-slate-400">{{ ttStudents.length }}명 선택됨</span>
-          </div>
-          <div class="flex flex-wrap items-center gap-1.5">
-            <select v-model.number="ttForm.weekday" class="input w-14 px-1"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select>
-            <select v-model="ttForm.ampm" class="input w-16 px-1"><option value="AM">오전</option><option value="PM">오후</option></select>
-            <select v-model.number="ttForm.hour" class="input w-14 px-1"><option :value="null" disabled>시</option><option v-for="h in hours12" :key="h" :value="h">{{ h }}시</option></select>
-            <select v-model.number="ttForm.min" class="input w-16 px-1"><option :value="null" disabled>분</option><option v-for="m in minutes" :key="m" :value="m">{{ String(m).padStart(2,'0') }}분</option></select>
-            <select v-model.number="ttForm.duration_minutes" class="input w-20 px-1"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select>
-            <select v-model="ttForm.program" class="input w-28 px-1"><option value="">과정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
-            <select v-model.number="ttForm.instructor_id" class="input w-24 px-1"><option :value="null">강사</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select>
-            <select v-model="ttForm.frequency" class="input w-16 px-1"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select>
-            <button @click="addTt" class="btn-primary text-sm">추가</button>
-          </div>
+      <div v-if="showTtAdd" class="bg-white rounded-xl shadow-sm p-4 mb-4 overflow-x-auto">
+        <h3 class="font-semibold text-sm mb-2">수업 추가 <span class="text-xs font-normal text-slate-400">(학생별 개별 입력 · 동시 추가)</span></h3>
+        <div class="mb-2">
+          <input @click="openStudentModal" readonly placeholder="여기를 눌러 학생 선택 (전체 목록·필터)" class="input w-72 bg-slate-50 cursor-pointer" />
         </div>
+        <table v-if="ttAddRows.length" class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs">
+            <tr>
+              <th class="px-2 py-2 text-left">학생</th>
+              <th class="px-2 py-2 text-left">요일</th>
+              <th class="px-2 py-2 text-left">시작</th>
+              <th class="px-2 py-2 text-left">길이</th>
+              <th class="px-2 py-2 text-left">과정</th>
+              <th class="px-2 py-2 text-left">담당 강사</th>
+              <th class="px-2 py-2 text-left">반복</th>
+              <th class="px-2 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(r,i) in ttAddRows" :key="r.student.id" class="border-t align-middle">
+              <td class="px-2 py-2 whitespace-nowrap">{{ r.student.real_name || r.student.username }}</td>
+              <td class="px-2 py-2"><select v-model.number="r.weekday" class="input py-1 w-16 px-2"><option v-for="(d,di) in days" :key="di" :value="di">{{ d }}</option></select></td>
+              <td class="px-2 py-2"><input v-model="r.start_time" type="time" class="input py-1 w-28" /></td>
+              <td class="px-2 py-2"><select v-model.number="r.duration_minutes" class="input py-1 w-24 px-2"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
+              <td class="px-2 py-2"><select v-model="r.program" class="input py-1 w-32 px-2"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></td>
+              <td class="px-2 py-2"><select v-model.number="r.instructor_id" class="input py-1 w-28 px-2"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></td>
+              <td class="px-2 py-2"><select v-model="r.frequency" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
+              <td class="px-2 py-2 text-right whitespace-nowrap">
+                <button v-if="i>0" @click="copyFromAbove(i)" class="text-xs text-indigo-600 hover:underline">위내용복사</button>
+                <button @click="removeAddRow(i)" class="ml-2 text-xs text-rose-400 hover:underline">삭제</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="ttAddRows.length" class="mt-3"><button @click="addAllTt" class="btn-primary text-sm">{{ ttAddRows.length }}명 추가</button></div>
+        <p v-else class="text-xs text-slate-400">학생을 선택하면 학생별 입력 행이 나타납니다.</p>
       </div>
 
       <!-- 필터 -->
@@ -813,12 +831,12 @@
             <table class="w-full text-sm">
               <thead class="bg-slate-50 text-slate-500 text-xs">
                 <tr>
-                  <th class="text-left px-3 py-2">이름</th>
-                  <th class="text-left px-3 py-2">사번</th>
-                  <th class="text-left px-3 py-2">역할</th>
-                  <th class="text-left px-3 py-2">지점</th>
-                  <th class="text-left px-3 py-2">인사등록</th>
-                  <th class="text-left px-3 py-2">상태</th>
+                  <th @click="sortStaff('real_name')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">이름{{ sortArrow('real_name') }}</th>
+                  <th @click="sortStaff('staff_no')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">사번{{ sortArrow('staff_no') }}</th>
+                  <th @click="sortStaff('role_label')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">역할{{ sortArrow('role_label') }}</th>
+                  <th @click="sortStaff('branch')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">지점{{ sortArrow('branch') }}</th>
+                  <th @click="sortStaff('hr_completed')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">인사등록{{ sortArrow('hr_completed') }}</th>
+                  <th @click="sortStaff('is_active')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">상태{{ sortArrow('is_active') }}</th>
                   <th class="px-3 py-2"></th>
                 </tr>
               </thead>
@@ -1064,8 +1082,8 @@ createApp({
       staffProfile: null, onboardingDismissed: false, hrNotices: [],
       hrForm: { zipcode:'', address:'', address_detail:'', phone:'', dependents_decided:false, dependents:[], emergency_contacts:[], sex_offense_consent:false },
       hrSig: { drawing:false, ctx:null, hasInk:false },
-      staffFilter: '',
-      ttStudents: [], showStudentModal: false, studentModalList: [], studentModalFilter: '', studentModalSel: [],
+      staffFilter: '', staffSort: { key:'', dir:1 },
+      ttStudents: [], ttAddRows: [], showStudentModal: false, studentModalList: [], studentModalFilter: '', studentModalSel: [], modalUnassignedOnly: false,
       sig: { drawing:false, ctx:null, hasInk:false },
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
       staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null },
@@ -1109,15 +1127,33 @@ createApp({
       if (st==='ELEMENTARY') return w<=1 ? 90 : 60;
       return w<=1 ? 120 : 90;
     },
+    assignedStudentIds(){ return new Set(this.ttAll.map(s=>s.student.id)); },
     filteredStudentModal(){
       const q = this.studentModalFilter.trim().toLowerCase();
-      if (!q) return this.studentModalList;
-      return this.studentModalList.filter(u=>((u.real_name||'')+' '+u.username).toLowerCase().includes(q));
+      let list = this.studentModalList;
+      if (this.modalUnassignedOnly){ const a=this.assignedStudentIds; list = list.filter(u=>!a.has(u.id)); }
+      if (q) list = list.filter(u=>((u.real_name||'')+' '+u.username).toLowerCase().includes(q));
+      return list;
     },
     filteredStaff(){
       const q = this.staffFilter.trim().toLowerCase();
-      if (!q) return this.staff;
-      return this.staff.filter(s=>((s.real_name||'')+' '+s.staff_no+' '+s.role_label+' '+(s.branch?s.branch.name:'')).toLowerCase().includes(q));
+      let list = this.staff;
+      if (q) list = list.filter(s=>((s.real_name||'')+' '+s.staff_no+' '+s.role_label+' '+(s.branch?s.branch.name:'')).toLowerCase().includes(q));
+      const k = this.staffSort.key;
+      if (k){
+        const dir = this.staffSort.dir;
+        const val = (s)=>{
+          if (k==='real_name') return s.real_name||'';
+          if (k==='staff_no') return s.staff_no||'';
+          if (k==='role_label') return s.role_label||'';
+          if (k==='branch') return s.branch?s.branch.name:'';
+          if (k==='hr_completed') return s.hr_completed?1:0;
+          if (k==='is_active') return s.is_active?1:0;
+          return '';
+        };
+        list = list.slice().sort((a,b)=>{ const x=val(a),y=val(b); if(x<y)return -1*dir; if(x>y)return 1*dir; return 0; });
+      }
+      return list;
     },
     filteredTt(){
       const f = this.ttFilter;
@@ -1343,7 +1379,7 @@ createApp({
     },
     resetTtFilter(){ this.ttFilter = { name:'', weekday:'', from:'', to:'', instructor_id:'', program:'' }; },
     onFilterFrom(){ const f=this.ttFilter; if (f.from && (!f.to || f.to < f.from)) f.to = f.from; },
-    toggleTtAdd(){ this.showTtAdd = !this.showTtAdd; if (!this.showTtAdd){ this.ttStudents=[]; } },
+    toggleTtAdd(){ this.showTtAdd = !this.showTtAdd; if (!this.showTtAdd){ this.ttStudents=[]; this.ttAddRows=[]; } },
     async loadAllStudents(){
       if (this.studentModalList.length) return;
       try {
@@ -1363,24 +1399,34 @@ createApp({
     },
     confirmStudentModal(){
       this.ttStudents = this.studentModalList.filter(u=>this.studentModalSel.includes(u.id));
+      // 학생별 개별 시간표 행 구성(기존 입력은 유지)
+      const prev = {}; this.ttAddRows.forEach(r=>{ prev[r.student.id]=r; });
+      this.ttAddRows = this.ttStudents.map(s=> prev[s.id] || ({ student:s, weekday:0, start_time:'', duration_minutes:60, program:'', instructor_id:null, frequency:'WEEKLY' }));
       this.showStudentModal = false;
     },
-    removeTtStudent(u){ this.ttStudents = this.ttStudents.filter(x=>x.id!==u.id); },
-    async addTt(){
-      const f = this.ttForm;
-      if (this.ttStudents.length===0) return this.notify('학생을 선택하세요. (여러 명 동시 가능)', false);
-      if (f.hour===null || f.min===null) return this.notify('시작 시각(오전/오후·시·분)을 선택하세요.', false);
+    removeTtStudent(u){ this.ttStudents = this.ttStudents.filter(x=>x.id!==u.id); this.ttAddRows = this.ttAddRows.filter(r=>r.student.id!==u.id); },
+    removeAddRow(i){ const id=this.ttAddRows[i].student.id; this.ttAddRows.splice(i,1); this.ttStudents=this.ttStudents.filter(x=>x.id!==id); },
+    copyFromAbove(i){ if (i<=0) return; const a=this.ttAddRows[i-1], r=this.ttAddRows[i]; r.weekday=a.weekday; r.start_time=a.start_time; r.duration_minutes=a.duration_minutes; r.program=a.program; r.instructor_id=a.instructor_id; r.frequency=a.frequency; },
+    async addAllTt(){
+      if (this.ttAddRows.length===0) return this.notify('학생을 선택하세요. (여러 명 동시 가능)', false);
+      if (this.ttAddRows.some(r=>!r.start_time)) return this.notify('모든 학생의 시작 시각을 입력하세요.', false);
       let ok=0, fail=0, lastErr='';
-      for (const stu of this.ttStudents){
+      for (const r of this.ttAddRows){
         try {
-          const body = { student_id:stu.id, weekday:f.weekday, start_time:this.to24(f.ampm,f.hour,f.min), duration_minutes:f.duration_minutes, program:f.program, frequency:f.frequency };
-          if (f.instructor_id) body.instructor_id = f.instructor_id;
+          const body = { student_id:r.student.id, weekday:r.weekday, start_time:r.start_time, duration_minutes:r.duration_minutes, program:r.program, frequency:r.frequency };
+          if (r.instructor_id) body.instructor_id = r.instructor_id;
           await api('POST','/api/admin/academy/student_timetable', body); ok++;
         } catch(e){ fail++; lastErr = e.message; }
       }
-      this.notify(ok+'명 추가 완료'+(fail?(' · '+fail+'명 실패('+lastErr+')'):''), fail===0);
+      this.notify(ok+'건 추가 완료'+(fail?(' · '+fail+'건 실패('+lastErr+')'):''), fail===0);
+      if (fail===0){ this.ttStudents=[]; this.ttAddRows=[]; }
       this.loadAllTt();
     },
+    sortStaff(key){
+      if (this.staffSort.key===key) this.staffSort.dir = -this.staffSort.dir;
+      else this.staffSort = { key, dir:1 };
+    },
+    sortArrow(key){ if (this.staffSort.key!==key) return ''; return this.staffSort.dir>0 ? ' ▲' : ' ▼'; },
     async saveTt(s){
       try {
         await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, frequency:s.frequency });
