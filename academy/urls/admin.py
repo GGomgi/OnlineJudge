@@ -1,7 +1,8 @@
 from django.conf.urls import url
 
 from ..views.admin import (AssignRoleAPI, StaffAdminAPI, StaffStatusAPI, HRNoticeAdminAPI,
-                           OptionAdminAPI, OptionReorderAPI, StudentTimetableAdminAPI, ClassAdminAPI,
+                           OptionAdminAPI, OptionReorderAPI, StudentTimetableAdminAPI,
+                           StudentListAdminAPI, StudentWeeklyAdminAPI, ClassAdminAPI,
                            ClassEnrollmentAdminAPI, TimetableSlotAdminAPI,
                            ClassSessionAdminAPI, GenerateSessionsAPI,
                            AttendanceAdminAPI, LeadAdminAPI, CounselingNoteAdminAPI,
@@ -14,6 +15,8 @@ urlpatterns = [
     url(r"^academy/options/?$", OptionAdminAPI.as_view(), name="academy_options"),
     url(r"^academy/options/reorder/?$", OptionReorderAPI.as_view(), name="academy_options_reorder"),
     url(r"^academy/student_timetable/?$", StudentTimetableAdminAPI.as_view(), name="academy_student_timetable"),
+    url(r"^academy/students/?$", StudentListAdminAPI.as_view(), name="academy_students"),
+    url(r"^academy/student_weekly/?$", StudentWeeklyAdminAPI.as_view(), name="academy_student_weekly"),
     url(r"^academy/lead/?$", LeadAdminAPI.as_view(), name="academy_lead"),
     url(r"^academy/lead/note/?$", CounselingNoteAdminAPI.as_view(), name="academy_lead_note"),
     url(r"^academy/lead/convert/?$", ConvertLeadAdminAPI.as_view(), name="academy_lead_convert"),

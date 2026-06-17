@@ -1,6 +1,7 @@
 from datetime import timedelta, datetime, date as date_cls
 
 from django.utils.timezone import now
+from django.db.models import Count
 
 
 def _to_date(v):
@@ -870,6 +871,55 @@ class OptionReorderAPI(APIView):
             OptionItem.objects.filter(id=oid, category=data["category"]).update(order=idx)
         qs = OptionItem.objects.filter(category=data["category"])
         return self.success(OptionItemSerializer(qs, many=True).data)
+
+
+class StudentListAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """학생(STUDENT 역할) 목록. 학부모/직원 제외. 주 횟수·현재 시간표 슬롯 수 포함."""
+        all_branch, branch_id, role = staff_scope(request.user)
+        qs = AcademyProfile.objects.select_related("user", "user__student_profile").filter(
+            role=AcademyRole.STUDENT)
+        if not all_branch:
+            if branch_id is None:
+                return self.error("No branch scope assigned")
+            qs = qs.filter(branch_id=branch_id)
+        counts = dict(StudentTimetable.objects.exclude(status="ENDED")
+                      .values("student_id").annotate(c=Count("id"))
+                      .values_list("student_id", "c"))
+        out = []
+        for p in qs:
+            u = p.user
+            real_name = ""
+            try:
+                real_name = u.userprofile.real_name or ""
+            except Exception:
+                real_name = ""
+            sp = getattr(u, "student_profile", None)
+            out.append({"id": u.id, "username": u.username, "real_name": real_name,
+                        "weekly_sessions": (sp.weekly_sessions if sp else None),
+                        "slot_count": counts.get(u.id, 0)})
+        return self.success(out)
+
+
+class StudentWeeklyAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """학생 등록 정보의 주 교육 회수를 수정(시간표 수에 맞춤)."""
+        sid = request.data.get("student_id")
+        ws = request.data.get("weekly_sessions")
+        prof = AcademyProfile.objects.filter(user_id=sid).first()
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        sp = StudentProfile.objects.filter(user_id=sid).first()
+        if not sp:
+            return self.error("학생 등록 정보가 없습니다.")
+        try:
+            sp.weekly_sessions = int(ws)
+        except (TypeError, ValueError):
+            return self.error("주 횟수 값이 올바르지 않습니다.")
+        sp.save(update_fields=["weekly_sessions"])
+        return self.success({"student_id": sid, "weekly_sessions": sp.weekly_sessions})
 
 
 class StudentTimetableAdminAPI(APIView):

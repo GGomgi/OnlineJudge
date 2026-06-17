@@ -618,7 +618,9 @@
       </div>
 
       <!-- 필터 -->
-      <div class="bg-white rounded-xl shadow-sm p-3 mb-3 flex flex-wrap items-end gap-2">
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-3">
+        <div class="text-xs font-semibold text-slate-500 mb-2">🔍 검색 / 필터 <span class="font-normal text-slate-400">(아래는 등록된 시간표 조회용입니다)</span></div>
+        <div class="flex flex-wrap items-end gap-2">
         <div><label class="lbl">학생</label><input v-model="ttFilter.name" placeholder="이름/아이디" class="input w-28" /></div>
         <div><label class="lbl">요일</label><select v-model="ttFilter.weekday" class="input w-20"><option value="">전체</option><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
         <div><label class="lbl">시작 이상</label><input v-model="ttFilter.from" @change="onFilterFrom" type="time" class="input w-28" /></div>
@@ -627,9 +629,11 @@
         <div><label class="lbl">과정</label><select v-model="ttFilter.program" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
         <button @click="resetTtFilter" class="btn-secondary text-xs">초기화</button>
         <span class="text-xs text-slate-400 ml-auto self-center">{{ filteredTt.length }}건</span>
+        </div>
       </div>
 
       <!-- 목록 -->
+      <div class="text-xs font-semibold text-slate-500 mb-2">📋 등록된 개별 수업 목록 <span class="font-normal text-slate-400">(행에서 바로 수정·삭제)</span></div>
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
@@ -1127,11 +1131,10 @@ createApp({
       if (st==='ELEMENTARY') return w<=1 ? 90 : 60;
       return w<=1 ? 120 : 90;
     },
-    assignedStudentIds(){ return new Set(this.ttAll.map(s=>s.student.id)); },
     filteredStudentModal(){
       const q = this.studentModalFilter.trim().toLowerCase();
       let list = this.studentModalList;
-      if (this.modalUnassignedOnly){ const a=this.assignedStudentIds; list = list.filter(u=>!a.has(u.id)); }
+      if (this.modalUnassignedOnly) list = list.filter(u=>(u.slot_count||0)===0);
       if (q) list = list.filter(u=>((u.real_name||'')+' '+u.username).toLowerCase().includes(q));
       return list;
     },
@@ -1381,11 +1384,8 @@ createApp({
     onFilterFrom(){ const f=this.ttFilter; if (f.from && (!f.to || f.to < f.from)) f.to = f.from; },
     toggleTtAdd(){ this.showTtAdd = !this.showTtAdd; if (!this.showTtAdd){ this.ttStudents=[]; this.ttAddRows=[]; } },
     async loadAllStudents(){
-      if (this.studentModalList.length) return;
-      try {
-        const d = await api('GET','/api/admin/user?paging=true&page=1&limit=1000&keyword=');
-        this.studentModalList = (d.results || d).filter(u=>u.admin_type==='Regular User');
-      } catch(e){ this.notify(e.message,false); }
+      try { this.studentModalList = await api('GET','/api/admin/academy/students'); }
+      catch(e){ this.notify(e.message,false); }
     },
     async openStudentModal(){
       await this.loadAllStudents();
@@ -1419,14 +1419,29 @@ createApp({
         } catch(e){ fail++; lastErr = e.message; }
       }
       this.notify(ok+'건 추가 완료'+(fail?(' · '+fail+'건 실패('+lastErr+')'):''), fail===0);
+      const ids = this.ttAddRows.map(r=>r.student.id);
       if (fail===0){ this.ttStudents=[]; this.ttAddRows=[]; }
-      this.loadAllTt();
+      await this.loadAllTt();
+      await this.checkWeeklyMismatch(ids);
+    },
+    async checkWeeklyMismatch(ids){
+      let list;
+      try { list = await api('GET','/api/admin/academy/students'); } catch(e){ return; }
+      const affected = list.filter(s=> ids.includes(s.id) && s.weekly_sessions!=null && s.weekly_sessions !== s.slot_count);
+      if (!affected.length) return;
+      const lines = affected.map(s=> '· '+(s.real_name||s.username)+': 등록 주 '+s.weekly_sessions+'회 / 시간표 '+s.slot_count+'개').join('\n');
+      const msg = '등록된 주 횟수와 시간표 수가 맞지 않습니다.\n기존 정보를 수정하거나 삭제하셔야 합니다.\n\n'+lines+'\n\n주 횟수가 변경되었다면, 학생 등록 정보의 주 횟수를 실제 시간표 수로 수정하시겠습니까?';
+      if (window.confirm(msg)){
+        let n=0;
+        for (const s of affected){ try { await api('POST','/api/admin/academy/student_weekly', { student_id:s.id, weekly_sessions:s.slot_count }); n++; } catch(e){} }
+        this.notify(n+'명의 주 횟수를 시간표 수에 맞게 수정했습니다.');
+      }
     },
     sortStaff(key){
       if (this.staffSort.key===key) this.staffSort.dir = -this.staffSort.dir;
       else this.staffSort = { key, dir:1 };
     },
-    sortArrow(key){ if (this.staffSort.key!==key) return ''; return this.staffSort.dir>0 ? ' ▲' : ' ▼'; },
+    sortArrow(key){ if (this.staffSort.key!==key) return ' ↕'; return this.staffSort.dir>0 ? ' ▲' : ' ▼'; },
     async saveTt(s){
       try {
         await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, frequency:s.frequency });
