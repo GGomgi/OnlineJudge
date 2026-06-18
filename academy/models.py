@@ -511,6 +511,22 @@ class StudentTimetable(models.Model):
         ordering = ["weekday", "start_time"]
 
 
+class TimetableChange(models.Model):
+    """개별 시간표 변경 이력(언제·누가·무슨 이유). 생성/수정/삭제 기록."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="timetable_changes")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    action = models.CharField(max_length=16)  # CREATE/UPDATE/DELETE
+    reason = models.CharField(max_length=255, blank=True, default="")
+    detail = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_timetable_change"
+        ordering = ["-create_time"]
+
+
 class OptionItem(models.Model):
     """포털 선택 목록(드롭다운) 항목. 관리자가 수정·추가·삭제한다.
     `value` 는 레코드에 저장되는 코드, `label` 은 화면 표시명.

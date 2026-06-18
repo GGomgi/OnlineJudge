@@ -22,7 +22,9 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
                       Lead, LeadStatus, CounselingLog, StudentProfile, EnrollmentStatus,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
-                      StaffProfile, HRNotice, StaffDocument, StaffProfileHistory)
+                      StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
+                      TimetableChange)
+_WD = ["월", "화", "수", "목", "금", "토", "일"]
 import os as _os
 from django.conf import settings as _settings
 from utils.shortcuts import rand_str as _rand_str
@@ -1122,17 +1124,27 @@ class StudentTimetableAdminAPI(APIView):
             frequency=data.get("frequency") or "WEEKLY",
             room=data.get("room", "") or "")
         slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=slot.pk)
+        TimetableChange.objects.create(
+            student=student, actor=request.user, action="CREATE",
+            reason=data.get("reason", "") or "신규 등록",
+            detail=f"{_WD[slot.weekday]} {str(slot.start_time)[:5]} {slot.subject or ''}".strip())
         return self.success(StudentTimetableSerializer(slot).data)
 
     @validate_serializer(EditStudentTimetableSerializer)
     @admin_role_required
     def put(self, request):
         data = request.data
-        slot = StudentTimetable.objects.select_related("branch").filter(id=data["id"]).first()
+        slot = StudentTimetable.objects.select_related("branch", "student").filter(id=data["id"]).first()
         if not slot:
             return self.error("Timetable does not exist")
         if not self._branch_ok(request, slot.branch_id):
             return self.error("No permission for this branch")
+        reason = (data.get("reason") or "").strip()
+        if not reason:
+            return self.error("변경 이유를 입력하세요.")
+        before = {"weekday": slot.weekday, "start_time": str(slot.start_time)[:5],
+                  "duration_minutes": slot.duration_minutes, "program": slot.program,
+                  "frequency": slot.frequency, "instructor_id": slot.instructor_id}
         for f in ("weekday", "start_time", "duration_minutes", "subject", "room", "status", "frequency"):
             if f in data:
                 setattr(slot, f, data[f])
@@ -1142,15 +1154,53 @@ class StudentTimetableAdminAPI(APIView):
         if "instructor_id" in data:
             slot.instructor = User.objects.filter(id=data["instructor_id"]).first() if data["instructor_id"] else None
         slot.save()
+        # 변경 항목 요약
+        labels = {"weekday": "요일", "start_time": "시각", "duration_minutes": "수업길이",
+                  "program": "과정", "frequency": "반복", "instructor_id": "강사"}
+        after = {"weekday": slot.weekday, "start_time": str(slot.start_time)[:5],
+                 "duration_minutes": slot.duration_minutes, "program": slot.program,
+                 "frequency": slot.frequency, "instructor_id": slot.instructor_id}
+        changed = [labels[k] for k in labels if before.get(k) != after.get(k)]
+        TimetableChange.objects.create(
+            student=slot.student, actor=request.user, action="UPDATE", reason=reason,
+            detail=(", ".join(changed) + " 수정") if changed else "수정")
         slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=slot.pk)
         return self.success(StudentTimetableSerializer(slot).data)
 
     @admin_role_required
     def delete(self, request):
-        slot = StudentTimetable.objects.select_related("branch").filter(id=request.GET.get("id")).first()
+        slot = StudentTimetable.objects.select_related("branch", "student").filter(id=request.GET.get("id")).first()
         if not slot:
             return self.error("Timetable does not exist")
         if not self._branch_ok(request, slot.branch_id):
             return self.error("No permission for this branch")
+        reason = (request.GET.get("reason") or "").strip()
+        if not reason:
+            return self.error("삭제 이유를 입력하세요.")
+        TimetableChange.objects.create(
+            student=slot.student, actor=request.user, action="DELETE", reason=reason,
+            detail=f"{_WD[slot.weekday]} {str(slot.start_time)[:5]} {slot.subject or ''} 삭제".strip())
         slot.delete()
         return self.success("Deleted")
+
+
+class TimetableChangeAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """학생 시간표 변경 이력. student_id."""
+        sid = request.GET.get("student_id")
+        prof = AcademyProfile.objects.filter(user_id=sid).first()
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        out = []
+        ACT = {"CREATE": "등록", "UPDATE": "수정", "DELETE": "삭제"}
+        for c in TimetableChange.objects.filter(student_id=sid).select_related("actor")[:200]:
+            an = ""
+            if c.actor_id:
+                try:
+                    an = c.actor.userprofile.real_name or c.actor.username
+                except Exception:
+                    an = c.actor.username
+            out.append({"action": ACT.get(c.action, c.action), "reason": c.reason,
+                        "detail": c.detail, "actor": an, "time": str(c.create_time)[:16]})
+        return self.success(out)

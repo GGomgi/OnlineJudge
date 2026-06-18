@@ -426,6 +426,7 @@ class CreateStudentTimetableSerializer(serializers.Serializer):
     frequency = serializers.ChoiceField(choices=["WEEKLY", "BIWEEKLY"], required=False)
     room = serializers.CharField(max_length=64, required=False, allow_blank=True)
     class_type = serializers.ChoiceField(choices=[LessonType.PRIVATE, LessonType.GROUP], required=False)
+    reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
 
 class EditStudentTimetableSerializer(serializers.Serializer):
@@ -439,3 +440,4 @@ class EditStudentTimetableSerializer(serializers.Serializer):
     frequency = serializers.ChoiceField(choices=["WEEKLY", "BIWEEKLY"], required=False)
     room = serializers.CharField(max_length=64, required=False, allow_blank=True)
     status = serializers.ChoiceField(choices=["ACTIVE", "PAUSED", "ENDED"], required=False)
+    reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
