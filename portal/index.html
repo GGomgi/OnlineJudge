@@ -93,7 +93,10 @@
       <h2 class="text-lg font-bold mb-4">로그인</h2>
       <form @submit.prevent="login" class="space-y-3">
         <input v-model="loginForm.username" placeholder="아이디" class="input" autocomplete="username" />
-        <input v-model="loginForm.password" type="password" placeholder="비밀번호" class="input" autocomplete="current-password" />
+        <div class="relative">
+          <input v-model="loginForm.password" :type="showPw ? 'text' : 'password'" placeholder="비밀번호" class="input pr-10" autocomplete="current-password" />
+          <button type="button" @click="showPw = !showPw" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm" :title="showPw ? '숨기기' : '보기'">{{ showPw ? '🙈' : '👁' }}</button>
+        </div>
         <button class="btn-primary w-full">로그인</button>
       </form>
       <p class="text-xs text-slate-400 mt-4">계정이 없으면 상단 <b>가입 신청</b> 탭에서 신청하세요. (관리자 승인 후 이용 가능)</p>
@@ -117,7 +120,7 @@
       <form @submit.prevent="submitLead" class="space-y-3">
         <div>
           <label class="lbl">지점</label>
-          <select v-model="leadForm.branch_id" class="input">
+          <select v-model="leadForm.branch_id" @change="saveLeadBranch" class="input">
             <option :value="null" disabled>지점 선택</option>
             <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
           </select>
@@ -1070,7 +1073,7 @@ createApp({
       flash: { msg:'', ok:true },
       days: ['월','화','수','목','금','토','일'],
       attStatuses: ['PRESENT','LATE','ABSENT','EARLY_LEAVE','EXCUSED'],
-      loginForm: { username:'', password:'' },
+      loginForm: { username:'', password:'' }, showPw: false,
       leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' },
       myClasses: [], myInd: [], myAtt: [],
       leadFilter: '', leads: [], openLeadId: null, noteText: '',
@@ -1196,8 +1199,8 @@ createApp({
       if (this.isStaff){
         const t = [ {key:'leadmgr',label:'상담·등록'}, {key:'indtt',label:'개별 시간표'}, {key:'classes',label:'그룹·특강'} ];
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
+        t.push({key:'hr',label:'인사 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ●' : '')});
         if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
-        t.push({key:'hr',label:'인사 정보'});
         t.push({key:'me',label:'내 정보'});
         return t;
       }
@@ -1569,6 +1572,7 @@ createApp({
       try { this.me = await api('GET','/api/profile'); } catch(e){ this.me = null; }
       try { this.branches = await api('GET','/api/academy/branches'); } catch(e){}
       await this.loadOptions();
+      this.leadForm.branch_id = this.savedLeadBranch();
       if (this.me) { await this.loadMyProfile(); if (this.isStaff) await this.loadStaffProfile(); }
       this.tab = this.me ? this.tabs[0].key : 'login';
       this.onTab(this.tab);
@@ -1585,6 +1589,8 @@ createApp({
       } catch(e){ this.notify(e.message, false); }
     },
     async logout(){ try { await api('GET','/api/logout'); } catch(e){} this.me=null; this.myProfile=null; this.staffProfile=null; this.onboardingDismissed=false; this.tab='login'; },
+    savedLeadBranch(){ const v = Number(localStorage.getItem('dc_lead_branch')); return v || null; },
+    saveLeadBranch(){ if (this.leadForm.branch_id) localStorage.setItem('dc_lead_branch', String(this.leadForm.branch_id)); },
     async submitLead(){
       try {
         const f = this.leadForm;
@@ -1594,7 +1600,7 @@ createApp({
         if (this.optAllowCustom('counseling_purpose', f.purpose) && !(f.purpose_detail||'').trim()) return this.notify('상담 목적을 직접 입력해주세요.', false);
         await api('POST','/api/academy/lead', f);
         this.notify('상담 신청이 접수되었습니다.');
-        this.leadForm = { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
+        this.leadForm = { branch_id:this.savedLeadBranch(), parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
         if (this.showLeadForm) { this.showLeadForm = false; this.loadLeads(); }
       } catch(e){ this.notify(e.message, false); }
     },
