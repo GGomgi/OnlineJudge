@@ -1,6 +1,8 @@
 from django.conf.urls import url
 
 from ..views.admin import (AssignRoleAPI, StaffAdminAPI, StaffStatusAPI, HRNoticeAdminAPI,
+                           StaffDetailAdminAPI, StaffDocUploadAdminAPI, StaffDocAdminAPI,
+                           StaffDocReorderAdminAPI,
                            OptionAdminAPI, OptionReorderAPI, StudentTimetableAdminAPI,
                            StudentListAdminAPI, StudentWeeklyAdminAPI, ClassAdminAPI,
                            ClassEnrollmentAdminAPI, TimetableSlotAdminAPI,
@@ -12,6 +14,10 @@ urlpatterns = [
     url(r"^academy/staff/?$", StaffAdminAPI.as_view(), name="academy_staff"),
     url(r"^academy/staff/status/?$", StaffStatusAPI.as_view(), name="academy_staff_status"),
     url(r"^academy/hr_notices/?$", HRNoticeAdminAPI.as_view(), name="academy_hr_notices"),
+    url(r"^academy/staff_detail/?$", StaffDetailAdminAPI.as_view(), name="academy_staff_detail"),
+    url(r"^academy/staff_doc/upload/?$", StaffDocUploadAdminAPI.as_view(), name="academy_staff_doc_upload"),
+    url(r"^academy/staff_doc/reorder/?$", StaffDocReorderAdminAPI.as_view(), name="academy_staff_doc_reorder"),
+    url(r"^academy/staff_doc/?$", StaffDocAdminAPI.as_view(), name="academy_staff_doc"),
     url(r"^academy/options/?$", OptionAdminAPI.as_view(), name="academy_options"),
     url(r"^academy/options/reorder/?$", OptionReorderAPI.as_view(), name="academy_options_reorder"),
     url(r"^academy/student_timetable/?$", StudentTimetableAdminAPI.as_view(), name="academy_student_timetable"),

@@ -849,8 +849,8 @@
               </thead>
               <tbody>
                 <tr v-for="s in filteredStaff" :key="s.user_id" class="border-t align-middle">
-                  <td class="px-3 py-2">{{ s.real_name || '-' }}</td>
-                  <td class="px-3 py-2 font-mono">{{ s.staff_no }}</td>
+                  <td class="px-3 py-2"><button @click="openStaffDetail(s)" class="text-indigo-600 hover:underline">{{ s.real_name || '-' }}</button></td>
+                  <td class="px-3 py-2 font-mono"><button @click="openStaffDetail(s)" class="text-indigo-600 hover:underline">{{ s.staff_no }}</button></td>
                   <td class="px-3 py-2">
                     <select v-model="s._role" class="input py-1 text-xs w-32">
                       <option v-for="r in staffRoleOptions" :key="r.v" :value="r.v">{{ r.l }}</option>
@@ -939,6 +939,75 @@
       </div>
     </section>
 
+    <!-- ============ 관리자: 직원 인사 상세 ============ -->
+    <section v-if="tab==='hrdetail'" class="max-w-3xl mx-auto">
+      <button @click="tab='staff'" class="text-xs text-slate-400 hover:text-slate-600 mb-2">← 직원 관리로</button>
+      <template v-if="hrDetail">
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <div class="font-bold">{{ hrDetail.staff.real_name }} <span class="font-mono text-sm text-slate-400">{{ hrDetail.staff.staff_no }}</span>
+            <span :class="['ml-2 text-xs px-2 py-0.5 rounded', hrDetail.staff.hr_completed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700']">{{ hrDetail.staff.hr_completed?'인사등록 완료':'미완료' }}</span>
+          </div>
+          <div class="text-sm text-slate-500 mt-1">{{ hrDetail.staff.role_label }} · {{ hrDetail.staff.branch ? hrDetail.staff.branch.name : '전지점' }}</div>
+          <div v-if="hrDetail.profile" class="text-sm text-slate-600 mt-2 space-y-0.5">
+            <div>주소: {{ hrDetail.profile.zipcode }} {{ hrDetail.profile.address }} {{ hrDetail.profile.address_detail }}</div>
+            <div>연락처: {{ hrDetail.profile.phone || '-' }}</div>
+            <div>피부양자: {{ (hrDetail.profile.dependents||[]).map(d=>d.name).join(', ') || '없음' }} · 비상연락망 {{ (hrDetail.profile.emergency_contacts||[]).length }}건</div>
+          </div>
+        </div>
+
+        <!-- 서류함 -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <h3 class="font-semibold text-sm mb-2">서류 · 계약서</h3>
+          <div class="flex flex-wrap items-center gap-2 mb-2">
+            <input v-model="hrDocNewGroup" placeholder="서류함 이름 (예: 근로계약 서류함)" class="input w-56" />
+            <label class="btn-secondary text-xs cursor-pointer">파일 추가<input type="file" multiple class="hidden" @change="onStaffDocPick($event, hrDocNewGroup)"></label>
+          </div>
+          <div @drop.prevent="onStaffDocDrop($event, hrDocNewGroup)" @dragover.prevent
+               class="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center text-xs text-slate-400 mb-4">
+            여기에 파일을 드래그앤드롭 (위 서류함 이름으로 추가)
+          </div>
+
+          <div v-for="g in docGroups" :key="g.group" class="mb-4">
+            <div class="text-sm font-semibold text-slate-600 border-b pb-1 mb-1 flex items-center justify-between">
+              <span>📁 {{ g.group }}</span>
+              <label class="btn-secondary text-[11px] cursor-pointer">+ 파일<input type="file" multiple class="hidden" @change="onStaffDocPick($event, g.group)"></label>
+            </div>
+            <div @drop.prevent="onStaffDocDrop($event, g.group)" @dragover.prevent>
+              <div v-for="(d,i) in g.docs" :key="d.id" class="flex flex-wrap items-center gap-1.5 py-1.5 border-b text-sm"
+                   @dragover.prevent @drop="onDocDrop2(g.group, g.docs, i)">
+                <span draggable="true" @dragstart="onDocDragStart(g.group,i)" class="cursor-move text-slate-300 select-none">⠿</span>
+                <button @click="moveDoc(g.group,g.docs,i,-1)" :disabled="i===0" class="text-slate-400 disabled:text-slate-200 px-0.5">▲</button>
+                <button @click="moveDoc(g.group,g.docs,i,1)" :disabled="i===g.docs.length-1" class="text-slate-400 disabled:text-slate-200 px-0.5">▼</button>
+                <a :href="d.url" target="_blank" class="text-indigo-600 hover:underline shrink-0">보기</a>
+                <input v-model="d.title" @change="saveStaffDoc(d)" placeholder="설명" class="input py-1 w-40" />
+                <label class="text-xs text-slate-400">작성일</label>
+                <input v-model="d.doc_date" @change="saveStaffDoc(d)" type="date" class="input py-1 w-36" />
+                <span class="text-xs text-slate-400">업로드 {{ d.uploaded_at }}</span>
+                <label class="text-xs flex items-center gap-1"><input type="checkbox" v-model="d.visible_to_staff" @change="saveStaffDoc(d)" class="w-3.5 h-3.5">직원표시</label>
+                <button @click="delStaffDoc(d)" class="text-xs text-rose-400 hover:underline ml-auto">삭제</button>
+              </div>
+            </div>
+          </div>
+          <p v-if="docGroups.length===0" class="text-xs text-slate-400">등록된 서류가 없습니다.</p>
+        </div>
+
+        <!-- 변경 이력 -->
+        <div class="bg-white rounded-xl shadow-sm p-4">
+          <h3 class="font-semibold text-sm mb-2">인사 변경 이력</h3>
+          <div v-if="hrDetail.history.length===0" class="text-xs text-slate-400">이력 없음</div>
+          <ul v-else class="space-y-1 text-sm">
+            <li v-for="(h,i) in hrDetail.history" :key="i" class="flex flex-wrap gap-2 border-b py-1">
+              <span class="text-xs text-slate-400 w-28 shrink-0">{{ h.time }}</span>
+              <span class="font-medium">{{ hrLabel(h.field) }}</span>
+              <span class="text-slate-500 truncate">{{ (h.old||'(없음)') }} → {{ (h.new||'(없음)') }}</span>
+              <span class="text-xs text-indigo-500 ml-auto">{{ h.actor }}</span>
+            </li>
+          </ul>
+        </div>
+      </template>
+      <div v-else class="text-sm text-slate-400 bg-white rounded-xl p-6">불러오는 중…</div>
+    </section>
+
     <!-- ============ 직원: 인사 정보 등록 ============ -->
     <section v-if="tab==='hr'" class="max-w-2xl mx-auto">
       <div class="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -966,10 +1035,13 @@
           <!-- 서류 업로드 -->
           <div class="space-y-2">
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">서류 (사진/PDF)</div>
+            <p class="text-[11px] text-slate-400">파일은 클릭 또는 행에 드래그앤드롭으로 업로드.</p>
             <div v-for="doc in [{f:'resident_copy',l:'주민등록등본'},{f:'bankbook_copy',l:'통장사본'},{f:'graduation_cert',l:'졸업증명서'},{f:'transcript',l:'성적증명서'}]" :key="doc.f"
-                 class="flex items-center gap-2 text-sm">
+                 @drop.prevent="onHrFixedDrop(doc.f, $event)" @dragover.prevent
+                 class="flex items-center gap-2 text-sm rounded hover:bg-slate-50 px-1 py-0.5">
               <span class="w-28 shrink-0">{{ doc.l }}</span>
-              <span v-if="hrFile(doc.f)" class="text-emerald-600 text-xs">업로드됨 · <a :href="hrFile(doc.f)" target="_blank" class="underline">보기</a></span>
+              <span v-if="hrFile(doc.f)" class="text-emerald-600 text-xs">업로드됨 · <a :href="hrFile(doc.f)" target="_blank" class="underline">보기</a>
+                <span v-if="staffProfile && staffProfile.file_uploaded_at && staffProfile.file_uploaded_at[doc.f]" class="text-slate-400">({{ staffProfile.file_uploaded_at[doc.f] }})</span></span>
               <span v-else class="text-rose-400 text-xs">미등록</span>
               <label class="btn-secondary text-xs cursor-pointer ml-auto">파일 선택<input type="file" class="hidden" accept="image/*,.pdf" @change="uploadStaffFile(doc.f, $event)"></label>
             </div>
@@ -1020,6 +1092,24 @@
           </div>
 
           <div class="pt-2"><button @click="saveStaffProfile" class="btn-primary w-full">저장</button></div>
+
+          <!-- 공개된 서류 -->
+          <div v-if="staffProfile && staffProfile.documents && staffProfile.documents.length" class="space-y-1">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">내 서류</div>
+            <div v-for="d in staffProfile.documents" :key="d.id" class="flex items-center gap-2 text-sm">
+              <span>📁 {{ d.group }}</span><span class="text-slate-600">{{ d.title }}</span>
+              <a :href="d.url" target="_blank" class="text-indigo-600 hover:underline text-xs">보기</a>
+              <span class="text-xs text-slate-400 ml-auto">{{ d.uploaded_at }}</span>
+            </div>
+          </div>
+
+          <!-- 내 수정 이력 -->
+          <div v-if="staffProfile && staffProfile.history && staffProfile.history.length" class="space-y-1">
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">내 수정 이력</div>
+            <ul class="text-xs text-slate-500 space-y-0.5">
+              <li v-for="(h,i) in staffProfile.history" :key="i">{{ h.time }} · {{ hrLabel(h.field) }} 수정</li>
+            </ul>
+          </div>
         </div>
       </div>
     </section>
@@ -1090,6 +1180,8 @@ createApp({
       hrForm: { zipcode:'', address:'', address_detail:'', phone:'', dependents_decided:false, dependents:[], emergency_contacts:[], sex_offense_consent:false },
       hrSig: { drawing:false, ctx:null, hasInk:false },
       staffFilter: '', staffSort: { key:'', dir:1 },
+      hrDetail: null, hrDocNewGroup: '', docDragGroup: null, docDragIndex: null,
+      hrFieldLabels: { zipcode:'우편번호', address:'주소', address_detail:'상세주소', phone:'연락처', dependents_decided:'피부양자 확인', dependents:'피부양자', emergency_contacts:'비상연락망', sex_offense_consent:'성범죄 조회 동의' },
       ttStudents: [], ttAddRows: [], showStudentModal: false, studentModalList: [], studentModalFilter: '', studentModalSel: [], modalUnassignedOnly: false,
       sig: { drawing:false, ctx:null, hasInk:false },
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
@@ -1140,6 +1232,12 @@ createApp({
       if (this.modalUnassignedOnly) list = list.filter(u=>(u.slot_count||0)===0);
       if (q) list = list.filter(u=>((u.real_name||'')+' '+u.username).toLowerCase().includes(q));
       return list;
+    },
+    docGroups(){
+      const docs = (this.hrDetail && this.hrDetail.documents) || [];
+      const m = {};
+      for (const d of docs){ const g = d.group || '(서류함 미지정)'; (m[g] = m[g] || []).push(d); }
+      return Object.keys(m).map(g=>({ group:g, docs:m[g] }));
     },
     filteredStaff(){
       const q = this.staffFilter.trim().toLowerCase();
@@ -1285,6 +1383,14 @@ createApp({
         if (this.staffProfile.dependents_changed) this.notify('저장되었습니다. 4대보험 피부양자 변경 사항은 관리자에게 통보되었습니다.');
         else this.notify('인사 정보가 저장되었습니다.' + (this.staffProfile.completed ? ' (등록 완료)' : ''));
       } catch(e){ this.notify(e.message, false); }
+    },
+    onHrFixedDrop(field, ev){
+      const f = ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return;
+      const fd = new FormData(); fd.append('field', field); fd.append('file', f);
+      this.apiUpload('/api/academy/staff_profile/upload', fd).then(d=>{
+        if (this.staffProfile){ this.staffProfile[field]=d.url; this.staffProfile.completed=d.completed; }
+        this.loadStaffProfile(); this.notify('업로드되었습니다.');
+      }).catch(e=>this.notify(e.message,false));
     },
     async uploadStaffFile(field, ev){
       const file = ev.target.files[0]; if (!file) return;
@@ -1440,6 +1546,37 @@ createApp({
         this.notify(n+'명의 주 횟수를 시간표 수에 맞게 수정했습니다.');
       }
     },
+    hrLabel(f){ return this.hrFieldLabels[f] || f; },
+    async openStaffDetail(s){ this.tab='hrdetail'; this.flash.msg=''; await this.loadStaffDetail(s.user_id); },
+    async loadStaffDetail(uid){
+      try { this.hrDetail = await api('GET','/api/admin/academy/staff_detail?user_id='+uid); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async uploadStaffDocs(files, group){
+      if (!this.hrDetail) return;
+      const uid = this.hrDetail.staff.user_id;
+      let ok=0;
+      for (const file of files){
+        try {
+          const fd=new FormData(); fd.append('user_id',uid); fd.append('group',group||''); fd.append('title',file.name); fd.append('file',file);
+          await this.apiUpload('/api/admin/academy/staff_doc/upload', fd); ok++;
+        } catch(e){ this.notify(e.message,false); }
+      }
+      if (ok) this.notify(ok+'개 업로드되었습니다.');
+      this.loadStaffDetail(uid);
+    },
+    onStaffDocPick(ev, group){ const fs=ev.target.files; if(fs&&fs.length) this.uploadStaffDocs(fs, group); ev.target.value=''; },
+    onStaffDocDrop(ev, group){ const fs=ev.dataTransfer.files; if(fs&&fs.length) this.uploadStaffDocs(fs, group); },
+    async saveStaffDoc(d){
+      try { await api('PUT','/api/admin/academy/staff_doc', { id:d.id, group:d.group, title:d.title, doc_date:d.doc_date||'', visible_to_staff:d.visible_to_staff }); this.notify('저장되었습니다.'); this.loadStaffDetail(this.hrDetail.staff.user_id); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async toggleDocVisible(d){ d.visible_to_staff=!d.visible_to_staff; this.saveStaffDoc(d); },
+    async delStaffDoc(d){ if(!window.confirm('"'+(d.title||'문서')+'" 삭제?')) return; try{ await api('DELETE','/api/admin/academy/staff_doc?id='+d.id); this.loadStaffDetail(this.hrDetail.staff.user_id);}catch(e){this.notify(e.message,false);} },
+    async reorderDocs(group, docs){ try{ await api('POST','/api/admin/academy/staff_doc/reorder', { ids:docs.map(d=>d.id) }); this.loadStaffDetail(this.hrDetail.staff.user_id);}catch(e){this.notify(e.message,false);} },
+    moveDoc(group, docs, i, dir){ const j=i+dir; if(j<0||j>=docs.length)return; const a=docs.slice(); const t=a[i];a[i]=a[j];a[j]=t; this.reorderDocs(group,a); },
+    onDocDragStart(group,i){ this.docDragGroup=group; this.docDragIndex=i; },
+    onDocDrop2(group,docs,i){ if(this.docDragGroup!==group||this.docDragIndex===null||this.docDragIndex===i){this.docDragIndex=null;return;} const a=docs.slice(); const m=a.splice(this.docDragIndex,1)[0]; a.splice(i,0,m); this.docDragIndex=null; this.reorderDocs(group,a); },
     sortStaff(key){
       if (this.staffSort.key===key) this.staffSort.dir = -this.staffSort.dir;
       else this.staffSort = { key, dir:1 };

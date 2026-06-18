@@ -12,7 +12,29 @@ from account.models import User, UserProfile
 from ..models import (AcademyProfile, AcademyRole, Branch, SignupRequest, CourseClass,
                       AttendanceRecord, Lead, OptionItem)
 from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROLES,
-                      HRNotice)
+                      HRNotice, StaffDocument, StaffProfileHistory)
+
+TRACKED_HR_FIELDS = ["zipcode", "address", "address_detail", "phone",
+                     "dependents_decided", "dependents", "emergency_contacts",
+                     "sex_offense_consent"]
+
+
+def _doc_data(d):
+    return {"id": d.id, "group": d.group, "title": d.title, "url": d.url,
+            "doc_date": str(d.doc_date) if d.doc_date else None,
+            "uploaded_at": str(d.create_time)[:16], "order": d.order,
+            "visible_to_staff": d.visible_to_staff}
+
+
+def record_hr_history(staff_user, actor, before, after):
+    rows = []
+    for f in TRACKED_HR_FIELDS:
+        o = str(before.get(f, "")); n = str(after.get(f, ""))
+        if o != n:
+            rows.append(StaffProfileHistory(user=staff_user, actor=actor, field=f,
+                                            old_value=o, new_value=n))
+    if rows:
+        StaffProfileHistory.objects.bulk_create(rows)
 from ..serializers import (AcademySignupSerializer, BranchSerializer,
                            SignupRequestSerializer, CourseClassSerializer,
                            ClassSessionSerializer, LeadCreateSerializer,
@@ -39,8 +61,17 @@ def _staff_profile_data(p):
         "sex_offense_consent": p.sex_offense_consent,
         "sex_offense_signature": p.sex_offense_signature,
         "sex_offense_date": str(p.sex_offense_date) if p.sex_offense_date else None,
+        "file_uploaded_at": _parse_json_obj(p.file_uploaded_at),
         "completed": p.is_complete(),
     }
+
+
+def _parse_json_obj(s):
+    try:
+        v = _json.loads(s) if s else {}
+        return v if isinstance(v, dict) else {}
+    except (ValueError, TypeError):
+        return {}
 
 
 # 직원 인사 정보 업로드 가능한 단일 파일 필드
@@ -211,7 +242,13 @@ class StaffProfileAPI(APIView):
         p = StaffProfile.objects.filter(user=request.user).first()
         if not p:
             p = StaffProfile.objects.create(user=request.user)
-        return self.success(_staff_profile_data(p))
+        result = _staff_profile_data(p)
+        # 본인 노출 문서(서류함) + 본인 수정 이력(항목·시각만)
+        docs = StaffDocument.objects.filter(user=request.user, visible_to_staff=True)
+        result["documents"] = [_doc_data(d) for d in docs]
+        result["history"] = [{"field": h.field, "time": str(h.create_time)[:16]}
+                             for h in StaffProfileHistory.objects.filter(user=request.user)[:100]]
+        return self.success(result)
 
     @validate_serializer(SaveStaffProfileSerializer)
     @login_required
@@ -221,6 +258,7 @@ class StaffProfileAPI(APIView):
             return self.error("직원만 사용할 수 있습니다.")
         data = request.data
         p, _ = StaffProfile.objects.get_or_create(user=request.user)
+        before = {f: getattr(p, f) for f in TRACKED_HR_FIELDS}
         old_deps = p.dependents or ""
         old_decided = p.dependents_decided
         p.zipcode = data.get("zipcode", "") or ""
@@ -237,6 +275,10 @@ class StaffProfileAPI(APIView):
             p.sex_offense_signature = data["sex_offense_signature"]
             p.sex_offense_date = data.get("sex_offense_date") or now().date()
         p.save()
+
+        # 변경 이력 기록(누가·항목·전→후)
+        after = {f: getattr(p, f) for f in TRACKED_HR_FIELDS}
+        record_hr_history(request.user, request.user, before, after)
 
         # 4대보험 피부양자 변경 시 관리자에게 통보(쪽지)
         dependents_changed = (p.dependents or "") != old_deps or p.dependents_decided != old_decided
@@ -285,6 +327,9 @@ class StaffProfileUploadAPI(APIView):
         p, _ = StaffProfile.objects.get_or_create(user=request.user)
         if field in STAFF_FILE_FIELDS:
             setattr(p, field, url)
+            ts = _parse_json_obj(p.file_uploaded_at)
+            ts[field] = str(now())[:16]
+            p.file_uploaded_at = _json.dumps(ts, ensure_ascii=False)
             p.save()
         elif field == "family_cert":
             try:

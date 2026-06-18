@@ -354,6 +354,8 @@ class StaffProfile(models.Model):
     sex_offense_consent = models.BooleanField(default=False)
     sex_offense_signature = models.TextField(blank=True, default="")
     sex_offense_date = models.DateField(null=True, blank=True)
+    # 고정 서류 필드별 업로드 시각 {field: "YYYY-MM-DD HH:MM"}
+    file_uploaded_at = models.TextField(blank=True, default="")
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 
@@ -375,6 +377,42 @@ class StaffProfile(models.Model):
         return bool(self.address and self.phone and self.resident_copy and self.bankbook_copy
                     and self.graduation_cert and self.transcript and self.sex_offense_consent
                     and self.sex_offense_signature and deps_ok and len(emer) >= 1)
+
+
+class StaffDocument(models.Model):
+    """직원 계약서·서류(근로/연봉/근로서약서 등). 관리자가 업로드·관리. 서류함(group)으로 묶고
+    visible_to_staff 면 본인에게도 노출(기본 관리자만)."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="staff_documents")
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="uploaded_staff_documents")
+    group = models.CharField(max_length=64, blank=True, default="")   # 서류함
+    title = models.CharField(max_length=128, blank=True, default="")  # 설명/문서명
+    url = models.CharField(max_length=255)
+    doc_date = models.DateField(null=True, blank=True)                 # 작성일
+    order = models.PositiveSmallIntegerField(default=0)
+    visible_to_staff = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)             # 업로드일
+
+    class Meta:
+        db_table = "academy_staff_document"
+        ordering = ["group", "order", "id"]
+
+
+class StaffProfileHistory(models.Model):
+    """직원 인사 정보 변경 이력(누가·항목·전→후)."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="staff_history")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    field = models.CharField(max_length=64)
+    old_value = models.TextField(blank=True, default="")
+    new_value = models.TextField(blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_staff_history"
+        ordering = ["-create_time"]
 
 
 class HRNotice(models.Model):

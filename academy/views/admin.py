@@ -22,7 +22,10 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
                       Lead, LeadStatus, CounselingLog, StudentProfile, EnrollmentStatus,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
-                      StaffProfile, HRNotice)
+                      StaffProfile, HRNotice, StaffDocument, StaffProfileHistory)
+import os as _os
+from django.conf import settings as _settings
+from utils.shortcuts import rand_str as _rand_str
 from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            SignupRejectSerializer, AssignRoleSerializer,
                            CreateStaffSerializer, StaffStatusSerializer,
@@ -333,6 +336,147 @@ class StaffStatusAPI(APIView):
         profile.user.is_disabled = not data["is_active"]
         profile.user.save()
         return self.success(_staff_brief(profile))
+
+
+def _can_manage_staff_user(request, prof):
+    if prof is None:
+        return False
+    if prof.is_all_branch():
+        actor_all, _, _ = staff_scope(request.user)
+        return actor_all
+    return can_manage_branch(request.user, prof.branch_id)
+
+
+class StaffDetailAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """직원 인사 상세(프로필+서류+전체 이력). user_id 지정."""
+        from .oj import _staff_profile_data, _doc_data
+        uid = request.GET.get("user_id")
+        prof = AcademyProfile.objects.select_related("user", "branch").filter(
+            user_id=uid, role__in=STAFF_ROLES).first()
+        if not prof:
+            return self.error("직원이 아닙니다.")
+        if not _can_manage_staff_user(request, prof):
+            return self.error("권한이 없습니다.")
+        sp = StaffProfile.objects.filter(user_id=uid).first()
+        docs = [_doc_data(d) for d in StaffDocument.objects.filter(user_id=uid)]
+        hist = []
+        for h in StaffProfileHistory.objects.filter(user_id=uid).select_related("actor")[:200]:
+            an = ""
+            if h.actor_id:
+                try:
+                    an = h.actor.userprofile.real_name or h.actor.username
+                except Exception:
+                    an = h.actor.username
+            hist.append({"field": h.field, "old": h.old_value, "new": h.new_value,
+                         "actor": an, "time": str(h.create_time)[:16]})
+        return self.success({"staff": _staff_brief(prof),
+                             "profile": (_staff_profile_data(sp) if sp else None),
+                             "documents": docs, "history": hist})
+
+    @admin_role_required
+    def post(self, request):
+        """관리자가 직원 기본 인사정보(주소·연락처) 수정 + 이력 기록."""
+        from .oj import TRACKED_HR_FIELDS, record_hr_history
+        uid = request.data.get("user_id")
+        prof = AcademyProfile.objects.filter(user_id=uid, role__in=STAFF_ROLES).first()
+        if not prof:
+            return self.error("직원이 아닙니다.")
+        if not _can_manage_staff_user(request, prof):
+            return self.error("권한이 없습니다.")
+        sp, _ = StaffProfile.objects.get_or_create(user_id=uid)
+        before = {f: getattr(sp, f) for f in TRACKED_HR_FIELDS}
+        d = request.data
+        for f in ("zipcode", "address", "address_detail", "phone"):
+            if f in d:
+                setattr(sp, f, d.get(f) or "")
+        sp.save()
+        after = {f: getattr(sp, f) for f in TRACKED_HR_FIELDS}
+        record_hr_history(sp.user, request.user, before, after)
+        return self.success("저장되었습니다.")
+
+
+class StaffDocUploadAdminAPI(APIView):
+    request_parsers = ()
+
+    @admin_role_required
+    def post(self, request):
+        """직원 계약서·서류 업로드(관리자). user_id, group(서류함), title, doc_date, visible_to_staff, file."""
+        from .oj import _doc_data
+        uid = request.POST.get("user_id")
+        prof = AcademyProfile.objects.filter(user_id=uid, role__in=STAFF_ROLES).first()
+        if not prof:
+            return self.error("직원이 아닙니다.")
+        if not _can_manage_staff_user(request, prof):
+            return self.error("권한이 없습니다.")
+        f = request.FILES.get("file")
+        if not f:
+            return self.error("파일이 없습니다.")
+        if f.size > 16 * 1024 * 1024:
+            return self.error("파일이 너무 큽니다(최대 16MB).")
+        suffix = _os.path.splitext(f.name)[-1].lower()
+        if suffix not in [".gif", ".jpg", ".jpeg", ".bmp", ".png", ".pdf", ".doc", ".docx", ".hwp", ".hwpx", ".xls", ".xlsx"]:
+            return self.error("지원하지 않는 형식입니다.")
+        _os.makedirs(_settings.UPLOAD_DIR, exist_ok=True)
+        name = "doc_" + _rand_str(16) + suffix
+        with open(_os.path.join(_settings.UPLOAD_DIR, name), "wb") as out:
+            for chunk in f:
+                out.write(chunk)
+        group = request.POST.get("group", "") or ""
+        dd = request.POST.get("doc_date") or ""
+        order = StaffDocument.objects.filter(user_id=uid, group=group).count()
+        doc = StaffDocument.objects.create(
+            user_id=uid, uploaded_by=request.user, group=group,
+            title=(request.POST.get("title", "") or f.name),
+            url=f"{_settings.UPLOAD_PREFIX}/{name}",
+            doc_date=(_to_date(dd) if dd else None), order=order,
+            visible_to_staff=(request.POST.get("visible_to_staff") == "true"))
+        return self.success(_doc_data(doc))
+
+
+class StaffDocAdminAPI(APIView):
+    @admin_role_required
+    def put(self, request):
+        """서류 메타 수정(서류함·설명·작성일·직원표시)."""
+        from .oj import _doc_data
+        d = request.data
+        doc = StaffDocument.objects.filter(id=d.get("id")).first()
+        if not doc:
+            return self.error("문서가 없습니다.")
+        prof = AcademyProfile.objects.filter(user_id=doc.user_id).first()
+        if not _can_manage_staff_user(request, prof):
+            return self.error("권한이 없습니다.")
+        for f in ("group", "title"):
+            if f in d:
+                setattr(doc, f, d.get(f) or "")
+        if "doc_date" in d:
+            doc.doc_date = _to_date(d["doc_date"]) if d.get("doc_date") else None
+        if "visible_to_staff" in d:
+            doc.visible_to_staff = bool(d["visible_to_staff"])
+        doc.save()
+        return self.success(_doc_data(doc))
+
+    @admin_role_required
+    def delete(self, request):
+        doc = StaffDocument.objects.filter(id=request.GET.get("id")).first()
+        if not doc:
+            return self.error("문서가 없습니다.")
+        prof = AcademyProfile.objects.filter(user_id=doc.user_id).first()
+        if not _can_manage_staff_user(request, prof):
+            return self.error("권한이 없습니다.")
+        doc.delete()
+        return self.success("Deleted")
+
+
+class StaffDocReorderAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """같은 서류함 내 순서 재정렬(ids 순서대로)."""
+        ids = request.data.get("ids", [])
+        for i, did in enumerate(ids):
+            StaffDocument.objects.filter(id=did).update(order=i)
+        return self.success("Reordered")
 
 
 class HRNoticeAdminAPI(APIView):
