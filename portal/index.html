@@ -687,7 +687,7 @@
               <td class="px-3 py-2"><select v-model="s.frequency" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
                 <button @click="saveTt(s)" class="text-xs text-indigo-600 hover:underline">저장</button>
-                <button @click="openTtHistory(s)" class="ml-2 text-xs text-slate-500 hover:underline">이력</button>
+                <button @click="openTtHistory(s)" @mouseenter="openTtHistory(s)" class="ml-2 text-xs text-slate-500 hover:underline">이력</button>
                 <button @click="delTt(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
               </td>
             </tr>
@@ -1207,7 +1207,7 @@ createApp({
       hrSig: { drawing:false, ctx:null, hasInk:false },
       staffFilter: '', staffSort: { key:'', dir:1 },
       hrDetail: null, hrDocNewGroup: '', docDragGroup: null, docDragIndex: null,
-      ttHistory: [], showTtHistory: false, ttHistoryName: '',
+      ttHistory: [], showTtHistory: false, ttHistoryName: '', ttHistoryStudentId: null,
       hrFieldLabels: { zipcode:'우편번호', address:'주소', address_detail:'상세주소', phone:'연락처', dependents_decided:'피부양자 확인', dependents:'피부양자', emergency_contacts:'비상연락망', sex_offense_consent:'성범죄 조회 동의' },
       ttStudents: [], ttAddRows: [], showStudentModal: false, studentModalList: [], studentModalFilter: '', studentModalSel: [], modalUnassignedOnly: false,
       sig: { drawing:false, ctx:null, hasInk:false },
@@ -1610,7 +1610,7 @@ createApp({
     },
     sortArrow(key){ if (this.staffSort.key!==key) return ' ↕'; return this.staffSort.dir>0 ? ' ▲' : ' ▼'; },
     async saveTt(s){
-      const reason = window.prompt('시간표 변경 이유를 입력하세요 (예: 학생 요청, 강사 변경)');
+      const reason = window.prompt('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침');
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
       try {
         await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, frequency:s.frequency, reason });
@@ -1618,12 +1618,14 @@ createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     async delTt(s){
-      const reason = window.prompt('삭제 이유를 입력하세요');
+      const reason = window.prompt('삭제 이유 (요청자 + 사유까지 적어주세요)\n예) 학생 퇴원 - 이사');
       if (reason===null) return; if (!reason.trim()) return this.notify('삭제 이유가 필요합니다.', false);
       try { await api('DELETE','/api/admin/academy/student_timetable?id='+s.id+'&reason='+encodeURIComponent(reason)); this.loadAllTt(); }
       catch(e){ this.notify(e.message,false); }
     },
     async openTtHistory(s){
+      if (this.showTtHistory && this.ttHistoryStudentId===s.student.id) return;
+      this.ttHistoryStudentId = s.student.id;
       this.ttHistoryName = s.student.real_name || s.student.username;
       try { this.ttHistory = await api('GET','/api/admin/academy/timetable_changes?student_id='+s.student.id); this.showTtHistory = true; }
       catch(e){ this.notify(e.message,false); }
