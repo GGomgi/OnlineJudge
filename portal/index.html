@@ -96,7 +96,9 @@
             <span class="text-[11px] text-indigo-500 ml-auto">{{ h.actor }}</span>
           </div>
           <div class="text-slate-600 text-xs">{{ h.detail }}</div>
-          <div class="text-[11px] text-slate-500">이유: {{ h.reason || '-' }}</div>
+          <div class="text-[11px] text-slate-500 flex items-center gap-1">이유: {{ h.reason || '-' }}
+            <button v-if="h.can_edit" @click="editTtChange(h)" class="text-indigo-500 hover:underline ml-1">수정</button>
+          </div>
         </li>
       </ul>
     </div>
@@ -1630,6 +1632,15 @@ createApp({
       catch(e){ this.notify(e.message,false); }
     },
     scheduleCloseTt(){ if (this.ttPopTimer) clearTimeout(this.ttPopTimer); this.ttPopTimer = setTimeout(()=>{ if (!this.ttPopHover) this.closeTtHistory(); }, 200); },
+    async editTtChange(h){
+      const r = window.prompt('이력 사유 수정 (요청자 + 사유)', h.reason || '');
+      if (r===null) return; if (!r.trim()) return this.notify('사유가 필요합니다.', false);
+      try {
+        await api('POST','/api/admin/academy/timetable_change/edit', { id:h.id, reason:r });
+        this.ttHistory = await api('GET','/api/admin/academy/timetable_changes?student_id='+this.ttHistoryStudentId);
+        this.notify('이력이 수정되었습니다.');
+      } catch(e){ this.notify(e.message,false); }
+    },
     closeTtHistory(){ this.showTtHistory=false; this.ttHistoryStudentId=null; this.ttPopHover=false; },
     async loadOptions(){ try { this.options = await api('GET','/api/academy/options'); } catch(e){} },
     isAllBranchRole(role){ return role==='HQ_ADMIN' || role==='HR_ADMIN'; },

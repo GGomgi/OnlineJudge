@@ -1184,6 +1184,14 @@ class StudentTimetableAdminAPI(APIView):
         return self.success("Deleted")
 
 
+MANAGER_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN, AcademyRole.BRANCH_MANAGER}
+
+
+def _is_manager(user):
+    _, _, role = staff_scope(user)
+    return role in MANAGER_ROLES or user.is_super_admin()
+
+
 class TimetableChangeAdminAPI(APIView):
     @admin_role_required
     def get(self, request):
@@ -1192,8 +1200,9 @@ class TimetableChangeAdminAPI(APIView):
         prof = AcademyProfile.objects.filter(user_id=sid).first()
         if prof and not can_manage_branch(request.user, prof.branch_id):
             return self.error("No permission for this branch")
+        manager = _is_manager(request.user)
         out = []
-        ACT = {"CREATE": "등록", "UPDATE": "수정", "DELETE": "삭제"}
+        ACT = {"CREATE": "등록", "UPDATE": "수정", "DELETE": "삭제", "EDIT": "이력수정"}
         for c in TimetableChange.objects.filter(student_id=sid).select_related("actor")[:200]:
             an = ""
             if c.actor_id:
@@ -1201,6 +1210,32 @@ class TimetableChangeAdminAPI(APIView):
                     an = c.actor.userprofile.real_name or c.actor.username
                 except Exception:
                     an = c.actor.username
-            out.append({"action": ACT.get(c.action, c.action), "reason": c.reason,
-                        "detail": c.detail, "actor": an, "time": str(c.create_time)[:16]})
+            out.append({"id": c.id, "action": ACT.get(c.action, c.action), "reason": c.reason,
+                        "detail": c.detail, "actor": an, "time": str(c.create_time)[:16],
+                        "can_edit": (c.action != "EDIT") and (manager or c.actor_id == request.user.id)})
         return self.success(out)
+
+
+class TimetableChangeEditAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """이력 사유 수정. 원장 이상은 전체, 그 외는 본인 작성분만. 수정도 이력으로 기록."""
+        cid = request.data.get("id")
+        new_reason = (request.data.get("reason") or "").strip()
+        if not new_reason:
+            return self.error("사유를 입력하세요.")
+        c = TimetableChange.objects.select_related("student").filter(id=cid).first()
+        if not c:
+            return self.error("이력이 없습니다.")
+        prof = AcademyProfile.objects.filter(user_id=c.student_id).first()
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        if not _is_manager(request.user) and c.actor_id != request.user.id:
+            return self.error("본인이 작성한 이력만 수정할 수 있습니다.")
+        old = c.reason
+        c.reason = new_reason
+        c.save(update_fields=["reason"])
+        TimetableChange.objects.create(
+            student=c.student, actor=request.user, action="EDIT", reason=new_reason,
+            detail=(f"이력 사유 수정: {old} → {new_reason}")[:255])
+        return self.success("ok")
