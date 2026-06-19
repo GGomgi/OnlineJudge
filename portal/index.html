@@ -81,28 +81,24 @@
     </div>
   </div>
 
-  <!-- 학생 시간표 변동이력 모달 -->
-  <div v-if="showTtHistory" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
-    <div class="bg-white rounded-xl shadow-lg max-w-lg w-full flex flex-col" style="max-height:80vh;">
-      <div class="px-4 py-3 border-b flex items-center justify-between">
-        <div class="font-bold text-sm">{{ ttHistoryName }} · 시간표 변동이력</div>
-        <button @click="showTtHistory=false" class="text-slate-400 text-xl leading-none">×</button>
-      </div>
-      <div class="flex-1 overflow-y-auto p-3">
-        <div v-if="ttHistory.length===0" class="text-xs text-slate-400 text-center py-6">이력 없음</div>
-        <ul v-else class="space-y-2 text-sm">
-          <li v-for="(h,i) in ttHistory" :key="i" class="border-b pb-2">
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-slate-400">{{ h.time }}</span>
-              <span :class="['text-xs px-1.5 py-0.5 rounded', h.action==='삭제'?'bg-rose-50 text-rose-600':h.action==='등록'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700']">{{ h.action }}</span>
-              <span class="text-xs text-indigo-500 ml-auto">{{ h.actor }}</span>
-            </div>
-            <div class="text-slate-600">{{ h.detail }}</div>
-            <div class="text-xs text-slate-500">이유: {{ h.reason || '-' }}</div>
-          </li>
-        </ul>
-      </div>
-      <div class="p-3 border-t"><button @click="showTtHistory=false" class="btn-secondary w-full text-sm">닫기</button></div>
+  <!-- 학생 시간표 변동이력 호버 팝오버 (마우스 위치, 벗어나면 사라짐) -->
+  <div v-if="showTtHistory" class="fixed z-50 bg-white rounded-lg shadow-xl border w-80 overflow-y-auto"
+       :style="{ left: ttPopX+'px', top: ttPopY+'px', maxHeight: '18rem' }"
+       @mouseenter="ttPopHover=true" @mouseleave="ttPopHover=false; closeTtHistory()">
+    <div class="px-3 py-2 border-b text-xs font-bold sticky top-0 bg-white">{{ ttHistoryName }} · 변동이력</div>
+    <div class="p-2">
+      <div v-if="ttHistory.length===0" class="text-xs text-slate-400 text-center py-4">이력 없음</div>
+      <ul v-else class="space-y-2 text-sm">
+        <li v-for="(h,i) in ttHistory" :key="i" class="border-b pb-1.5">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[11px] text-slate-400">{{ h.time }}</span>
+            <span :class="['text-[11px] px-1 rounded', h.action==='삭제'?'bg-rose-50 text-rose-600':h.action==='등록'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700']">{{ h.action }}</span>
+            <span class="text-[11px] text-indigo-500 ml-auto">{{ h.actor }}</span>
+          </div>
+          <div class="text-slate-600 text-xs">{{ h.detail }}</div>
+          <div class="text-[11px] text-slate-500">이유: {{ h.reason || '-' }}</div>
+        </li>
+      </ul>
     </div>
   </div>
 
@@ -687,7 +683,7 @@
               <td class="px-3 py-2"><select v-model="s.frequency" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
                 <button @click="saveTt(s)" class="text-xs text-indigo-600 hover:underline">저장</button>
-                <button @click="openTtHistory(s)" @mouseenter="openTtHistory(s)" class="ml-2 text-xs text-slate-500 hover:underline">이력</button>
+                <button @mouseenter="openTtHistory(s,$event)" @mouseleave="scheduleCloseTt" class="ml-2 text-xs text-slate-500 hover:underline">이력</button>
                 <button @click="delTt(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
               </td>
             </tr>
@@ -1208,6 +1204,7 @@ createApp({
       staffFilter: '', staffSort: { key:'', dir:1 },
       hrDetail: null, hrDocNewGroup: '', docDragGroup: null, docDragIndex: null,
       ttHistory: [], showTtHistory: false, ttHistoryName: '', ttHistoryStudentId: null,
+      ttPopX: 0, ttPopY: 0, ttPopHover: false, ttPopTimer: null,
       hrFieldLabels: { zipcode:'우편번호', address:'주소', address_detail:'상세주소', phone:'연락처', dependents_decided:'피부양자 확인', dependents:'피부양자', emergency_contacts:'비상연락망', sex_offense_consent:'성범죄 조회 동의' },
       ttStudents: [], ttAddRows: [], showStudentModal: false, studentModalList: [], studentModalFilter: '', studentModalSel: [], modalUnassignedOnly: false,
       sig: { drawing:false, ctx:null, hasInk:false },
@@ -1623,13 +1620,17 @@ createApp({
       try { await api('DELETE','/api/admin/academy/student_timetable?id='+s.id+'&reason='+encodeURIComponent(reason)); this.loadAllTt(); }
       catch(e){ this.notify(e.message,false); }
     },
-    async openTtHistory(s){
+    async openTtHistory(s, ev){
+      if (ev){ this.ttPopX = Math.min(ev.clientX + 8, window.innerWidth - 330); this.ttPopY = Math.min(ev.clientY + 8, window.innerHeight - 100); }
+      if (this.ttPopTimer){ clearTimeout(this.ttPopTimer); this.ttPopTimer=null; }
       if (this.showTtHistory && this.ttHistoryStudentId===s.student.id) return;
       this.ttHistoryStudentId = s.student.id;
       this.ttHistoryName = s.student.real_name || s.student.username;
       try { this.ttHistory = await api('GET','/api/admin/academy/timetable_changes?student_id='+s.student.id); this.showTtHistory = true; }
       catch(e){ this.notify(e.message,false); }
     },
+    scheduleCloseTt(){ if (this.ttPopTimer) clearTimeout(this.ttPopTimer); this.ttPopTimer = setTimeout(()=>{ if (!this.ttPopHover) this.closeTtHistory(); }, 200); },
+    closeTtHistory(){ this.showTtHistory=false; this.ttHistoryStudentId=null; this.ttPopHover=false; },
     async loadOptions(){ try { this.options = await api('GET','/api/academy/options'); } catch(e){} },
     isAllBranchRole(role){ return role==='HQ_ADMIN' || role==='HR_ADMIN'; },
     async loadStaff(){
