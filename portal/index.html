@@ -142,7 +142,7 @@
       </div>
       <form @submit.prevent="submitLead" class="space-y-3">
         <div>
-          <label class="lbl">지점</label>
+          <label class="lbl">지점 <span class="text-rose-500">*</span></label>
           <select v-model="leadForm.branch_id" @change="saveLeadBranch" class="input">
             <option :value="null" disabled>지점 선택</option>
             <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
@@ -150,38 +150,44 @@
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="lbl">학부모 이름</label>
+            <label class="lbl">학부모 이름 <span class="text-rose-500">*</span></label>
             <input v-model="leadForm.parent_name" class="input" />
           </div>
           <div>
-            <label class="lbl">학부모 연락처</label>
+            <label class="lbl">학부모 연락처 <span class="text-rose-500">*</span></label>
             <input :value="leadForm.parent_phone" @input="leadForm.parent_phone = formatPhone($event.target.value)"
                    inputmode="numeric" class="input" placeholder="010-0000-0000" />
           </div>
         </div>
         <div>
-          <label class="lbl">자녀 이름</label>
+          <label class="lbl">자녀 이름 <span class="text-rose-500">*</span></label>
           <input v-model="leadForm.student_name" class="input" />
         </div>
-        <div class="grid grid-cols-3 gap-3">
+        <div class="grid grid-cols-3 gap-2">
           <div>
             <label class="lbl">학교 구분</label>
-            <select v-model="leadForm.school_type" class="input">
+            <select v-model="leadForm.school_type" class="input px-2">
               <option value="">선택</option>
               <option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
           </div>
           <div>
             <label class="lbl">학교 이름</label>
-            <input v-model="leadForm.school_name" class="input" />
+            <div class="flex items-center gap-1">
+              <input v-model="leadForm.school_name" class="input px-2 min-w-0" />
+              <span v-if="schoolSuffix(leadForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(leadForm.school_type) }}</span>
+            </div>
           </div>
           <div>
             <label class="lbl">학년</label>
-            <input v-model="leadForm.grade" class="input" placeholder="초3" />
+            <div class="flex items-center gap-1">
+              <input v-model="leadForm.grade" class="input px-2 min-w-0 w-12" placeholder="3" />
+              <span class="text-xs text-slate-400 whitespace-nowrap">학년</span>
+            </div>
           </div>
         </div>
         <div>
-          <label class="lbl">상담 목적</label>
+          <label class="lbl">상담 목적 <span class="text-rose-500">*</span></label>
           <select v-model="leadForm.purpose" class="input">
             <option value="" disabled>선택</option>
             <option v-for="o in (options.counseling_purpose||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
@@ -313,7 +319,7 @@
     <!-- ============ 관리자: 상담·등록 ============ -->
     <section v-if="tab==='leadmgr' && !convertingLead && !showLeadForm">
       <div class="flex items-center justify-between mb-3 gap-2">
-        <h2 class="text-lg font-bold">상담 · 등록</h2>
+        <h2 class="text-lg font-bold">신규 상담 · 등록</h2>
         <div class="flex items-center gap-2">
           <button @click="openLeadForm" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 상담 등록</button>
           <select v-model="leadFilter" @change="loadLeads" class="input w-32">
@@ -341,7 +347,7 @@
               <div v-if="r.interest" class="text-xs text-slate-400 mt-1">문의: {{ r.interest }}</div>
             </div>
             <div class="text-right shrink-0">
-              <div class="text-xs text-slate-400">{{ (r.create_time||'').slice(0,10) }}</div>
+              <div class="text-xs text-slate-400">{{ dt(r.create_time) }}</div>
               <span :class="['mt-2 inline-block px-2 py-0.5 rounded text-xs', leadBadge(r.status).cls]">{{ leadBadge(r.status).label }}</span>
               <div v-if="r.status==='CONVERTED'" class="text-[11px] text-emerald-600 mt-1">@{{ r.converted_username }}</div>
             </div>
@@ -354,7 +360,10 @@
               <div class="text-xs font-semibold text-slate-500 mb-1">상담 기록</div>
               <ul class="space-y-1">
                 <li v-for="g in r.logs" :key="g.id" class="text-sm bg-slate-50 rounded px-3 py-1.5">
-                  <span class="text-xs text-slate-400">{{ (g.create_time||'').slice(0,10) }} · {{ g.channel }}</span>
+                  <div class="flex items-center gap-1 text-xs text-slate-400">
+                    <span>{{ channelLabel(g.channel) }}</span>
+                    <span class="ml-auto">{{ dt(g.create_time) }}</span>
+                  </div>
                   <div class="whitespace-pre-wrap">{{ g.summary }}</div>
                 </li>
                 <li v-if="r.logs.length===0" class="text-xs text-slate-400">기록 없음</li>
@@ -655,7 +664,7 @@
         <div><label class="lbl">요일</label><select v-model="ttFilter.weekday" class="input w-20"><option value="">전체</option><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
         <div><label class="lbl">시작 이상</label><input v-model="ttFilter.from" @change="onFilterFrom" type="time" class="input w-28" /></div>
         <div><label class="lbl">종료 이하</label><input v-model="ttFilter.to" type="time" class="input w-28" /></div>
-        <div><label class="lbl">강사</label><select v-model="ttFilter.instructor_id" class="input w-28"><option value="">전체</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
+        <div><label class="lbl">강사</label><select v-model="ttFilter.instructor_id" class="input w-28"><option value="">전체</option><option value="__none__">미배정만</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
         <div><label class="lbl">과정</label><select v-model="ttFilter.program" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
         <button @click="resetTtFilter" class="btn-secondary text-xs">초기화</button>
         <span class="text-xs text-slate-400 ml-auto self-center">{{ filteredTt.length }}건</span>
@@ -685,7 +694,7 @@
               <td class="px-3 py-2"><input v-model="s.start_time" type="time" class="input py-1 w-28" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" class="input py-1 w-24 px-2"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
               <td class="px-3 py-2"><select v-model="s.program" class="input py-1 w-32 px-2"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></td>
-              <td class="px-3 py-2"><select v-model.number="s._instructor_id" class="input py-1 w-28 px-2"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></td>
+              <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" class="input py-1 w-28 px-2"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
               <td class="px-3 py-2"><select v-model="s.frequency" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
                 <button @click="saveTt(s)" class="text-xs text-indigo-600 hover:underline">저장</button>
@@ -1322,7 +1331,8 @@ createApp({
       return this.ttAll.filter(s=>{
         if (f.name){ const n=((s.student.real_name||'')+' '+s.student.username).toLowerCase(); if(!n.includes(f.name.toLowerCase())) return false; }
         if (f.weekday!=='' && s.weekday!==Number(f.weekday)) return false;
-        if (f.instructor_id!=='' && (!s.instructor || s.instructor.id!==Number(f.instructor_id))) return false;
+        if (f.instructor_id==='__none__'){ if (s.instructor) return false; }
+        else if (f.instructor_id!=='' && (!s.instructor || s.instructor.id!==Number(f.instructor_id))) return false;
         if (f.program && s.program!==f.program) return false;
         // 시작 이상 ~ 종료 이하: 수업(시작~종료)이 [from, to] 구간과 겹치면 포함
         if (f.from || f.to){
@@ -1353,9 +1363,9 @@ createApp({
     tabs(){
       if (!this.me) return [ {key:'login',label:'로그인'}, {key:'lead',label:'상담 신청'} ];
       if (this.isStaff){
-        const t = [ {key:'leadmgr',label:'상담·등록'}, {key:'indtt',label:'개별 시간표'}, {key:'classes',label:'그룹·특강'} ];
+        const t = [ {key:'leadmgr',label:'신규 상담·등록'}, {key:'indtt',label:'개별 시간표'}, {key:'classes',label:'그룹·특강'} ];
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
-        t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ●' : '')});
+        t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ❗' : '')});
         if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
         return t;
       }
@@ -1369,6 +1379,8 @@ createApp({
     attLabel(s){ return ATT_LABELS[s] || s || '-'; },
     attClass(s){ return 'px-2 py-0.5 rounded text-xs font-medium ' + (ATT_CLASS[s] || 'bg-slate-100'); },
     hm(t){ return t ? String(t).slice(0,5) : ''; },
+    dt(s){ return s ? String(s).slice(0,16).replace('T',' ') : ''; },
+    channelLabel(c){ return ({VISIT:'방문',CALL:'전화',MESSAGE:'문자',KAKAO:'카카오',ETC:'기타'})[c] || c || '방문'; },
     go(key){
       if (key!==this.tab && this.isDirty() && !this.confirmLeave()) return;
       if (key!==this.tab){ this.convertingLead=null; this.showLeadForm=false; this.noteText=''; }
@@ -1769,6 +1781,7 @@ createApp({
     optLabel(cat, value){ const f = this.optList_(cat).find(o=>o.value===value); return f ? f.label : (value || ''); },
     optAllowCustom(cat, value){ const f = this.optList_(cat).find(o=>o.value===value); return !!(f && f.allow_custom); },
     schoolLabel(t){ return this.optLabel('school_type', t); },
+    schoolSuffix(t){ return ({ELEMENTARY:'초등학교',MIDDLE:'중학교',HIGH:'고등학교',UNIVERSITY:'대학교'})[t] || ''; },
     purposeLabel(r){
       if (this.optAllowCustom('counseling_purpose', r.purpose) && r.purpose_detail) return r.purpose_detail;
       return this.optLabel('counseling_purpose', r.purpose) || '-';
