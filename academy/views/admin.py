@@ -875,6 +875,7 @@ class ConvertLeadAdminAPI(APIView):
                 weekly_sessions=data.get("weekly_sessions"),
                 class_schedule=data.get("class_schedule", "") or "",
                 programs=data.get("programs", "") or "",
+                lesson_start_date=data.get("lesson_start_date"),
                 schedule_pending=bool(data.get("schedule_pending")),
                 consent_privacy=bool(data.get("consent_privacy")),
                 consent_guardian_name=data.get("consent_guardian_name", "") or "",
@@ -904,7 +905,8 @@ class ConvertLeadAdminAPI(APIView):
                     StudentTimetable.objects.create(
                         student=user, branch=lead.branch, class_type=LessonType.PRIVATE,
                         weekday=wd, start_time=tm, duration_minutes=dur,
-                        program=prog, subject=subj, frequency=freq)
+                        program=prog, subject=subj, frequency=freq,
+                        active_from=data.get("lesson_start_date"))
             # 학부모(보호자) 계정 생성/연결 — 자녀 기록 열람용(11 §9)
             parent_user = get_or_create_guardian(
                 user, lead, lead.branch,

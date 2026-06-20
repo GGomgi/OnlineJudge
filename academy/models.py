@@ -309,6 +309,7 @@ class StudentProfile(models.Model):
     grade = models.CharField(max_length=16, blank=True, default="")
     enrollment_date = models.DateField(null=True, blank=True)
     enrollment_status = models.CharField(max_length=16, default=EnrollmentStatus.ENROLLED)
+    lesson_start_date = models.DateField(null=True, blank=True)  # 수업 시작일(시간표 표시 기준)
     # 등록 과정·교육 일정(입회원 신청서). 단일 과정(legacy) + 다중 과정(programs JSON).
     program = models.CharField(max_length=16, blank=True, default="")
     program_language = models.CharField(max_length=16, blank=True, default="")
@@ -501,6 +502,7 @@ class StudentTimetable(models.Model):
     program = models.CharField(max_length=32, blank=True, default="")  # 등록 과정 코드(과목)
     subject = models.CharField(max_length=64, blank=True, default="")  # 표시용 과정명(라벨)
     frequency = models.CharField(max_length=16, default=TimetableFrequency.WEEKLY)  # 매주/격주
+    active_from = models.DateField(null=True, blank=True)  # 수업 시작일
     room = models.CharField(max_length=64, blank=True, default="")
     status = models.CharField(max_length=16, default=TimetableStatus.ACTIVE)
     create_time = models.DateTimeField(auto_now_add=True)

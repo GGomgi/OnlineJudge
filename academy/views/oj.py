@@ -347,6 +347,25 @@ class StaffProfileUploadAPI(APIView):
         return self.success({"field": field, "url": url, "completed": p.is_complete()})
 
 
+class ChangePasswordAPI(APIView):
+    @login_required
+    def post(self, request):
+        """본인 비밀번호 변경. 변경 후에도 로그인 유지(세션 auth 해시 갱신)."""
+        from django.contrib import auth
+        from django.contrib.auth import update_session_auth_hash
+        old = request.data.get("old_password", "")
+        new = request.data.get("new_password", "")
+        if len(new) < 6:
+            return self.error("새 비밀번호는 6자 이상이어야 합니다.")
+        u = auth.authenticate(username=request.user.username, password=old)
+        if not u:
+            return self.error("현재 비밀번호가 올바르지 않습니다.")
+        request.user.set_password(new)
+        request.user.save()
+        update_session_auth_hash(request, request.user)
+        return self.success("변경되었습니다.")
+
+
 class MySignupStatusAPI(APIView):
     @login_required
     def get(self, request):
