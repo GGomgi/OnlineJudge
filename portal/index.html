@@ -34,7 +34,13 @@
   </header>
 
   <!-- 탭 -->
-  <nav class="bg-white border-b">
+  <!-- 서류 이미지 호버 미리보기 -->
+  <div v-if="docPreview.show" class="fixed z-50 pointer-events-none bg-white rounded-lg shadow-xl border p-1"
+       :style="{ left: docPreview.x+'px', top: docPreview.y+'px' }">
+    <img :src="docPreview.url" class="max-w-xs max-h-80 rounded" />
+  </div>
+
+  <nav class="bg-white border-b sticky top-0 z-30 shadow-sm">
     <div class="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
       <button v-for="t in tabs" :key="t.key" @click="go(t.key)"
         :class="['px-4 py-3 text-sm whitespace-nowrap border-b-2 -mb-px',
@@ -165,35 +171,35 @@
         </div>
         <div class="grid grid-cols-3 gap-2">
           <div>
-            <label class="lbl">학교 구분</label>
+            <label class="lbl">학교 구분 <span class="text-rose-500">*</span></label>
             <select v-model="leadForm.school_type" class="input px-2">
               <option value="">선택</option>
               <option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
           </div>
           <div>
-            <label class="lbl">학교 이름</label>
+            <label class="lbl">학교 이름 <span class="text-rose-500">*</span></label>
             <div class="flex items-center gap-1">
               <input v-model="leadForm.school_name" class="input px-2 min-w-0" />
               <span v-if="schoolSuffix(leadForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(leadForm.school_type) }}</span>
             </div>
           </div>
           <div>
-            <label class="lbl">학년</label>
+            <label class="lbl">학년 <span class="text-rose-500">*</span></label>
             <div class="flex items-center gap-1">
-              <input v-model="leadForm.grade" class="input px-2 min-w-0 w-12" placeholder="3" />
+              <input v-model="leadForm.grade" class="input px-2 min-w-0 w-12" />
               <span class="text-xs text-slate-400 whitespace-nowrap">학년</span>
             </div>
           </div>
         </div>
         <div>
-          <label class="lbl">상담 목적 <span class="text-rose-500">*</span></label>
+          <label class="lbl">학생의 목표 <span class="text-rose-500">*</span></label>
           <select v-model="leadForm.purpose" class="input">
             <option value="" disabled>선택</option>
             <option v-for="o in (options.counseling_purpose||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
           <input v-if="optAllowCustom('counseling_purpose', leadForm.purpose)" v-model="leadForm.purpose_detail"
-                 class="input mt-2" placeholder="상담 목적을 직접 입력해주세요." />
+                 class="input mt-2" placeholder="학생의 목표를 직접 입력해주세요." />
         </div>
         <div>
           <label class="lbl">관심·궁금한 사항 (선택)</label>
@@ -319,7 +325,7 @@
     <!-- ============ 관리자: 상담·등록 ============ -->
     <section v-if="tab==='leadmgr' && !convertingLead && !showLeadForm">
       <div class="flex items-center justify-between mb-3 gap-2">
-        <h2 class="text-lg font-bold">신규 상담 · 등록</h2>
+        <h2 class="text-lg font-bold">신규 상담 · 등록 <span class="text-sm font-normal text-slate-400">(등록 이전 상담 기록)</span></h2>
         <div class="flex items-center gap-2">
           <button @click="openLeadForm" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 상담 등록</button>
           <select v-model="leadFilter" @change="loadLeads" class="input w-32">
@@ -331,12 +337,21 @@
           </select>
         </div>
       </div>
-      <label v-if="isActorAllBranch" class="flex items-center gap-2 text-xs text-slate-500 mb-2">
-        <input type="checkbox" :checked="!!showDeletedLeads" @change="toggleShowDeleted" class="w-4 h-4"> 삭제된 항목도 보기
-      </label>
-      <div v-if="leads.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">상담 신청이 없습니다.</div>
+      <div class="flex flex-wrap items-center gap-2 mb-2">
+        <input v-model="leadSearch" placeholder="이름·전화·학교·학년 검색" class="input w-56 py-1" />
+        <select v-model="leadSort" class="input w-44 py-1">
+          <option value="reg_desc">최근 상담등록순</option>
+          <option value="reg_asc">오래된 상담등록순</option>
+          <option value="log_desc">최근 상담기록순</option>
+          <option value="log_asc">오래된 상담기록순</option>
+        </select>
+        <label v-if="isManager" class="flex items-center gap-2 text-xs text-slate-500 ml-auto">
+          <input type="checkbox" :checked="!!showDeletedLeads" @change="toggleShowDeleted" class="w-4 h-4"> 삭제된 항목도 보기
+        </label>
+      </div>
+      <div v-if="filteredLeads.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">상담 신청이 없습니다.</div>
       <div class="space-y-3">
-        <div v-for="r in leads" :key="r.id" :class="['bg-white rounded-xl shadow-sm p-4', r.is_hidden ? 'opacity-60 ring-1 ring-rose-200' : '']">
+        <div v-for="r in filteredLeads" :key="r.id" :class="['bg-white rounded-xl shadow-sm p-4', r.is_hidden ? 'opacity-60 ring-1 ring-rose-200' : '']">
           <div class="flex items-start justify-between gap-3 cursor-pointer" @click="toggleLead(r)">
             <div>
               <div class="font-semibold">{{ r.student_name }}
@@ -382,7 +397,12 @@
                   </template>
                   <template v-else>
                     <div class="whitespace-pre-wrap">{{ g.summary }}</div>
-                    <div v-if="g.edited_by" class="text-[11px] text-amber-600">✎ {{ dt(g.edited_at) }} {{ g.edited_by }} 수정 (이전: {{ g.prev_summary }})</div>
+                    <div v-if="g.edits && g.edits.length" class="mt-1 space-y-0.5">
+                      <div class="text-[11px] text-amber-600">✎ {{ g.edits.length }}회 수정됨 — 변경 이력:</div>
+                      <div v-for="(e,i) in g.edits" :key="i" class="text-[11px] text-amber-600/80 pl-3 border-l-2 border-amber-200">
+                        {{ e.time }} {{ e.actor || '' }} · 이전 내용: <span class="whitespace-pre-wrap">{{ e.old }}</span>
+                      </div>
+                    </div>
                     <div class="flex justify-end gap-2 text-[11px]">
                       <button v-if="!g.is_hidden" @click="startEditLog(g)" class="text-indigo-500 hover:underline">수정</button>
                       <button v-if="!g.is_hidden" @click="deleteLog(r,g)" class="text-rose-400 hover:underline">삭제</button>
@@ -408,7 +428,6 @@
             <!-- 액션 -->
             <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED'" class="flex flex-wrap gap-2">
               <button @click="openConvert(r)" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">등록 전환</button>
-              <button @click="closeLead(r)" class="px-3 py-1.5 rounded bg-slate-200 text-slate-700 text-sm hover:bg-slate-300">종결</button>
             </div>
           </div>
         </div>
@@ -430,11 +449,11 @@
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">학생 · 보호자 정보</div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="lbl">학생 성명</label>
-                <input :value="convertForm.student_name" class="input bg-slate-50" readonly />
+                <label class="lbl">학생 성명 <span class="text-rose-500">*</span> <span class="text-[10px] text-slate-400">(전화상담 시 정정 가능)</span></label>
+                <input v-model="convertForm.student_name" class="input" />
               </div>
               <div>
-                <label class="lbl">성별</label>
+                <label class="lbl">성별 <span class="text-rose-500">*</span></label>
                 <div class="flex gap-2 pt-1">
                   <label class="flex items-center gap-1 text-sm"><input type="radio" value="M" v-model="convertForm.gender"> 남</label>
                   <label class="flex items-center gap-1 text-sm"><input type="radio" value="F" v-model="convertForm.gender"> 여</label>
@@ -565,11 +584,11 @@
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">학생 로그인 계정</div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="lbl">아이디 (이름+생일 자동)</label>
+                <label class="lbl">아이디 (이름+생일 자동) <span class="text-rose-500">*</span></label>
                 <input v-model="convertForm.login_id" class="input" />
               </div>
               <div>
-                <label class="lbl">비밀번호 (6자 이상)</label>
+                <label class="lbl">비밀번호 (6자 이상) <span class="text-rose-500">*</span></label>
                 <input v-model="convertForm.password" type="text" class="input" />
               </div>
             </div>
@@ -580,7 +599,7 @@
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">학부모 계정 <span class="text-xs font-normal text-slate-400">(자녀 기록 열람용)</span></div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="lbl">학부모 아이디 (연락처 자동)</label>
+                <label class="lbl">학부모 아이디 (연락처 자동) <span class="text-rose-500">*</span></label>
                 <input v-model="convertForm.parent_login_id" class="input" />
               </div>
               <div>
@@ -693,7 +712,7 @@
         <div><label class="lbl">요일</label><select v-model="ttFilter.weekday" class="input w-20"><option value="">전체</option><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
         <div><label class="lbl">시작 이상</label><input v-model="ttFilter.from" @change="onFilterFrom" type="time" class="input w-28" /></div>
         <div><label class="lbl">종료 이하</label><input v-model="ttFilter.to" type="time" class="input w-28" /></div>
-        <div><label class="lbl">강사</label><select v-model="ttFilter.instructor_id" class="input w-28"><option value="">전체</option><option value="__none__">미배정만</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
+        <div><label class="lbl">강사</label><select v-model="ttFilter.instructor_id" class="input w-28"><option value="">전체</option><option value="__none__">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
         <div><label class="lbl">과정</label><select v-model="ttFilter.program" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
         <button @click="resetTtFilter" class="btn-secondary text-xs">초기화</button>
         <span class="text-xs text-slate-400 ml-auto self-center">{{ filteredTt.length }}건</span>
@@ -1186,7 +1205,9 @@
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">내 서류</div>
             <div v-for="d in staffProfile.documents" :key="d.id" class="flex items-center gap-2 text-sm">
               <span>📁 {{ d.group }}</span><span class="text-slate-600">{{ d.title }}</span>
-              <a :href="d.url" target="_blank" class="text-indigo-600 hover:underline text-xs">보기</a>
+              <a :href="d.url" target="_blank"
+                 @mouseenter="isImg(d.url) && showDocPreview(d.url, $event)" @mousemove="moveDocPreview($event)" @mouseleave="hideDocPreview"
+                 class="text-indigo-600 hover:underline text-xs">{{ isImg(d.url) ? '🖼 보기' : '📄 보기' }}</a>
               <span class="text-xs text-slate-400 ml-auto">{{ d.uploaded_at }}</span>
             </div>
           </div>
@@ -1259,7 +1280,8 @@ createApp({
       loginForm: { username:'', password:'' }, showPw: false,
       leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' },
       myClasses: [], myInd: [], myAtt: [],
-      leadFilter: '', leads: [], openLeadId: null, noteText: '',
+      docPreview: { show:false, url:'', x:0, y:0 },
+      leadFilter: '', leadSearch: '', leadSort: 'reg_desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteCounselAt: '', showDeletedLeads: null, editLogId: null, editLogText: '',
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
@@ -1313,6 +1335,34 @@ createApp({
     isActorAllBranch(){
       return !!(this.me && this.me.user.admin_type === 'Super Admin') ||
              !!(this.myProfile && this.myProfile.is_all_branch);
+    },
+    isManager(){
+      // 원장(지점장) 이상 — 삭제 항목 보기/복원 권한
+      if (this.me && this.me.user.admin_type === 'Super Admin') return true;
+      const r = this.myProfile && this.myProfile.role;
+      return ['HQ_ADMIN','HR_ADMIN','BRANCH_MANAGER'].includes(r);
+    },
+    filteredLeads(){
+      const q = (this.leadSearch||'').trim().toLowerCase();
+      let list = this.leads.slice();
+      if (q) {
+        list = list.filter(r => {
+          const hay = [r.student_name, r.parent_name, r.parent_phone, r.student_phone,
+                       r.school_name, this.schoolLabel(r.school_type), String(r.grade||'')]
+                      .filter(Boolean).join(' ').toLowerCase();
+          return hay.includes(q);
+        });
+      }
+      const lastLog = r => (r.logs && r.logs.length)
+        ? r.logs.map(g => g.counsel_at || g.create_time).sort().slice(-1)[0] : '';
+      const s = this.leadSort;
+      list.sort((a,b) => {
+        if (s==='reg_asc')  return (a.create_time>b.create_time?1:-1);
+        if (s==='reg_desc') return (a.create_time<b.create_time?1:-1);
+        if (s==='log_asc')  return (lastLog(a)>lastLog(b)?1:-1);
+        return (lastLog(a)<lastLog(b)?1:-1); // log_desc 기본
+      });
+      return list;
     },
     canManageOptions(){ return this.isActorAllBranch; },
     needsOnboarding(){ return !!(this.me && this.isStaff && this.staffProfile && !this.staffProfile.completed && !this.onboardingDismissed); },
@@ -1867,8 +1917,11 @@ createApp({
         const f = this.leadForm;
         if (!f.branch_id) return this.notify('지점을 선택하세요.', false);
         if (!f.parent_name || !f.parent_phone || !f.student_name) return this.notify('학부모 이름·연락처·자녀 이름은 필수입니다.', false);
-        if (!f.purpose) return this.notify('상담 목적을 선택하세요.', false);
-        if (this.optAllowCustom('counseling_purpose', f.purpose) && !(f.purpose_detail||'').trim()) return this.notify('상담 목적을 직접 입력해주세요.', false);
+        if (!f.school_type) return this.notify('학교 구분을 선택하세요.', false);
+        if (!(f.school_name||'').trim()) return this.notify('학교 이름을 입력하세요.', false);
+        if (!String(f.grade||'').trim()) return this.notify('학년을 입력하세요.', false);
+        if (!f.purpose) return this.notify('학생의 목표를 선택하세요.', false);
+        if (this.optAllowCustom('counseling_purpose', f.purpose) && !(f.purpose_detail||'').trim()) return this.notify('학생의 목표를 직접 입력해주세요.', false);
         await api('POST','/api/academy/lead', f);
         this.notify('상담 신청이 접수되었습니다.');
         this.leadForm = { branch_id:this.savedLeadBranch(), parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
@@ -1887,8 +1940,8 @@ createApp({
     async loadMyAttendance(){ try { this.myAtt = await api('GET','/api/academy/my_attendance'); } catch(e){ this.notify(e.message,false); } },
     async loadLeads(){
       this.convertingLead = null; this.showLeadForm = false;
-      if (this.isActorAllBranch && this.showDeletedLeads===null) await this.loadPrefs();
-      const sd = (this.isActorAllBranch && this.showDeletedLeads) ? '&show_deleted=1' : '';
+      if (this.isManager && this.showDeletedLeads===null) await this.loadPrefs();
+      const sd = (this.isManager && this.showDeletedLeads) ? '&show_deleted=1' : '';
       try { const d = await api('GET','/api/admin/academy/lead?status='+this.leadFilter+sd); this.leads = d.results || d; }
       catch(e){ this.notify(e.message,false); }
     },
@@ -1899,15 +1952,24 @@ createApp({
       this.loadLeads();
     },
     async deleteLead(r){
-      if (!window.confirm('이 상담을 삭제(숨김)하시겠습니까? (기록은 남으며 본부 관리자만 볼 수 있습니다)')) return;
-      try { await api('POST','/api/admin/academy/lead/delete', { lead_id:r.id, hidden:true }); this.notify('삭제(숨김)되었습니다.'); this.loadLeads(); }
+      if (!window.confirm('이 상담을 삭제하시겠습니까?')) return;
+      try { await api('POST','/api/admin/academy/lead/delete', { lead_id:r.id, hidden:true }); this.notify('삭제되었습니다.'); this.loadLeads(); }
       catch(e){ this.notify(e.message,false); }
     },
     async restoreLead(r){
       try { await api('POST','/api/admin/academy/lead/delete', { lead_id:r.id, hidden:false }); this.notify('복원되었습니다.'); this.loadLeads(); }
       catch(e){ this.notify(e.message,false); }
     },
-    toggleLead(r){ this.openLeadId = this.openLeadId===r.id ? null : r.id; this.noteText=''; this.editLogId=null; },
+    isImg(url){ return /\.(png|jpe?g|gif|webp|bmp|heic)(\?|$)/i.test(url||''); },
+    showDocPreview(url, e){ this.docPreview = { show:true, url, x:e.clientX+16, y:e.clientY+16 }; },
+    moveDocPreview(e){ if(this.docPreview.show){ this.docPreview.x=e.clientX+16; this.docPreview.y=e.clientY+16; } },
+    hideDocPreview(){ this.docPreview.show=false; },
+    nowLocal(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); },
+    toggleLead(r){
+      const opening = this.openLeadId!==r.id;
+      this.openLeadId = opening ? r.id : null; this.noteText=''; this.editLogId=null;
+      if (opening) { this.noteChannel='VISIT'; this.noteCounselAt = this.nowLocal(); }
+    },
     replaceLead(updated){ const i=this.leads.findIndex(x=>x.id===updated.id); if(i>=0) this.leads.splice(i,1,updated); },
     async addNote(r){
       if (!this.noteText.trim()) return;
@@ -1915,7 +1977,7 @@ createApp({
         const body = { lead_id:r.id, summary:this.noteText, channel:this.noteChannel };
         if (this.noteCounselAt) body.counsel_at = this.noteCounselAt;
         const d = await api('POST','/api/admin/academy/lead/note', body);
-        this.replaceLead(d); this.noteText=''; this.noteCounselAt=''; this.noteChannel='VISIT'; this.notify('상담 기록이 추가되었습니다.');
+        this.replaceLead(d); this.noteText=''; this.noteCounselAt=this.nowLocal(); this.noteChannel='VISIT'; this.notify('상담 기록이 추가되었습니다.');
       } catch(e){ this.notify(e.message,false); }
     },
     startEditLog(g){ this.editLogId=g.id; this.editLogText=g.summary; },
@@ -1925,7 +1987,7 @@ createApp({
       catch(e){ this.notify(e.message,false); }
     },
     async deleteLog(r, g){
-      if (!window.confirm('이 상담기록을 삭제(숨김)하시겠습니까?')) return;
+      if (!window.confirm('이 상담기록을 삭제하시겠습니까?')) return;
       try { const d = await api('DELETE','/api/admin/academy/lead/note?log_id='+g.id+'&hidden=1'); this.replaceLead(d); this.notify('삭제되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },

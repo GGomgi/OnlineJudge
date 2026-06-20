@@ -20,7 +20,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       ALL_BRANCH_ROLES, STAFF_ROLES, Branch,
                       SignupRequest, SignupStatus, CourseClass, ClassEnrollment,
                       TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
-                      Lead, LeadStatus, CounselingLog, StudentProfile, EnrollmentStatus,
+                      Lead, LeadStatus, CounselingLog, CounselingLogEdit, StudentProfile, EnrollmentStatus,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
                       TimetableChange)
@@ -801,17 +801,19 @@ class LeadAdminAPI(APIView):
         all_branch, branch_id, role = staff_scope(request.user)
         if not all_branch and branch_id is None:
             return self.error("No branch scope assigned")
-        qs = Lead.objects.select_related("branch", "converted_user").prefetch_related("logs__author", "logs__edited_by")
+        is_mgr = _is_manager(request.user)  # 원장(지점장) 이상
+        qs = Lead.objects.select_related("branch", "converted_user").prefetch_related(
+            "logs__author", "logs__edited_by", "logs__edits__actor")
         status = request.GET.get("status")
         if status:
             qs = qs.filter(status=status)
         if not all_branch:
-            qs = qs.filter(branch_id=branch_id, is_hidden=False)
-        else:
-            show_deleted = request.GET.get("show_deleted") == "1"
-            if not show_deleted:
-                qs = qs.filter(is_hidden=False)
-        return self.success([LeadSerializer(l, context={"is_hq": all_branch}).data for l in qs[:300]])
+            qs = qs.filter(branch_id=branch_id)
+        if not is_mgr:
+            qs = qs.filter(is_hidden=False)
+        elif request.GET.get("show_deleted") != "1":
+            qs = qs.filter(is_hidden=False)
+        return self.success([LeadSerializer(l, context={"show_hidden": is_mgr}).data for l in qs[:300]])
 
 
 class LeadDeleteAdminAPI(APIView):
@@ -824,10 +826,8 @@ class LeadDeleteAdminAPI(APIView):
         if not can_manage_branch(request.user, lead.branch_id):
             return self.error("No permission for this branch")
         hidden = bool(request.data.get("hidden", True))
-        if not hidden:  # 복원은 본부만
-            all_branch, _, _ = staff_scope(request.user)
-            if not all_branch:
-                return self.error("복원은 본부 관리자만 가능합니다.")
+        if not hidden and not _is_manager(request.user):  # 복원은 원장 이상
+            return self.error("복원은 원장 이상만 가능합니다.")
         lead.is_hidden = hidden
         lead.deleted_by = request.user if hidden else None
         lead.deleted_at = now() if hidden else None
@@ -854,11 +854,11 @@ class CounselingNoteAdminAPI(APIView):
         if lead.status == LeadStatus.NEW:
             lead.status = LeadStatus.COUNSELING
             lead.save()
-        return self.success(LeadSerializer(lead, context={"is_hq": staff_scope(request.user)[0]}).data)
+        return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
 
     @admin_role_required
     def put(self, request):
-        """상담기록 수정(이유 없이 즉시). 직전 내용·수정자·시각 이력 보존."""
+        """상담기록 수정(이유 없이 즉시). 매 수정마다 직전 내용 이력 보존(전체 추적)."""
         log = CounselingLog.objects.select_related("lead").filter(id=request.data.get("log_id")).first()
         if not log:
             return self.error("기록이 없습니다.")
@@ -867,12 +867,13 @@ class CounselingNoteAdminAPI(APIView):
         new_summary = (request.data.get("summary") or "").strip()
         if not new_summary:
             return self.error("내용을 입력하세요.")
+        CounselingLogEdit.objects.create(log=log, actor=request.user, old_summary=log.summary)
         log.prev_summary = log.summary
         log.summary = new_summary
         log.edited_by = request.user
         log.edited_at = now()
         log.save()
-        return self.success(LeadSerializer(log.lead, context={"is_hq": staff_scope(request.user)[0]}).data)
+        return self.success(LeadSerializer(log.lead, context={"show_hidden": _is_manager(request.user)}).data)
 
     @admin_role_required
     def delete(self, request):
@@ -883,13 +884,11 @@ class CounselingNoteAdminAPI(APIView):
         if not can_manage_branch(request.user, log.lead.branch_id):
             return self.error("No permission for this branch")
         hidden = request.GET.get("hidden", "1") == "1"
-        if not hidden:
-            all_branch, _, _ = staff_scope(request.user)
-            if not all_branch:
-                return self.error("복원은 본부 관리자만 가능합니다.")
+        if not hidden and not _is_manager(request.user):
+            return self.error("복원은 원장 이상만 가능합니다.")
         log.is_hidden = hidden
         log.save()
-        return self.success(LeadSerializer(log.lead, context={"is_hq": staff_scope(request.user)[0]}).data)
+        return self.success(LeadSerializer(log.lead, context={"show_hidden": _is_manager(request.user)}).data)
 
 
 class PrefsAdminAPI(APIView):

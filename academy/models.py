@@ -297,6 +297,19 @@ class CounselingLog(models.Model):
         ordering = ["-create_time"]
 
 
+class CounselingLogEdit(models.Model):
+    """상담기록 수정 이력(매 수정마다 직전 내용 보존). 여러 번 수정해도 전체 추적."""
+    log = models.ForeignKey(CounselingLog, on_delete=models.CASCADE, related_name="edits")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    old_summary = models.TextField(blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_counseling_log_edit"
+        ordering = ["-create_time"]
+
+
 class EnrollmentStatus(object):
     ENROLLED = "ENROLLED"
     ON_LEAVE = "ON_LEAVE"

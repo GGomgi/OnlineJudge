@@ -254,11 +254,19 @@ class LeadCreateSerializer(serializers.Serializer):
 class CounselingLogSerializer(serializers.ModelSerializer):
     author = serializers.SerializerMethodField()
     edited_by = serializers.SerializerMethodField()
+    edits = serializers.SerializerMethodField()
 
     class Meta:
         model = CounselingLog
         fields = ["id", "author", "channel", "summary", "counsel_at", "next_contact_at",
-                  "create_time", "is_hidden", "edited_by", "edited_at", "prev_summary"]
+                  "create_time", "is_hidden", "edited_by", "edited_at", "prev_summary", "edits"]
+
+    def get_edits(self, obj):
+        out = []
+        for e in obj.edits.all():
+            out.append({"actor": self._name(e.actor) if e.actor_id else None,
+                        "old": e.old_summary, "time": str(e.create_time)[:16]})
+        return out
 
     def _name(self, u):
         if not u:
@@ -295,10 +303,10 @@ class LeadSerializer(serializers.ModelSerializer):
         return obj.converted_user.username if obj.converted_user_id else None
 
     def get_logs(self, obj):
-        # 본부관리자(전지점)는 숨김 상담기록도 표시(삭제됨), 그 외는 숨김 제외
-        is_hq = self.context.get("is_hq", False)
+        # 원장 이상은 숨김 상담기록도 표시(삭제됨), 그 외는 숨김 제외
+        show_hidden = self.context.get("show_hidden", False)
         logs = list(obj.logs.all())
-        if not is_hq:
+        if not show_hidden:
             logs = [l for l in logs if not l.is_hidden]
         return CounselingLogSerializer(logs, many=True).data
 
