@@ -1192,8 +1192,8 @@
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">비상연락망 <span class="text-rose-500">*</span></div>
             <div v-for="(c,i) in hrForm.emergency_contacts" :key="i" class="grid grid-cols-12 items-center gap-1.5">
               <input v-model="c.name" placeholder="이름" class="input col-span-3 px-2" />
-              <input :value="c.phone" @input="c.phone = formatPhone($event.target.value)" inputmode="numeric" placeholder="전화번호" class="input col-span-5 px-2" />
-              <input v-model="c.relation" list="emergencyRelationList" placeholder="관계(선택·직접입력)" class="input col-span-3 px-2" />
+              <input :value="c.phone" @input="c.phone = formatPhone($event.target.value)" inputmode="numeric" placeholder="전화번호" class="input col-span-4 px-2" />
+              <input v-model="c.relation" list="emergencyRelationList" placeholder="관계(선택·직접입력)" class="input col-span-4 px-2" />
               <button @click="removeEmergency(i)" class="text-xs text-rose-400 hover:underline col-span-1 text-center">삭제</button>
             </div>
             <datalist id="emergencyRelationList"><option value="친구"><option value="연인"><option value="아버지"><option value="어머니"><option value="형"><option value="누나"><option value="언니"><option value="오빠"><option value="동생"></datalist>
