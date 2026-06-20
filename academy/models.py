@@ -68,6 +68,7 @@ class AcademyProfile(models.Model):
     staff_no = models.CharField(max_length=16, blank=True, default="")
     # 연락처(학부모 계정 매칭용: 동일 전화번호=동일 학부모, 11 §9 다자녀). 숫자만 정규화 저장.
     phone = models.CharField(max_length=32, blank=True, default="")
+    prefs = models.TextField(blank=True, default="")  # 사용자 UI 설정(JSON): 삭제표시 토글 등
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 
@@ -263,6 +264,10 @@ class Lead(models.Model):
     converted_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                        on_delete=models.SET_NULL, related_name="converted_from_lead")
     close_reason = models.CharField(max_length=255, blank=True, default="")
+    is_hidden = models.BooleanField(default=False)  # 소프트 삭제(숨김, 본부만 조회)
+    deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    deleted_at = models.DateTimeField(null=True, blank=True)
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 
@@ -276,9 +281,15 @@ class CounselingLog(models.Model):
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="logs")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                on_delete=models.SET_NULL, related_name="counseling_logs")
-    channel = models.CharField(max_length=16, blank=True, default="VISIT")
+    channel = models.CharField(max_length=16, blank=True, default="VISIT")  # 상담방법 VISIT/CALL/ETC
     summary = models.TextField()
+    counsel_at = models.DateTimeField(null=True, blank=True)  # 실제 상담 일시
     next_contact_at = models.DateField(null=True, blank=True)
+    is_hidden = models.BooleanField(default=False)  # 소프트 삭제(숨김)
+    edited_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="+")
+    edited_at = models.DateTimeField(null=True, blank=True)
+    prev_summary = models.TextField(blank=True, default="")  # 직전 내용(수정 이력)
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:

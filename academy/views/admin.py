@@ -796,17 +796,43 @@ class AttendanceAdminAPI(APIView):
 class LeadAdminAPI(APIView):
     @admin_role_required
     def get(self, request):
-        """리드(상담 신청) 목록. 전지점 역할은 전체, 지점 역할은 자기 지점만."""
+        """리드(상담 신청) 목록. 전지점 역할은 전체, 지점 역할은 자기 지점만.
+        소프트삭제(is_hidden): 본부(전지점)는 show_deleted 토글로 보기/감추기, 그 외는 항상 제외."""
         all_branch, branch_id, role = staff_scope(request.user)
         if not all_branch and branch_id is None:
             return self.error("No branch scope assigned")
-        qs = Lead.objects.select_related("branch", "converted_user").prefetch_related("logs__author")
+        qs = Lead.objects.select_related("branch", "converted_user").prefetch_related("logs__author", "logs__edited_by")
         status = request.GET.get("status")
         if status:
             qs = qs.filter(status=status)
         if not all_branch:
-            qs = qs.filter(branch_id=branch_id)
-        return self.success(self.paginate_data(request, qs, LeadSerializer))
+            qs = qs.filter(branch_id=branch_id, is_hidden=False)
+        else:
+            show_deleted = request.GET.get("show_deleted") == "1"
+            if not show_deleted:
+                qs = qs.filter(is_hidden=False)
+        return self.success([LeadSerializer(l, context={"is_hq": all_branch}).data for l in qs[:300]])
+
+
+class LeadDeleteAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """리드 소프트삭제(숨김)/복원. 숨김=any 관리(지점), 복원=본부만."""
+        lead = Lead.objects.filter(id=request.data.get("lead_id")).first()
+        if not lead:
+            return self.error("Lead does not exist")
+        if not can_manage_branch(request.user, lead.branch_id):
+            return self.error("No permission for this branch")
+        hidden = bool(request.data.get("hidden", True))
+        if not hidden:  # 복원은 본부만
+            all_branch, _, _ = staff_scope(request.user)
+            if not all_branch:
+                return self.error("복원은 본부 관리자만 가능합니다.")
+        lead.is_hidden = hidden
+        lead.deleted_by = request.user if hidden else None
+        lead.deleted_at = now() if hidden else None
+        lead.save()
+        return self.success({"lead_id": lead.id, "is_hidden": lead.is_hidden})
 
 
 class CounselingNoteAdminAPI(APIView):
@@ -823,11 +849,73 @@ class CounselingNoteAdminAPI(APIView):
             lead=lead, author=request.user,
             channel=data.get("channel", "") or "VISIT",
             summary=data["summary"],
+            counsel_at=data.get("counsel_at"),
             next_contact_at=data.get("next_contact_at"))
         if lead.status == LeadStatus.NEW:
             lead.status = LeadStatus.COUNSELING
             lead.save()
-        return self.success(LeadSerializer(lead).data)
+        return self.success(LeadSerializer(lead, context={"is_hq": staff_scope(request.user)[0]}).data)
+
+    @admin_role_required
+    def put(self, request):
+        """상담기록 수정(이유 없이 즉시). 직전 내용·수정자·시각 이력 보존."""
+        log = CounselingLog.objects.select_related("lead").filter(id=request.data.get("log_id")).first()
+        if not log:
+            return self.error("기록이 없습니다.")
+        if not can_manage_branch(request.user, log.lead.branch_id):
+            return self.error("No permission for this branch")
+        new_summary = (request.data.get("summary") or "").strip()
+        if not new_summary:
+            return self.error("내용을 입력하세요.")
+        log.prev_summary = log.summary
+        log.summary = new_summary
+        log.edited_by = request.user
+        log.edited_at = now()
+        log.save()
+        return self.success(LeadSerializer(log.lead, context={"is_hq": staff_scope(request.user)[0]}).data)
+
+    @admin_role_required
+    def delete(self, request):
+        """상담기록 소프트삭제(숨김)/복원."""
+        log = CounselingLog.objects.select_related("lead").filter(id=request.GET.get("log_id")).first()
+        if not log:
+            return self.error("기록이 없습니다.")
+        if not can_manage_branch(request.user, log.lead.branch_id):
+            return self.error("No permission for this branch")
+        hidden = request.GET.get("hidden", "1") == "1"
+        if not hidden:
+            all_branch, _, _ = staff_scope(request.user)
+            if not all_branch:
+                return self.error("복원은 본부 관리자만 가능합니다.")
+        log.is_hidden = hidden
+        log.save()
+        return self.success(LeadSerializer(log.lead, context={"is_hq": staff_scope(request.user)[0]}).data)
+
+
+class PrefsAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        prof = getattr(request.user, "academy_profile", None)
+        try:
+            return self.success(_json.loads(prof.prefs) if (prof and prof.prefs) else {})
+        except (ValueError, TypeError):
+            return self.success({})
+
+    @admin_role_required
+    def post(self, request):
+        """UI 설정 저장(부분 병합). 예: {show_deleted_leads: true}"""
+        prof = getattr(request.user, "academy_profile", None)
+        if not prof:
+            return self.error("프로필이 없습니다.")
+        try:
+            cur = _json.loads(prof.prefs) if prof.prefs else {}
+        except (ValueError, TypeError):
+            cur = {}
+        data = request.data if isinstance(request.data, dict) else {}
+        cur.update(data)
+        prof.prefs = _json.dumps(cur, ensure_ascii=False)
+        prof.save(update_fields=["prefs"])
+        return self.success(cur)
 
 
 class ConvertLeadAdminAPI(APIView):

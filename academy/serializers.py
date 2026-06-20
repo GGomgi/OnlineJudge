@@ -253,18 +253,31 @@ class LeadCreateSerializer(serializers.Serializer):
 
 class CounselingLogSerializer(serializers.ModelSerializer):
     author = serializers.SerializerMethodField()
+    edited_by = serializers.SerializerMethodField()
 
     class Meta:
         model = CounselingLog
-        fields = ["id", "author", "channel", "summary", "next_contact_at", "create_time"]
+        fields = ["id", "author", "channel", "summary", "counsel_at", "next_contact_at",
+                  "create_time", "is_hidden", "edited_by", "edited_at", "prev_summary"]
+
+    def _name(self, u):
+        if not u:
+            return None
+        try:
+            return u.userprofile.real_name or u.username
+        except Exception:
+            return u.username
 
     def get_author(self, obj):
-        return obj.author.username if obj.author_id else None
+        return self._name(obj.author) if obj.author_id else None
+
+    def get_edited_by(self, obj):
+        return self._name(obj.edited_by) if obj.edited_by_id else None
 
 
 class LeadSerializer(serializers.ModelSerializer):
     branch = serializers.SerializerMethodField()
-    logs = CounselingLogSerializer(many=True, read_only=True)
+    logs = serializers.SerializerMethodField()
     converted_username = serializers.SerializerMethodField()
 
     class Meta:
@@ -272,7 +285,8 @@ class LeadSerializer(serializers.ModelSerializer):
         fields = ["id", "branch", "parent_name", "parent_phone", "student_name",
                   "school_type", "school_name", "grade", "interest", "contact_preference",
                   "purpose", "purpose_detail",
-                  "status", "converted_username", "close_reason", "create_time", "logs"]
+                  "status", "converted_username", "close_reason", "create_time", "logs",
+                  "is_hidden"]
 
     def get_branch(self, obj):
         return {"id": obj.branch.id, "code": obj.branch.code, "name": obj.branch.name} if obj.branch_id else None
@@ -280,11 +294,20 @@ class LeadSerializer(serializers.ModelSerializer):
     def get_converted_username(self, obj):
         return obj.converted_user.username if obj.converted_user_id else None
 
+    def get_logs(self, obj):
+        # 본부관리자(전지점)는 숨김 상담기록도 표시(삭제됨), 그 외는 숨김 제외
+        is_hq = self.context.get("is_hq", False)
+        logs = list(obj.logs.all())
+        if not is_hq:
+            logs = [l for l in logs if not l.is_hidden]
+        return CounselingLogSerializer(logs, many=True).data
+
 
 class AddCounselingNoteSerializer(serializers.Serializer):
     lead_id = serializers.IntegerField()
     summary = serializers.CharField()
     channel = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    counsel_at = serializers.DateTimeField(required=False, allow_null=True)
     next_contact_at = serializers.DateField(required=False, allow_null=True)
 
 
