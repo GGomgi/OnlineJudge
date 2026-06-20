@@ -725,6 +725,11 @@
         </div>
       </div>
 
+      <!-- 미저장 경고 배너 -->
+      <div v-if="ttDirty()" class="mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm flex items-center gap-2">
+        ✏️ 저장하지 않은 수정이 있습니다. 각 행의 <b>저장</b>을 눌러야 반영됩니다. (다른 메뉴로 이동·새로고침 시 사라집니다)
+      </div>
+
       <!-- 목록 -->
       <div class="text-xs font-semibold text-slate-500 mb-2">📋 등록된 개별 수업 목록 <span class="font-normal text-slate-400">(행에서 바로 수정·삭제)</span></div>
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
@@ -742,8 +747,8 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="s in filteredTt" :key="s.id" class="border-t align-middle">
-              <td class="px-3 py-2 whitespace-nowrap">{{ s.student.real_name || s.student.username }} <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span></td>
+            <tr v-for="s in filteredTt" :key="s.id" :class="['border-t align-middle', ttRowDirty(s) ? 'bg-amber-50 ring-1 ring-amber-200' : '']">
+              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> {{ s.student.real_name || s.student.username }} <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span></td>
               <td class="px-3 py-2"><select v-model.number="s.weekday" class="input py-1 w-16 px-2"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
               <td class="px-3 py-2"><input v-model="s.start_time" type="time" class="input py-1 w-28" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" class="input py-1 w-24 px-2"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
@@ -751,7 +756,8 @@
               <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" class="input py-1 w-28 px-2"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
               <td class="px-3 py-2"><select v-model="s.frequency" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
-                <button @click="saveTt(s)" class="text-xs text-indigo-600 hover:underline">저장</button>
+                <span v-if="ttRowDirty(s)" class="text-[11px] text-amber-600 mr-1">✏️ 수정중</span>
+                <button @click="saveTt(s)" :class="['text-xs hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">저장</button>
                 <button @mouseenter="openTtHistory(s,$event)" @mouseleave="scheduleCloseTt" class="ml-2 text-xs text-slate-500 hover:underline">이력</button>
                 <button @click="delTt(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
               </td>
@@ -1490,11 +1496,18 @@ createApp({
     },
     noteDirty(){ return !!(this.noteText && this.noteText.trim()); },
     staffFormDirty(){ const f=this.staffForm; return !!(f.real_name||f.password); },
+    ttRowDirty(s){
+      const o = s && s._orig; if (!o) return false;
+      return s.weekday!==o.weekday || s.start_time!==o.start_time || s.duration_minutes!==o.duration_minutes
+        || (s.program||'')!==(o.program||'') || (s._instructor_id||null)!==(o.instr||null) || s.frequency!==o.frequency;
+    },
+    ttDirty(){ return this.ttAll.some(s=>this.ttRowDirty(s)) || (this.showTtAdd && this.ttAddRows.length>0); },
     isDirty(){
       if (this.convertingLead) return this.convertDirty();
       if (this.tab==='lead' || this.showLeadForm) return this.leadFormDirty();
       if (this.tab==='leadmgr') return this.noteDirty();
       if (this.tab==='staff') return this.staffFormDirty();
+      if (this.tab==='indtt') return this.ttDirty();
       return false;
     },
     confirmLeave(){ return window.confirm('작성 중인 내용이 저장되지 않았습니다.\n페이지를 벗어나면 작성한 내용이 삭제됩니다.\n나가시겠습니까?'); },
@@ -1639,7 +1652,15 @@ createApp({
       try { const d = await api('GET','/api/admin/academy/staff'); this.ttInstructors = d.results || d; } catch(e){}
     },
     async loadAllTt(){
-      try { const d = await api('GET','/api/admin/academy/student_timetable'); this.ttAll = (d.results || d).map(s=>({ ...s, start_time: this.hm(s.start_time), _instructor_id: s.instructor ? s.instructor.id : null })); }
+      try {
+        const d = await api('GET','/api/admin/academy/student_timetable');
+        this.ttAll = (d.results || d).map(s=>{
+          const row = { ...s, start_time: this.hm(s.start_time), _instructor_id: s.instructor ? s.instructor.id : null };
+          row._orig = { weekday: row.weekday, start_time: row.start_time, duration_minutes: row.duration_minutes,
+                        program: row.program||'', instr: row._instructor_id||null, frequency: row.frequency };
+          return row;
+        });
+      }
       catch(e){ this.notify(e.message,false); }
     },
     resetTtFilter(){ this.ttFilter = { name:'', weekday:'', from:'', to:'', instructor_id:'', program:'' }; },
