@@ -370,7 +370,8 @@ class StaffProfile(models.Model):
     bankbook_copy = models.CharField(max_length=255, blank=True, default="")     # 통장사본
     graduation_cert = models.CharField(max_length=255, blank=True, default="")   # 졸업증명서
     transcript = models.CharField(max_length=255, blank=True, default="")        # 성적증명서
-    # 4대보험 피부양자: 등록 여부 확정 + 목록 [{"name","relation","family_cert"}]
+    family_relation_cert = models.CharField(max_length=255, blank=True, default="")  # 가족관계증명서(피부양자 공통 1장)
+    # 4대보험 피부양자: 등록 여부 확정 + 목록 [{"name","relation","rrn"}]
     dependents_decided = models.BooleanField(default=False)
     dependents = models.TextField(blank=True, default="")
     # 비상연락망 [{"name","relation","phone"}]
@@ -397,8 +398,9 @@ class StaffProfile(models.Model):
             emer = _j.loads(self.emergency_contacts) if self.emergency_contacts else []
         except (ValueError, TypeError):
             emer = []
-        deps_ok = self.dependents_decided and all(
-            (d.get("name") and d.get("family_cert")) for d in deps)
+        # 피부양자가 있으면 가족관계증명서(공통 1장) 필요. 없으면 확인 체크만.
+        deps_ok = self.dependents_decided and all(d.get("name") for d in deps) \
+            and (not deps or bool(self.family_relation_cert))
         return bool(self.address and self.phone and self.resident_copy and self.bankbook_copy
                     and self.graduation_cert and self.transcript and self.sex_offense_consent
                     and self.sex_offense_signature and deps_ok and len(emer) >= 1)

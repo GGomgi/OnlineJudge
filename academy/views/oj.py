@@ -55,6 +55,7 @@ def _staff_profile_data(p):
         "zipcode": p.zipcode, "address": p.address, "address_detail": p.address_detail, "phone": p.phone,
         "resident_copy": p.resident_copy, "bankbook_copy": p.bankbook_copy,
         "graduation_cert": p.graduation_cert, "transcript": p.transcript,
+        "family_relation_cert": p.family_relation_cert,
         "dependents_decided": p.dependents_decided,
         "dependents": _parse_json_list(p.dependents),
         "emergency_contacts": _parse_json_list(p.emergency_contacts),
@@ -75,7 +76,7 @@ def _parse_json_obj(s):
 
 
 # 직원 인사 정보 업로드 가능한 단일 파일 필드
-STAFF_FILE_FIELDS = {"resident_copy", "bankbook_copy", "graduation_cert", "transcript"}
+STAFF_FILE_FIELDS = {"resident_copy", "bankbook_copy", "graduation_cert", "transcript", "family_relation_cert"}
 STAFF_UPLOAD_SUFFIXES = [".gif", ".jpg", ".jpeg", ".bmp", ".png", ".pdf"]
 
 

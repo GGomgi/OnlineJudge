@@ -338,13 +338,18 @@
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-2 mb-2">
-        <input v-model="leadSearch" placeholder="이름·전화·학교·학년 검색" class="input w-56 py-1" />
-        <select v-model="leadSort" class="input w-44 py-1">
-          <option value="reg_desc">최근 상담등록순</option>
-          <option value="reg_asc">오래된 상담등록순</option>
-          <option value="log_desc">최근 상담기록순</option>
-          <option value="log_asc">오래된 상담기록순</option>
-        </select>
+        <input v-model="leadSearch" placeholder="검색 (이름·전화·학교·학년)" class="input w-48 py-1" />
+        <input v-model="leadSearch2" placeholder="결과 내 재검색" class="input w-36 py-1" />
+        <div class="flex items-center gap-1">
+          <button @click="toggleSort('reg')"
+            :class="['px-2 py-1 rounded text-sm border', leadSortKey==='reg' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500']">
+            상담등록 <span v-if="leadSortKey==='reg'">{{ leadSortDir==='asc' ? '▲' : '▼' }}</span>
+          </button>
+          <button @click="toggleSort('log')"
+            :class="['px-2 py-1 rounded text-sm border', leadSortKey==='log' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500']">
+            상담기록 <span v-if="leadSortKey==='log'">{{ leadSortDir==='asc' ? '▲' : '▼' }}</span>
+          </button>
+        </div>
         <label v-if="isManager" class="flex items-center gap-2 text-xs text-slate-500 ml-auto">
           <input type="checkbox" :checked="!!showDeletedLeads" @change="toggleShowDeleted" class="w-4 h-4"> 삭제된 항목도 보기
         </label>
@@ -397,10 +402,11 @@
                   </template>
                   <template v-else>
                     <div class="whitespace-pre-wrap">{{ g.summary }}</div>
-                    <div v-if="g.edits && g.edits.length" class="mt-1 space-y-0.5">
-                      <div class="text-[11px] text-amber-600">✎ {{ g.edits.length }}회 수정됨 — 변경 이력:</div>
-                      <div v-for="(e,i) in g.edits" :key="i" class="text-[11px] text-amber-600/80 pl-3 border-l-2 border-amber-200">
-                        {{ e.time }} {{ e.actor || '' }} · 이전 내용: <span class="whitespace-pre-wrap">{{ e.old }}</span>
+                    <div v-if="g.edits && g.edits.length" class="mt-1 space-y-1">
+                      <div class="text-[11px] text-amber-600">✎ {{ g.edits.length }}회 수정됨 — 변경 이력 (이전 내용)</div>
+                      <div v-for="(e,i) in g.edits" :key="i" class="flex gap-2 text-[11px] pl-3 border-l-2 border-amber-200 py-0.5">
+                        <span class="shrink-0 w-28 text-amber-600 leading-tight">{{ e.time }}<br>{{ e.actor || '' }}</span>
+                        <span class="whitespace-pre-wrap text-slate-600 flex-1">{{ e.old }}</span>
                       </div>
                     </div>
                     <div class="flex justify-end gap-2 text-[11px]">
@@ -1143,11 +1149,13 @@
           <div class="space-y-2">
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">서류 (사진/PDF)</div>
             <p class="text-[11px] text-slate-400">파일은 클릭 또는 행에 드래그앤드롭으로 업로드.</p>
-            <div v-for="doc in [{f:'resident_copy',l:'주민등록등본'},{f:'bankbook_copy',l:'통장사본'},{f:'graduation_cert',l:'졸업증명서'},{f:'transcript',l:'성적증명서'}]" :key="doc.f"
+            <div v-for="doc in [{f:'resident_copy',l:'주민등록등본 (주민번호 모두 표시)'},{f:'bankbook_copy',l:'통장사본'},{f:'graduation_cert',l:'졸업증명서'},{f:'transcript',l:'성적증명서'}]" :key="doc.f"
                  @drop.prevent="onHrFixedDrop(doc.f, $event)" @dragover.prevent
                  class="flex items-center gap-2 text-sm rounded hover:bg-slate-50 px-1 py-0.5">
-              <span class="w-28 shrink-0">{{ doc.l }}</span>
-              <span v-if="hrFile(doc.f)" class="text-emerald-600 text-xs">업로드됨 · <a :href="hrFile(doc.f)" target="_blank" class="underline">보기</a>
+              <span class="w-44 shrink-0">{{ doc.l }}</span>
+              <span v-if="hrFile(doc.f)" class="text-emerald-600 text-xs">업로드됨 · <a :href="hrFile(doc.f)" target="_blank"
+                  @mouseenter="isImg(hrFile(doc.f)) && showDocPreview(hrFile(doc.f), $event)" @mousemove="moveDocPreview($event)" @mouseleave="hideDocPreview"
+                  class="underline">{{ isImg(hrFile(doc.f)) ? '🖼 보기' : '📄 보기' }}</a>
                 <span v-if="staffProfile && staffProfile.file_uploaded_at && staffProfile.file_uploaded_at[doc.f]" class="text-slate-400">({{ staffProfile.file_uploaded_at[doc.f] }})</span></span>
               <span v-else class="text-rose-400 text-xs">미등록</span>
               <label class="btn-secondary text-xs cursor-pointer ml-auto">파일 선택<input type="file" class="hidden" accept="image/*,.pdf" @change="uploadStaffFile(doc.f, $event)"></label>
@@ -1156,18 +1164,26 @@
 
           <!-- 4대보험 피부양자 -->
           <div class="space-y-2">
-            <div class="text-sm font-semibold text-slate-700 border-b pb-1">4대보험 피부양자</div>
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">4대보험 피부양자 <span class="text-[11px] font-normal text-slate-400">(주민번호 모두 표시)</span></div>
             <p class="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">⚠ 피부양자 정보를 변경·저장하면 <b>관리자에게 자동 통보</b>됩니다. (4대보험 신고 반영을 위해 관리자에게 보고 필요)</p>
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" v-model="hrForm.dependents_decided" class="w-4 h-4"> 피부양자 등록 여부를 확인했습니다 (없으면 체크만)</label>
-            <div v-for="(d,i) in hrForm.dependents" :key="i" class="flex flex-wrap items-center gap-1.5 bg-slate-50 rounded-lg p-2">
-              <input v-model="d.name" placeholder="이름" class="input w-24" />
-              <input v-model="d.relation" placeholder="관계" class="input w-20" />
-              <span v-if="d.family_cert" class="text-emerald-600 text-xs">증명서 · <a :href="d.family_cert" target="_blank" class="underline">보기</a></span>
-              <label class="btn-secondary text-xs cursor-pointer">가족관계증명서<input type="file" class="hidden" accept="image/*,.pdf" @change="uploadDependentCert(i, $event)"></label>
-              <button @click="removeDependent(i)" class="text-xs text-rose-400 hover:underline">삭제</button>
+            <!-- 가족관계증명서: 피부양자 공통 1장 -->
+            <div class="flex items-center gap-2 text-sm bg-slate-50 rounded-lg px-2 py-1.5">
+              <span class="shrink-0">가족관계증명서 <span class="text-[11px] text-slate-400">(피부양자 공통 1장)</span></span>
+              <span v-if="hrFile('family_relation_cert')" class="text-emerald-600 text-xs">업로드됨 · <a :href="hrFile('family_relation_cert')" target="_blank"
+                  @mouseenter="isImg(hrFile('family_relation_cert')) && showDocPreview(hrFile('family_relation_cert'), $event)" @mousemove="moveDocPreview($event)" @mouseleave="hideDocPreview"
+                  class="underline">{{ isImg(hrFile('family_relation_cert')) ? '🖼 보기' : '📄 보기' }}</a></span>
+              <span v-else class="text-rose-400 text-xs">미등록</span>
+              <label class="btn-secondary text-xs cursor-pointer ml-auto">파일 선택<input type="file" class="hidden" accept="image/*,.pdf" @change="uploadStaffFile('family_relation_cert', $event)"></label>
             </div>
+            <div v-for="(d,i) in hrForm.dependents" :key="i" class="flex items-center gap-1.5 bg-slate-50 rounded-lg p-2">
+              <input v-model="d.name" placeholder="이름" class="input w-20 shrink-0" />
+              <input v-model="d.relation" list="relationList" placeholder="관계(아버지·어머니·배우자·자녀 등)" class="input flex-1 min-w-0" />
+              <input :value="d.rrn" @input="d.rrn = formatRRN($event.target.value)" inputmode="numeric" placeholder="주민번호 000000-0000000" class="input w-44 shrink-0" />
+              <button @click="removeDependent(i)" class="text-xs text-rose-400 hover:underline shrink-0">삭제</button>
+            </div>
+            <datalist id="relationList"><option value="아버지"><option value="어머니"><option value="배우자"><option value="자녀"></datalist>
             <button @click="addDependent" class="text-xs text-indigo-600 hover:underline">+ 피부양자 추가</button>
-            <p class="text-[11px] text-slate-400">증명서 업로드는 <b>먼저 저장</b> 후 가능합니다.</p>
           </div>
 
           <!-- 비상연락망 -->
@@ -1281,7 +1297,7 @@ createApp({
       leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' },
       myClasses: [], myInd: [], myAtt: [],
       docPreview: { show:false, url:'', x:0, y:0 },
-      leadFilter: '', leadSearch: '', leadSort: 'reg_desc', leads: [], openLeadId: null, noteText: '',
+      leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteCounselAt: '', showDeletedLeads: null, editLogId: null, editLogText: '',
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
@@ -1343,25 +1359,20 @@ createApp({
       return ['HQ_ADMIN','HR_ADMIN','BRANCH_MANAGER'].includes(r);
     },
     filteredLeads(){
-      const q = (this.leadSearch||'').trim().toLowerCase();
+      const hayOf = r => [r.student_name, r.parent_name, r.parent_phone, r.student_phone,
+                          r.school_name, this.schoolLabel(r.school_type), String(r.grade||'')]
+                         .filter(Boolean).join(' ').toLowerCase();
       let list = this.leads.slice();
-      if (q) {
-        list = list.filter(r => {
-          const hay = [r.student_name, r.parent_name, r.parent_phone, r.student_phone,
-                       r.school_name, this.schoolLabel(r.school_type), String(r.grade||'')]
-                      .filter(Boolean).join(' ').toLowerCase();
-          return hay.includes(q);
-        });
-      }
+      // 1번 칸으로 먼저 좁히고, 그 결과에서 2번 칸으로 재검색(AND)
+      const q1 = (this.leadSearch||'').trim().toLowerCase();
+      const q2 = (this.leadSearch2||'').trim().toLowerCase();
+      if (q1) list = list.filter(r => hayOf(r).includes(q1));
+      if (q2) list = list.filter(r => hayOf(r).includes(q2));
       const lastLog = r => (r.logs && r.logs.length)
         ? r.logs.map(g => g.counsel_at || g.create_time).sort().slice(-1)[0] : '';
-      const s = this.leadSort;
-      list.sort((a,b) => {
-        if (s==='reg_asc')  return (a.create_time>b.create_time?1:-1);
-        if (s==='reg_desc') return (a.create_time<b.create_time?1:-1);
-        if (s==='log_asc')  return (lastLog(a)>lastLog(b)?1:-1);
-        return (lastLog(a)<lastLog(b)?1:-1); // log_desc 기본
-      });
+      const key = this.leadSortKey, asc = this.leadSortDir==='asc';
+      const val = r => key==='log' ? lastLog(r) : r.create_time;
+      list.sort((a,b) => { const x=val(a), y=val(b); return (x<y?-1:x>y?1:0) * (asc?1:-1); });
       return list;
     },
     canManageOptions(){ return this.isActorAllBranch; },
@@ -1511,7 +1522,8 @@ createApp({
       } catch(e){ this.staffProfile = null; }
     },
     hrFile(field){ return this.staffProfile ? this.staffProfile[field] : ''; },
-    addDependent(){ this.hrForm.dependents.push({ name:'', relation:'', family_cert:'' }); },
+    addDependent(){ this.hrForm.dependents.push({ name:'', relation:'', rrn:'' }); },
+    formatRRN(v){ const n=(v||'').replace(/\D/g,'').slice(0,13); return n.length>6 ? n.slice(0,6)+'-'+n.slice(6) : n; },
     removeDependent(i){ this.hrForm.dependents.splice(i,1); },
     addEmergency(){ this.hrForm.emergency_contacts.push({ name:'', relation:'', phone:'' }); },
     removeEmergency(i){ this.hrForm.emergency_contacts.splice(i,1); },
@@ -1548,16 +1560,6 @@ createApp({
         const d = await this.apiUpload('/api/academy/staff_profile/upload', fd);
         if (this.staffProfile){ this.staffProfile[field] = d.url; this.staffProfile.completed = d.completed; }
         this.notify('업로드되었습니다.');
-      } catch(e){ this.notify(e.message, false); } finally { ev.target.value=''; }
-    },
-    async uploadDependentCert(i, ev){
-      const file = ev.target.files[0]; if (!file) return;
-      try {
-        const fd = new FormData(); fd.append('field','family_cert'); fd.append('index', i); fd.append('file', file);
-        const d = await this.apiUpload('/api/academy/staff_profile/upload', fd);
-        this.hrForm.dependents[i].family_cert = d.url;
-        await this.loadStaffProfile();
-        this.notify('가족관계증명서가 업로드되었습니다.');
       } catch(e){ this.notify(e.message, false); } finally { ev.target.value=''; }
     },
     hrSigInit(){ const c=this.$refs.hrSig; if(!c) return; const ctx=c.getContext('2d'); ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.strokeStyle='#1e293b'; ctx.clearRect(0,0,c.width,c.height); this.hrSig.ctx=ctx; this.hrSig.hasInk=false; },
@@ -1964,6 +1966,10 @@ createApp({
     showDocPreview(url, e){ this.docPreview = { show:true, url, x:e.clientX+16, y:e.clientY+16 }; },
     moveDocPreview(e){ if(this.docPreview.show){ this.docPreview.x=e.clientX+16; this.docPreview.y=e.clientY+16; } },
     hideDocPreview(){ this.docPreview.show=false; },
+    toggleSort(key){
+      if (this.leadSortKey===key) this.leadSortDir = this.leadSortDir==='asc' ? 'desc' : 'asc';
+      else { this.leadSortKey = key; this.leadSortDir = 'desc'; }
+    },
     nowLocal(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); },
     toggleLead(r){
       const opening = this.openLeadId!==r.id;
