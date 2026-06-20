@@ -337,9 +337,9 @@
           </select>
         </div>
       </div>
-      <div class="flex items-center gap-2 mb-2 overflow-x-auto">
-        <input v-model="leadSearch" placeholder="1차 검색 (이름·전화·학교·학년)" class="input w-48 py-1 shrink-0" />
-        <input v-model="leadSearch2" placeholder="2차 검색" class="input w-28 py-1 shrink-0" />
+      <div class="flex items-center gap-2 mb-2">
+        <input v-model="leadSearch" placeholder="1차 검색 (이름·전화·학교·학년)" class="input flex-1 min-w-0 py-1" />
+        <input v-model="leadSearch2" placeholder="2차 검색" class="input flex-1 min-w-0 py-1" />
         <div class="flex items-center gap-1 shrink-0">
           <button @click="toggleSort('reg')"
             :class="['px-2 py-1 rounded text-sm border', leadSortKey==='reg' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500']">
@@ -1179,10 +1179,11 @@
             <div v-for="(d,i) in hrForm.dependents" :key="i" class="grid grid-cols-12 items-center gap-1.5 bg-slate-50 rounded-lg p-2">
               <input v-model="d.name" placeholder="이름" class="input col-span-3 px-2" />
               <input :value="d.rrn" @input="d.rrn = formatRRN($event.target.value)" inputmode="numeric" placeholder="주민번호" class="input col-span-5 px-2" />
-              <input v-model="d.relation" list="relationList" placeholder="관계" class="input col-span-3 px-2" />
+              <input v-model="d.relation" list="relationList" placeholder="관계(선택·직접입력)" class="input col-span-3 px-2" />
               <button @click="removeDependent(i)" class="text-xs text-rose-400 hover:underline col-span-1 text-center">삭제</button>
             </div>
             <datalist id="relationList"><option value="아버지"><option value="어머니"><option value="배우자"><option value="자녀"></datalist>
+            <p class="text-[11px] text-slate-400">관계는 목록에서 고르거나 직접 입력할 수 있습니다(예: 손자녀, 부모 등).</p>
             <button @click="addDependent" class="text-xs text-indigo-600 hover:underline">+ 피부양자 추가</button>
           </div>
 
