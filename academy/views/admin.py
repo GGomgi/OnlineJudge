@@ -1243,16 +1243,43 @@ class StudentTimetableAdminAPI(APIView):
         if "instructor_id" in data:
             slot.instructor = User.objects.filter(id=data["instructor_id"]).first() if data["instructor_id"] else None
         slot.save()
-        # 변경 항목 요약
+        # 변경 항목 요약 (기존값 → 변경값)
         labels = {"weekday": "요일", "start_time": "시각", "duration_minutes": "수업길이",
                   "program": "과정", "frequency": "반복", "instructor_id": "강사"}
         after = {"weekday": slot.weekday, "start_time": str(slot.start_time)[:5],
                  "duration_minutes": slot.duration_minutes, "program": slot.program,
                  "frequency": slot.frequency, "instructor_id": slot.instructor_id}
-        changed = [labels[k] for k in labels if before.get(k) != after.get(k)]
+
+        def _fmt(field, val):
+            if field == "instructor_id" and val in (None, ""):
+                return "미배정"
+            if field == "program" and val in (None, ""):
+                return "미지정"
+            if val in (None, ""):
+                return "-"
+            if field == "weekday":
+                return _WD[val] if isinstance(val, int) and 0 <= val < len(_WD) else str(val)
+            if field == "duration_minutes":
+                return f"{val}분"
+            if field == "frequency":
+                return {"WEEKLY": "매주", "BIWEEKLY": "격주"}.get(val, str(val))
+            if field == "program":
+                return resolve_program_label(val) or "미지정"
+            if field == "instructor_id":
+                u = User.objects.filter(id=val).first()
+                if not u:
+                    return "미배정"
+                try:
+                    return u.userprofile.real_name or u.username
+                except Exception:
+                    return u.username
+            return str(val)
+
+        parts = [f"{labels[k]} {_fmt(k, before.get(k))} → {_fmt(k, after.get(k))}"
+                 for k in labels if before.get(k) != after.get(k)]
         TimetableChange.objects.create(
             student=slot.student, actor=request.user, action="UPDATE", reason=reason,
-            detail=(", ".join(changed) + " 수정") if changed else "수정")
+            detail=("; ".join(parts))[:255] if parts else "수정")
         slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=slot.pk)
         return self.success(StudentTimetableSerializer(slot).data)
 
