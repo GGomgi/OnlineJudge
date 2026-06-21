@@ -768,6 +768,191 @@
       </div>
     </section>
 
+    <!-- ============ 관리자: 학생 관리 ============ -->
+    <section v-if="tab==='students'">
+      <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h2 class="text-lg font-bold">학생 관리 <span class="text-sm font-normal text-slate-400">(인적사항·상담·상태·보호자 통합)</span></h2>
+      </div>
+      <!-- 검색/필터 -->
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        <input v-model="stuSearch" placeholder="이름·아이디·학교·학년·보호자·전화 검색" class="input w-72 py-1" />
+        <select v-model="stuStatusFilter" class="input w-32 py-1">
+          <option value="">전체 상태</option>
+          <option value="ENROLLED">재원</option>
+          <option value="ON_LEAVE">휴원</option>
+          <option value="WITHDRAWN">퇴원</option>
+        </select>
+        <span class="text-xs text-slate-400 ml-auto">{{ filteredStudents.length }}명</span>
+      </div>
+      <!-- 목록 -->
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs">
+            <tr>
+              <th @click="sortStu('real_name')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">이름{{ stuArrow('real_name') }}</th>
+              <th @click="sortStu('username')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">아이디{{ stuArrow('username') }}</th>
+              <th @click="sortStu('school_name')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">학교/학년{{ stuArrow('school_name') }}</th>
+              <th @click="sortStu('branch')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">지점{{ stuArrow('branch') }}</th>
+              <th class="text-left px-3 py-2">보호자</th>
+              <th @click="sortStu('enrollment_status')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">상태{{ stuArrow('enrollment_status') }}</th>
+              <th class="px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in filteredStudents" :key="s.id" class="border-t align-middle hover:bg-slate-50">
+              <td class="px-3 py-2 whitespace-nowrap font-medium">{{ s.real_name || s.username }}</td>
+              <td class="px-3 py-2 text-slate-500">{{ s.username }}</td>
+              <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ schoolLabel(s.school_type) }} {{ s.school_name }} {{ s.grade ? s.grade+'학년' : '' }}</td>
+              <td class="px-3 py-2 text-slate-500">{{ s.branch }}</td>
+              <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ s.parent_name || '-' }} <span v-if="s.guardian_count" class="text-xs text-slate-400">({{ s.guardian_count }})</span></td>
+              <td class="px-3 py-2"><span :class="['px-2 py-0.5 rounded text-xs', stuStatusBadge(s.enrollment_status).cls]">{{ stuStatusBadge(s.enrollment_status).label }}</span></td>
+              <td class="px-3 py-2 text-right"><button @click="openStudent(s)" class="text-xs text-indigo-600 hover:underline">상세</button></td>
+            </tr>
+            <tr v-if="filteredStudents.length===0"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 학생이 없습니다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 상세 모달 -->
+      <div v-if="stuDetail" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="closeStudent">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4">
+          <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
+            <div class="font-bold">{{ stuDetail.real_name || stuDetail.username }}
+              <span class="text-xs font-normal text-slate-400">{{ stuDetail.username }} · {{ stuDetail.branch }}</span>
+              <span :class="['ml-2 px-2 py-0.5 rounded text-xs', stuStatusBadge(stuDetail.enrollment_status).cls]">{{ stuStatusBadge(stuDetail.enrollment_status).label }}</span>
+            </div>
+            <button @click="closeStudent" class="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+          <!-- 서브탭 -->
+          <div class="flex gap-1 px-5 pt-3 border-b text-sm">
+            <button v-for="st in stuTabs" :key="st.k" @click="stuTab=st.k"
+              :class="['px-3 py-2 border-b-2 -mb-px', stuTab===st.k ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500']">{{ st.l }}</button>
+          </div>
+          <div class="p-5 space-y-3">
+            <!-- 인적사항 -->
+            <div v-if="stuTab==='info'" class="space-y-2">
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class="lbl">이름</label><input v-model="stuForm.real_name" class="input" /></div>
+                <div><label class="lbl">생년월일</label><input v-model="stuForm.birth_date" type="date" class="input" /></div>
+                <div><label class="lbl">성별</label><select v-model="stuForm.gender" class="input"><option value="">-</option><option value="M">남</option><option value="F">여</option></select></div>
+                <div><label class="lbl">학생 연락처</label><input :value="stuForm.student_phone" @input="stuForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
+                <div><label class="lbl">학교 구분</label><select v-model="stuForm.school_type" class="input px-2"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+                <div><label class="lbl">학교 이름</label><input v-model="stuForm.school_name" class="input" /></div>
+                <div><label class="lbl">학년</label><input v-model="stuForm.grade" class="input" /></div>
+                <div><label class="lbl">주 교육 회수</label><input v-model.number="stuForm.weekly_sessions" type="number" min="0" class="input" /></div>
+                <div><label class="lbl">수업 시작일</label><input v-model="stuForm.lesson_start_date" type="date" class="input" /></div>
+                <div><label class="lbl">등록일</label><input v-model="stuForm.enrollment_date" type="date" class="input" /></div>
+              </div>
+              <div><label class="lbl">보호자 이름</label><input v-model="stuForm.parent_name" class="input" /></div>
+              <div><label class="lbl">보호자 연락처</label><input :value="stuForm.parent_phone" @input="stuForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
+              <div class="flex justify-end"><button @click="saveStudent" class="btn-primary text-sm">저장</button></div>
+            </div>
+
+            <!-- 상담 타임라인 -->
+            <div v-if="stuTab==='counsel'" class="space-y-3">
+              <div class="bg-slate-50 rounded-lg p-3 space-y-2">
+                <div class="flex flex-wrap gap-2 items-center">
+                  <select v-model="stuNoteChannel" class="input w-24 py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select>
+                  <input v-model="stuNoteCounselAt" type="datetime-local" class="input w-52 py-1" />
+                  <span class="text-xs text-slate-400">상담 방법 · 일시</span>
+                </div>
+                <textarea v-model="stuNoteText" rows="2" placeholder="상담 내용 입력" class="input"></textarea>
+                <div class="flex justify-end"><button @click="addStuNote" class="btn-secondary text-sm">기록 추가</button></div>
+              </div>
+              <ul class="space-y-1">
+                <li v-for="g in (stuDetail.lead ? stuDetail.lead.logs : [])" :key="g.id" :class="['text-sm rounded px-3 py-1.5', g.is_hidden ? 'bg-rose-50' : 'bg-slate-50']">
+                  <div class="flex items-center gap-1 text-xs text-slate-400">
+                    <span>{{ channelLabel(g.channel) }}</span>
+                    <span v-if="g.counsel_at">· 상담 {{ dt(g.counsel_at) }}</span>
+                    <span v-if="g.is_hidden" class="text-rose-500">· 삭제됨</span>
+                    <span class="ml-auto">{{ dt(g.create_time) }} {{ g.author }}</span>
+                  </div>
+                  <template v-if="stuEditLogId===g.id">
+                    <textarea v-model="stuEditLogText" rows="2" class="input mt-1"></textarea>
+                    <div class="flex justify-end gap-2 mt-1">
+                      <button @click="stuEditLogId=null" class="text-xs text-slate-400 hover:underline">취소</button>
+                      <button @click="saveStuEditLog(g)" class="text-xs text-indigo-600 hover:underline">저장</button>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="whitespace-pre-wrap">{{ g.summary }}</div>
+                    <div v-if="g.edits && g.edits.length" class="mt-1 space-y-1">
+                      <div class="text-[11px] text-amber-600">✎ {{ g.edits.length }}회 수정됨</div>
+                      <div v-for="(e,i) in g.edits" :key="i" class="flex gap-2 text-[11px] pl-3 border-l-2 border-amber-200 py-0.5">
+                        <span class="shrink-0 w-28 text-amber-600 leading-tight">{{ e.time }}<br>{{ e.actor || '' }}</span>
+                        <span class="whitespace-pre-wrap text-slate-600 flex-1">{{ e.old }}</span>
+                      </div>
+                    </div>
+                    <div class="flex justify-end gap-2 text-[11px]">
+                      <button v-if="!g.is_hidden" @click="startStuEditLog(g)" class="text-indigo-500 hover:underline">수정</button>
+                      <button v-if="!g.is_hidden" @click="deleteStuLog(g)" class="text-rose-400 hover:underline">삭제</button>
+                      <button v-else @click="restoreStuLog(g)" class="text-indigo-500 hover:underline">복원</button>
+                    </div>
+                  </template>
+                </li>
+                <li v-if="!stuDetail.lead || stuDetail.lead.logs.length===0" class="text-xs text-slate-400">상담 기록이 없습니다.</li>
+              </ul>
+            </div>
+
+            <!-- 상태 이력 -->
+            <div v-if="stuTab==='status'" class="space-y-3">
+              <div class="bg-slate-50 rounded-lg p-3 space-y-2">
+                <div class="flex flex-wrap gap-2 items-center">
+                  <select v-model="stuStatusNew" class="input w-28 py-1">
+                    <option value="ENROLLED">재원(재등록)</option>
+                    <option value="ON_LEAVE">휴원</option>
+                    <option value="WITHDRAWN">퇴원</option>
+                  </select>
+                  <input v-model="stuStatusDate" type="date" class="input w-40 py-1" title="적용일" />
+                  <input v-model="stuStatusReason" placeholder="사유" class="input flex-1 min-w-0 py-1" />
+                  <button @click="changeStuStatus" class="btn-secondary text-sm whitespace-nowrap">상태 변경</button>
+                </div>
+                <p class="text-[11px] text-slate-400">현재 상태: <b>{{ stuStatusBadge(stuDetail.enrollment_status).label }}</b> · 변경 시 이력에 영구 기록됩니다.</p>
+              </div>
+              <ul class="space-y-1">
+                <li v-for="h in stuDetail.status_history" :key="h.id" class="text-sm bg-slate-50 rounded px-3 py-1.5">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs">{{ stuStatusBadge(h.from).label }} → <b>{{ stuStatusBadge(h.to).label }}</b></span>
+                    <span v-if="h.effective_date" class="text-xs text-slate-400">적용 {{ h.effective_date }}</span>
+                    <span class="text-xs text-slate-400 ml-auto">{{ h.time }} {{ h.actor }}</span>
+                  </div>
+                  <div v-if="h.reason" class="text-xs text-slate-600">사유: {{ h.reason }}</div>
+                </li>
+                <li v-if="stuDetail.status_history.length===0" class="text-xs text-slate-400">상태 변경 이력이 없습니다.</li>
+              </ul>
+            </div>
+
+            <!-- 보호자 -->
+            <div v-if="stuTab==='guardian'" class="space-y-3">
+              <ul class="space-y-1">
+                <li v-for="gd in stuDetail.guardians" :key="gd.link_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-1.5">
+                  <span class="font-medium">{{ gd.name }}</span>
+                  <span class="text-xs text-slate-400">{{ gd.relation }} · {{ gd.phone }} · @{{ gd.username }}</span>
+                  <span class="ml-auto flex gap-2">
+                    <button @click="resetGuardianPw(gd)" class="text-xs text-indigo-500 hover:underline">비번 초기화</button>
+                    <button @click="unlinkGuardian(gd)" class="text-xs text-rose-400 hover:underline">연결 해제</button>
+                  </span>
+                </li>
+                <li v-if="stuDetail.guardians.length===0" class="text-xs text-slate-400">연결된 보호자가 없습니다.</li>
+              </ul>
+              <div class="bg-slate-50 rounded-lg p-3 space-y-2">
+                <div class="text-xs font-semibold text-slate-500">보호자 연결 / 계정 생성</div>
+                <div class="grid grid-cols-2 gap-2">
+                  <input v-model="gdForm.parent_name" placeholder="보호자 이름" class="input py-1" />
+                  <input :value="gdForm.parent_phone" @input="gdForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" placeholder="연락처" class="input py-1" />
+                  <input v-model="gdForm.relation" list="guardianRelationList" placeholder="관계(선택·직접입력)" class="input py-1" />
+                  <input v-model="gdForm.password" placeholder="비밀번호(미입력 시 연락처)" class="input py-1" />
+                </div>
+                <datalist id="guardianRelationList"><option value="아버지"><option value="어머니"><option value="할아버지"><option value="할머니"><option value="조부모"></datalist>
+                <div class="flex justify-end"><button @click="linkGuardian" class="btn-secondary text-sm">연결</button></div>
+                <p class="text-[11px] text-slate-400">같은 연락처의 보호자 계정이 있으면 그 계정에 자녀로 연결됩니다(형제 통합).</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ 관리자: 반/시간표/출결 ============ -->
     <section v-if="tab==='classes'">
       <div class="grid md:grid-cols-3 gap-4">
@@ -1305,6 +1490,12 @@ createApp({
       leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' },
       myClasses: [], myInd: [], myAtt: [],
       docPreview: { show:false, url:'', x:0, y:0 },
+      students: [], stuSearch: '', stuStatusFilter: '', stuSortKey: 'real_name', stuSortDir: 'asc',
+      stuDetail: null, stuTab: 'info', stuForm: {},
+      stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'guardian',l:'보호자'}],
+      stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteCounselAt: '', stuEditLogId: null, stuEditLogText: '',
+      stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
+      gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteCounselAt: '', showDeletedLeads: null, editLogId: null, editLogText: '',
       showLeadForm: false,
@@ -1381,6 +1572,16 @@ createApp({
       const key = this.leadSortKey, asc = this.leadSortDir==='asc';
       const val = r => key==='log' ? lastLog(r) : r.create_time;
       list.sort((a,b) => { const x=val(a), y=val(b); return (x<y?-1:x>y?1:0) * (asc?1:-1); });
+      return list;
+    },
+    filteredStudents(){
+      const q = (this.stuSearch||'').trim().toLowerCase();
+      let list = this.students.slice();
+      if (this.stuStatusFilter) list = list.filter(s => s.enrollment_status===this.stuStatusFilter);
+      if (q) list = list.filter(s => [s.real_name, s.username, s.school_name, this.schoolLabel(s.school_type),
+            String(s.grade||''), s.parent_name, s.parent_phone].filter(Boolean).join(' ').toLowerCase().includes(q));
+      const key = this.stuSortKey, dir = this.stuSortDir==='asc' ? 1 : -1;
+      list.sort((a,b)=>{ const x=(a[key]??'')+'', y=(b[key]??'')+''; return x.localeCompare(y,'ko')*dir; });
       return list;
     },
     canManageOptions(){ return this.isActorAllBranch; },
@@ -1462,7 +1663,7 @@ createApp({
     tabs(){
       if (!this.me) return [ {key:'login',label:'로그인'}, {key:'lead',label:'상담 신청'} ];
       if (this.isStaff){
-        const t = [ {key:'leadmgr',label:'신규 상담·등록'}, {key:'indtt',label:'개별 시간표'}, {key:'classes',label:'그룹·특강'} ];
+        const t = [ {key:'leadmgr',label:'신규 상담·등록'}, {key:'students',label:'학생 관리'}, {key:'indtt',label:'개별 시간표'}, {key:'classes',label:'그룹·특강'} ];
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
         t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ❗' : '')});
         if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
@@ -1519,6 +1720,7 @@ createApp({
       else if (key==='staff') this.loadStaff();
       else if (key==='options') this.loadOptionAdmin();
       else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); }
+      else if (key==='students'){ this.loadStudents(); this.loadOptions(); }
       else if (key==='children') this.loadChildren();
       else if (key==='hr'){ this.loadStaffProfile().then(()=> this.$nextTick(()=> this.hrSigInit())); }
       else if (key==='lead'){ this.loadOptions(); if (this.isParent) this.prefillLeadFromGuardian(); }
@@ -1994,6 +2196,86 @@ createApp({
       else { this.leadSortKey = key; this.leadSortDir = 'desc'; }
     },
     nowLocal(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); },
+    // ── 학생 관리 ──
+    async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
+    sortStu(k){ if (this.stuSortKey===k) this.stuSortDir = this.stuSortDir==='asc'?'desc':'asc'; else { this.stuSortKey=k; this.stuSortDir='asc'; } },
+    stuArrow(k){ return this.stuSortKey===k ? (this.stuSortDir==='asc'?' ▲':' ▼') : ''; },
+    stuStatusBadge(s){ return ({ENROLLED:{label:'재원',cls:'bg-emerald-50 text-emerald-700'},ON_LEAVE:{label:'휴원',cls:'bg-amber-50 text-amber-700'},WITHDRAWN:{label:'퇴원',cls:'bg-slate-100 text-slate-500'}})[s] || {label:s||'-',cls:'bg-slate-100 text-slate-500'}; },
+    async openStudent(s){
+      try {
+        const d = await api('GET','/api/admin/academy/student_detail/info?student_id='+s.id);
+        this.stuDetail = d; this.stuTab='info';
+        this.stuForm = { ...(d.profile||{}), real_name: d.real_name };
+        this.stuNoteText=''; this.stuNoteChannel='VISIT'; this.stuNoteCounselAt=this.nowLocal(); this.stuEditLogId=null;
+        this.stuStatusNew = d.enrollment_status==='ENROLLED' ? 'ON_LEAVE' : 'ENROLLED';
+        this.stuStatusReason=''; this.stuStatusDate='';
+        this.gdForm = { parent_name:'', parent_phone:'', relation:'', password:'' };
+      } catch(e){ this.notify(e.message,false); }
+    },
+    closeStudent(){ this.stuDetail=null; },
+    async refreshStuDetail(){ if (!this.stuDetail) return; try { this.stuDetail = await api('GET','/api/admin/academy/student_detail/info?student_id='+this.stuDetail.id); } catch(e){} },
+    async saveStudent(){
+      try {
+        await api('PUT','/api/admin/academy/student_detail/info', { student_id:this.stuDetail.id, ...this.stuForm });
+        this.notify('저장되었습니다.'); await this.refreshStuDetail(); this.loadStudents();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async addStuNote(){
+      if (!this.stuNoteText.trim()) return;
+      try {
+        const body = { student_id:this.stuDetail.id, summary:this.stuNoteText, channel:this.stuNoteChannel };
+        if (this.stuNoteCounselAt) body.counsel_at = this.stuNoteCounselAt;
+        const lead = await api('POST','/api/admin/academy/student_counsel', body);
+        this.stuDetail.lead = lead; this.stuDetail.lead_id = lead.id;
+        this.stuNoteText=''; this.stuNoteCounselAt=this.nowLocal(); this.stuNoteChannel='VISIT';
+        this.notify('상담 기록이 추가되었습니다.');
+      } catch(e){ this.notify(e.message,false); }
+    },
+    startStuEditLog(g){ this.stuEditLogId=g.id; this.stuEditLogText=g.summary; },
+    async saveStuEditLog(g){
+      if (!this.stuEditLogText.trim()) return this.notify('내용을 입력하세요.',false);
+      try { const lead = await api('PUT','/api/admin/academy/lead/note', { log_id:g.id, summary:this.stuEditLogText }); this.stuDetail.lead = lead; this.stuEditLogId=null; this.notify('수정되었습니다.'); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async deleteStuLog(g){
+      if (!window.confirm('이 상담기록을 삭제하시겠습니까?')) return;
+      try { const lead = await api('DELETE','/api/admin/academy/lead/note?log_id='+g.id+'&hidden=1'); this.stuDetail.lead = lead; this.notify('삭제되었습니다.'); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async restoreStuLog(g){
+      try { const lead = await api('DELETE','/api/admin/academy/lead/note?log_id='+g.id+'&hidden=0'); this.stuDetail.lead = lead; this.notify('복원되었습니다.'); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async changeStuStatus(){
+      try {
+        const body = { student_id:this.stuDetail.id, status:this.stuStatusNew, reason:this.stuStatusReason };
+        if (this.stuStatusDate) body.effective_date = this.stuStatusDate;
+        await api('POST','/api/admin/academy/student_status', body);
+        this.notify('상태가 변경되었습니다.'); this.stuStatusReason=''; this.stuStatusDate='';
+        await this.refreshStuDetail(); this.loadStudents();
+        this.stuStatusNew = this.stuDetail.enrollment_status==='ENROLLED' ? 'ON_LEAVE' : 'ENROLLED';
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async linkGuardian(){
+      if (!this.gdForm.parent_phone.trim()) return this.notify('보호자 연락처를 입력하세요.',false);
+      try {
+        await api('POST','/api/admin/academy/student_guardian', { student_id:this.stuDetail.id, ...this.gdForm });
+        this.notify('보호자가 연결되었습니다.');
+        this.gdForm = { parent_name:'', parent_phone:'', relation:'', password:'' };
+        await this.refreshStuDetail(); this.loadStudents();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async unlinkGuardian(gd){
+      if (!window.confirm(gd.name+' 보호자 연결을 해제하시겠습니까?')) return;
+      try { await api('DELETE','/api/admin/academy/student_guardian?link_id='+gd.link_id); this.notify('해제되었습니다.'); await this.refreshStuDetail(); this.loadStudents(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async resetGuardianPw(gd){
+      const pw = window.prompt(gd.name+' 보호자 새 비밀번호(6자 이상)');
+      if (pw===null) return; if (pw.trim().length<6) return this.notify('비밀번호는 6자 이상이어야 합니다.',false);
+      try { await api('PUT','/api/admin/academy/student_guardian', { parent_id:gd.parent_id, password:pw }); this.notify('비밀번호가 초기화되었습니다.'); }
+      catch(e){ this.notify(e.message,false); }
+    },
     toggleLead(r){
       const opening = this.openLeadId!==r.id;
       this.openLeadId = opening ? r.id : null; this.noteText=''; this.editLogId=null;
