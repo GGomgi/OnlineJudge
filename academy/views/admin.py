@@ -23,7 +23,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       Lead, LeadStatus, CounselingLog, CounselingLogEdit, StudentProfile, EnrollmentStatus,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
-                      TimetableChange)
+                      TimetableChange, StudentStatusChange)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 import os as _os
 from django.conf import settings as _settings
@@ -1122,6 +1122,9 @@ class StudentListAdminAPI(APIView):
         counts = dict(StudentTimetable.objects.exclude(status="ENDED")
                       .values("student_id").annotate(c=Count("id"))
                       .values_list("student_id", "c"))
+        # 보호자 수 집계
+        gcounts = dict(GuardianStudent.objects.values("student_id")
+                       .annotate(c=Count("id")).values_list("student_id", "c"))
         out = []
         for p in qs:
             u = p.user
@@ -1132,7 +1135,16 @@ class StudentListAdminAPI(APIView):
                 real_name = ""
             sp = getattr(u, "student_profile", None)
             out.append({"id": u.id, "username": u.username, "real_name": real_name,
+                        "branch": (p.branch.name if p.branch_id else ""),
+                        "branch_id": p.branch_id,
+                        "school_type": (sp.school_type if sp else ""),
+                        "school_name": (sp.school_name if sp else ""),
+                        "grade": (sp.grade if sp else ""),
+                        "parent_name": (sp.parent_name if sp else ""),
+                        "parent_phone": (sp.parent_phone if sp else ""),
+                        "enrollment_status": (sp.enrollment_status if sp else EnrollmentStatus.ENROLLED),
                         "weekly_sessions": (sp.weekly_sessions if sp else None),
+                        "guardian_count": gcounts.get(u.id, 0),
                         "slot_count": counts.get(u.id, 0)})
         return self.success(out)
 
@@ -1355,3 +1367,247 @@ class TimetableChangeEditAdminAPI(APIView):
             student=c.student, actor=request.user, action="EDIT", reason=new_reason,
             detail=(f"이력 사유 수정: {old} → {new_reason}")[:255])
         return self.success("ok")
+
+
+# ── 학생 회원관리(5차): 상세·수정·상태변경·보호자·통합 상담 ──
+
+def _name_of(u):
+    if not u:
+        return None
+    try:
+        return u.userprofile.real_name or u.username
+    except Exception:
+        return u.username
+
+
+def _student_profile_dict(sp):
+    if not sp:
+        return {}
+    return {
+        "real_name": "",  # 상위에서 채움
+        "birth_date": str(sp.birth_date) if sp.birth_date else "",
+        "gender": sp.gender or "",
+        "zipcode": sp.zipcode or "", "address": sp.address or "", "address_detail": sp.address_detail or "",
+        "student_phone": sp.student_phone or "",
+        "parent_name": sp.parent_name or "", "parent_phone": sp.parent_phone or "",
+        "school_type": sp.school_type or "", "school_name": sp.school_name or "", "grade": sp.grade or "",
+        "enrollment_date": str(sp.enrollment_date) if sp.enrollment_date else "",
+        "lesson_start_date": str(sp.lesson_start_date) if sp.lesson_start_date else "",
+        "weekly_sessions": sp.weekly_sessions,
+        "program": sp.program or "",
+    }
+
+
+def _get_or_create_student_lead(student):
+    """학생의 통합 상담 타임라인용 Lead 컨테이너. 등록 전환 학생은 이미 lead 존재.
+    없으면(직접 생성 등) 최소 정보로 1건 생성해 converted_user 로 연결한다."""
+    lead = Lead.objects.filter(converted_user=student).order_by("id").first()
+    if lead:
+        return lead
+    prof = getattr(student, "academy_profile", None)
+    sp = getattr(student, "student_profile", None)
+    branch = (prof.branch if prof and prof.branch_id else None) or Branch.objects.first()
+    return Lead.objects.create(
+        branch=branch,
+        parent_name=(sp.parent_name if sp else "") or "",
+        parent_phone=(sp.parent_phone if sp else "") or "",
+        student_name=_name_of(student),
+        school_type=(sp.school_type if sp else "") or "",
+        school_name=(sp.school_name if sp else "") or "",
+        grade=(sp.grade if sp else "") or "",
+        status=LeadStatus.CONVERTED, converted_user=student)
+
+
+class StudentDetailAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """학생 상세: 인적사항·보호자·상태이력·통합 상담 타임라인."""
+        u = User.objects.filter(id=request.GET.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        sp = getattr(u, "student_profile", None)
+        guardians = []
+        for g in GuardianStudent.objects.select_related("parent").filter(student=u):
+            pp = getattr(g.parent, "academy_profile", None)
+            guardians.append({"link_id": g.id, "parent_id": g.parent_id, "username": g.parent.username,
+                              "name": _name_of(g.parent), "relation": g.relation,
+                              "phone": (pp.phone if pp else "")})
+        history = [{"id": c.id, "from": c.from_status, "to": c.to_status, "reason": c.reason,
+                    "effective_date": str(c.effective_date) if c.effective_date else "",
+                    "actor": _name_of(c.actor) if c.actor_id else "", "time": str(c.create_time)[:16]}
+                   for c in StudentStatusChange.objects.filter(student=u).select_related("actor")[:200]]
+        lead = Lead.objects.filter(converted_user=u).order_by("id").first()
+        lead_data = LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data if lead else None
+        pdict = _student_profile_dict(sp)
+        pdict["real_name"] = _name_of(u)
+        return self.success({
+            "id": u.id, "username": u.username, "real_name": _name_of(u),
+            "branch": (prof.branch.name if prof and prof.branch_id else ""),
+            "branch_id": prof.branch_id if prof else None,
+            "enrollment_status": sp.enrollment_status if sp else EnrollmentStatus.ENROLLED,
+            "profile": pdict, "guardians": guardians, "status_history": history,
+            "lead": lead_data, "lead_id": lead.id if lead else None,
+        })
+
+    @admin_role_required
+    def put(self, request):
+        """학생 인적사항 수정."""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        sp, _ = StudentProfile.objects.get_or_create(user=u)
+        rn = (data.get("real_name") or "").strip()
+        if rn:
+            up, _ = UserProfile.objects.get_or_create(user=u)
+            up.real_name = rn
+            up.save(update_fields=["real_name"])
+        for f in ("gender", "zipcode", "address", "address_detail", "student_phone",
+                  "parent_name", "parent_phone", "school_type", "school_name", "grade", "program"):
+            if f in data:
+                setattr(sp, f, data.get(f) or "")
+        for df in ("birth_date", "lesson_start_date", "enrollment_date"):
+            if df in data:
+                setattr(sp, df, data.get(df) or None)
+        if "weekly_sessions" in data:
+            sp.weekly_sessions = data.get("weekly_sessions") or None
+        sp.save()
+        return self.success("ok")
+
+
+class StudentStatusAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """등록상태 변경(재원/휴원/퇴원/재등록) + 이력 영구 기록."""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        to_status = data.get("status")
+        if to_status not in (EnrollmentStatus.ENROLLED, EnrollmentStatus.ON_LEAVE, EnrollmentStatus.WITHDRAWN):
+            return self.error("상태 값이 올바르지 않습니다.")
+        sp, _ = StudentProfile.objects.get_or_create(user=u)
+        from_status = sp.enrollment_status
+        if from_status == to_status:
+            return self.error("이미 해당 상태입니다.")
+        sp.enrollment_status = to_status
+        sp.save(update_fields=["enrollment_status"])
+        StudentStatusChange.objects.create(
+            student=u, from_status=from_status, to_status=to_status,
+            reason=(data.get("reason") or "").strip(),
+            effective_date=data.get("effective_date") or None, actor=request.user)
+        return self.success("ok")
+
+
+class StudentGuardianAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """보호자 연결/계정 생성. {student_id, parent_phone, parent_name, relation, password?}"""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        branch = (prof.branch if prof and prof.branch_id else None) or Branch.objects.first()
+        norm = _norm_phone(data.get("parent_phone"))
+        if not norm:
+            return self.error("보호자 연락처를 입력하세요.")
+        parent_user = None
+        pp = AcademyProfile.objects.select_related("user").filter(role=AcademyRole.PARENT, phone=norm).first()
+        if pp:
+            parent_user = pp.user
+        if parent_user is None:
+            username = "p" + norm
+            if User.objects.filter(username=username).exists():
+                base, i = username, 1
+                while User.objects.filter(username=username).exists():
+                    i += 1
+                    username = "%s%d" % (base, i)
+            pw = (data.get("password") or "").strip() or norm
+            parent_user = User.objects.create(username=username, is_disabled=False)
+            parent_user.set_password(pw)
+            parent_user.save()
+            UserProfile.objects.create(user=parent_user, real_name=(data.get("parent_name") or "학부모"))
+            p2 = apply_role(parent_user, AcademyRole.PARENT, branch)
+            p2.phone = norm
+            p2.save(update_fields=["phone"])
+        elif (data.get("parent_name") or "").strip():
+            up, _ = UserProfile.objects.get_or_create(user=parent_user)
+            if not (up.real_name or "").strip():
+                up.real_name = data.get("parent_name")
+                up.save(update_fields=["real_name"])
+        link, created = GuardianStudent.objects.get_or_create(
+            parent=parent_user, student=u,
+            defaults={"relation": data.get("relation") or "학부모"})
+        if not created and (data.get("relation") or "").strip():
+            link.relation = data.get("relation")
+            link.save(update_fields=["relation"])
+        return self.success({"username": parent_user.username, "is_new": parent_user.last_login is None})
+
+    @admin_role_required
+    def delete(self, request):
+        """보호자 연결 해제."""
+        link = GuardianStudent.objects.select_related("student").filter(id=request.GET.get("link_id")).first()
+        if not link:
+            return self.error("연결이 없습니다.")
+        prof = getattr(link.student, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        link.delete()
+        return self.success("ok")
+
+    @admin_role_required
+    def put(self, request):
+        """보호자 비밀번호 초기화. {parent_id, password}"""
+        data = request.data
+        p = User.objects.filter(id=data.get("parent_id")).first()
+        if not p:
+            return self.error("보호자 계정이 없습니다.")
+        ok = _is_manager(request.user)
+        if not ok:
+            for g in GuardianStudent.objects.select_related("student").filter(parent=p):
+                gp = getattr(g.student, "academy_profile", None)
+                if gp and can_manage_branch(request.user, gp.branch_id):
+                    ok = True
+                    break
+        if not ok:
+            return self.error("권한이 없습니다.")
+        pw = (data.get("password") or "").strip()
+        if len(pw) < 6:
+            return self.error("비밀번호는 6자 이상이어야 합니다.")
+        p.set_password(pw)
+        p.save()
+        return self.success("ok")
+
+
+class StudentCounselAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """등록 학생 통합 상담 기록 추가(필요 시 lead 컨테이너 생성). 수정/삭제는 lead/note 재사용."""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        summary = (data.get("summary") or "").strip()
+        if not summary:
+            return self.error("상담 내용을 입력하세요.")
+        lead = _get_or_create_student_lead(u)
+        CounselingLog.objects.create(
+            lead=lead, author=request.user,
+            channel=data.get("channel") or "VISIT",
+            summary=summary, counsel_at=data.get("counsel_at") or None)
+        return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)

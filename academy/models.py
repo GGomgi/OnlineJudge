@@ -474,6 +474,24 @@ class GuardianStudent(models.Model):
         unique_together = ("parent", "student")
 
 
+class StudentStatusChange(models.Model):
+    """학생 등록상태 변경 이력(재원↔휴원↔퇴원↔재등록). 휴원/퇴원 모아보기·재등록 관리·
+    안내문자 연계의 근거 자료로 영구 보존한다."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="status_changes")
+    from_status = models.CharField(max_length=16, blank=True, default="")
+    to_status = models.CharField(max_length=16)
+    reason = models.CharField(max_length=255, blank=True, default="")
+    effective_date = models.DateField(null=True, blank=True)  # 휴원/퇴원/재등록 적용일
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_student_status_change"
+        ordering = ["-create_time"]
+
+
 # ── 관리자 편집 가능 선택 목록(옵션 마스터) ──
 
 class OptionCategory(object):
