@@ -30,9 +30,8 @@ ROLE_PROBLEM_PERMISSION = {
     AcademyRole.PARENT: ProblemPermission.NONE,
 }
 
-# 직원 인사·역할 관리 권한 역할(부원장 제외: 운영만, 인사·재무 제외)
-STAFF_MGMT_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN,
-                    AcademyRole.REGIONAL_MANAGER, AcademyRole.BRANCH_MANAGER}
+# 직원 인사·역할 관리 권한 역할(부원장·지부장 제외: 지부장은 열람전용)
+STAFF_MGMT_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN, AcademyRole.BRANCH_MANAGER}
 
 
 def apply_role(user, role, branch=None):
@@ -61,32 +60,56 @@ def staff_scope(user):
     return profile.is_all_branch(), profile.branch_id, profile.role
 
 
-def managed_branch_ids(user):
-    """관리 가능한 지점 id 목록. 전지점이면 None(=전체 허용), 권한 없으면 [].
-    지부장은 주 소속 + managed_branches, 단일지점 역할은 [주 소속]."""
+def editable_branch_ids(user):
+    """수정(쓰기) 가능한 지점 id 목록. 전지점이면 None(=전체), 권한 없으면 [].
+    지부장(REGIONAL_MANAGER)은 열람 전용이라 수정 지점 없음([]).
+    그 외 단일지점 역할은 [본인 소속]."""
     profile = getattr(user, "academy_profile", None)
     if profile is None:
         return None if user.is_super_admin() else []
     if profile.is_all_branch():
         return None
-    ids = set()
-    if profile.branch_id:
-        ids.add(profile.branch_id)
     if profile.role == AcademyRole.REGIONAL_MANAGER:
+        return []
+    return [profile.branch_id] if profile.branch_id else []
+
+
+def viewable_branch_ids(user):
+    """열람(읽기) 가능한 지점 id 목록. 수정 지점 + managed_branches(지부장 겸직 포함).
+    전지점이면 None(=전체)."""
+    edit = editable_branch_ids(user)
+    if edit is None:
+        return None
+    ids = set(edit)
+    profile = getattr(user, "academy_profile", None)
+    if profile is not None:
         ids.update(profile.managed_branches.values_list("id", flat=True))
     return list(ids)
 
 
+# 하위호환 별칭(기존 호출부): 관리=수정 범위
+def managed_branch_ids(user):
+    return editable_branch_ids(user)
+
+
 def can_manage_branch(user, target_branch_id):
-    """해당 사용자가 대상 지점을 관리할 수 있는지 (전지점이면 항상 가능)."""
-    ids = managed_branch_ids(user)
+    """대상 지점을 수정(쓰기)할 수 있는지. 전지점이면 항상 가능."""
+    ids = editable_branch_ids(user)
+    if ids is None:
+        return True
+    return target_branch_id in ids
+
+
+def can_view_branch(user, target_branch_id):
+    """대상 지점을 열람(읽기)할 수 있는지. 수정 가능 + 지부장 열람지점 포함."""
+    ids = viewable_branch_ids(user)
     if ids is None:
         return True
     return target_branch_id in ids
 
 
 def can_manage_staff(user):
-    """직원 인사·역할 관리 권한(부원장 제외)."""
+    """직원 인사·역할 관리 권한(부원장·지부장 제외)."""
     if user.is_super_admin():
         return True
     profile = getattr(user, "academy_profile", None)

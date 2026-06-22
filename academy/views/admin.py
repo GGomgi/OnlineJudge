@@ -99,8 +99,9 @@ def get_or_create_guardian(student, lead, branch, login_id="", password=""):
     GuardianStudent.objects.get_or_create(parent=parent_user, student=student,
                                           defaults={"relation": "학부모"})
     return parent_user
-from ..services import (apply_role, staff_scope, can_manage_branch,
-                        managed_branch_ids, can_manage_staff)
+from ..services import (apply_role, staff_scope, can_manage_branch, can_view_branch,
+                        managed_branch_ids, viewable_branch_ids,
+                        editable_branch_ids, can_manage_staff)
 
 
 class SignupRequestAdminAPI(APIView):
@@ -108,7 +109,7 @@ class SignupRequestAdminAPI(APIView):
     def get(self, request):
         """가입 신청 목록. 전지점 역할은 전체, 지점 역할은 자기 지점만 조회."""
         all_branch, branch_id, role = staff_scope(request.user)
-        if not all_branch and branch_id is None:
+        if not all_branch and not viewable_branch_ids(request.user):
             return self.error("No branch scope assigned")
 
         qs = SignupRequest.objects.select_related("user", "requested_branch", "reviewed_by")
@@ -116,7 +117,7 @@ class SignupRequestAdminAPI(APIView):
         if status:
             qs = qs.filter(status=status)
         if not all_branch:
-            qs = qs.filter(requested_branch_id__in=(managed_branch_ids(request.user) or []))
+            qs = qs.filter(requested_branch_id__in=(viewable_branch_ids(request.user) or []))
 
         data = self.paginate_data(request, qs, SignupRequestSerializer)
         return self.success(data)
@@ -244,9 +245,7 @@ def _staff_brief(profile):
         branch = {"id": profile.branch.id, "code": profile.branch.code, "name": profile.branch.name}
     hr = getattr(u, "staff_profile", None)
     hr_completed = bool(hr and hr.is_complete())
-    managed = []
-    if profile.role == AcademyRole.REGIONAL_MANAGER:
-        managed = [{"id": b.id, "name": b.name} for b in profile.managed_branches.all()]
+    managed = [{"id": b.id, "name": b.name} for b in profile.managed_branches.all()]
     return {
         "user_id": u.id, "username": u.username, "real_name": real_name,
         "staff_no": profile.staff_no or u.username,
@@ -268,7 +267,7 @@ class StaffAdminAPI(APIView):
         qs = AcademyProfile.objects.select_related(
             "user", "user__staff_profile", "branch").filter(role__in=STAFF_ROLES)
         if not all_branch:
-            qs = qs.filter(branch_id__in=(managed_branch_ids(request.user) or []))
+            qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
         qs = qs.order_by("branch_id", "role", "user__username")
         return self.success([_staff_brief(p) for p in qs])
 
@@ -335,25 +334,37 @@ class StaffStatusAPI(APIView):
         return self.success(_staff_brief(profile))
 
 
+def _parse_managed(request):
+    """요청의 managed_branch_ids → 유효 지점 id 리스트. 부여자가 해당 지점을
+    수정 권한(=관리)으로 보유한 경우만 열람권을 위임할 수 있다."""
+    raw = request.data.get("managed_branch_ids") or []
+    mbids = [int(b) for b in raw if str(b).isdigit()]
+    valid = list(Branch.objects.filter(id__in=mbids, is_active=True).values_list("id", flat=True))
+    for bid in valid:
+        if not can_manage_branch(request.user, bid):
+            return None, "관리 권한이 없는 지점이 포함되어 있습니다."
+    return valid, None
+
+
 def _validate_role_branches(request, role):
-    """역할에 맞는 주 소속 지점·관리지점(지부장) 산출 + 권한 검증.
-    반환 (branch, managed_ids, error_msg|None)."""
+    """역할에 맞는 주 소속(수정) 지점 + 열람지점(겸직) 산출·검증.
+    반환 (branch, managed_ids, error_msg|None).
+    - 지부장(REGIONAL_MANAGER): 수정 지점 없음(branch=None), 열람지점 1개 이상 필수.
+    - 그 외 단일지점 역할: 주 소속 지점(수정) 필수 + 선택적 열람지점(지부장 겸직)."""
     data = request.data
     actor_all, _, _ = staff_scope(request.user)
     if role in ALL_BRANCH_ROLES:
         if not actor_all:
             return None, [], "Only HQ admin can grant this role"
         return None, [], None
+    managed, merr = _parse_managed(request)
+    if merr:
+        return None, [], merr
     if role == AcademyRole.REGIONAL_MANAGER:
-        raw = data.get("managed_branch_ids") or []
-        mbids = [int(b) for b in raw if str(b).isdigit()]
-        valid = list(Branch.objects.filter(id__in=mbids, is_active=True).values_list("id", flat=True))
-        if not valid:
-            return None, [], "지부장은 관리 지점을 1개 이상 선택해야 합니다."
-        for bid in valid:
-            if not can_manage_branch(request.user, bid):
-                return None, [], "관리 권한이 없는 지점이 포함되어 있습니다."
-        return Branch.objects.get(id=valid[0]), valid, None
+        if not managed:
+            return None, [], "지부장은 열람 지점을 1개 이상 선택해야 합니다."
+        return None, managed, None
+    # 단일지점 역할(원장/부원장/강사/조교/외부): 주 소속 지점 + 선택 열람지점(겸직)
     if not data.get("branch_id"):
         return None, [], "Branch is required for this role"
     branch = Branch.objects.filter(id=data["branch_id"], is_active=True).first()
@@ -361,11 +372,11 @@ def _validate_role_branches(request, role):
         return None, [], "Invalid branch"
     if not can_manage_branch(request.user, branch.id):
         return None, [], "No permission for this branch"
-    return branch, [], None
+    return branch, managed, None
 
 
 def _apply_managed(profile, role, managed_ids):
-    if role == AcademyRole.REGIONAL_MANAGER and managed_ids:
+    if managed_ids:
         profile.managed_branches.set(Branch.objects.filter(id__in=managed_ids))
     else:
         profile.managed_branches.clear()
@@ -523,7 +534,7 @@ class HRNoticeAdminAPI(APIView):
         if not all_branch:
             if branch_id is None:
                 return self.success([])
-            qs = qs.filter(branch_id__in=(managed_branch_ids(request.user) or []))
+            qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
         out = []
         for n in qs[:100]:
             out.append({"id": n.id, "message": n.message, "kind": n.kind,
@@ -537,7 +548,7 @@ class HRNoticeAdminAPI(APIView):
         all_branch, branch_id, role = staff_scope(request.user)
         qs = HRNotice.objects.filter(is_read=False)
         if not all_branch:
-            qs = qs.filter(branch_id__in=(managed_branch_ids(request.user) or []))
+            qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
         nid = request.data.get("id")
         if nid:
             qs = qs.filter(id=nid)
@@ -555,15 +566,15 @@ class ClassAdminAPI(APIView):
             obj = qs.filter(id=class_id).first()
             if not obj:
                 return self.error("Class does not exist")
-            if not can_manage_branch(request.user, obj.branch_id):
+            if not can_view_branch(request.user, obj.branch_id):
                 return self.error("No permission for this branch")
             return self.success(CourseClassSerializer(obj).data)
 
         all_branch, branch_id, role = staff_scope(request.user)
         if not all_branch:
-            if branch_id is None:
+            if not viewable_branch_ids(request.user):
                 return self.error("No branch scope assigned")
-            qs = qs.filter(branch_id__in=(managed_branch_ids(request.user) or []))
+            qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
         bid = request.GET.get("branch_id")
         if bid:
             qs = qs.filter(branch_id=bid)
@@ -632,7 +643,7 @@ class ClassEnrollmentAdminAPI(APIView):
         course_class = CourseClass.objects.filter(id=request.GET.get("class_id")).first()
         if not course_class:
             return self.error("Class does not exist")
-        if not can_manage_branch(request.user, course_class.branch_id):
+        if not can_view_branch(request.user, course_class.branch_id):
             return self.error("No permission for this branch")
         qs = course_class.enrollments.select_related("student").all()
         return self.success(EnrollmentSerializer(qs, many=True).data)
@@ -703,7 +714,7 @@ class ClassSessionAdminAPI(APIView):
         course_class = CourseClass.objects.select_related("branch").filter(id=request.GET.get("class_id")).first()
         if not course_class:
             return self.error("Class does not exist")
-        if not can_manage_branch(request.user, course_class.branch_id):
+        if not can_view_branch(request.user, course_class.branch_id):
             return self.error("No permission for this branch")
         qs = course_class.sessions.all()
         if request.GET.get("date_from"):
@@ -782,7 +793,7 @@ class AttendanceAdminAPI(APIView):
         session = ClassSession.objects.select_related("course_class").filter(id=request.GET.get("session_id")).first()
         if not session:
             return self.error("Session does not exist")
-        if not can_manage_branch(request.user, session.course_class.branch_id):
+        if not can_view_branch(request.user, session.course_class.branch_id):
             return self.error("No permission for this branch")
 
         recs = {r.student_id: r for r in session.attendances.select_related("student").all()}
@@ -832,7 +843,7 @@ class LeadAdminAPI(APIView):
         """리드(상담 신청) 목록. 전지점 역할은 전체, 지점 역할은 자기 지점만.
         소프트삭제(is_hidden): 본부(전지점)는 show_deleted 토글로 보기/감추기, 그 외는 항상 제외."""
         all_branch, branch_id, role = staff_scope(request.user)
-        if not all_branch and branch_id is None:
+        if not all_branch and not viewable_branch_ids(request.user):
             return self.error("No branch scope assigned")
         is_mgr = _is_manager(request.user)  # 원장(지점장) 이상
         qs = Lead.objects.select_related("branch", "converted_user").prefetch_related(
@@ -841,7 +852,7 @@ class LeadAdminAPI(APIView):
         if status:
             qs = qs.filter(status=status)
         if not all_branch:
-            qs = qs.filter(branch_id__in=(managed_branch_ids(request.user) or []))
+            qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
         if not is_mgr:
             qs = qs.filter(is_hidden=False)
         elif request.GET.get("show_deleted") != "1":
@@ -1149,9 +1160,9 @@ class StudentListAdminAPI(APIView):
         qs = AcademyProfile.objects.select_related("user", "user__student_profile").filter(
             role=AcademyRole.STUDENT)
         if not all_branch:
-            if branch_id is None:
+            if not viewable_branch_ids(request.user):
                 return self.error("No branch scope assigned")
-            qs = qs.filter(branch_id__in=(managed_branch_ids(request.user) or []))
+            qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
         counts = dict(StudentTimetable.objects.exclude(status="ENDED")
                       .values("student_id").annotate(c=Count("id"))
                       .values_list("student_id", "c"))
@@ -1221,9 +1232,9 @@ class StudentTimetableAdminAPI(APIView):
             qs = qs.filter(weekday=weekday)
         all_branch, branch_id, role = staff_scope(request.user)
         if not all_branch:
-            if branch_id is None:
+            if not viewable_branch_ids(request.user):
                 return self.error("No branch scope assigned")
-            qs = qs.filter(branch_id__in=(managed_branch_ids(request.user) or []))
+            qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
         return self.success(StudentTimetableSerializer(qs, many=True).data)
 
     @validate_serializer(CreateStudentTimetableSerializer)
@@ -1360,7 +1371,7 @@ class TimetableChangeAdminAPI(APIView):
         """학생 시간표 변경 이력. student_id."""
         sid = request.GET.get("student_id")
         prof = AcademyProfile.objects.filter(user_id=sid).first()
-        if prof and not can_manage_branch(request.user, prof.branch_id):
+        if prof and not can_view_branch(request.user, prof.branch_id):
             return self.error("No permission for this branch")
         manager = _is_manager(request.user)
         out = []
@@ -1460,7 +1471,7 @@ class StudentDetailAdminAPI(APIView):
         if not u:
             return self.error("학생이 없습니다.")
         prof = getattr(u, "academy_profile", None)
-        if prof and not can_manage_branch(request.user, prof.branch_id):
+        if prof and not can_view_branch(request.user, prof.branch_id):
             return self.error("No permission for this branch")
         sp = getattr(u, "student_profile", None)
         guardians = []

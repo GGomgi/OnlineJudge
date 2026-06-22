@@ -1090,15 +1090,25 @@
                 <option v-for="r in staffRoleOptions" :key="r.v" :value="r.v">{{ r.l }}</option>
               </select>
               <div v-if="isRegionalRole(staffForm.role)" class="border rounded-lg p-2 space-y-1">
-                <div class="text-xs font-semibold text-slate-500">관리 지점 (여러 개 선택)</div>
+                <div class="text-xs font-semibold text-slate-500">열람 지점 (여러 개 선택 · 읽기 전용)</div>
                 <label v-for="b in branches" :key="b.id" class="flex items-center gap-2 text-sm">
                   <input type="checkbox" :value="b.id" v-model="staffForm.managed_branch_ids" class="w-4 h-4"> {{ b.name }}
                 </label>
+                <p class="text-[11px] text-slate-400">지부장은 선택한 지점을 <b>열람만</b> 가능(수정 불가).</p>
               </div>
-              <select v-else-if="!isAllBranchRole(staffForm.role)" v-model="staffForm.branch_id" class="input">
-                <option :value="null" disabled>지점 선택</option>
-                <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
-              </select>
+              <template v-else-if="!isAllBranchRole(staffForm.role)">
+                <select v-model="staffForm.branch_id" class="input">
+                  <option :value="null" disabled>소속 지점 선택</option>
+                  <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+                </select>
+                <div class="border rounded-lg p-2 space-y-1">
+                  <div class="text-xs font-semibold text-slate-500">추가 열람 지점 <span class="font-normal text-slate-400">(지부장 겸직 · 선택)</span></div>
+                  <label v-for="b in branches.filter(b=>b.id!==staffForm.branch_id)" :key="b.id" class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" :value="b.id" v-model="staffForm.managed_branch_ids" class="w-4 h-4"> {{ b.name }}
+                  </label>
+                  <p class="text-[11px] text-slate-400">선택 시 해당 지점을 추가로 <b>열람</b>(수정은 소속 지점만).</p>
+                </div>
+              </template>
               <p v-else class="text-xs text-slate-400">전지점 역할은 특정 지점에 묶이지 않습니다.</p>
               <button @click="createStaff" class="btn-primary w-full text-sm">계정 생성</button>
             </div>
@@ -1147,10 +1157,13 @@
                     <div v-if="isRegionalRole(s._role)" class="flex flex-col gap-0.5">
                       <label v-for="b in branches" :key="b.id" class="flex items-center gap-1 text-[11px] whitespace-nowrap"><input type="checkbox" :value="b.id" v-model="s._managed_branch_ids" class="w-3 h-3">{{ b.name }}</label>
                     </div>
-                    <select v-else-if="!isAllBranchRole(s._role)" v-model="s._branch_id" class="input py-1 text-xs w-24">
-                      <option :value="null" disabled>지점</option>
-                      <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
-                    </select>
+                    <template v-else-if="!isAllBranchRole(s._role)">
+                      <select v-model="s._branch_id" class="input py-1 text-xs w-24">
+                        <option :value="null" disabled>지점</option>
+                        <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+                      </select>
+                      <div v-if="s.managed_branches && s.managed_branches.length" class="text-[10px] text-slate-400 mt-0.5">열람: {{ s.managed_branches.map(b=>b.name).join(', ') }}</div>
+                    </template>
                     <span v-else class="text-xs text-slate-400">전지점</span>
                   </td>
                   <td class="px-3 py-2">
@@ -1553,8 +1566,8 @@ createApp({
     canManageStaff(){
       if (this.me && this.me.user.admin_type === 'Super Admin') return true;
       const r = this.myProfile && this.myProfile.role;
-      // 부원장 제외(인사·재무 제외), 지부장 포함
-      return ['HQ_ADMIN','HR_ADMIN','REGIONAL_MANAGER','BRANCH_MANAGER'].includes(r);
+      // 부원장(인사·재무 제외)·지부장(열람전용) 제외
+      return ['HQ_ADMIN','HR_ADMIN','BRANCH_MANAGER'].includes(r);
     },
     isActorAllBranch(){
       return !!(this.me && this.me.user.admin_type === 'Super Admin') ||
@@ -2046,7 +2059,7 @@ createApp({
       try {
         const body = { real_name:f.real_name, password:f.password, role:f.role };
         if (this.isRegionalRole(f.role)) body.managed_branch_ids = f.managed_branch_ids;
-        else if (!this.isAllBranchRole(f.role)) body.branch_id = f.branch_id;
+        else if (!this.isAllBranchRole(f.role)) { body.branch_id = f.branch_id; body.managed_branch_ids = f.managed_branch_ids || []; }
         const d = await api('POST','/api/admin/academy/staff', body);
         this.notify('직원 계정이 생성되었습니다. 사번(로그인 아이디): ' + d.staff_no);
         this.staffForm.managed_branch_ids = [];
@@ -2060,7 +2073,7 @@ createApp({
       try {
         const body = { user_id:s.user_id, role:s._role };
         if (this.isRegionalRole(s._role)) body.managed_branch_ids = s._managed_branch_ids;
-        else if (!this.isAllBranchRole(s._role)) body.branch_id = s._branch_id;
+        else if (!this.isAllBranchRole(s._role)) { body.branch_id = s._branch_id; body.managed_branch_ids = s._managed_branch_ids || []; }
         await api('POST','/api/admin/academy/assign_role', body);
         this.notify(s.username + ' 역할이 변경되었습니다.');
         this.loadStaff();
