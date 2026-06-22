@@ -1777,3 +1777,138 @@ class StudentCounselAdminAPI(APIView):
             channel=data.get("channel") or "VISIT",
             summary=summary, counsel_at=data.get("counsel_at") or None)
         return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
+
+
+# ── 개발일지(Claude Code 세션 트랜스크립트 뷰어, 본부 관리자 전용) ──
+import glob as _glob
+
+DEVLOG_DIR = "/devlog_src"
+_devlog_cache = {"sig": None, "items": None}
+
+
+def _devlog_tool_summary(b):
+    name = b.get("name") or "tool"
+    inp = b.get("input") or {}
+    if name == "Bash":
+        return "Bash: " + (inp.get("description") or (inp.get("command") or "")[:80])
+    if name in ("Read", "Edit", "Write", "NotebookEdit"):
+        fp = inp.get("file_path") or inp.get("notebook_path") or ""
+        return name + ": " + _os.path.basename(fp)
+    if name in ("Grep", "Glob"):
+        return name + ": " + (inp.get("pattern") or "")
+    if name == "TodoWrite":
+        return "할 일 목록 정리"
+    return name
+
+
+def _devlog_clean_user(content):
+    import re
+    if isinstance(content, list):
+        parts = []
+        for b in content:
+            if isinstance(b, dict):
+                if b.get("type") == "text":
+                    parts.append(b.get("text") or "")
+            elif isinstance(b, str):
+                parts.append(b)
+        text = "\n".join(parts)
+    else:
+        text = content or ""
+    text = re.sub(r"<system-reminder>.*?</system-reminder>", "", text, flags=re.S)
+    return text.strip()
+
+
+def _devlog_is_noise(text):
+    if not text:
+        return True
+    noise = ("<command", "<local-command", "Caveat:", "[Request interrupted",
+             "This session is being continued", "<bash-", "<user-", "<persisted-")
+    return text.startswith(noise)
+
+
+def _build_devlog():
+    files = sorted(_glob.glob(_os.path.join(DEVLOG_DIR, "*.jsonl")))
+    sig = tuple((f, _os.path.getmtime(f)) for f in files)
+    if _devlog_cache["sig"] == sig and _devlog_cache["items"] is not None:
+        return _devlog_cache["items"]
+    rows = []
+    for f in files:
+        try:
+            with open(f, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        d = _json.loads(line)
+                    except (ValueError, TypeError):
+                        continue
+                    if d.get("type") not in ("user", "assistant"):
+                        continue
+                    msg = d.get("message")
+                    if not isinstance(msg, dict):
+                        continue
+                    ts = d.get("timestamp") or ""
+                    role = msg.get("role")
+                    content = msg.get("content")
+                    if role == "user":
+                        if isinstance(content, list) and content and all(
+                                isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
+                            continue
+                        text = _devlog_clean_user(content)
+                        if _devlog_is_noise(text):
+                            continue
+                        rows.append((ts, "user", "msg", text, ""))
+                    else:
+                        if isinstance(content, str):
+                            t = content.strip()
+                            if t:
+                                rows.append((ts, "assistant", "msg", t, ""))
+                            continue
+                        if isinstance(content, list):
+                            for b in content:
+                                if not isinstance(b, dict):
+                                    continue
+                                bt = b.get("type")
+                                if bt == "text":
+                                    t = (b.get("text") or "").strip()
+                                    if t:
+                                        rows.append((ts, "assistant", "msg", t, ""))
+                                elif bt == "tool_use":
+                                    rows.append((ts, "assistant", "tool", "", _devlog_tool_summary(b)))
+        except OSError:
+            continue
+    rows.sort(key=lambda r: r[0])
+    items = [{"i": i, "ts": (r[0][:19].replace("T", " ")), "role": r[1],
+              "kind": r[2], "text": r[3], "tool": r[4]} for i, r in enumerate(rows)]
+    _devlog_cache["sig"] = sig
+    _devlog_cache["items"] = items
+    return items
+
+
+class DevLogAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """개발일지: Claude Code 세션 대화를 최신순 페이지네이션. 본부 관리자 전용.
+        mode=brief 면 지시/설명만(도구 동작 생략). before=필터목록 내 시작위치."""
+        if not request.user.is_super_admin():
+            return self.error("본부 관리자만 볼 수 있습니다.")
+        items = _build_devlog()
+        if request.GET.get("mode") == "brief":
+            items = [it for it in items if it["kind"] == "msg"]
+        total = len(items)
+        try:
+            limit = min(int(request.GET.get("limit", 60)), 200)
+        except (TypeError, ValueError):
+            limit = 60
+        before = request.GET.get("before")
+        if before in (None, ""):
+            end = total
+        else:
+            try:
+                end = max(0, min(total, int(before)))
+            except (TypeError, ValueError):
+                end = total
+        start = max(0, end - limit)
+        return self.success({"items": items[start:end], "start": start,
+                             "has_more": start > 0, "total": total})

@@ -1289,6 +1289,43 @@
       </div>
     </section>
 
+    <!-- ============ 관리자: 개발일지 ============ -->
+    <section v-if="tab==='devlog'">
+      <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h2 class="text-lg font-bold">개발일지 <span class="text-sm font-normal text-slate-400">(AI 작업 대화 기록 · {{ devlogTotal }}건)</span></h2>
+        <div class="flex items-center gap-2">
+          <button @click="setDevlogMode('brief')" :class="['px-3 py-1.5 rounded text-sm border', devlogMode==='brief' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500']">약식으로 보기</button>
+          <button @click="setDevlogMode('full')" :class="['px-3 py-1.5 rounded text-sm border', devlogMode==='full' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500']">전체 보기</button>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 mb-2">위로 스크롤하면 이전 대화를 더 불러옵니다. <b>약식</b>은 지시·설명만, <b>전체</b>는 파일·명령 동작까지 표시합니다.</p>
+      <div ref="devlogScroll" @scroll="onDevlogScroll" class="bg-white rounded-xl shadow-sm p-4 space-y-3 overflow-y-auto" style="height:70vh">
+        <div v-if="devlogLoading" class="text-center text-xs text-slate-400 py-2">불러오는 중…</div>
+        <div v-else-if="!devlogHasMore && devlogItems.length" class="text-center text-xs text-slate-300 py-2">— 대화 시작 —</div>
+        <template v-for="it in devlogItems" :key="it.i">
+          <!-- 사용자 -->
+          <div v-if="it.role==='user'" class="flex justify-end">
+            <div class="max-w-[80%] bg-indigo-600 text-white rounded-2xl rounded-br-sm px-4 py-2">
+              <div class="text-[10px] text-indigo-200 mb-0.5">나 · {{ it.ts }}</div>
+              <div class="whitespace-pre-wrap text-sm leading-relaxed">{{ it.text }}</div>
+            </div>
+          </div>
+          <!-- AI 설명/질문 -->
+          <div v-else-if="it.kind==='msg'" class="flex justify-start">
+            <div class="max-w-[80%] bg-slate-100 text-slate-800 rounded-2xl rounded-bl-sm px-4 py-2">
+              <div class="text-[10px] text-slate-400 mb-0.5">AI · {{ it.ts }}</div>
+              <div class="whitespace-pre-wrap text-sm leading-relaxed">{{ it.text }}</div>
+            </div>
+          </div>
+          <!-- 도구 동작(전체 보기) -->
+          <div v-else class="flex justify-start">
+            <div class="text-[11px] text-slate-400 pl-2 border-l-2 border-slate-200">🔧 {{ it.tool }}</div>
+          </div>
+        </template>
+        <div v-if="!devlogItems.length && !devlogLoading" class="text-center text-sm text-slate-400 py-10">기록이 없습니다.</div>
+      </div>
+    </section>
+
     <!-- ============ 관리자: 직원 인사 상세 ============ -->
     <section v-if="tab==='hrdetail'" class="max-w-3xl mx-auto">
       <button @click="tab='staff'" class="text-xs text-slate-400 hover:text-slate-600 mb-2">← 직원 관리로</button>
@@ -1589,6 +1626,7 @@ createApp({
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
       staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null, managed_branch_ids:[] },
       branchAdmin: [], branchNewName: '',
+      devlogItems: [], devlogMode: 'full', devlogStart: 0, devlogHasMore: false, devlogLoading: false, devlogTotal: 0,
       options: {},
       optionCategories: [
         {v:'program', l:'등록 과정 (입회원)'},
@@ -1745,6 +1783,7 @@ createApp({
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
         t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ❗' : '')});
         if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
+        if (this.me.user.admin_type === 'Super Admin') t.push({key:'devlog',label:'개발일지'});
         return t;
       }
       if (this.isParent) return [ {key:'children',label:'자녀'}, {key:'lead',label:'상담 신청'}, {key:'me',label:'내 정보'} ];
@@ -1797,6 +1836,7 @@ createApp({
       else if (key==='classes') this.loadClasses();
       else if (key==='staff') this.loadStaff();
       else if (key==='options'){ this.loadOptionAdmin(); this.loadBranchAdmin(); }
+      else if (key==='devlog') this.loadDevlog(true);
       else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); }
       else if (key==='students'){ this.loadStudents(); this.loadOptions(); }
       else if (key==='children') this.loadChildren();
@@ -2168,6 +2208,29 @@ createApp({
       this.optNewForm = { value:'', label:'', allow_custom:false };
       try { const d = await api('GET','/api/admin/academy/options?category='+this.optCategory); this.optList = d.results || d; }
       catch(e){ this.notify(e.message,false); }
+    },
+    // ── 개발일지 ──
+    setDevlogMode(m){ if (this.devlogMode===m) return; this.devlogMode=m; this.loadDevlog(true); },
+    async loadDevlog(initial){
+      if (this.devlogLoading) return;
+      this.devlogLoading = true;
+      try {
+        if (initial){ this.devlogItems=[]; this.devlogStart=0; }
+        const before = initial ? '' : ('&before='+this.devlogStart);
+        const d = await api('GET','/api/admin/academy/devlog?mode='+this.devlogMode+'&limit=60'+before);
+        this.devlogTotal = d.total; this.devlogHasMore = d.has_more;
+        if (initial){
+          this.devlogItems = d.items; this.devlogStart = d.start;
+          this.$nextTick(()=>{ const el=this.$refs.devlogScroll; if(el) el.scrollTop=el.scrollHeight; });
+        } else {
+          const el=this.$refs.devlogScroll; const prevH = el ? el.scrollHeight : 0;
+          this.devlogItems = d.items.concat(this.devlogItems); this.devlogStart = d.start;
+          this.$nextTick(()=>{ if(el) el.scrollTop = el.scrollHeight - prevH; });
+        }
+      } catch(e){ this.notify(e.message,false); } finally { this.devlogLoading=false; }
+    },
+    onDevlogScroll(e){
+      if (e.target.scrollTop < 40 && this.devlogHasMore && !this.devlogLoading) this.loadDevlog(false);
     },
     async loadBranches(){ try { this.branches = await api('GET','/api/academy/branches'); } catch(e){} },
     async loadBranchAdmin(){ try { this.branchAdmin = await api('GET','/api/admin/academy/branches'); } catch(e){} },
