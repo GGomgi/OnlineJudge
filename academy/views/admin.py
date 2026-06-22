@@ -367,6 +367,39 @@ class StaffDeleteAPI(APIView):
         return self.success(_staff_brief(profile))
 
 
+class StaffReissueSabunAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """사번(로그인 아이디) 재발급 — 현재 역할·소속 지점 기준으로 다시 생성.
+        이력은 user.id 로 연결되어 보존되고 로그인 아이디만 바뀐다. 원장 이상만."""
+        if not can_manage_staff(request.user):
+            return self.error("직원 관리 권한이 없습니다.")
+        profile = AcademyProfile.objects.select_related("user", "branch").filter(
+            user_id=request.data.get("user_id"), role__in=STAFF_ROLES).first()
+        if not profile:
+            return self.error("Staff does not exist")
+        if profile.user.is_super_admin():
+            return self.error("최고 관리자 계정은 변경할 수 없습니다.")
+        if profile.is_all_branch():
+            actor_all, _, _ = staff_scope(request.user)
+            if not actor_all:
+                return self.error("No permission")
+        elif not can_manage_branch(request.user, profile.branch_id):
+            return self.error("No permission for this branch")
+        new_no = gen_staff_no(profile.role, profile.branch)
+        while User.objects.filter(username=new_no).exclude(id=profile.user_id).exists():
+            prefix, tail = new_no[:2], new_no[2:]
+            new_no = "%s%03d" % (prefix, (int(tail) if tail.isdigit() else 0) + 1)
+        old_no = profile.user.username
+        if new_no == old_no:
+            return self.error("이미 현재 소속 기준 사번입니다.")
+        profile.user.username = new_no
+        profile.user.save(update_fields=["username"])
+        profile.staff_no = new_no
+        profile.save(update_fields=["staff_no"])
+        return self.success({"old_sabun": old_no, "new_sabun": new_no})
+
+
 def _parse_managed(request):
     """요청의 managed_branch_ids → 유효 지점 id 리스트. 부여자가 해당 지점을
     수정 권한(=관리)으로 보유한 경우만 열람권을 위임할 수 있다."""

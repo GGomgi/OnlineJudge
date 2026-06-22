@@ -1185,6 +1185,7 @@
                   <td class="px-3 py-2 text-right whitespace-nowrap">
                     <template v-if="!s.is_deleted">
                       <button @click="applyStaffRole(s)" class="text-xs text-indigo-600 hover:underline">역할 적용</button>
+                      <button @click="reissueSabun(s)" class="ml-2 text-xs text-slate-500 hover:underline" title="현재 소속 지점 기준으로 사번(로그인 아이디) 재발급">사번 재발급</button>
                       <button v-if="s.user_id!==me.user.id" @click="toggleStaffActive(s)" class="ml-2 text-xs text-slate-500 hover:underline">{{ s.is_active ? '비활성화' : '활성화' }}</button>
                       <button v-if="s.user_id!==me.user.id" @click="deleteStaff(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
                     </template>
@@ -2155,6 +2156,11 @@ createApp({
     },
     async restoreStaff(s){
       try { await api('POST','/api/admin/academy/staff/delete', { user_id:s.user_id, deleted:false }); this.notify('복원되었습니다.'); this.loadStaff(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async reissueSabun(s){
+      if (!window.confirm((s.real_name||s.staff_no)+' 의 사번(로그인 아이디)을 현재 소속 지점 기준으로 재발급합니다.\n기존 이력은 모두 보존되며 로그인 아이디만 바뀝니다. 계속하시겠습니까?')) return;
+      try { const d = await api('POST','/api/admin/academy/staff/reissue_sabun', { user_id:s.user_id }); this.notify('사번 재발급: '+d.old_sabun+' → '+d.new_sabun); this.loadStaff(); }
       catch(e){ this.notify(e.message,false); }
     },
     optCategoryLabel(v){ const c = this.optionCategories.find(c=>c.v===v); return c ? c.l : v; },
