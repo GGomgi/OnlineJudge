@@ -1093,27 +1093,29 @@
                 <option value="" disabled>역할 선택</option>
                 <option v-for="r in staffRoleOptions" :key="r.v" :value="r.v">{{ r.l }}</option>
               </select>
-              <div v-if="isRegionalRole(staffForm.role)" class="border rounded-lg p-2 space-y-1">
-                <div class="text-xs font-semibold text-slate-500">열람 지점 (여러 개 선택 · 읽기 전용)</div>
-                <label v-for="b in branches" :key="b.id" class="flex items-center gap-2 text-sm">
-                  <input type="checkbox" :value="b.id" v-model="staffForm.managed_branch_ids" class="w-4 h-4"> {{ b.name }}
-                </label>
-                <p class="text-[11px] text-slate-400">지부장은 선택한 지점을 <b>열람만</b> 가능(수정 불가).</p>
-              </div>
-              <template v-else-if="!isAllBranchRole(staffForm.role)">
-                <select v-model="staffForm.branch_id" class="input">
-                  <option :value="null" disabled>소속 지점 선택</option>
-                  <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
-                </select>
-                <div class="border rounded-lg p-2 space-y-1">
-                  <div class="text-xs font-semibold text-slate-500">추가 열람 지점 <span class="font-normal text-slate-400">(지부장 겸직 · 선택)</span></div>
-                  <label v-for="b in branches.filter(b=>b.id!==staffForm.branch_id)" :key="b.id" class="flex items-center gap-2 text-sm">
+              <template v-if="staffForm.role">
+                <div v-if="isRegionalRole(staffForm.role)" class="border rounded-lg p-2 space-y-1">
+                  <div class="text-xs font-semibold text-slate-500">열람 지점 (여러 개 선택 · 읽기 전용)</div>
+                  <label v-for="b in branches" :key="b.id" class="flex items-center gap-2 text-sm">
                     <input type="checkbox" :value="b.id" v-model="staffForm.managed_branch_ids" class="w-4 h-4"> {{ b.name }}
                   </label>
-                  <p class="text-[11px] text-slate-400">선택 시 해당 지점을 추가로 <b>열람</b>(수정은 소속 지점만).</p>
+                  <p class="text-[11px] text-slate-400">지부장은 선택한 지점을 <b>열람만</b> 가능(수정 불가).</p>
                 </div>
+                <template v-else-if="!isAllBranchRole(staffForm.role)">
+                  <select v-model="staffForm.branch_id" class="input">
+                    <option :value="null" disabled>소속 지점 선택</option>
+                    <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+                  </select>
+                  <div v-if="isManagerRole(staffForm.role)" class="border rounded-lg p-2 space-y-1">
+                    <div class="text-xs font-semibold text-slate-500">추가 열람 지점 <span class="font-normal text-slate-400">(지부장 겸직 · 선택)</span></div>
+                    <label v-for="b in branches.filter(b=>b.id!==staffForm.branch_id)" :key="b.id" class="flex items-center gap-2 text-sm">
+                      <input type="checkbox" :value="b.id" v-model="staffForm.managed_branch_ids" class="w-4 h-4"> {{ b.name }}
+                    </label>
+                    <p class="text-[11px] text-slate-400">선택 시 해당 지점을 추가로 <b>열람</b>(수정은 소속 지점만).</p>
+                  </div>
+                </template>
+                <p v-else class="text-xs text-slate-400">전지점 역할은 특정 지점에 묶이지 않습니다.</p>
               </template>
-              <p v-else class="text-xs text-slate-400">전지점 역할은 특정 지점에 묶이지 않습니다.</p>
               <button @click="createStaff" class="btn-primary w-full text-sm">계정 생성</button>
             </div>
           </div>
@@ -2058,6 +2060,7 @@ createApp({
       catch(e){ this.notify(e.message,false); }
     },
     isRegionalRole(role){ return role==='REGIONAL_MANAGER'; },
+    isManagerRole(role){ return role==='BRANCH_MANAGER' || role==='VICE_PRINCIPAL'; },
     canEditBranch(branchId){
       // 해당 지점을 수정할 수 있는지(열람 전용 지부장은 false)
       if (this.me && this.me.user.admin_type === 'Super Admin') return true;
