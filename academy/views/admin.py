@@ -1053,6 +1053,61 @@ class ConvertLeadAdminAPI(APIView):
         return self.success(result)
 
 
+class BranchAdminAPI(APIView):
+    """지점 관리(본부 관리자 전용). 추가/이름수정/활성토글. 삭제는 막고 비활성만 권장."""
+
+    def _require_hq(self, request):
+        actor_all, _, _ = staff_scope(request.user)
+        return actor_all
+
+    @admin_role_required
+    def get(self, request):
+        if not self._require_hq(request):
+            return self.error("본부 관리자만 지점을 관리할 수 있습니다.")
+        out = []
+        for b in Branch.objects.all():
+            out.append({"id": b.id, "code": b.code, "name": b.name, "is_active": b.is_active,
+                        "member_count": AcademyProfile.objects.filter(branch_id=b.id).count()})
+        return self.success(out)
+
+    @admin_role_required
+    def post(self, request):
+        if not self._require_hq(request):
+            return self.error("본부 관리자만 지점을 추가할 수 있습니다.")
+        name = (request.data.get("name") or "").strip()
+        if not name:
+            return self.error("지점 이름을 입력하세요.")
+        # 코드 자동 생성(B0NN): 기존 숫자 최대+1
+        maxn = 0
+        for b in Branch.objects.all():
+            d = "".join(ch for ch in (b.code or "") if ch.isdigit())
+            if d:
+                maxn = max(maxn, int(d))
+        code = "B%03d" % (maxn + 1)
+        while Branch.objects.filter(code=code).exists():
+            maxn += 1
+            code = "B%03d" % (maxn + 1)
+        b = Branch.objects.create(code=code, name=name)
+        return self.success({"id": b.id, "code": b.code, "name": b.name})
+
+    @admin_role_required
+    def put(self, request):
+        if not self._require_hq(request):
+            return self.error("본부 관리자만 수정할 수 있습니다.")
+        b = Branch.objects.filter(id=request.data.get("id")).first()
+        if not b:
+            return self.error("지점이 없습니다.")
+        if "name" in request.data:
+            nm = (request.data.get("name") or "").strip()
+            if not nm:
+                return self.error("지점 이름을 입력하세요.")
+            b.name = nm
+        if "is_active" in request.data:
+            b.is_active = bool(request.data.get("is_active"))
+        b.save()
+        return self.success("ok")
+
+
 class CloseLeadAdminAPI(APIView):
     @validate_serializer(CloseLeadSerializer)
     @admin_role_required

@@ -1194,6 +1194,36 @@
 
     <!-- ============ 관리자: 선택 목록 관리 ============ -->
     <section v-if="tab==='options'">
+      <!-- 지점 관리 -->
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-5">
+        <h2 class="text-lg font-bold mb-1">지점 관리</h2>
+        <p class="text-xs text-slate-400 mb-3">지점 코드는 자동 생성(B0NN)되며 사번·소속·권한 스코프에 연결됩니다. 삭제 대신 <b>비활성</b>(폐점)으로 처리하세요.</p>
+        <div class="flex items-end gap-2 mb-3">
+          <div><label class="lbl">새 지점 이름</label><input v-model="branchNewName" placeholder="예: 부천중동" class="input w-56" @keyup.enter="addBranch" /></div>
+          <button @click="addBranch" class="btn-primary text-sm">+ 지점 추가</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs">
+              <tr><th class="px-3 py-2 text-left w-20">코드</th><th class="px-3 py-2 text-left">이름</th><th class="px-3 py-2 text-center w-24">소속 인원</th><th class="px-3 py-2 text-center w-20">활성</th><th class="px-3 py-2 w-32"></th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="b in branchAdmin" :key="b.id" class="border-t align-middle">
+                <td class="px-3 py-2 font-mono text-slate-500">{{ b.code }}</td>
+                <td class="px-3 py-2"><input v-model="b.name" class="input py-1 w-48" /></td>
+                <td class="px-3 py-2 text-center text-slate-500">{{ b.member_count }}</td>
+                <td class="px-3 py-2 text-center"><span :class="b.is_active ? 'text-emerald-600' : 'text-rose-500'">{{ b.is_active ? '활성' : '비활성' }}</span></td>
+                <td class="px-3 py-2 text-right whitespace-nowrap">
+                  <button @click="saveBranch(b)" class="text-xs text-indigo-600 hover:underline">저장</button>
+                  <button @click="toggleBranch(b)" class="ml-2 text-xs text-slate-500 hover:underline">{{ b.is_active ? '비활성화' : '활성화' }}</button>
+                </td>
+              </tr>
+              <tr v-if="branchAdmin.length===0"><td colspan="5" class="px-3 py-4 text-center text-xs text-slate-400">지점이 없습니다.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="flex items-center gap-2 mb-3 flex-wrap">
         <h2 class="text-lg font-bold">선택 목록 관리</h2>
         <select v-model="optCategory" @change="loadOptionAdmin" class="input w-48">
@@ -1547,6 +1577,7 @@ createApp({
       sig: { drawing:false, ctx:null, hasInk:false },
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
       staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null, managed_branch_ids:[] },
+      branchAdmin: [], branchNewName: '',
       options: {},
       optionCategories: [
         {v:'program', l:'등록 과정 (입회원)'},
@@ -1754,7 +1785,7 @@ createApp({
       else if (key==='leadmgr') this.loadLeads();
       else if (key==='classes') this.loadClasses();
       else if (key==='staff') this.loadStaff();
-      else if (key==='options') this.loadOptionAdmin();
+      else if (key==='options'){ this.loadOptionAdmin(); this.loadBranchAdmin(); }
       else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); }
       else if (key==='students'){ this.loadStudents(); this.loadOptions(); }
       else if (key==='children') this.loadChildren();
@@ -2113,6 +2144,23 @@ createApp({
       try { const d = await api('GET','/api/admin/academy/options?category='+this.optCategory); this.optList = d.results || d; }
       catch(e){ this.notify(e.message,false); }
     },
+    async loadBranches(){ try { this.branches = await api('GET','/api/academy/branches'); } catch(e){} },
+    async loadBranchAdmin(){ try { this.branchAdmin = await api('GET','/api/admin/academy/branches'); } catch(e){} },
+    async addBranch(){
+      const name=(this.branchNewName||'').trim();
+      if (!name) return this.notify('지점 이름을 입력하세요.', false);
+      try { const d = await api('POST','/api/admin/academy/branches', { name }); this.notify('지점이 추가되었습니다. (코드 '+d.code+')'); this.branchNewName=''; this.loadBranchAdmin(); this.loadBranches(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async saveBranch(b){
+      if (!(b.name||'').trim()) return this.notify('지점 이름을 입력하세요.', false);
+      try { await api('PUT','/api/admin/academy/branches', { id:b.id, name:b.name }); this.notify('저장되었습니다.'); this.loadBranches(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async toggleBranch(b){
+      try { await api('PUT','/api/admin/academy/branches', { id:b.id, is_active:!b.is_active }); this.notify(b.is_active?'비활성화되었습니다.':'활성화되었습니다.'); this.loadBranchAdmin(); this.loadBranches(); }
+      catch(e){ this.notify(e.message,false); }
+    },
     async addOption(){
       const f = this.optNewForm;
       if (!f.value.trim() || !f.label.trim()) return this.notify('값(코드)과 표시명을 입력하세요.', false);
@@ -2172,7 +2220,7 @@ createApp({
     },
     async boot(){
       try { this.me = await api('GET','/api/profile'); } catch(e){ this.me = null; }
-      try { this.branches = await api('GET','/api/academy/branches'); } catch(e){}
+      await this.loadBranches();
       await this.loadOptions();
       this.leadForm.branch_id = this.savedLeadBranch();
       if (this.me) { await this.loadMyProfile(); if (this.isStaff) await this.loadStaffProfile(); }
