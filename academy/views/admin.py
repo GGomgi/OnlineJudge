@@ -1881,8 +1881,10 @@ def _build_devlog():
     rows.sort(key=lambda r: r[0])
     items = [{"i": i, "ts": (r[0][:19].replace("T", " ")), "role": r[1],
               "kind": r[2], "text": r[3], "tool": r[4]} for i, r in enumerate(rows)]
-    _devlog_cache["sig"] = sig
-    _devlog_cache["items"] = items
+    # 빈 결과(권한 문제 등)는 캐시하지 않아 권한 복구 후 즉시 재반영되게 한다.
+    if items:
+        _devlog_cache["sig"] = sig
+        _devlog_cache["items"] = items
     return items
 
 
