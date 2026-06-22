@@ -68,6 +68,8 @@ class AssignRoleSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
     role = serializers.ChoiceField(choices=ALL_ROLE_VALUES)
     branch_id = serializers.IntegerField(required=False, allow_null=True)
+    managed_branch_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False)  # 지부장 관리지점
 
 
 class CreateStaffSerializer(serializers.Serializer):
@@ -76,6 +78,8 @@ class CreateStaffSerializer(serializers.Serializer):
     real_name = serializers.CharField(max_length=64)
     role = serializers.ChoiceField(choices=sorted(STAFF_ROLES))
     branch_id = serializers.IntegerField(required=False, allow_null=True)
+    managed_branch_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False)  # 지부장 관리지점
     email = serializers.EmailField(max_length=64, required=False, allow_blank=True)
 
 
