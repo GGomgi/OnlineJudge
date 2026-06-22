@@ -327,7 +327,7 @@
       <div class="flex items-center justify-between mb-3 gap-2">
         <h2 class="text-lg font-bold">신규 상담 · 등록 <span class="text-sm font-normal text-slate-400">(등록 이전 상담 기록)</span></h2>
         <div class="flex items-center gap-2">
-          <button @click="openLeadForm" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 상담 등록</button>
+          <button v-if="hasAnyEdit" @click="openLeadForm" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 상담 등록</button>
           <select v-model="leadFilter" @change="loadLeads" class="input w-32">
           <option value="">전체</option>
           <option value="NEW">신규</option>
@@ -373,8 +373,8 @@
               <span :class="['mt-2 inline-block px-2 py-0.5 rounded text-xs', leadBadge(r.status).cls]">{{ leadBadge(r.status).label }}</span>
               <div v-if="r.status==='CONVERTED'" class="text-[11px] text-emerald-600 mt-1">@{{ r.converted_username }}</div>
               <div class="mt-1">
-                <span v-if="r.is_hidden" class="text-[11px] text-rose-600">삭제됨 <button @click.stop="restoreLead(r)" class="text-indigo-500 hover:underline ml-1">복원</button></span>
-                <button v-else @click.stop="deleteLead(r)" class="text-[11px] text-rose-400 hover:underline">삭제</button>
+                <span v-if="r.is_hidden" class="text-[11px] text-rose-600">삭제됨 <button v-if="canEditBranch(r.branch && r.branch.id)" @click.stop="restoreLead(r)" class="text-indigo-500 hover:underline ml-1">복원</button></span>
+                <button v-else-if="canEditBranch(r.branch && r.branch.id)" @click.stop="deleteLead(r)" class="text-[11px] text-rose-400 hover:underline">삭제</button>
               </div>
             </div>
           </div>
@@ -408,7 +408,7 @@
                         <span class="whitespace-pre-wrap text-slate-600 flex-1">{{ e.old }}</span>
                       </div>
                     </div>
-                    <div class="flex justify-end gap-2 text-[11px]">
+                    <div v-if="canEditBranch(r.branch && r.branch.id)" class="flex justify-end gap-2 text-[11px]">
                       <button v-if="!g.is_hidden" @click="startEditLog(g)" class="text-indigo-500 hover:underline">수정</button>
                       <button v-if="!g.is_hidden" @click="deleteLog(r,g)" class="text-rose-400 hover:underline">삭제</button>
                       <button v-else @click="restoreLog(r,g)" class="text-indigo-500 hover:underline">복원</button>
@@ -417,7 +417,7 @@
                 </li>
                 <li v-if="r.logs.length===0" class="text-xs text-slate-400">기록 없음</li>
               </ul>
-              <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED'" class="mt-2 space-y-2">
+              <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED' && canEditBranch(r.branch && r.branch.id)" class="mt-2 space-y-2">
                 <div class="flex flex-wrap gap-2 items-center">
                   <select v-model="noteChannel" class="input w-24 py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select>
                   <input v-model="noteCounselAt" type="datetime-local" class="input w-52 py-1" title="상담 일시" />
@@ -431,7 +431,7 @@
             </div>
 
             <!-- 액션 -->
-            <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED'" class="flex flex-wrap gap-2">
+            <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED' && canEditBranch(r.branch && r.branch.id)" class="flex flex-wrap gap-2">
               <button @click="openConvert(r)" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">등록 전환</button>
             </div>
           </div>
@@ -666,7 +666,7 @@
     <section v-if="tab==='indtt'">
       <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
         <h2 class="text-lg font-bold">개별 시간표</h2>
-        <button @click="toggleTtAdd" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 수업 추가</button>
+        <button v-if="hasAnyEdit" @click="toggleTtAdd" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 수업 추가</button>
       </div>
       <p class="text-xs text-slate-400 mb-3">전체 학생의 개별 수업을 필터로 조회·관리합니다. 입회원 신청서의 요일/시간은 등록 시 자동 생성됩니다.</p>
 
@@ -755,10 +755,13 @@
               <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" class="input py-1 w-28 px-2"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
               <td class="px-3 py-2"><select v-model="s.frequency" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
-                <span v-if="ttRowDirty(s)" class="text-[11px] text-amber-600 mr-1">✏️ 수정중</span>
-                <button @click="saveTt(s)" :class="['text-xs hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">저장</button>
+                <template v-if="canEditBranch(s.branch && s.branch.id)">
+                  <span v-if="ttRowDirty(s)" class="text-[11px] text-amber-600 mr-1">✏️ 수정중</span>
+                  <button @click="saveTt(s)" :class="['text-xs hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">저장</button>
+                </template>
                 <button @mouseenter="openTtHistory(s,$event)" @mouseleave="scheduleCloseTt" class="ml-2 text-xs text-slate-500 hover:underline">이력</button>
-                <button @click="delTt(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
+                <button v-if="canEditBranch(s.branch && s.branch.id)" @click="delTt(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
+                <span v-if="!canEditBranch(s.branch && s.branch.id)" class="text-[11px] text-slate-400 ml-1">열람</span>
               </td>
             </tr>
             <tr v-if="filteredTt.length===0"><td colspan="8" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 개별 수업이 없습니다.</td></tr>
@@ -828,6 +831,7 @@
               :class="['px-3 py-2 border-b-2 -mb-px', stuTab===st.k ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500']">{{ st.l }}</button>
           </div>
           <div class="p-5 space-y-3">
+            <div v-if="!stuCanEdit" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-500 text-xs">👁 열람 전용 — 이 지점은 수정 권한이 없습니다.</div>
             <!-- 인적사항 -->
             <div v-if="stuTab==='info'" class="space-y-2">
               <div class="grid grid-cols-2 gap-2">
@@ -844,12 +848,12 @@
               </div>
               <div><label class="lbl">보호자 이름</label><input v-model="stuForm.parent_name" class="input" /></div>
               <div><label class="lbl">보호자 연락처</label><input :value="stuForm.parent_phone" @input="stuForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
-              <div class="flex justify-end"><button @click="saveStudent" class="btn-primary text-sm">저장</button></div>
+              <div v-if="stuCanEdit" class="flex justify-end"><button @click="saveStudent" class="btn-primary text-sm">저장</button></div>
             </div>
 
             <!-- 상담 타임라인 -->
             <div v-if="stuTab==='counsel'" class="space-y-3">
-              <div class="bg-slate-50 rounded-lg p-3 space-y-2">
+              <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
                 <div class="flex flex-wrap gap-2 items-center">
                   <select v-model="stuNoteChannel" class="input w-24 py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select>
                   <input v-model="stuNoteCounselAt" type="datetime-local" class="input w-52 py-1" />
@@ -882,7 +886,7 @@
                         <span class="whitespace-pre-wrap text-slate-600 flex-1">{{ e.old }}</span>
                       </div>
                     </div>
-                    <div class="flex justify-end gap-2 text-[11px]">
+                    <div v-if="stuCanEdit" class="flex justify-end gap-2 text-[11px]">
                       <button v-if="!g.is_hidden" @click="startStuEditLog(g)" class="text-indigo-500 hover:underline">수정</button>
                       <button v-if="!g.is_hidden" @click="deleteStuLog(g)" class="text-rose-400 hover:underline">삭제</button>
                       <button v-else @click="restoreStuLog(g)" class="text-indigo-500 hover:underline">복원</button>
@@ -895,7 +899,7 @@
 
             <!-- 상태 이력 -->
             <div v-if="stuTab==='status'" class="space-y-3">
-              <div class="bg-slate-50 rounded-lg p-3 space-y-2">
+              <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
                 <div class="flex flex-wrap gap-2 items-center">
                   <select v-model="stuStatusNew" class="input w-28 py-1">
                     <option value="ENROLLED">재원(재등록)</option>
@@ -927,14 +931,14 @@
                 <li v-for="gd in stuDetail.guardians" :key="gd.link_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-1.5">
                   <span class="font-medium">{{ gd.name }}</span>
                   <span class="text-xs text-slate-400">{{ gd.relation }} · {{ gd.phone }} · @{{ gd.username }}</span>
-                  <span class="ml-auto flex gap-2">
+                  <span v-if="stuCanEdit" class="ml-auto flex gap-2">
                     <button @click="resetGuardianPw(gd)" class="text-xs text-indigo-500 hover:underline">비번 초기화</button>
                     <button @click="unlinkGuardian(gd)" class="text-xs text-rose-400 hover:underline">연결 해제</button>
                   </span>
                 </li>
                 <li v-if="stuDetail.guardians.length===0" class="text-xs text-slate-400">연결된 보호자가 없습니다.</li>
               </ul>
-              <div class="bg-slate-50 rounded-lg p-3 space-y-2">
+              <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
                 <div class="text-xs font-semibold text-slate-500">보호자 연결 / 계정 생성</div>
                 <div class="grid grid-cols-2 gap-2">
                   <input v-model="gdForm.parent_name" placeholder="보호자 이름" class="input py-1" />
@@ -1596,6 +1600,12 @@ createApp({
       list.sort((a,b) => { const x=val(a), y=val(b); return (x<y?-1:x>y?1:0) * (asc?1:-1); });
       return list;
     },
+    hasAnyEdit(){
+      if (this.me && this.me.user.admin_type === 'Super Admin') return true;
+      const p = this.myProfile;
+      return !!(p && (p.edit_all_branch || (p.editable_branch_ids||[]).length));
+    },
+    stuCanEdit(){ return this.stuDetail ? this.canEditBranch(this.stuDetail.branch_id) : false; },
     filteredStudents(){
       const q = (this.stuSearch||'').trim().toLowerCase();
       let list = this.students.slice();
@@ -2048,6 +2058,14 @@ createApp({
       catch(e){ this.notify(e.message,false); }
     },
     isRegionalRole(role){ return role==='REGIONAL_MANAGER'; },
+    canEditBranch(branchId){
+      // 해당 지점을 수정할 수 있는지(열람 전용 지부장은 false)
+      if (this.me && this.me.user.admin_type === 'Super Admin') return true;
+      const p = this.myProfile;
+      if (!p) return false;
+      if (p.edit_all_branch) return true;
+      return (p.editable_branch_ids||[]).includes(branchId);
+    },
     async createStaff(){
       const f = this.staffForm;
       if (!f.real_name || !f.password) return this.notify('이름·비밀번호를 입력하세요.', false);
