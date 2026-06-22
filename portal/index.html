@@ -1136,7 +1136,10 @@
               </li>
             </ul>
           </div>
-          <div class="mb-2"><input v-model="staffFilter" placeholder="이름·사번·역할·지점 검색" class="input" /></div>
+          <div class="mb-2 flex items-center gap-2">
+            <input v-model="staffFilter" placeholder="이름·사번·역할·지점 검색" class="input" />
+            <label class="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap"><input type="checkbox" v-model="staffShowDeleted" @change="loadStaff" class="w-4 h-4"> 삭제된 직원</label>
+          </div>
           <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
             <table class="w-full text-sm">
               <thead class="bg-slate-50 text-slate-500 text-xs">
@@ -1180,8 +1183,15 @@
                     <span :class="s.is_active ? 'text-emerald-600' : 'text-rose-500'">{{ s.is_active ? '활성' : '비활성' }}</span>
                   </td>
                   <td class="px-3 py-2 text-right whitespace-nowrap">
-                    <button @click="applyStaffRole(s)" class="text-xs text-indigo-600 hover:underline">역할 적용</button>
-                    <button v-if="s.user_id!==me.user.id" @click="toggleStaffActive(s)" class="ml-2 text-xs text-slate-500 hover:underline">{{ s.is_active ? '비활성화' : '활성화' }}</button>
+                    <template v-if="!s.is_deleted">
+                      <button @click="applyStaffRole(s)" class="text-xs text-indigo-600 hover:underline">역할 적용</button>
+                      <button v-if="s.user_id!==me.user.id" @click="toggleStaffActive(s)" class="ml-2 text-xs text-slate-500 hover:underline">{{ s.is_active ? '비활성화' : '활성화' }}</button>
+                      <button v-if="s.user_id!==me.user.id" @click="deleteStaff(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
+                    </template>
+                    <template v-else>
+                      <span class="text-xs text-rose-500">삭제됨</span>
+                      <button @click="restoreStaff(s)" class="ml-2 text-xs text-indigo-500 hover:underline">복원</button>
+                    </template>
                   </td>
                 </tr>
                 <tr v-if="filteredStaff.length===0"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">직원 계정이 없습니다.</td></tr>
@@ -1568,7 +1578,7 @@ createApp({
       showPwChange: false, pwForm: { old:'', new1:'', new2:'' },
       hrForm: { zipcode:'', address:'', address_detail:'', phone:'', dependents_decided:false, dependents:[], emergency_contacts:[], sex_offense_consent:false },
       hrSig: { drawing:false, ctx:null, hasInk:false },
-      staffFilter: '', staffSort: { key:'', dir:1 },
+      staffFilter: '', staffShowDeleted: false, staffSort: { key:'', dir:1 },
       hrDetail: null, hrDocNewGroup: '', docDragGroup: null, docDragIndex: null,
       ttHistory: [], showTtHistory: false, ttHistoryName: '', ttHistoryStudentId: null,
       ttPopX: 0, ttPopY: 0, ttPopHover: false, ttPopTimer: null,
@@ -2077,7 +2087,7 @@ createApp({
       const defBranch = (this.myProfile && this.myProfile.branch) ? this.myProfile.branch.id : null;
       this.staffForm = { real_name:'', password:'', role:'', branch_id:defBranch, managed_branch_ids:[] };
       try {
-        const d = await api('GET','/api/admin/academy/staff');
+        const d = await api('GET','/api/admin/academy/staff' + (this.staffShowDeleted ? '?show_deleted=1' : ''));
         this.staff = (d.results || d).map(s=>({ ...s, _role:s.role, _branch_id: s.branch ? s.branch.id : null,
           _managed_branch_ids: (s.managed_branches||[]).map(b=>b.id) }));
       } catch(e){ this.notify(e.message,false); }
@@ -2137,6 +2147,15 @@ createApp({
         this.notify(s.username + (s.is_active ? ' 비활성화됨' : ' 활성화됨'));
         this.loadStaff();
       } catch(e){ this.notify(e.message,false); }
+    },
+    async deleteStaff(s){
+      if (!window.confirm((s.real_name||s.username)+' 직원을 삭제하시겠습니까? (기록은 보존되며 목록에서 숨겨집니다)')) return;
+      try { await api('POST','/api/admin/academy/staff/delete', { user_id:s.user_id, deleted:true }); this.notify('삭제되었습니다.'); this.loadStaff(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async restoreStaff(s){
+      try { await api('POST','/api/admin/academy/staff/delete', { user_id:s.user_id, deleted:false }); this.notify('복원되었습니다.'); this.loadStaff(); }
+      catch(e){ this.notify(e.message,false); }
     },
     optCategoryLabel(v){ const c = this.optionCategories.find(c=>c.v===v); return c ? c.l : v; },
     async loadOptionAdmin(){

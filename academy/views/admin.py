@@ -251,6 +251,7 @@ def _staff_brief(profile):
         "staff_no": profile.staff_no or u.username,
         "role": profile.role, "role_label": dict(ACADEMY_ROLE_CHOICES).get(profile.role, profile.role),
         "branch": branch, "managed_branches": managed, "is_active": not u.is_disabled,
+        "is_deleted": profile.is_deleted,
         "hr_completed": hr_completed,
     }
 
@@ -266,6 +267,8 @@ class StaffAdminAPI(APIView):
             return self.error("No branch scope assigned")
         qs = AcademyProfile.objects.select_related(
             "user", "user__staff_profile", "branch").filter(role__in=STAFF_ROLES)
+        if request.GET.get("show_deleted") != "1":
+            qs = qs.filter(is_deleted=False)
         if not all_branch:
             qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
         qs = qs.order_by("branch_id", "role", "user__username")
@@ -331,6 +334,36 @@ class StaffStatusAPI(APIView):
 
         profile.user.is_disabled = not data["is_active"]
         profile.user.save()
+        return self.success(_staff_brief(profile))
+
+
+class StaffDeleteAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """직원 소프트삭제(숨김)/복원. 원장 이상(직원관리 권한)만. 데이터는 보존."""
+        if not can_manage_staff(request.user):
+            return self.error("직원 관리 권한이 없습니다.")
+        data = request.data
+        profile = AcademyProfile.objects.select_related("user", "branch").filter(
+            user_id=data.get("user_id"), role__in=STAFF_ROLES).first()
+        if not profile:
+            return self.error("Staff does not exist")
+        if profile.user_id == request.user.id:
+            return self.error("본인 계정은 삭제할 수 없습니다.")
+        if profile.user.is_super_admin():
+            return self.error("최고 관리자 계정은 삭제할 수 없습니다.")
+        if profile.is_all_branch():
+            actor_all, _, _ = staff_scope(request.user)
+            if not actor_all:
+                return self.error("No permission")
+        elif not can_manage_branch(request.user, profile.branch_id):
+            return self.error("No permission for this branch")
+        deleted = data.get("deleted", True)
+        profile.is_deleted = bool(deleted)
+        profile.save(update_fields=["is_deleted"])
+        # 삭제 시 로그인도 차단(복원 시 활성으로 되돌림)
+        profile.user.is_disabled = bool(deleted)
+        profile.user.save(update_fields=["is_disabled"])
         return self.success(_staff_brief(profile))
 
 

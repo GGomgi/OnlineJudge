@@ -77,6 +77,7 @@ class AcademyProfile(models.Model):
     # 연락처(학부모 계정 매칭용: 동일 전화번호=동일 학부모, 11 §9 다자녀). 숫자만 정규화 저장.
     phone = models.CharField(max_length=32, blank=True, default="")
     prefs = models.TextField(blank=True, default="")  # 사용자 UI 설정(JSON): 삭제표시 토글 등
+    is_deleted = models.BooleanField(default=False)  # 직원 소프트삭제(숨김). 데이터는 보존.
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 
