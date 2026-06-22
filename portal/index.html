@@ -1089,7 +1089,13 @@
                 <option value="" disabled>역할 선택</option>
                 <option v-for="r in staffRoleOptions" :key="r.v" :value="r.v">{{ r.l }}</option>
               </select>
-              <select v-if="!isAllBranchRole(staffForm.role)" v-model="staffForm.branch_id" class="input">
+              <div v-if="isRegionalRole(staffForm.role)" class="border rounded-lg p-2 space-y-1">
+                <div class="text-xs font-semibold text-slate-500">관리 지점 (여러 개 선택)</div>
+                <label v-for="b in branches" :key="b.id" class="flex items-center gap-2 text-sm">
+                  <input type="checkbox" :value="b.id" v-model="staffForm.managed_branch_ids" class="w-4 h-4"> {{ b.name }}
+                </label>
+              </div>
+              <select v-else-if="!isAllBranchRole(staffForm.role)" v-model="staffForm.branch_id" class="input">
                 <option :value="null" disabled>지점 선택</option>
                 <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
               </select>
@@ -1138,7 +1144,10 @@
                     </select>
                   </td>
                   <td class="px-3 py-2">
-                    <select v-if="!isAllBranchRole(s._role)" v-model="s._branch_id" class="input py-1 text-xs w-24">
+                    <div v-if="isRegionalRole(s._role)" class="flex flex-col gap-0.5">
+                      <label v-for="b in branches" :key="b.id" class="flex items-center gap-1 text-[11px] whitespace-nowrap"><input type="checkbox" :value="b.id" v-model="s._managed_branch_ids" class="w-3 h-3">{{ b.name }}</label>
+                    </div>
+                    <select v-else-if="!isAllBranchRole(s._role)" v-model="s._branch_id" class="input py-1 text-xs w-24">
                       <option :value="null" disabled>지점</option>
                       <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
                     </select>
@@ -1448,7 +1457,7 @@
 <script>
 const { createApp } = Vue;
 
-const ROLE_LABELS = {HQ_ADMIN:'본부 관리자',HR_ADMIN:'인사 관리자',BRANCH_MANAGER:'지점장/원장',INSTRUCTOR:'강사',TA:'조교',STUDENT:'학생',PARENT:'학부모',EXTERNAL_INSTRUCTOR_ADMIN:'외부 강사 관리자'};
+const ROLE_LABELS = {HQ_ADMIN:'본부 관리자',HR_ADMIN:'인사 관리자',REGIONAL_MANAGER:'지부장',BRANCH_MANAGER:'지점장/원장',VICE_PRINCIPAL:'부원장',INSTRUCTOR:'강사',TA:'조교',STUDENT:'학생',PARENT:'학부모',EXTERNAL_INSTRUCTOR_ADMIN:'외부 강사 관리자'};
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
 const ATT_CLASS = {PRESENT:'text-emerald-700 bg-emerald-50',LATE:'text-amber-700 bg-amber-50',ABSENT:'text-rose-700 bg-rose-50',EARLY_LEAVE:'text-orange-700 bg-orange-50',EXCUSED:'text-slate-700 bg-slate-100'};
 
@@ -1518,7 +1527,7 @@ createApp({
       ttStudents: [], ttAddRows: [], showStudentModal: false, studentModalList: [], studentModalFilter: '', studentModalSel: [], modalUnassignedOnly: false,
       sig: { drawing:false, ctx:null, hasInk:false },
       today: (()=>{ const t=new Date(); return { y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate() }; })(),
-      staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null },
+      staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null, managed_branch_ids:[] },
       options: {},
       optionCategories: [
         {v:'program', l:'등록 과정 (입회원)'},
@@ -1544,17 +1553,18 @@ createApp({
     canManageStaff(){
       if (this.me && this.me.user.admin_type === 'Super Admin') return true;
       const r = this.myProfile && this.myProfile.role;
-      return ['HQ_ADMIN','HR_ADMIN','BRANCH_MANAGER'].includes(r);
+      // 부원장 제외(인사·재무 제외), 지부장 포함
+      return ['HQ_ADMIN','HR_ADMIN','REGIONAL_MANAGER','BRANCH_MANAGER'].includes(r);
     },
     isActorAllBranch(){
       return !!(this.me && this.me.user.admin_type === 'Super Admin') ||
              !!(this.myProfile && this.myProfile.is_all_branch);
     },
     isManager(){
-      // 원장(지점장) 이상 — 삭제 항목 보기/복원 권한
+      // 원장(지점장) 이상 — 삭제 항목 보기/복원 권한 (부원장·지부장 포함)
       if (this.me && this.me.user.admin_type === 'Super Admin') return true;
       const r = this.myProfile && this.myProfile.role;
-      return ['HQ_ADMIN','HR_ADMIN','BRANCH_MANAGER'].includes(r);
+      return ['HQ_ADMIN','HR_ADMIN','REGIONAL_MANAGER','BRANCH_MANAGER','VICE_PRINCIPAL'].includes(r);
     },
     filteredLeads(){
       const hayOf = r => [r.student_name, r.parent_name, r.parent_phone, r.student_phone,
@@ -1646,7 +1656,9 @@ createApp({
       const all = [
         {v:'HQ_ADMIN', l:'본부 관리자', allBranch:true},
         {v:'HR_ADMIN', l:'인사 관리자', allBranch:true},
+        {v:'REGIONAL_MANAGER', l:'지부장', allBranch:true, regional:true},
         {v:'BRANCH_MANAGER', l:'지점장/원장'},
+        {v:'VICE_PRINCIPAL', l:'부원장'},
         {v:'INSTRUCTOR', l:'강사'},
         {v:'TA', l:'조교'},
         {v:'EXTERNAL_INSTRUCTOR_ADMIN', l:'외부 강사 관리자'},
@@ -2007,10 +2019,11 @@ createApp({
     async loadStaff(){
       // 지점 소속 직원이면 생성 폼 지점 기본값을 본인 지점으로
       const defBranch = (this.myProfile && this.myProfile.branch) ? this.myProfile.branch.id : null;
-      this.staffForm = { real_name:'', password:'', role:'', branch_id:defBranch };
+      this.staffForm = { real_name:'', password:'', role:'', branch_id:defBranch, managed_branch_ids:[] };
       try {
         const d = await api('GET','/api/admin/academy/staff');
-        this.staff = (d.results || d).map(s=>({ ...s, _role:s.role, _branch_id: s.branch ? s.branch.id : null }));
+        this.staff = (d.results || d).map(s=>({ ...s, _role:s.role, _branch_id: s.branch ? s.branch.id : null,
+          _managed_branch_ids: (s.managed_branches||[]).map(b=>b.id) }));
       } catch(e){ this.notify(e.message,false); }
       this.loadHrNotices();
     },
@@ -2021,25 +2034,33 @@ createApp({
       try { await api('POST','/api/admin/academy/hr_notices', id ? { id } : {}); this.loadHrNotices(); }
       catch(e){ this.notify(e.message,false); }
     },
+    isRegionalRole(role){ return role==='REGIONAL_MANAGER'; },
     async createStaff(){
       const f = this.staffForm;
       if (!f.real_name || !f.password) return this.notify('이름·비밀번호를 입력하세요.', false);
       if (f.password.length < 6) return this.notify('비밀번호는 6자 이상입니다.', false);
       if (!f.role) return this.notify('역할을 선택하세요.', false);
-      if (!this.isAllBranchRole(f.role) && !f.branch_id) return this.notify('지점을 선택하세요.', false);
+      if (this.isRegionalRole(f.role)) {
+        if (!(f.managed_branch_ids||[]).length) return this.notify('관리 지점을 1개 이상 선택하세요.', false);
+      } else if (!this.isAllBranchRole(f.role) && !f.branch_id) return this.notify('지점을 선택하세요.', false);
       try {
         const body = { real_name:f.real_name, password:f.password, role:f.role };
-        if (!this.isAllBranchRole(f.role)) body.branch_id = f.branch_id;
+        if (this.isRegionalRole(f.role)) body.managed_branch_ids = f.managed_branch_ids;
+        else if (!this.isAllBranchRole(f.role)) body.branch_id = f.branch_id;
         const d = await api('POST','/api/admin/academy/staff', body);
         this.notify('직원 계정이 생성되었습니다. 사번(로그인 아이디): ' + d.staff_no);
+        this.staffForm.managed_branch_ids = [];
         this.loadStaff();
       } catch(e){ this.notify(e.message,false); }
     },
     async applyStaffRole(s){
-      if (!this.isAllBranchRole(s._role) && !s._branch_id) return this.notify('지점을 선택하세요.', false);
+      if (this.isRegionalRole(s._role)) {
+        if (!(s._managed_branch_ids||[]).length) return this.notify('관리 지점을 1개 이상 선택하세요.', false);
+      } else if (!this.isAllBranchRole(s._role) && !s._branch_id) return this.notify('지점을 선택하세요.', false);
       try {
         const body = { user_id:s.user_id, role:s._role };
-        if (!this.isAllBranchRole(s._role)) body.branch_id = s._branch_id;
+        if (this.isRegionalRole(s._role)) body.managed_branch_ids = s._managed_branch_ids;
+        else if (!this.isAllBranchRole(s._role)) body.branch_id = s._branch_id;
         await api('POST','/api/admin/academy/assign_role', body);
         this.notify(s.username + ' 역할이 변경되었습니다.');
         this.loadStaff();

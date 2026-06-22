@@ -6,7 +6,9 @@ from .models import AcademyRole, ALL_BRANCH_ROLES
 ROLE_ADMIN_TYPE = {
     AcademyRole.HQ_ADMIN: AdminType.SUPER_ADMIN,
     AcademyRole.HR_ADMIN: AdminType.ADMIN,
+    AcademyRole.REGIONAL_MANAGER: AdminType.ADMIN,
     AcademyRole.BRANCH_MANAGER: AdminType.ADMIN,
+    AcademyRole.VICE_PRINCIPAL: AdminType.ADMIN,
     AcademyRole.INSTRUCTOR: AdminType.ADMIN,
     AcademyRole.TA: AdminType.ADMIN,
     AcademyRole.EXTERNAL_INSTRUCTOR_ADMIN: AdminType.ADMIN,
@@ -18,13 +20,19 @@ ROLE_ADMIN_TYPE = {
 ROLE_PROBLEM_PERMISSION = {
     AcademyRole.HQ_ADMIN: ProblemPermission.ALL,
     AcademyRole.HR_ADMIN: ProblemPermission.NONE,
+    AcademyRole.REGIONAL_MANAGER: ProblemPermission.OWN,
     AcademyRole.BRANCH_MANAGER: ProblemPermission.OWN,
+    AcademyRole.VICE_PRINCIPAL: ProblemPermission.OWN,
     AcademyRole.INSTRUCTOR: ProblemPermission.OWN,
     AcademyRole.TA: ProblemPermission.OWN,
     AcademyRole.EXTERNAL_INSTRUCTOR_ADMIN: ProblemPermission.OWN,
     AcademyRole.STUDENT: ProblemPermission.NONE,
     AcademyRole.PARENT: ProblemPermission.NONE,
 }
+
+# 직원 인사·역할 관리 권한 역할(부원장 제외: 운영만, 인사·재무 제외)
+STAFF_MGMT_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN,
+                    AcademyRole.REGIONAL_MANAGER, AcademyRole.BRANCH_MANAGER}
 
 
 def apply_role(user, role, branch=None):
@@ -43,7 +51,7 @@ def apply_role(user, role, branch=None):
 
 
 def staff_scope(user):
-    """교직원의 지점 스코프를 (전지점여부, branch_id, role) 로 반환.
+    """교직원의 지점 스코프를 (전지점여부, branch_id, role) 로 반환(주 소속 지점).
     academy_profile 이 없는 슈퍼관리자는 전지점으로 취급한다."""
     profile = getattr(user, "academy_profile", None)
     if profile is None:
@@ -53,11 +61,33 @@ def staff_scope(user):
     return profile.is_all_branch(), profile.branch_id, profile.role
 
 
+def managed_branch_ids(user):
+    """관리 가능한 지점 id 목록. 전지점이면 None(=전체 허용), 권한 없으면 [].
+    지부장은 주 소속 + managed_branches, 단일지점 역할은 [주 소속]."""
+    profile = getattr(user, "academy_profile", None)
+    if profile is None:
+        return None if user.is_super_admin() else []
+    if profile.is_all_branch():
+        return None
+    ids = set()
+    if profile.branch_id:
+        ids.add(profile.branch_id)
+    if profile.role == AcademyRole.REGIONAL_MANAGER:
+        ids.update(profile.managed_branches.values_list("id", flat=True))
+    return list(ids)
+
+
 def can_manage_branch(user, target_branch_id):
     """해당 사용자가 대상 지점을 관리할 수 있는지 (전지점이면 항상 가능)."""
-    all_branch, branch_id, role = staff_scope(user)
-    if all_branch:
+    ids = managed_branch_ids(user)
+    if ids is None:
         return True
-    if branch_id is None:
-        return False
-    return branch_id == target_branch_id
+    return target_branch_id in ids
+
+
+def can_manage_staff(user):
+    """직원 인사·역할 관리 권한(부원장 제외)."""
+    if user.is_super_admin():
+        return True
+    profile = getattr(user, "academy_profile", None)
+    return bool(profile and profile.role in STAFF_MGMT_ROLES)

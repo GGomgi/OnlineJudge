@@ -21,6 +21,8 @@ class AcademyRole(object):
     HQ_ADMIN = "HQ_ADMIN"
     HR_ADMIN = "HR_ADMIN"
     BRANCH_MANAGER = "BRANCH_MANAGER"
+    VICE_PRINCIPAL = "VICE_PRINCIPAL"        # 부원장(원장 대리: 운영 권한 동일, 인사·재무 제외)
+    REGIONAL_MANAGER = "REGIONAL_MANAGER"    # 지부장(여러 지점 관리: managed_branches)
     INSTRUCTOR = "INSTRUCTOR"
     TA = "TA"
     STUDENT = "STUDENT"
@@ -31,7 +33,9 @@ class AcademyRole(object):
 ACADEMY_ROLE_CHOICES = [
     (AcademyRole.HQ_ADMIN, "본부 관리자"),
     (AcademyRole.HR_ADMIN, "인사 관리자"),
+    (AcademyRole.REGIONAL_MANAGER, "지부장"),
     (AcademyRole.BRANCH_MANAGER, "지점장/원장"),
+    (AcademyRole.VICE_PRINCIPAL, "부원장"),
     (AcademyRole.INSTRUCTOR, "강사"),
     (AcademyRole.TA, "조교"),
     (AcademyRole.STUDENT, "학생"),
@@ -46,7 +50,9 @@ ALL_BRANCH_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN}
 STAFF_ROLES = {
     AcademyRole.HQ_ADMIN,
     AcademyRole.HR_ADMIN,
+    AcademyRole.REGIONAL_MANAGER,
     AcademyRole.BRANCH_MANAGER,
+    AcademyRole.VICE_PRINCIPAL,
     AcademyRole.INSTRUCTOR,
     AcademyRole.TA,
     AcademyRole.EXTERNAL_INSTRUCTOR_ADMIN,
@@ -64,6 +70,8 @@ class AcademyProfile(models.Model):
     # 주(主) 소속 지점. 전지점 역할(HQ/HR) 또는 미배정은 null.
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
                                related_name="members")
+    # 지부장(REGIONAL_MANAGER) 전용: 관리 대상 지점(여러 지점). 다른 역할은 비워둠.
+    managed_branches = models.ManyToManyField(Branch, blank=True, related_name="regional_managers")
     # 직원 사번(지점2+일련3, 04 명명). 직원 계정의 로그인 아이디로도 사용. 학생/학부모는 빈 값.
     staff_no = models.CharField(max_length=16, blank=True, default="")
     # 연락처(학부모 계정 매칭용: 동일 전화번호=동일 학부모, 11 §9 다자녀). 숫자만 정규화 저장.
