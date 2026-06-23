@@ -1149,7 +1149,7 @@
               <button @click="createStaff" class="btn-primary w-full text-sm">계정 생성</button>
             </div>
           </div>
-          <p class="text-[11px] text-slate-400 mt-2 px-1">로그인 아이디는 <b>사번이 자동 생성</b>됩니다(지점2+일련3, 예: 02001). 역할/지점은 목록에서 변경(역할 적용)할 수 있습니다. 본부·인사 관리자(전지점)는 본부 권한자만 부여 가능합니다.</p>
+          <p class="text-[11px] text-slate-400 mt-2 px-1">로그인 아이디는 <b>사번이 자동 생성</b>됩니다(지점2+일련3, 예: 02001). 역할·지점 변경, 사번 재발급, 비활성화, 이력은 목록의 <b>[관리]</b>에서 처리합니다.</p>
         </div>
         <!-- 직원 목록 -->
         <div class="md:col-span-3">
@@ -1184,48 +1184,82 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="s in filteredStaff" :key="s.user_id" class="border-t align-middle">
-                  <td class="px-3 py-2"><button @click="openStaffDetail(s)" class="text-indigo-600 hover:underline">{{ s.real_name || '-' }}</button></td>
-                  <td class="px-3 py-2 font-mono"><button @click="openStaffDetail(s)" class="text-indigo-600 hover:underline">{{ s.staff_no }}</button></td>
-                  <td class="px-3 py-2">
-                    <select v-model="s._role" class="input py-1 text-xs w-32">
-                      <option v-for="r in staffRoleOptions" :key="r.v" :value="r.v">{{ r.l }}</option>
-                    </select>
-                  </td>
-                  <td class="px-3 py-2">
-                    <div v-if="isRegionalRole(s._role)" class="flex flex-col gap-0.5">
-                      <label v-for="b in branches" :key="b.id" class="flex items-center gap-1 text-[11px] whitespace-nowrap"><input type="checkbox" :value="b.id" v-model="s._managed_branch_ids" class="w-3 h-3">{{ b.name }}</label>
-                    </div>
-                    <template v-else-if="!isAllBranchRole(s._role)">
-                      <select v-model="s._branch_id" class="input py-1 text-xs w-24">
-                        <option :value="null" disabled>지점</option>
-                        <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
-                      </select>
-                      <div v-if="isActorAllBranch && isManagerRole(s._role)" class="mt-1 space-y-0.5">
-                        <div class="text-[10px] text-slate-400">추가 운영 지점</div>
-                        <label v-for="b in branches.filter(b=>b.id!==s._branch_id)" :key="b.id" class="flex items-center gap-1 text-[11px]"><input type="checkbox" :value="b.id" v-model="s._managed_branch_ids" class="w-3 h-3">{{ b.name }}</label>
-                      </div>
-                      <div v-else-if="s.managed_branches && s.managed_branches.length" class="text-[10px] text-slate-400 mt-0.5">운영: {{ s.managed_branches.map(b=>b.name).join(', ') }}</div>
-                    </template>
-                    <span v-else class="text-xs text-slate-400">전지점</span>
+                <tr v-for="s in filteredStaff" :key="s.user_id" :class="['border-t align-middle', s.is_active ? '' : 'opacity-50']">
+                  <td class="px-3 py-2 whitespace-nowrap"><button @click="openStaffDetail(s)" class="text-indigo-600 hover:underline font-medium">{{ s.real_name || '-' }}</button></td>
+                  <td class="px-3 py-2 font-mono whitespace-nowrap"><button @click="openStaffDetail(s)" class="text-indigo-600 hover:underline">{{ s.staff_no }}</button></td>
+                  <td class="px-3 py-2 whitespace-nowrap">{{ roleLabel(s.role) }}</td>
+                  <td class="px-3 py-2 whitespace-nowrap">
+                    <template v-if="s.branch">{{ s.branch.name }}<span v-if="s.managed_branches && s.managed_branches.length" class="text-[11px] text-indigo-400"> +{{ s.managed_branches.map(b=>b.name).join('·') }}</span></template>
+                    <template v-else-if="s.role==='REGIONAL_MANAGER'"><span class="text-slate-500">지부:</span> {{ (s.managed_branches||[]).map(b=>b.name).join('·') || '-' }}</template>
+                    <span v-else class="text-slate-400">전지점</span>
                   </td>
                   <td class="px-3 py-2">
                     <span v-if="s.hr_completed" class="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">완료</span>
                     <span v-else class="text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700">미완료</span>
                   </td>
-                  <td class="px-3 py-2">
-                    <span :class="s.is_active ? 'text-emerald-600' : 'text-rose-500'">{{ s.is_active ? '활성' : '비활성' }}</span>
-                  </td>
+                  <td class="px-3 py-2"><span :class="s.is_active ? 'text-emerald-600' : 'text-rose-500'">{{ s.is_active ? '활성' : '비활성' }}</span></td>
                   <td class="px-3 py-2 text-right whitespace-nowrap">
-                    <button @click="applyStaffRole(s)" class="text-xs text-indigo-600 hover:underline">수정</button>
-                    <button @click="reissueSabun(s)" class="ml-2 text-xs text-slate-500 hover:underline" title="지역 소속 변경 시 사번 재발급">사번 재발급</button>
-                    <button @click="openStaffHistory(s)" class="ml-2 text-xs text-slate-500 hover:underline">이력</button>
-                    <button v-if="s.user_id!==me.user.id" @click="toggleStaffActive(s)" class="ml-2 text-xs text-slate-500 hover:underline">{{ s.is_active ? '비활성화' : '활성화' }}</button>
+                    <button @click="openStaffManage(s)" class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100">관리</button>
                   </td>
                 </tr>
                 <tr v-if="filteredStaff.length===0"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">직원 계정이 없습니다.</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 직원 관리 모달 -->
+      <div v-if="staffMng" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="staffMng=null">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+          <div class="flex items-center justify-between px-5 py-3 border-b">
+            <div class="font-bold">{{ staffMng.real_name || '-' }} <span class="text-xs font-normal text-slate-400 font-mono">{{ staffMng.staff_no }}</span>
+              <span :class="['ml-2 px-2 py-0.5 rounded text-xs', staffMng.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-500']">{{ staffMng.is_active ? '활성' : '비활성' }}</span>
+            </div>
+            <button @click="staffMng=null" class="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+          <div class="p-5 space-y-3">
+            <div>
+              <label class="lbl">역할</label>
+              <select v-model="staffMng._role" class="input">
+                <option v-for="r in staffRoleOptions" :key="r.v" :value="r.v">{{ r.l }}</option>
+              </select>
+            </div>
+            <!-- 지부장: 열람 지점 -->
+            <div v-if="isRegionalRole(staffMng._role)">
+              <label class="lbl">열람 지점 (여러 개)</label>
+              <div class="border rounded-lg p-2 grid grid-cols-2 gap-1">
+                <label v-for="b in branches" :key="b.id" class="flex items-center gap-2 text-sm"><input type="checkbox" :value="b.id" v-model="staffMng._managed_branch_ids" class="w-4 h-4">{{ b.name }}</label>
+              </div>
+            </div>
+            <!-- 단일지점 역할 -->
+            <template v-else-if="!isAllBranchRole(staffMng._role)">
+              <div v-if="isActorAllBranch">
+                <label class="lbl">소속 지점</label>
+                <select v-model="staffMng._branch_id" class="input">
+                  <option :value="null" disabled>지점 선택</option>
+                  <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+                </select>
+              </div>
+              <p v-else class="text-[11px] text-slate-400">소속 지점은 본부만 변경할 수 있습니다.</p>
+              <div v-if="isActorAllBranch && isManagerRole(staffMng._role)">
+                <label class="lbl">추가 운영 지점 <span class="text-slate-400 font-normal">(다지점 운영 · 선택)</span></label>
+                <div class="border rounded-lg p-2 grid grid-cols-2 gap-1">
+                  <label v-for="b in branches.filter(b=>b.id!==staffMng._branch_id)" :key="b.id" class="flex items-center gap-2 text-sm"><input type="checkbox" :value="b.id" v-model="staffMng._managed_branch_ids" class="w-4 h-4">{{ b.name }}</label>
+                </div>
+              </div>
+            </template>
+            <p v-else class="text-[11px] text-slate-400">전지점 역할은 특정 지점에 묶이지 않습니다.</p>
+
+            <div class="flex justify-end pt-1">
+              <button @click="saveStaffManage" class="btn-primary text-sm">역할·지점 저장</button>
+            </div>
+
+            <div class="border-t pt-3 flex flex-wrap gap-2">
+              <button @click="reissueSabun(staffMng)" class="text-xs px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">사번 재발급</button>
+              <button @click="openStaffHistory(staffMng)" class="text-xs px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">변경 이력</button>
+              <button v-if="staffMng.user_id!==me.user.id" @click="toggleStaffActive(staffMng)" class="text-xs px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 ml-auto">{{ staffMng.is_active ? '비활성화' : '활성화' }}</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1686,7 +1720,7 @@ createApp({
       hrForm: { zipcode:'', address:'', address_detail:'', phone:'', dependents_decided:false, dependents:[], emergency_contacts:[], sex_offense_consent:false },
       hrSig: { drawing:false, ctx:null, hasInk:false },
       staffFilter: '', staffShowInactive: false, staffSort: { key:'', dir:1 },
-      showStaffHistory: false, staffHistory: [], staffHistoryName: '',
+      showStaffHistory: false, staffHistory: [], staffHistoryName: '', staffMng: null,
       hrDetail: null, hrDocNewGroup: '', docDragGroup: null, docDragIndex: null,
       ttHistory: [], showTtHistory: false, ttHistoryName: '', ttHistoryStudentId: null,
       ttPopX: 0, ttPopY: 0, ttPopHover: false, ttPopTimer: null,
@@ -2341,6 +2375,14 @@ createApp({
     async openStaffHistory(s){
       try { this.staffHistory = await api('GET','/api/admin/academy/staff/history?user_id='+s.user_id); this.staffHistoryName = (s.real_name||s.staff_no); this.showStaffHistory = true; }
       catch(e){ this.notify(e.message,false); }
+    },
+    openStaffManage(s){
+      this.staffMng = { ...s, _role:s.role, _branch_id: s.branch ? s.branch.id : null,
+        _managed_branch_ids: (s.managed_branches||[]).map(b=>b.id) };
+    },
+    async saveStaffManage(){
+      await this.applyStaffRole(this.staffMng);
+      this.staffMng = null;
     },
     optCategoryLabel(v){ const c = this.optionCategories.find(c=>c.v===v); return c ? c.l : v; },
     async loadOptionAdmin(){
