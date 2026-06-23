@@ -1779,12 +1779,20 @@ class StudentDetailAdminAPI(APIView):
         lead_data = LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data if lead else None
         pdict = _student_profile_dict(sp)
         pdict["real_name"] = _name_of(u)
+        # 개별 시간표(종료 제외)
+        timetables = []
+        for s in StudentTimetable.objects.filter(student=u).exclude(status="ENDED").order_by("weekday", "start_time"):
+            timetables.append({"weekday": s.weekday, "start_time": str(s.start_time)[:5],
+                               "duration_minutes": s.duration_minutes,
+                               "subject": s.subject or resolve_program_label(s.program) or "미지정",
+                               "status": s.status})
         return self.success({
             "id": u.id, "username": u.username, "real_name": _name_of(u),
             "branch": (prof.branch.name if prof and prof.branch_id else ""),
             "branch_id": prof.branch_id if prof else None,
             "enrollment_status": sp.enrollment_status if sp else EnrollmentStatus.ENROLLED,
             "profile": pdict, "guardians": guardians, "status_history": history,
+            "timetables": timetables,
             "lead": lead_data, "lead_id": lead.id if lead else None,
         })
 

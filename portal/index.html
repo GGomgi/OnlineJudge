@@ -48,7 +48,8 @@
     <ul class="p-2 space-y-1">
       <li v-for="c in sibPop.list" :key="c.id" @click="openStudent(c); sibPop.show=false" class="text-sm rounded px-2 py-1 hover:bg-indigo-50 cursor-pointer">
         <div class="font-medium text-indigo-700">{{ c.real_name || c.username }} <span class="text-[11px] text-slate-400 font-mono">{{ c.enroll_no }}</span></div>
-        <div class="text-xs text-slate-500">{{ (c.subjects && c.subjects.length) ? c.subjects.join(', ') : '수강 과목 없음' }}</div>
+        <div class="text-xs text-slate-500">{{ schoolLabel(c.school_type) }} {{ c.school_name }} {{ c.grade ? c.grade+'학년' : '' }}</div>
+        <div class="text-xs text-indigo-500">{{ (c.subjects && c.subjects.length) ? c.subjects.join(', ') : '수강 과목 없음' }}</div>
       </li>
     </ul>
   </div>
@@ -882,9 +883,21 @@
                   <div class="flex items-center gap-1"><input v-model="stuForm.school_name" :class="stuCls('school_name','min-w-0')" /><span v-if="schoolSuffix(stuForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(stuForm.school_type) }}</span></div>
                 </div>
                 <div><label class="lbl">학년 <span v-if="stuFieldDirty('grade')" class="text-amber-600">✏️</span></label><input v-model="stuForm.grade" :class="stuCls('grade')" /></div>
-                <div><label class="lbl">주 교육 회수 <span v-if="stuFieldDirty('weekly_sessions')" class="text-amber-600">✏️</span></label><input v-model.number="stuForm.weekly_sessions" type="number" min="0" :class="stuCls('weekly_sessions')" /></div>
-                <div><label class="lbl">수업 시작일 <span v-if="stuFieldDirty('lesson_start_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.lesson_start_date" type="date" :class="stuCls('lesson_start_date')" /></div>
                 <div><label class="lbl">등록일 <span v-if="stuFieldDirty('enrollment_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.enrollment_date" type="date" :class="stuCls('enrollment_date')" /></div>
+                <div><label class="lbl">수업 시작일 <span v-if="stuFieldDirty('lesson_start_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.lesson_start_date" type="date" :class="stuCls('lesson_start_date')" /></div>
+                <div>
+                  <label class="lbl">주 교육 회수 <span v-if="stuFieldDirty('weekly_sessions')" class="text-amber-600">✏️</span></label>
+                  <input v-model.number="stuForm.weekly_sessions" type="number" min="0" :class="stuCls('weekly_sessions')" />
+                  <div class="mt-1 text-xs">
+                    <div class="text-slate-400 mb-0.5">과목 · 시간표</div>
+                    <div v-if="stuDetail.timetables && stuDetail.timetables.length" class="space-y-0.5">
+                      <div v-for="(t,i) in stuDetail.timetables" :key="i" class="text-slate-600">
+                        {{ t.subject }} · {{ days[t.weekday] }} {{ t.start_time }}<span v-if="t.status==='PAUSED'" class="ml-1 text-amber-600">(휴원중지)</span>
+                      </div>
+                    </div>
+                    <div v-else class="text-rose-400">시간표 미정</div>
+                  </div>
+                </div>
               </div>
               <div><label class="lbl">보호자 이름 <span v-if="stuFieldDirty('parent_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.parent_name" :class="stuCls('parent_name')" /></div>
               <div><label class="lbl">보호자 연락처 <span v-if="stuFieldDirty('parent_phone')" class="text-amber-600">✏️</span></label><input :value="stuForm.parent_phone" @input="stuForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" :class="stuCls('parent_phone')" placeholder="010-0000-0000" /></div>
