@@ -1256,7 +1256,7 @@
             </div>
 
             <div class="border-t pt-3 flex flex-wrap gap-2">
-              <button @click="reissueSabun(staffMng)" class="text-xs px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">사번 재발급</button>
+              <button @click="reissueFromModal" class="text-xs px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">사번 재발급</button>
               <button @click="openStaffHistory(staffMng)" class="text-xs px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">변경 이력</button>
               <button v-if="staffMng.user_id!==me.user.id" @click="toggleStaffActive(staffMng)" class="text-xs px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 ml-auto">{{ staffMng.is_active ? '비활성화' : '활성화' }}</button>
             </div>
@@ -2383,6 +2383,21 @@ createApp({
     async saveStaffManage(){
       await this.applyStaffRole(this.staffMng);
       this.staffMng = null;
+    },
+    staffMngDirty(){
+      const m = this.staffMng; if (!m) return false;
+      const origBranch = m.branch ? m.branch.id : null;
+      const origManaged = (m.managed_branches||[]).map(b=>b.id).slice().sort().join(',');
+      const curManaged = (m._managed_branch_ids||[]).slice().sort().join(',');
+      return m._role!==m.role || m._branch_id!==origBranch || curManaged!==origManaged;
+    },
+    async reissueFromModal(){
+      if (this.staffMngDirty()){
+        this.notify('변경 사항을 먼저 저장한 뒤 재발급합니다.');
+        await this.saveStaffManage();  // 저장 후, 지점이 바뀌었으면 자동으로 재발급 안내(새 지점 기준)
+        return;
+      }
+      this.reissueSabun(this.staffMng);
     },
     optCategoryLabel(v){ const c = this.optionCategories.find(c=>c.v===v); return c ? c.l : v; },
     async loadOptionAdmin(){
