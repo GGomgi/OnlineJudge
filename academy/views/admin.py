@@ -1781,10 +1781,13 @@ class StudentDetailAdminAPI(APIView):
         pdict["real_name"] = _name_of(u)
         # 개별 시간표(종료 제외)
         timetables = []
-        for s in StudentTimetable.objects.filter(student=u).exclude(status="ENDED").order_by("weekday", "start_time"):
-            timetables.append({"weekday": s.weekday, "start_time": str(s.start_time)[:5],
-                               "duration_minutes": s.duration_minutes,
+        for s in StudentTimetable.objects.select_related("instructor", "branch").filter(
+                student=u).exclude(status="ENDED").order_by("weekday", "start_time"):
+            timetables.append({"id": s.id, "weekday": s.weekday, "start_time": str(s.start_time)[:5],
+                               "duration_minutes": s.duration_minutes, "program": s.program or "",
                                "subject": s.subject or resolve_program_label(s.program) or "미지정",
+                               "instructor": ({"id": s.instructor_id, "name": _name_of(s.instructor)} if s.instructor_id else None),
+                               "frequency": s.frequency, "branch": ({"id": s.branch_id, "name": s.branch.name} if s.branch_id else None),
                                "status": s.status})
         return self.success({
             "id": u.id, "username": u.username, "real_name": _name_of(u),

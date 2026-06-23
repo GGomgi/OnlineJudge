@@ -888,16 +888,30 @@
                 <div>
                   <label class="lbl">주 교육 회수 <span v-if="stuFieldDirty('weekly_sessions')" class="text-amber-600">✏️</span></label>
                   <input v-model.number="stuForm.weekly_sessions" type="number" min="0" :class="stuCls('weekly_sessions')" />
-                  <div class="mt-1 text-xs">
-                    <div class="text-slate-400 mb-0.5">과목 · 시간표</div>
-                    <div v-if="stuDetail.timetables && stuDetail.timetables.length" class="space-y-0.5">
-                      <div v-for="(t,i) in stuDetail.timetables" :key="i" class="text-slate-600">
-                        {{ t.subject }} · {{ days[t.weekday] }} {{ t.start_time }}<span v-if="t.status==='PAUSED'" class="ml-1 text-amber-600">(휴원중지)</span>
-                      </div>
+                </div>
+              </div>
+              <!-- 과목 · 시간표 (개별 시간표와 동일 편집) -->
+              <div class="border-t pt-2">
+                <div class="text-xs font-semibold text-slate-500 mb-1">과목 · 시간표 <span class="font-normal text-slate-400">(수정 시 사유→이력 기록)</span></div>
+                <div v-if="stuTimetables.length" class="space-y-2">
+                  <div v-for="s in stuTimetables" :key="s.id" :class="['rounded-lg border p-2', s.status==='PAUSED' ? 'bg-amber-50' : '', ttRowDirty(s) ? 'ring-1 ring-amber-300' : '']">
+                    <div class="flex flex-wrap items-center gap-1.5 text-xs">
+                      <select v-model.number="s.weekday" :class="ttCls(s,'weekday','py-1 w-14 px-1')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select>
+                      <input v-model="s.start_time" type="time" :class="ttCls(s,'start_time','py-1 w-24')" />
+                      <select v-model.number="s.duration_minutes" :class="ttCls(s,'duration_minutes','py-1 w-20 px-1')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select>
+                      <select v-model="s.program" :class="ttCls(s,'program','py-1 w-28 px-1')"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
+                      <select v-model.number="s._instructor_id" :class="ttCls(s,'instr','py-1 w-24 px-1')"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select>
+                      <select v-model="s.frequency" :class="ttCls(s,'frequency','py-1 w-16 px-1')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select>
+                      <span v-if="s.status==='PAUSED'" class="text-[10px] px-1 rounded bg-amber-100 text-amber-700">휴원중지</span>
+                      <span class="ml-auto flex gap-2">
+                        <button v-if="stuCanEdit" @click="saveStuTt(s)" :class="['hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">수정</button>
+                        <button v-if="stuCanEdit && ttRowDirty(s)" @click="revertTt(s)" class="text-slate-400 hover:underline">취소</button>
+                        <button @mouseenter="openTtHistory(s,$event)" @mouseleave="scheduleCloseTt" class="text-slate-500 hover:underline">이력</button>
+                      </span>
                     </div>
-                    <div v-else class="text-rose-400">시간표 미정</div>
                   </div>
                 </div>
+                <div v-else class="text-xs text-rose-400">시간표 미정</div>
               </div>
               <div><label class="lbl">보호자 이름 <span v-if="stuFieldDirty('parent_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.parent_name" :class="stuCls('parent_name')" /></div>
               <div><label class="lbl">보호자 연락처 <span v-if="stuFieldDirty('parent_phone')" class="text-amber-600">✏️</span></label><input :value="stuForm.parent_phone" @input="stuForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" :class="stuCls('parent_phone')" placeholder="010-0000-0000" /></div>
@@ -1758,7 +1772,7 @@ createApp({
       docPreview: { show:false, url:'', x:0, y:0 },
       students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
-      stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {},
+      stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'guardian',l:'보호자'}],
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteCounselAt: '', stuEditLogId: null, stuEditLogText: '',
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
@@ -2699,10 +2713,31 @@ createApp({
         this.stuDetail = d; this.stuTab='info';
         this.stuForm = { ...(d.profile||{}), real_name: d.real_name };
         this.stuFormOrig = JSON.parse(JSON.stringify(this.stuForm));
+        this.buildStuTimetables(d);
+        if (!this.ttInstructors.length) this.loadTtInstructors();
+        if (!(this.options.program||[]).length) this.loadOptions();
         this.stuNoteText=''; this.stuNoteChannel='VISIT'; this.stuNoteCounselAt=this.nowLocal(); this.stuEditLogId=null;
         this.stuStatusNew = d.enrollment_status==='ENROLLED' ? 'ON_LEAVE' : 'ENROLLED';
         this.stuStatusReason=''; this.stuStatusDate=this.todayStr;
         this.gdForm = { parent_name:'', parent_phone:'', relation:'', password:'' };
+      } catch(e){ this.notify(e.message,false); }
+    },
+    buildStuTimetables(d){
+      const sref = { id:d.id, real_name:d.real_name, username:d.username };
+      this.stuTimetables = (d.timetables||[]).map(t=>{
+        const row = { ...t, _instructor_id: t.instructor ? t.instructor.id : null, student: sref };
+        row._orig = { weekday:t.weekday, start_time:t.start_time, duration_minutes:t.duration_minutes,
+          program:t.program||'', instr:(t.instructor?t.instructor.id:null), frequency:t.frequency };
+        return row;
+      });
+    },
+    async saveStuTt(s){
+      const reason = window.prompt('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침');
+      if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
+      try {
+        await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, frequency:s.frequency, reason });
+        this.notify('수정되었습니다.');
+        await this.refreshStuDetail(); this.buildStuTimetables(this.stuDetail); this.loadStudents();
       } catch(e){ this.notify(e.message,false); }
     },
     closeStudent(){ this.stuDetail=null; },
