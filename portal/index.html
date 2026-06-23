@@ -755,11 +755,6 @@
         </div>
       </div>
 
-      <!-- 미저장 경고 배너 -->
-      <div v-if="ttDirty()" class="mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm flex items-center gap-2">
-        ✏️ 저장하지 않은 수정이 있습니다. 각 행의 <b>저장</b>을 눌러야 반영됩니다. (다른 메뉴로 이동·새로고침 시 사라집니다)
-      </div>
-
       <!-- 목록 -->
       <div class="text-xs font-semibold text-slate-500 mb-2">📋 등록된 개별 수업 목록 <span class="font-normal text-slate-400">(행에서 바로 수정·삭제)</span></div>
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
@@ -846,9 +841,8 @@
               <td class="px-3 py-2 text-slate-500">{{ s.grade ? s.grade+'학년' : '-' }}</td>
               <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ s.branch }}</td>
               <td class="px-3 py-2 text-slate-500 whitespace-nowrap">
-                <span :class="siblingCount(s)>=2 ? 'cursor-pointer hover:underline text-indigo-600' : ''"
-                      @mouseenter="siblingCount(s)>=2 && showSiblings(s,$event)" @mouseleave="scheduleCloseSib">{{ s.parent_name || '-' }}</span>
-                <span v-if="siblingCount(s)>=2" class="text-xs text-indigo-400">(형제 {{ siblingCount(s) }})</span>
+                <span v-if="siblingCount(s)>=2" @mouseenter="showSiblings(s,$event)" @mouseleave="scheduleCloseSib" class="cursor-pointer hover:underline text-indigo-600">{{ s.parent_name || '-' }} <span class="text-xs text-indigo-400">(형제 {{ siblingCount(s) }})</span></span>
+                <span v-else>{{ s.parent_name || '-' }}</span>
               </td>
               <td class="px-3 py-2"><span :class="['px-2 py-0.5 rounded text-xs', stuStatusBadge(s.enrollment_status).cls]">{{ stuStatusBadge(s.enrollment_status).label }}</span></td>
               <td class="px-3 py-2 text-right"><button @click="openStudent(s)" class="text-xs text-indigo-600 hover:underline">상세</button></td>
@@ -879,20 +873,23 @@
             <div v-if="stuTab==='info'" class="space-y-2">
               <div class="grid grid-cols-2 gap-2">
                 <div><label class="lbl">원번</label><input :value="stuForm.enroll_no || '-'" class="input bg-slate-50" readonly /></div>
-                <div><label class="lbl">이름</label><input v-model="stuForm.real_name" class="input" /></div>
-                <div><label class="lbl">생년월일</label><input v-model="stuForm.birth_date" type="date" class="input" /></div>
-                <div><label class="lbl">성별</label><select v-model="stuForm.gender" class="input"><option value="">-</option><option value="M">남</option><option value="F">여</option></select></div>
-                <div><label class="lbl">학생 연락처</label><input :value="stuForm.student_phone" @input="stuForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
-                <div><label class="lbl">학교 구분</label><select v-model="stuForm.school_type" class="input px-2"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
-                <div><label class="lbl">학교 이름</label><input v-model="stuForm.school_name" class="input" /></div>
-                <div><label class="lbl">학년</label><input v-model="stuForm.grade" class="input" /></div>
-                <div><label class="lbl">주 교육 회수</label><input v-model.number="stuForm.weekly_sessions" type="number" min="0" class="input" /></div>
-                <div><label class="lbl">수업 시작일</label><input v-model="stuForm.lesson_start_date" type="date" class="input" /></div>
-                <div><label class="lbl">등록일</label><input v-model="stuForm.enrollment_date" type="date" class="input" /></div>
+                <div><label class="lbl">이름 <span v-if="stuFieldDirty('real_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.real_name" :class="stuCls('real_name')" /></div>
+                <div><label class="lbl">생년월일 <span v-if="stuFieldDirty('birth_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.birth_date" type="date" :class="stuCls('birth_date')" /></div>
+                <div><label class="lbl">성별 <span v-if="stuFieldDirty('gender')" class="text-amber-600">✏️</span></label><select v-model="stuForm.gender" :class="stuCls('gender')"><option value="">-</option><option value="M">남</option><option value="F">여</option></select></div>
+                <div><label class="lbl">학생 연락처 <span v-if="stuFieldDirty('student_phone')" class="text-amber-600">✏️</span></label><input :value="stuForm.student_phone" @input="stuForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" :class="stuCls('student_phone')" placeholder="010-0000-0000" /></div>
+                <div><label class="lbl">학교 구분 <span v-if="stuFieldDirty('school_type')" class="text-amber-600">✏️</span></label><select v-model="stuForm.school_type" :class="stuCls('school_type','px-2')"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+                <div><label class="lbl">학교 이름 <span v-if="stuFieldDirty('school_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.school_name" :class="stuCls('school_name')" /></div>
+                <div><label class="lbl">학년 <span v-if="stuFieldDirty('grade')" class="text-amber-600">✏️</span></label><input v-model="stuForm.grade" :class="stuCls('grade')" /></div>
+                <div><label class="lbl">주 교육 회수 <span v-if="stuFieldDirty('weekly_sessions')" class="text-amber-600">✏️</span></label><input v-model.number="stuForm.weekly_sessions" type="number" min="0" :class="stuCls('weekly_sessions')" /></div>
+                <div><label class="lbl">수업 시작일 <span v-if="stuFieldDirty('lesson_start_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.lesson_start_date" type="date" :class="stuCls('lesson_start_date')" /></div>
+                <div><label class="lbl">등록일 <span v-if="stuFieldDirty('enrollment_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.enrollment_date" type="date" :class="stuCls('enrollment_date')" /></div>
               </div>
-              <div><label class="lbl">보호자 이름</label><input v-model="stuForm.parent_name" class="input" /></div>
-              <div><label class="lbl">보호자 연락처</label><input :value="stuForm.parent_phone" @input="stuForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
-              <div v-if="stuCanEdit" class="flex justify-end"><button @click="saveStudent" class="btn-primary text-sm">저장</button></div>
+              <div><label class="lbl">보호자 이름 <span v-if="stuFieldDirty('parent_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.parent_name" :class="stuCls('parent_name')" /></div>
+              <div><label class="lbl">보호자 연락처 <span v-if="stuFieldDirty('parent_phone')" class="text-amber-600">✏️</span></label><input :value="stuForm.parent_phone" @input="stuForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" :class="stuCls('parent_phone')" placeholder="010-0000-0000" /></div>
+              <div v-if="stuCanEdit && stuFormDirty" class="flex justify-end gap-2">
+                <button @click="revertStudent" class="btn-secondary text-sm">취소</button>
+                <button @click="saveStudent" class="btn-primary text-sm">수정</button>
+              </div>
             </div>
 
             <!-- 상담 타임라인 -->
@@ -1716,7 +1713,7 @@ createApp({
       docPreview: { show:false, url:'', x:0, y:0 },
       students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
-      stuDetail: null, stuTab: 'info', stuForm: {},
+      stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {},
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'guardian',l:'보호자'}],
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteCounselAt: '', stuEditLogId: null, stuEditLogText: '',
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
@@ -1821,6 +1818,10 @@ createApp({
       return this.students.filter(s => s.enrollment_status==='ENROLLED' && !s.slot_count).length;
     },
     stuCanEdit(){ return this.stuDetail ? this.canEditBranch(this.stuDetail.branch_id) : false; },
+    stuFormDirty(){
+      const ks = ['real_name','birth_date','gender','student_phone','school_type','school_name','grade','weekly_sessions','lesson_start_date','enrollment_date','parent_name','parent_phone'];
+      return ks.some(k => this.stuFieldDirty(k));
+    },
     showBranchCol(){
       // 여러 지점을 보는 사용자(본부·지부장·겸직)만 지점 컬럼 표시. 단일 지점은 숨김.
       if (this.me && this.me.user.admin_type === 'Super Admin') return true;
@@ -2644,6 +2645,7 @@ createApp({
         const d = await api('GET','/api/admin/academy/student_detail/info?student_id='+s.id);
         this.stuDetail = d; this.stuTab='info';
         this.stuForm = { ...(d.profile||{}), real_name: d.real_name };
+        this.stuFormOrig = JSON.parse(JSON.stringify(this.stuForm));
         this.stuNoteText=''; this.stuNoteChannel='VISIT'; this.stuNoteCounselAt=this.nowLocal(); this.stuEditLogId=null;
         this.stuStatusNew = d.enrollment_status==='ENROLLED' ? 'ON_LEAVE' : 'ENROLLED';
         this.stuStatusReason=''; this.stuStatusDate='';
@@ -2651,11 +2653,14 @@ createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     closeStudent(){ this.stuDetail=null; },
+    stuFieldDirty(k){ return String(this.stuForm[k]??'') !== String(this.stuFormOrig[k]??''); },
+    stuCls(k, extra){ return 'input ' + (extra||'') + (this.stuFieldDirty(k) ? ' bg-amber-50 ring-1 ring-amber-300' : ''); },
+    revertStudent(){ this.stuForm = JSON.parse(JSON.stringify(this.stuFormOrig)); },
     async refreshStuDetail(){ if (!this.stuDetail) return; try { this.stuDetail = await api('GET','/api/admin/academy/student_detail/info?student_id='+this.stuDetail.id); } catch(e){} },
     async saveStudent(){
       try {
         await api('PUT','/api/admin/academy/student_detail/info', { student_id:this.stuDetail.id, ...this.stuForm });
-        this.notify('저장되었습니다.'); await this.refreshStuDetail(); this.loadStudents();
+        this.notify('수정되었습니다.'); this.stuFormOrig = JSON.parse(JSON.stringify(this.stuForm)); await this.refreshStuDetail(); this.loadStudents();
       } catch(e){ this.notify(e.message,false); }
     },
     async addStuNote(){
