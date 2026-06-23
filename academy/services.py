@@ -63,7 +63,7 @@ def staff_scope(user):
 def editable_branch_ids(user):
     """수정(쓰기) 가능한 지점 id 목록. 전지점이면 None(=전체), 권한 없으면 [].
     지부장(REGIONAL_MANAGER)은 열람 전용이라 수정 지점 없음([]).
-    그 외 단일지점 역할은 [본인 소속]."""
+    그 외 단일지점 역할은 [본인 소속] + managed_branches(원장 등 다지점 운영)."""
     profile = getattr(user, "academy_profile", None)
     if profile is None:
         return None if user.is_super_admin() else []
@@ -71,11 +71,16 @@ def editable_branch_ids(user):
         return None
     if profile.role == AcademyRole.REGIONAL_MANAGER:
         return []
-    return [profile.branch_id] if profile.branch_id else []
+    ids = set()
+    if profile.branch_id:
+        ids.add(profile.branch_id)
+    # 원장/부원장은 managed_branches가 추가 운영(수정) 지점
+    ids.update(profile.managed_branches.values_list("id", flat=True))
+    return list(ids)
 
 
 def viewable_branch_ids(user):
-    """열람(읽기) 가능한 지점 id 목록. 수정 지점 + managed_branches(지부장 겸직 포함).
+    """열람(읽기) 가능한 지점 id 목록. 수정 지점 + managed_branches(지부장 열람 포함).
     전지점이면 None(=전체)."""
     edit = editable_branch_ids(user)
     if edit is None:
