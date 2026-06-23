@@ -764,7 +764,7 @@
           </thead>
           <tbody>
             <tr v-for="s in filteredTt" :key="s.id" :class="['border-t align-middle', ttRowDirty(s) ? 'bg-amber-50 ring-1 ring-amber-200' : '']">
-              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> {{ s.student.real_name || s.student.username }} <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span></td>
+              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> {{ s.student.real_name || s.student.username }} <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">휴원중지</span></td>
               <td class="px-3 py-2"><select v-model.number="s.weekday" class="input py-1 w-16 px-2"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
               <td class="px-3 py-2"><input v-model="s.start_time" type="time" class="input py-1 w-28" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" class="input py-1 w-24 px-2"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
@@ -2651,8 +2651,8 @@ createApp({
       try {
         const body = { student_id:this.stuDetail.id, status:this.stuStatusNew, reason:this.stuStatusReason };
         if (this.stuStatusDate) body.effective_date = this.stuStatusDate;
-        await api('POST','/api/admin/academy/student_status', body);
-        this.notify('상태가 변경되었습니다.'); this.stuStatusReason=''; this.stuStatusDate='';
+        const r = await api('POST','/api/admin/academy/student_status', body);
+        this.notify('상태가 변경되었습니다.' + (r && r.timetable ? ' (' + r.timetable + ')' : '')); this.stuStatusReason=''; this.stuStatusDate='';
         await this.refreshStuDetail(); this.loadStudents();
         this.stuStatusNew = this.stuDetail.enrollment_status==='ENROLLED' ? 'ON_LEAVE' : 'ENROLLED';
       } catch(e){ this.notify(e.message,false); }

@@ -1827,11 +1827,44 @@ class StudentStatusAdminAPI(APIView):
             return self.error("이미 해당 상태입니다.")
         sp.enrollment_status = to_status
         sp.save(update_fields=["enrollment_status"])
+        reason = (data.get("reason") or "").strip()
         StudentStatusChange.objects.create(
             student=u, from_status=from_status, to_status=to_status,
-            reason=(data.get("reason") or "").strip(),
-            effective_date=data.get("effective_date") or None, actor=request.user)
-        return self.success("ok")
+            reason=reason, effective_date=data.get("effective_date") or None, actor=request.user)
+
+        # 등록상태에 따라 개별 시간표 자동 처리(+이력)
+        tt_msg = self._sync_timetables(u, to_status, request.user, reason)
+        return self.success({"timetable": tt_msg})
+
+    @staticmethod
+    def _sync_timetables(student, to_status, actor, reason):
+        """휴원→일시중지(PAUSED), 재원→복원(ACTIVE), 퇴원→종료(ENDED). 변경 이력 기록."""
+        from ..models import TimetableStatus
+        slots = StudentTimetable.objects.filter(student=student)
+        changed = 0
+        if to_status == EnrollmentStatus.ON_LEAVE:
+            qs = slots.filter(status=TimetableStatus.ACTIVE)
+            changed = qs.count()
+            qs.update(status=TimetableStatus.PAUSED)
+            action, label = "UPDATE", "휴원 처리 — 시간표 일시중지"
+        elif to_status == EnrollmentStatus.ENROLLED:
+            qs = slots.filter(status=TimetableStatus.PAUSED)
+            changed = qs.count()
+            qs.update(status=TimetableStatus.ACTIVE)
+            action, label = "UPDATE", "재등록 — 시간표 복원"
+        elif to_status == EnrollmentStatus.WITHDRAWN:
+            qs = slots.exclude(status=TimetableStatus.ENDED)
+            changed = qs.count()
+            qs.update(status=TimetableStatus.ENDED)
+            action, label = "DELETE", "퇴원 처리 — 시간표 종료"
+        else:
+            return ""
+        if changed:
+            TimetableChange.objects.create(
+                student=student, actor=actor, action=action,
+                reason=reason or "등록상태 변경 자동 처리",
+                detail=("%s (%d건)" % (label, changed))[:255])
+        return "%s %d건" % (label, changed) if changed else ""
 
 
 class StudentGuardianAdminAPI(APIView):

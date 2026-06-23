@@ -416,9 +416,9 @@ class MyTimetableAPI(APIView):
         user = _resolve_target(request)
         if user is None:
             return self.error("권한이 없습니다.")
-        # 개별 수업 시간표(학생 본인 또는 담당 강사)
+        # 개별 수업 시간표(학생 본인 또는 담당 강사). 종료/휴원중지(ENDED/PAUSED)는 제외.
         individual = StudentTimetable.objects.select_related(
-            "student", "branch", "instructor").exclude(status="ENDED").filter(
+            "student", "branch", "instructor").exclude(status__in=["ENDED", "PAUSED"]).filter(
             Q(student=user) | Q(instructor=user))
         # 그룹/특강 반: 담당 강사 + 수강 중(중복 제거)
         teaching = CourseClass.objects.filter(instructor=user, is_active=True)
