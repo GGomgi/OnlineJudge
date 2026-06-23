@@ -34,17 +34,19 @@ ACADEMY_ROLE_CHOICES = [
     (AcademyRole.HQ_ADMIN, "본부 관리자"),
     (AcademyRole.HR_ADMIN, "인사 관리자"),
     (AcademyRole.REGIONAL_MANAGER, "지부장"),
-    (AcademyRole.BRANCH_MANAGER, "지점장/원장"),
+    (AcademyRole.BRANCH_MANAGER, "원장"),
     (AcademyRole.VICE_PRINCIPAL, "부원장"),
     (AcademyRole.INSTRUCTOR, "강사"),
     (AcademyRole.TA, "조교"),
     (AcademyRole.STUDENT, "학생"),
     (AcademyRole.PARENT, "학부모"),
-    (AcademyRole.EXTERNAL_INSTRUCTOR_ADMIN, "외부 강사 관리자"),
+    (AcademyRole.EXTERNAL_INSTRUCTOR_ADMIN, "외부 강사"),
 ]
 
 # 전(全) 지점 범위 역할 (단일 지점에 묶이지 않음 → branch null 허용)
-ALL_BRANCH_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN}
+# 외부 강사는 특정 지점 소속이 아니라 본부 소속으로 둔다.
+ALL_BRANCH_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN,
+                    AcademyRole.EXTERNAL_INSTRUCTOR_ADMIN}
 
 # 교직원(관리자측) 역할
 STAFF_ROLES = {
@@ -499,6 +501,22 @@ class StudentStatusChange(models.Model):
 
     class Meta:
         db_table = "academy_student_status_change"
+        ordering = ["-create_time"]
+
+
+class StaffChangeLog(models.Model):
+    """직원 변경 이력 통합(역할/지점/활성·비활성/사번 재발급). 사유 포함."""
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                              related_name="staff_changes")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    change_type = models.CharField(max_length=16)   # ROLE / BRANCH / ACTIVE / SABUN
+    detail = models.CharField(max_length=255, blank=True, default="")  # 기존 → 변경
+    reason = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_staff_change_log"
         ordering = ["-create_time"]
 
 

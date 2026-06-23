@@ -70,6 +70,7 @@ class AssignRoleSerializer(serializers.Serializer):
     branch_id = serializers.IntegerField(required=False, allow_null=True)
     managed_branch_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False)  # 지부장 관리지점
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=255)
 
 
 class CreateStaffSerializer(serializers.Serializer):
@@ -86,6 +87,7 @@ class CreateStaffSerializer(serializers.Serializer):
 class StaffStatusSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
     is_active = serializers.BooleanField()
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=255)
 
 
 class TimetableSlotSerializer(serializers.ModelSerializer):

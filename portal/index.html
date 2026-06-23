@@ -121,7 +121,10 @@
     <section v-if="tab==='login'" class="max-w-sm mx-auto bg-white rounded-xl shadow-sm p-6">
       <h2 class="text-lg font-bold mb-4">로그인</h2>
       <form @submit.prevent="login" class="space-y-3">
-        <input v-model="loginForm.username" placeholder="아이디" class="input" autocomplete="username" />
+        <div class="relative">
+          <input v-model="loginForm.username" @input="onSabunInput" placeholder="아이디(사번)" class="input pr-24" autocomplete="username" />
+          <span v-if="sabunHint" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 text-sm pointer-events-none">{{ sabunHint }}</span>
+        </div>
         <div class="relative">
           <input v-model="loginForm.password" :type="showPw ? 'text' : 'password'" placeholder="비밀번호" class="input pr-10" autocomplete="current-password" />
           <button type="button" @click="showPw = !showPw" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm" :title="showPw ? '숨기기' : '보기'">{{ showPw ? '🙈' : '👁' }}</button>
@@ -349,13 +352,22 @@
             상담기록 <span v-if="leadSortKey==='log'">{{ leadSortDir==='asc' ? '▲' : '▼' }}</span>
           </button>
         </div>
+        <button @click="leadExpandAll=!leadExpandAll" class="px-2 py-1 rounded text-sm border border-slate-200 text-slate-500 shrink-0 whitespace-nowrap">{{ leadExpandAll ? '모두 접기' : '모두 펼치기' }}</button>
         <label v-if="isManager" class="flex items-center gap-2 text-xs text-slate-500 ml-auto shrink-0 whitespace-nowrap">
           <input type="checkbox" :checked="!!showDeletedLeads" @change="toggleShowDeleted" class="w-4 h-4"> 삭제된 항목도 보기
         </label>
       </div>
+      <div class="flex items-center gap-2 mb-2 text-xs text-slate-500">
+        <span>총 {{ filteredLeads.length }}건</span>
+        <span class="ml-auto">페이지당</span>
+        <input v-model.number="leadPageSize" type="number" min="1" class="input w-16 py-0.5 text-center" />명
+        <button @click="leadPage=Math.max(1,leadPage-1)" :disabled="leadPage<=1" class="px-2 py-0.5 rounded border border-slate-200 disabled:text-slate-200">◀</button>
+        <span>{{ leadPage }} / {{ leadTotalPages }}</span>
+        <button @click="leadPage=Math.min(leadTotalPages,leadPage+1)" :disabled="leadPage>=leadTotalPages" class="px-2 py-0.5 rounded border border-slate-200 disabled:text-slate-200">▶</button>
+      </div>
       <div v-if="filteredLeads.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">상담 신청이 없습니다.</div>
       <div class="space-y-3">
-        <div v-for="r in filteredLeads" :key="r.id" :class="['bg-white rounded-xl shadow-sm p-4', r.is_hidden ? 'opacity-60 ring-1 ring-rose-200' : '']">
+        <div v-for="r in pagedLeads" :key="r.id" :class="['bg-white rounded-xl shadow-sm p-4', r.is_hidden ? 'opacity-60 ring-1 ring-rose-200' : '']">
           <div class="flex items-start justify-between gap-3 cursor-pointer" @click="toggleLead(r)">
             <div>
               <div class="font-semibold">{{ r.student_name }}
@@ -380,7 +392,7 @@
           </div>
 
           <!-- 펼침: 상담 로그 + 액션 -->
-          <div v-if="openLeadId===r.id" class="mt-4 border-t pt-3 space-y-3">
+          <div v-if="openLeadId===r.id || leadExpandAll" class="mt-4 border-t pt-3 space-y-3">
             <!-- 상담 로그 -->
             <div>
               <div class="text-xs font-semibold text-slate-500 mb-1">상담 기록</div>
@@ -666,7 +678,10 @@
     <section v-if="tab==='indtt'">
       <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
         <h2 class="text-lg font-bold">개별 시간표</h2>
-        <button v-if="hasAnyEdit" @click="toggleTtAdd" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 수업 추가</button>
+        <button v-if="hasAnyEdit" @click="toggleTtAdd" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">
+          + 수업 추가
+          <span :class="['ml-1 px-1.5 py-0.5 rounded text-[11px]', ttUnassignedCount>0 ? 'bg-rose-500' : 'bg-indigo-500']">{{ ttUnassignedCount>0 ? '미등록 '+ttUnassignedCount+'명!' : '미등록 없음' }}</span>
+        </button>
       </div>
       <p class="text-xs text-slate-400 mb-3">전체 학생의 개별 수업을 필터로 조회·관리합니다. 입회원 신청서의 요일/시간은 등록 시 자동 생성됩니다.</p>
 
@@ -757,10 +772,9 @@
               <td class="px-3 py-2 text-right whitespace-nowrap">
                 <template v-if="canEditBranch(s.branch && s.branch.id)">
                   <span v-if="ttRowDirty(s)" class="text-[11px] text-amber-600 mr-1">✏️ 수정중</span>
-                  <button @click="saveTt(s)" :class="['text-xs hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">저장</button>
+                  <button @click="saveTt(s)" :class="['text-xs hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">수정</button>
                 </template>
                 <button @mouseenter="openTtHistory(s,$event)" @mouseleave="scheduleCloseTt" class="ml-2 text-xs text-slate-500 hover:underline">이력</button>
-                <button v-if="canEditBranch(s.branch && s.branch.id)" @click="delTt(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
                 <span v-if="!canEditBranch(s.branch && s.branch.id)" class="text-[11px] text-slate-400 ml-1">열람</span>
               </td>
             </tr>
@@ -776,19 +790,16 @@
         <h2 class="text-lg font-bold">학생 관리 <span class="text-sm font-normal text-slate-400">(인적사항·상담·상태·보호자 통합)</span></h2>
       </div>
       <!-- 검색/필터 -->
-      <div class="flex flex-wrap items-center gap-2 mb-3">
-        <input v-model="stuSearch" placeholder="원번·이름·학교·학년·보호자·전화 검색" class="input w-64 py-1" />
-        <select v-model="stuSchoolFilter" class="input w-28 py-1">
-          <option value="">학교급 전체</option>
-          <option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
-        </select>
-        <select v-model="stuStatusFilter" class="input w-28 py-1">
+      <div class="flex items-center gap-2 mb-3">
+        <input v-model="stuSearch" placeholder="1차 검색 (원번·이름·학교·학년·보호자)" class="input flex-1 min-w-0 py-1" />
+        <input v-model="stuSearch2" placeholder="2차 검색" class="input flex-1 min-w-0 py-1" />
+        <select v-model="stuStatusFilter" class="input w-28 py-1 shrink-0">
           <option value="">상태 전체</option>
           <option value="ENROLLED">재원</option>
           <option value="ON_LEAVE">휴원</option>
           <option value="WITHDRAWN">퇴원</option>
         </select>
-        <span class="text-xs text-slate-400 ml-auto">{{ filteredStudents.length }}명</span>
+        <span class="text-xs text-slate-400 shrink-0">{{ filteredStudents.length }}명</span>
       </div>
       <!-- 목록 -->
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
@@ -1113,17 +1124,21 @@
                   <p class="text-[11px] text-slate-400">지부장은 선택한 지점을 <b>열람만</b> 가능(수정 불가).</p>
                 </div>
                 <template v-else-if="!isAllBranchRole(staffForm.role)">
-                  <select v-model="staffForm.branch_id" class="input">
-                    <option :value="null" disabled>소속 지점 선택</option>
-                    <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
-                  </select>
-                  <div v-if="isManagerRole(staffForm.role)" class="border rounded-lg p-2 space-y-1">
-                    <div class="text-xs font-semibold text-slate-500">추가 열람 지점 <span class="font-normal text-slate-400">(지부장 겸직 · 선택)</span></div>
-                    <label v-for="b in branches.filter(b=>b.id!==staffForm.branch_id)" :key="b.id" class="flex items-center gap-2 text-sm">
-                      <input type="checkbox" :value="b.id" v-model="staffForm.managed_branch_ids" class="w-4 h-4"> {{ b.name }}
-                    </label>
-                    <p class="text-[11px] text-slate-400">선택 시 해당 지점을 추가로 <b>열람</b>(수정은 소속 지점만).</p>
-                  </div>
+                  <!-- 본부만 지점 지정·겸직 가능. 원장 등 지점 관리자는 본인 지점 자동(숨김) -->
+                  <template v-if="isActorAllBranch">
+                    <select v-model="staffForm.branch_id" class="input">
+                      <option :value="null" disabled>소속 지점 선택</option>
+                      <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+                    </select>
+                    <div v-if="isManagerRole(staffForm.role)" class="border rounded-lg p-2 space-y-1">
+                      <div class="text-xs font-semibold text-slate-500">추가 열람 지점 <span class="font-normal text-slate-400">(지부장 겸직 · 선택)</span></div>
+                      <label v-for="b in branches.filter(b=>b.id!==staffForm.branch_id)" :key="b.id" class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" :value="b.id" v-model="staffForm.managed_branch_ids" class="w-4 h-4"> {{ b.name }}
+                      </label>
+                      <p class="text-[11px] text-slate-400">선택 시 해당 지점을 추가로 <b>열람</b>(수정은 소속 지점만).</p>
+                    </div>
+                  </template>
+                  <p v-else class="text-[11px] text-slate-400">내 지점({{ myProfile && myProfile.branch ? myProfile.branch.name : '' }})으로 자동 등록됩니다.</p>
                 </template>
                 <p v-else class="text-xs text-slate-400">전지점 역할은 특정 지점에 묶이지 않습니다.</p>
               </template>
@@ -1149,7 +1164,7 @@
           </div>
           <div class="mb-2 flex items-center gap-2">
             <input v-model="staffFilter" placeholder="이름·사번·역할·지점 검색" class="input" />
-            <label class="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap"><input type="checkbox" v-model="staffShowDeleted" @change="loadStaff" class="w-4 h-4"> 삭제된 직원</label>
+            <label class="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap"><input type="checkbox" v-model="staffShowInactive" @change="loadStaff" class="w-4 h-4"> 비활성 포함</label>
           </div>
           <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
             <table class="w-full text-sm">
@@ -1194,16 +1209,10 @@
                     <span :class="s.is_active ? 'text-emerald-600' : 'text-rose-500'">{{ s.is_active ? '활성' : '비활성' }}</span>
                   </td>
                   <td class="px-3 py-2 text-right whitespace-nowrap">
-                    <template v-if="!s.is_deleted">
-                      <button @click="applyStaffRole(s)" class="text-xs text-indigo-600 hover:underline">역할 적용</button>
-                      <button @click="reissueSabun(s)" class="ml-2 text-xs text-slate-500 hover:underline" title="현재 소속 지점 기준으로 사번(로그인 아이디) 재발급">사번 재발급</button>
-                      <button v-if="s.user_id!==me.user.id" @click="toggleStaffActive(s)" class="ml-2 text-xs text-slate-500 hover:underline">{{ s.is_active ? '비활성화' : '활성화' }}</button>
-                      <button v-if="s.user_id!==me.user.id" @click="deleteStaff(s)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
-                    </template>
-                    <template v-else>
-                      <span class="text-xs text-rose-500">삭제됨</span>
-                      <button @click="restoreStaff(s)" class="ml-2 text-xs text-indigo-500 hover:underline">복원</button>
-                    </template>
+                    <button @click="applyStaffRole(s)" class="text-xs text-indigo-600 hover:underline">수정</button>
+                    <button @click="reissueSabun(s)" class="ml-2 text-xs text-slate-500 hover:underline" title="지역 소속 변경 시 사번 재발급">사번 재발급</button>
+                    <button @click="openStaffHistory(s)" class="ml-2 text-xs text-slate-500 hover:underline">이력</button>
+                    <button v-if="s.user_id!==me.user.id" @click="toggleStaffActive(s)" class="ml-2 text-xs text-slate-500 hover:underline">{{ s.is_active ? '비활성화' : '활성화' }}</button>
                   </td>
                 </tr>
                 <tr v-if="filteredStaff.length===0"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">직원 계정이 없습니다.</td></tr>
@@ -1269,6 +1278,7 @@
               <th class="px-3 py-2 text-left w-24">순서</th>
               <th class="px-3 py-2 text-left">표시명</th>
               <th class="px-3 py-2 text-left">값(코드)</th>
+              <th class="px-3 py-2 text-center">연결</th>
               <th class="px-3 py-2 text-center">자유입력</th>
               <th class="px-3 py-2 text-center">활성</th>
               <th class="px-3 py-2"></th>
@@ -1286,20 +1296,23 @@
               </td>
               <td class="px-3 py-2"><input v-model="o.label" class="input py-1" /></td>
               <td class="px-3 py-2 text-slate-400 whitespace-nowrap">{{ o.value }}</td>
+              <td class="px-3 py-2 text-center text-xs" :class="o.usage>0 ? 'text-slate-600' : 'text-emerald-500'">{{ o.usage>0 ? o.usage+'건' : '없음' }}</td>
               <td class="px-3 py-2 text-center"><input type="checkbox" v-model="o.allow_custom" class="w-4 h-4" /></td>
               <td class="px-3 py-2 text-center"><input type="checkbox" v-model="o.is_active" class="w-4 h-4" /></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
                 <button @click="saveOption(o)" class="text-xs text-indigo-600 hover:underline">저장</button>
-                <button @click="deleteOption(o)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
+                <button v-if="!o.usage" @click="deleteOption(o)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
+                <span v-else class="ml-2 text-[11px] text-slate-300" title="연결된 정보가 있어 삭제 불가">삭제불가</span>
               </td>
             </tr>
-            <tr v-if="optList.length===0"><td colspan="6" class="px-3 py-6 text-center text-xs text-slate-400">항목이 없습니다.</td></tr>
+            <tr v-if="optList.length===0"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">항목이 없습니다.</td></tr>
           </tbody>
           <tfoot>
             <tr class="border-t bg-slate-50">
               <td class="px-3 py-2 text-xs text-slate-300">신규</td>
               <td class="px-3 py-2"><input v-model="optNewForm.label" placeholder="표시명(예: 게임)" class="input py-1" /></td>
               <td class="px-3 py-2"><input v-model="optNewForm.value" placeholder="값(영문 코드)" class="input py-1" /></td>
+              <td class="px-3 py-2"></td>
               <td class="px-3 py-2 text-center"><input type="checkbox" v-model="optNewForm.allow_custom" class="w-4 h-4" /></td>
               <td class="px-3 py-2"></td>
               <td class="px-3 py-2 text-right"><button @click="addOption" class="text-xs text-indigo-600 hover:underline font-semibold">+ 추가</button></td>
@@ -1348,6 +1361,29 @@
         </div>
       </div>
     </section>
+
+    <!-- 직원 변경 이력 모달 -->
+    <div v-if="showStaffHistory" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="showStaffHistory=false">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <div class="font-bold">{{ staffHistoryName }} · 변경 이력</div>
+          <button @click="showStaffHistory=false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div class="p-5">
+          <ul class="space-y-2">
+            <li v-for="h in staffHistory" :key="h.id" class="text-sm border-b pb-2">
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{{ h.type }}</span>
+                <span class="font-medium">{{ h.detail }}</span>
+                <span class="text-xs text-slate-400 ml-auto">{{ h.time }} {{ h.actor }}</span>
+              </div>
+              <div v-if="h.reason" class="text-xs text-slate-500 mt-0.5">사유: {{ h.reason }}</div>
+            </li>
+            <li v-if="staffHistory.length===0" class="text-xs text-slate-400 text-center py-6">변경 이력이 없습니다.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
 
     <!-- ============ 관리자: 직원 인사 상세 ============ -->
     <section v-if="tab==='hrdetail'" class="max-w-3xl mx-auto">
@@ -1577,7 +1613,7 @@
 <script>
 const { createApp } = Vue;
 
-const ROLE_LABELS = {HQ_ADMIN:'본부 관리자',HR_ADMIN:'인사 관리자',REGIONAL_MANAGER:'지부장',BRANCH_MANAGER:'지점장/원장',VICE_PRINCIPAL:'부원장',INSTRUCTOR:'강사',TA:'조교',STUDENT:'학생',PARENT:'학부모',EXTERNAL_INSTRUCTOR_ADMIN:'외부 강사 관리자'};
+const ROLE_LABELS = {HQ_ADMIN:'본부 관리자',HR_ADMIN:'인사 관리자',REGIONAL_MANAGER:'지부장',BRANCH_MANAGER:'원장',VICE_PRINCIPAL:'부원장',INSTRUCTOR:'강사',TA:'조교',STUDENT:'학생',PARENT:'학부모',EXTERNAL_INSTRUCTOR_ADMIN:'외부 강사'};
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
 const ATT_CLASS = {PRESENT:'text-emerald-700 bg-emerald-50',LATE:'text-amber-700 bg-amber-50',ABSENT:'text-rose-700 bg-rose-50',EARLY_LEAVE:'text-orange-700 bg-orange-50',EXCUSED:'text-slate-700 bg-slate-100'};
 
@@ -1614,17 +1650,18 @@ createApp({
       flash: { msg:'', ok:true },
       days: ['월','화','수','목','금','토','일'],
       attStatuses: ['PRESENT','LATE','ABSENT','EARLY_LEAVE','EXCUSED'],
-      loginForm: { username:'', password:'' }, showPw: false,
+      loginForm: { username:'', password:'' }, showPw: false, sabunHint: '', _sabunTimer: null,
       leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' },
       myClasses: [], myInd: [], myAtt: [],
       docPreview: { show:false, url:'', x:0, y:0 },
-      students: [], stuSearch: '', stuStatusFilter: '', stuSchoolFilter: '', stuSortKey: 'enroll_no', stuSortDir: 'asc',
+      students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: '', stuSortKey: 'enroll_no', stuSortDir: 'desc',
       stuDetail: null, stuTab: 'info', stuForm: {},
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'guardian',l:'보호자'}],
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteCounselAt: '', stuEditLogId: null, stuEditLogText: '',
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       ttSortKey: '', ttSortDir: 'asc',
+      leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteCounselAt: '', showDeletedLeads: null, editLogId: null, editLogText: '',
       showLeadForm: false,
@@ -1640,7 +1677,8 @@ createApp({
       showPwChange: false, pwForm: { old:'', new1:'', new2:'' },
       hrForm: { zipcode:'', address:'', address_detail:'', phone:'', dependents_decided:false, dependents:[], emergency_contacts:[], sex_offense_consent:false },
       hrSig: { drawing:false, ctx:null, hasInk:false },
-      staffFilter: '', staffShowDeleted: false, staffSort: { key:'', dir:1 },
+      staffFilter: '', staffShowInactive: false, staffSort: { key:'', dir:1 },
+      showStaffHistory: false, staffHistory: [], staffHistoryName: '',
       hrDetail: null, hrDocNewGroup: '', docDragGroup: null, docDragIndex: null,
       ttHistory: [], showTtHistory: false, ttHistoryName: '', ttHistoryStudentId: null,
       ttPopX: 0, ttPopY: 0, ttPopHover: false, ttPopTimer: null,
@@ -1706,10 +1744,20 @@ createApp({
       list.sort((a,b) => { const x=val(a), y=val(b); return (x<y?-1:x>y?1:0) * (asc?1:-1); });
       return list;
     },
+    leadTotalPages(){ return Math.max(1, Math.ceil(this.filteredLeads.length / Math.max(1, this.leadPageSize||20))); },
+    pagedLeads(){
+      const sz = Math.max(1, this.leadPageSize||20);
+      const p = Math.min(this.leadPage, this.leadTotalPages);
+      return this.filteredLeads.slice((p-1)*sz, p*sz);
+    },
     hasAnyEdit(){
       if (this.me && this.me.user.admin_type === 'Super Admin') return true;
       const p = this.myProfile;
       return !!(p && (p.edit_all_branch || (p.editable_branch_ids||[]).length));
+    },
+    ttUnassignedCount(){
+      // 재원이면서 개별 시간표 슬롯이 없는 학생 수(수업 추가 대상)
+      return this.students.filter(s => s.enrollment_status==='ENROLLED' && !s.slot_count).length;
     },
     stuCanEdit(){ return this.stuDetail ? this.canEditBranch(this.stuDetail.branch_id) : false; },
     showBranchCol(){
@@ -1720,12 +1768,13 @@ createApp({
       return (p.viewable_branch_ids||[]).length > 1;
     },
     filteredStudents(){
-      const q = (this.stuSearch||'').trim().toLowerCase();
+      const hay = s => [s.enroll_no, s.real_name, s.username, s.school_name, this.schoolLabel(s.school_type),
+            String(s.grade||''), s.parent_name, s.parent_phone].filter(Boolean).join(' ').toLowerCase();
       let list = this.students.slice();
       if (this.stuStatusFilter) list = list.filter(s => s.enrollment_status===this.stuStatusFilter);
-      if (this.stuSchoolFilter) list = list.filter(s => s.school_type===this.stuSchoolFilter);
-      if (q) list = list.filter(s => [s.enroll_no, s.real_name, s.username, s.school_name, this.schoolLabel(s.school_type),
-            String(s.grade||''), s.parent_name, s.parent_phone].filter(Boolean).join(' ').toLowerCase().includes(q));
+      const q1=(this.stuSearch||'').trim().toLowerCase(), q2=(this.stuSearch2||'').trim().toLowerCase();
+      if (q1) list = list.filter(s => hay(s).includes(q1));
+      if (q2) list = list.filter(s => hay(s).includes(q2));
       const key = this.stuSortKey, dir = this.stuSortDir==='asc' ? 1 : -1;
       list.sort((a,b)=>{ const x=(a[key]??'')+'', y=(b[key]??'')+''; return x.localeCompare(y,'ko')*dir; });
       return list;
@@ -1810,12 +1859,13 @@ createApp({
         {v:'HQ_ADMIN', l:'본부 관리자', allBranch:true},
         {v:'HR_ADMIN', l:'인사 관리자', allBranch:true},
         {v:'REGIONAL_MANAGER', l:'지부장', allBranch:true, regional:true},
-        {v:'BRANCH_MANAGER', l:'지점장/원장'},
+        {v:'EXTERNAL_INSTRUCTOR_ADMIN', l:'외부 강사', allBranch:true},
+        {v:'BRANCH_MANAGER', l:'원장'},
         {v:'VICE_PRINCIPAL', l:'부원장'},
         {v:'INSTRUCTOR', l:'강사'},
         {v:'TA', l:'조교'},
-        {v:'EXTERNAL_INSTRUCTOR_ADMIN', l:'외부 강사 관리자'},
       ];
+      // 본부(전지점)만 전지점 역할(본부·인사·지부장·외부강사)을 부여할 수 있음.
       return this.isActorAllBranch ? all : all.filter(r=>!r.allBranch);
     },
     headerLabel(){
@@ -1837,6 +1887,9 @@ createApp({
     },
     roleBadge(){
       if (!this.me) return '';
+      // 실제 직원 역할(원장/부원장/강사 등) 표시
+      const r = this.myProfile && this.myProfile.role;
+      if (r && ROLE_LABELS[r]) return ROLE_LABELS[r];
       if (this.me.user.admin_type === 'Super Admin') return '본부 관리자';
       if (this.me.user.admin_type === 'Admin') return '교직원';
       return '학생/학부모';
@@ -1902,7 +1955,7 @@ createApp({
       else if (key==='staff') this.loadStaff();
       else if (key==='options'){ this.loadOptionAdmin(); this.loadBranchAdmin(); }
       else if (key==='devlog') this.loadDevlog(true);
-      else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); }
+      else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); this.loadStudents(); }
       else if (key==='students'){ this.loadStudents(); this.loadOptions(); }
       else if (key==='children') this.loadChildren();
       else if (key==='hr'){ this.loadStaffProfile().then(()=> this.$nextTick(()=> this.hrSigInit())); }
@@ -2193,7 +2246,7 @@ createApp({
       const defBranch = (this.myProfile && this.myProfile.branch) ? this.myProfile.branch.id : null;
       this.staffForm = { real_name:'', password:'', role:'', branch_id:defBranch, managed_branch_ids:[] };
       try {
-        const d = await api('GET','/api/admin/academy/staff' + (this.staffShowDeleted ? '?show_deleted=1' : ''));
+        const d = await api('GET','/api/admin/academy/staff' + (this.staffShowInactive ? '?show_inactive=1' : ''));
         this.staff = (d.results || d).map(s=>({ ...s, _role:s.role, _branch_id: s.branch ? s.branch.id : null,
           _managed_branch_ids: (s.managed_branches||[]).map(b=>b.id) }));
       } catch(e){ this.notify(e.message,false); }
@@ -2223,11 +2276,11 @@ createApp({
       if (!f.role) return this.notify('역할을 선택하세요.', false);
       if (this.isRegionalRole(f.role)) {
         if (!(f.managed_branch_ids||[]).length) return this.notify('관리 지점을 1개 이상 선택하세요.', false);
-      } else if (!this.isAllBranchRole(f.role) && !f.branch_id) return this.notify('지점을 선택하세요.', false);
+      } else if (this.isActorAllBranch && !this.isAllBranchRole(f.role) && !f.branch_id) return this.notify('지점을 선택하세요.', false);
       try {
         const body = { real_name:f.real_name, password:f.password, role:f.role };
         if (this.isRegionalRole(f.role)) body.managed_branch_ids = f.managed_branch_ids;
-        else if (!this.isAllBranchRole(f.role)) { body.branch_id = f.branch_id; body.managed_branch_ids = f.managed_branch_ids || []; }
+        else if (this.isActorAllBranch && !this.isAllBranchRole(f.role)) { body.branch_id = f.branch_id; body.managed_branch_ids = f.managed_branch_ids || []; }
         const d = await api('POST','/api/admin/academy/staff', body);
         this.notify('직원 계정이 생성되었습니다. 사번(로그인 아이디): ' + d.staff_no);
         this.staffForm.managed_branch_ids = [];
@@ -2237,35 +2290,44 @@ createApp({
     async applyStaffRole(s){
       if (this.isRegionalRole(s._role)) {
         if (!(s._managed_branch_ids||[]).length) return this.notify('관리 지점을 1개 이상 선택하세요.', false);
-      } else if (!this.isAllBranchRole(s._role) && !s._branch_id) return this.notify('지점을 선택하세요.', false);
+      } else if (this.isActorAllBranch && !this.isAllBranchRole(s._role) && !s._branch_id) return this.notify('지점을 선택하세요.', false);
+      const reason = window.prompt('변경 사유를 입력하세요 (이력에 기록됩니다)');
+      if (reason===null) return;
       try {
-        const body = { user_id:s.user_id, role:s._role };
+        const body = { user_id:s.user_id, role:s._role, reason };
         if (this.isRegionalRole(s._role)) body.managed_branch_ids = s._managed_branch_ids;
-        else if (!this.isAllBranchRole(s._role)) { body.branch_id = s._branch_id; body.managed_branch_ids = s._managed_branch_ids || []; }
+        else if (this.isActorAllBranch && !this.isAllBranchRole(s._role)) { body.branch_id = s._branch_id; body.managed_branch_ids = s._managed_branch_ids || []; }
         await api('POST','/api/admin/academy/assign_role', body);
-        this.notify(s.username + ' 역할이 변경되었습니다.');
+        this.notify((s.real_name||s.username) + ' 정보가 수정되었습니다.');
         this.loadStaff();
       } catch(e){ this.notify(e.message,false); }
     },
     async toggleStaffActive(s){
+      const act = !s.is_active;
+      const reason = window.prompt((act?'활성화':'비활성화')+' 사유를 입력하세요 (이력에 기록됩니다)');
+      if (reason===null) return;
       try {
-        await api('POST','/api/admin/academy/staff/status', { user_id:s.user_id, is_active: !s.is_active });
-        this.notify(s.username + (s.is_active ? ' 비활성화됨' : ' 활성화됨'));
+        await api('POST','/api/admin/academy/staff/status', { user_id:s.user_id, is_active: act, reason });
+        this.notify((s.real_name||s.username) + (act ? ' 활성화됨' : ' 비활성화됨'));
         this.loadStaff();
       } catch(e){ this.notify(e.message,false); }
     },
-    async deleteStaff(s){
-      if (!window.confirm((s.real_name||s.username)+' 직원을 삭제하시겠습니까? (기록은 보존되며 목록에서 숨겨집니다)')) return;
-      try { await api('POST','/api/admin/academy/staff/delete', { user_id:s.user_id, deleted:true }); this.notify('삭제되었습니다.'); this.loadStaff(); }
-      catch(e){ this.notify(e.message,false); }
-    },
-    async restoreStaff(s){
-      try { await api('POST','/api/admin/academy/staff/delete', { user_id:s.user_id, deleted:false }); this.notify('복원되었습니다.'); this.loadStaff(); }
-      catch(e){ this.notify(e.message,false); }
-    },
     async reissueSabun(s){
-      if (!window.confirm((s.real_name||s.staff_no)+' 의 사번(로그인 아이디)을 현재 소속 지점 기준으로 재발급합니다.\n기존 이력은 모두 보존되며 로그인 아이디만 바뀝니다. 계속하시겠습니까?')) return;
-      try { const d = await api('POST','/api/admin/academy/staff/reissue_sabun', { user_id:s.user_id }); this.notify('사번 재발급: '+d.old_sabun+' → '+d.new_sabun); this.loadStaff(); }
+      let prev;
+      try { prev = await api('GET','/api/admin/academy/staff/reissue_sabun?user_id='+s.user_id); }
+      catch(e){ return this.notify(e.message,false); }
+      if (!prev.changed) return this.notify('이미 현재 소속('+prev.branch+') 기준 사번입니다.', false);
+      const msg = '사번 재발급 안내\n\n사번 재발급은 지점을 옮기거나, 지부장이 지점에 소속되는 등 지역 소속이 변경될 경우 사용합니다.\n'
+        + '기존 ['+prev.old_sabun+'] → 선택한 소속 ['+prev.branch+'] 기준 ['+prev.new_sabun+'] 으로 재발급합니다.\n'
+        + '기존 이력은 모두 보존되며 로그인 아이디(사번)만 바뀝니다.';
+      if (!window.confirm(msg)) return;
+      const reason = window.prompt('재발급 사유를 입력하세요 (이력에 기록됩니다)');
+      if (reason===null) return;
+      try { const d = await api('POST','/api/admin/academy/staff/reissue_sabun', { user_id:s.user_id, reason }); this.notify('사번 재발급: '+d.old_sabun+' → '+d.new_sabun); this.loadStaff(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async openStaffHistory(s){
+      try { this.staffHistory = await api('GET','/api/admin/academy/staff/history?user_id='+s.user_id); this.staffHistoryName = (s.real_name||s.staff_no); this.showStaffHistory = true; }
       catch(e){ this.notify(e.message,false); }
     },
     optCategoryLabel(v){ const c = this.optionCategories.find(c=>c.v===v); return c ? c.l : v; },
@@ -2395,6 +2457,14 @@ createApp({
         this.notify('로그인되었습니다.');
         this.tab = this.tabs[0].key; this.onTab(this.tab);
       } catch(e){ this.notify(e.message, false); }
+    },
+    onSabunInput(){
+      clearTimeout(this._sabunTimer); this.sabunHint='';
+      const s=(this.loginForm.username||'').trim();
+      if (s.length<3) return;
+      this._sabunTimer=setTimeout(async()=>{
+        try { const d=await api('GET','/api/academy/staff_name_hint?sabun='+encodeURIComponent(s)); this.sabunHint=d.name||''; } catch(e){ this.sabunHint=''; }
+      }, 250);
     },
     async logout(){ try { await api('GET','/api/logout'); } catch(e){} this.me=null; this.myProfile=null; this.staffProfile=null; this.onboardingDismissed=false; this.tab='login'; },
     savedLeadBranch(){ const v = Number(localStorage.getItem('dc_lead_branch')); return v || null; },

@@ -162,6 +162,24 @@ class LeadCreateAPI(APIView):
         return self.success("상담 신청이 접수되었습니다.")
 
 
+class StaffNameHintAPI(APIView):
+    def get(self, request):
+        """로그인 화면용: 사번(username)으로 직원 이름 힌트. 직원 계정만, 활성만."""
+        from ..models import STAFF_ROLES
+        sabun = (request.GET.get("sabun") or "").strip()
+        if len(sabun) < 3:
+            return self.success({"name": ""})
+        prof = AcademyProfile.objects.select_related("user").filter(
+            user__username=sabun, role__in=STAFF_ROLES, user__is_disabled=False).first()
+        name = ""
+        if prof:
+            try:
+                name = prof.user.userprofile.real_name or ""
+            except Exception:
+                name = ""
+        return self.success({"name": name})
+
+
 class MyAcademyProfileAPI(APIView):
     @login_required
     def get(self, request):

@@ -23,7 +23,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       Lead, LeadStatus, CounselingLog, CounselingLogEdit, StudentProfile, EnrollmentStatus,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
-                      TimetableChange, StudentStatusChange)
+                      TimetableChange, StudentStatusChange, StaffChangeLog)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 import os as _os
 from django.conf import settings as _settings
@@ -206,11 +206,31 @@ class AssignRoleAPI(APIView):
         if err:
             return self.error(err)
 
+        old = AcademyProfile.objects.filter(user=target).first()
+        old_role = old.role if old else ""
+        old_branch = (old.branch.name if (old and old.branch_id) else "본부/미지정") if old else ""
         profile = apply_role(target, role, branch)
         _apply_managed(profile, role, managed_ids)
+        new_branch = branch.name if branch else "본부/미지정"
+        parts = []
+        if old_role != role:
+            parts.append("역할 %s→%s" % (_role_label(old_role), _role_label(role)))
+        if old_branch != new_branch:
+            parts.append("지점 %s→%s" % (old_branch, new_branch))
+        if parts:
+            _log_staff(target, request.user, "ROLE", "; ".join(parts), data.get("reason"))
         return self.success({"user_id": target.id, "role": role,
                              "branch_id": branch.id if branch else None,
                              "managed_branch_ids": managed_ids})
+
+
+def _role_label(role):
+    return dict(ACADEMY_ROLE_CHOICES).get(role, role)
+
+
+def _log_staff(staff, actor, ctype, detail, reason):
+    StaffChangeLog.objects.create(staff=staff, actor=actor, change_type=ctype,
+                                  detail=(detail or "")[:255], reason=(reason or "")[:255])
 
 
 def _staff_no_prefix(role, branch):
@@ -282,8 +302,8 @@ class StaffAdminAPI(APIView):
             return self.error("No branch scope assigned")
         qs = AcademyProfile.objects.select_related(
             "user", "user__staff_profile", "branch").filter(role__in=STAFF_ROLES)
-        if request.GET.get("show_deleted") != "1":
-            qs = qs.filter(is_deleted=False)
+        if request.GET.get("show_inactive") != "1":
+            qs = qs.filter(user__is_disabled=False)
         if not all_branch:
             qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
         qs = qs.order_by("branch_id", "role", "user__username")
@@ -347,8 +367,12 @@ class StaffStatusAPI(APIView):
         elif not can_manage_branch(request.user, profile.branch_id):
             return self.error("No permission for this branch")
 
+        was_active = not profile.user.is_disabled
         profile.user.is_disabled = not data["is_active"]
         profile.user.save()
+        if was_active != bool(data["is_active"]):
+            _log_staff(profile.user, request.user, "ACTIVE",
+                       "활성화" if data["is_active"] else "비활성화", data.get("reason"))
         return self.success(_staff_brief(profile))
 
 
@@ -408,11 +432,53 @@ class StaffReissueSabunAPI(APIView):
         old_no = profile.user.username
         if new_no == old_no:
             return self.error("이미 현재 소속 기준 사번입니다.")
+        new_branch = profile.branch.name if profile.branch_id else "본부"
         profile.user.username = new_no
         profile.user.save(update_fields=["username"])
         profile.staff_no = new_no
         profile.save(update_fields=["staff_no"])
-        return self.success({"old_sabun": old_no, "new_sabun": new_no})
+        _log_staff(profile.user, request.user, "SABUN",
+                   "사번 %s → %s (%s)" % (old_no, new_no, new_branch), request.data.get("reason"))
+        return self.success({"old_sabun": old_no, "new_sabun": new_no, "branch": new_branch})
+
+    @admin_role_required
+    def get(self, request):
+        """재발급 미리보기: 현재 사번 → 새 사번(현재 소속 기준)."""
+        if not can_manage_staff(request.user):
+            return self.error("직원 관리 권한이 없습니다.")
+        profile = AcademyProfile.objects.select_related("user", "branch").filter(
+            user_id=request.GET.get("user_id"), role__in=STAFF_ROLES).first()
+        if not profile:
+            return self.error("Staff does not exist")
+        new_no = gen_staff_no(profile.role, profile.branch)
+        while User.objects.filter(username=new_no).exclude(id=profile.user_id).exists():
+            prefix, tail = new_no[:2], new_no[2:]
+            new_no = "%s%03d" % (prefix, (int(tail) if tail.isdigit() else 0) + 1)
+        return self.success({"old_sabun": profile.user.username, "new_sabun": new_no,
+                             "branch": (profile.branch.name if profile.branch_id else "본부"),
+                             "changed": new_no != profile.user.username})
+
+
+class StaffHistoryAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """직원 변경 이력(역할/지점/활성/사번)."""
+        if not can_manage_staff(request.user):
+            return self.error("직원 관리 권한이 없습니다.")
+        uid = request.GET.get("user_id")
+        TYPE = {"ROLE": "역할/지점", "ACTIVE": "활성상태", "SABUN": "사번"}
+        out = []
+        for c in StaffChangeLog.objects.filter(staff_id=uid).select_related("actor")[:200]:
+            an = ""
+            if c.actor_id:
+                try:
+                    an = c.actor.userprofile.real_name or c.actor.username
+                except Exception:
+                    an = c.actor.username
+            out.append({"id": c.id, "type": TYPE.get(c.change_type, c.change_type),
+                        "detail": c.detail, "reason": c.reason,
+                        "actor": an, "time": str(c.create_time)[:16]})
+        return self.success(out)
 
 
 def _parse_managed(request):
@@ -436,23 +502,37 @@ def _validate_role_branches(request, role):
     actor_all, _, _ = staff_scope(request.user)
     if role in ALL_BRANCH_ROLES:
         if not actor_all:
-            return None, [], "Only HQ admin can grant this role"
+            return None, [], "본부 관리자만 부여할 수 있는 역할입니다."
         return None, [], None
-    managed, merr = _parse_managed(request)
-    if merr:
-        return None, [], merr
+    # 지부장 부여는 본부만(여러 지점 위임이라)
     if role == AcademyRole.REGIONAL_MANAGER:
+        if not actor_all:
+            return None, [], "지부장은 본부 관리자만 부여할 수 있습니다."
+        managed, merr = _parse_managed(request)
+        if merr:
+            return None, [], merr
         if not managed:
             return None, [], "지부장은 열람 지점을 1개 이상 선택해야 합니다."
         return None, managed, None
-    # 단일지점 역할(원장/부원장/강사/조교/외부): 주 소속 지점 + 선택 열람지점(겸직)
+    # 단일지점 역할(원장/부원장/강사/조교)
+    if not actor_all:
+        # 원장 등 지점 관리자: 본인 소속 지점으로 강제, 겸직 열람지점 불가(타 지점 지정 금지)
+        own = editable_branch_ids(request.user)
+        if not own:
+            return None, [], "소속 지점이 없어 직원을 만들 수 없습니다."
+        branch = Branch.objects.filter(id=own[0], is_active=True).first()
+        if not branch:
+            return None, [], "소속 지점이 유효하지 않습니다."
+        return branch, [], None
+    # 본부: 지점 지정 + 선택적 열람지점(겸직)
+    managed, merr = _parse_managed(request)
+    if merr:
+        return None, [], merr
     if not data.get("branch_id"):
-        return None, [], "Branch is required for this role"
+        return None, [], "지점을 선택하세요."
     branch = Branch.objects.filter(id=data["branch_id"], is_active=True).first()
     if not branch:
         return None, [], "Invalid branch"
-    if not can_manage_branch(request.user, branch.id):
-        return None, [], "No permission for this branch"
     return branch, managed, None
 
 
@@ -1261,7 +1341,12 @@ class OptionAdminAPI(APIView):
         category = request.GET.get("category")
         if category:
             qs = qs.filter(category=category)
-        return self.success(OptionItemSerializer(qs, many=True).data)
+        out = []
+        for o in qs:
+            d = OptionItemSerializer(o).data
+            d["usage"] = _option_usage(o.category, o.value)
+            out.append(d)
+        return self.success(out)
 
     @validate_serializer(CreateOptionSerializer)
     @admin_role_required
@@ -1307,8 +1392,27 @@ class OptionAdminAPI(APIView):
         opt = OptionItem.objects.filter(id=request.GET.get("id")).first()
         if not opt:
             return self.error("Option does not exist")
+        used = _option_usage(opt.category, opt.value)
+        if used:
+            return self.error("연결된 정보가 %d건 있어 삭제할 수 없습니다. 비활성으로 처리하세요." % used)
         opt.delete()
         return self.success("Deleted")
+
+
+def _option_usage(category, value):
+    """선택 목록 값이 실제로 사용된 건수(삭제 가드·표시용)."""
+    n = 0
+    if category == "school_type":
+        n += StudentProfile.objects.filter(school_type=value).count()
+        n += Lead.objects.filter(school_type=value).count()
+    elif category == "program":
+        n += StudentProfile.objects.filter(program=value).count()
+        n += StudentTimetable.objects.filter(program=value).count()
+    elif category == "program_language":
+        n += StudentProfile.objects.filter(program_language=value).count()
+    elif category == "counseling_purpose":
+        n += Lead.objects.filter(purpose=value).count()
+    return n
 
 
 class OptionReorderAPI(APIView):
