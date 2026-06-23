@@ -24,7 +24,7 @@
       </div>
       <div class="flex items-center gap-3 text-sm">
         <template v-if="me">
-          <span class="text-slate-300">{{ me.real_name || me.user.username }}님
+          <span class="text-slate-300">{{ headerLabel }}님
             <span class="ml-1 px-1.5 py-0.5 rounded bg-slate-700 text-[11px]">{{ roleBadge }}</span>
           </span>
           <button @click="logout" class="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600">로그아웃</button>
@@ -477,8 +477,8 @@
             </div>
             <div class="grid grid-cols-3 gap-3">
               <div><label class="lbl">학교 구분</label><input :value="schoolLabel(convertForm.school_type)||'-'" class="input bg-slate-50" readonly /></div>
-              <div><label class="lbl">학교</label><input :value="convertForm.school_name||'-'" class="input bg-slate-50" readonly /></div>
-              <div><label class="lbl">학년</label><input :value="convertForm.grade||'-'" class="input bg-slate-50" readonly /></div>
+              <div><label class="lbl">학교</label><input :value="(convertForm.school_name||'-') + (convertForm.school_name ? schoolSuffix(convertForm.school_type) : '')" class="input bg-slate-50" readonly /></div>
+              <div><label class="lbl">학년</label><input :value="convertForm.grade ? convertForm.grade+'학년' : '-'" class="input bg-slate-50" readonly /></div>
             </div>
             <div>
               <label class="lbl">학생 휴대폰 <span class="text-rose-500">*</span></label>
@@ -735,13 +735,13 @@
         <table class="w-full text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
-              <th class="px-3 py-2 text-left">학생</th>
-              <th class="px-3 py-2 text-left">요일</th>
-              <th class="px-3 py-2 text-left">시작</th>
-              <th class="px-3 py-2 text-left">길이</th>
-              <th class="px-3 py-2 text-left">과정</th>
-              <th class="px-3 py-2 text-left">담당 강사</th>
-              <th class="px-3 py-2 text-left">반복</th>
+              <th @click="sortTtCol('student')" class="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-700">학생{{ ttColArrow('student') }}</th>
+              <th @click="sortTtCol('weekday')" class="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-700">요일{{ ttColArrow('weekday') }}</th>
+              <th @click="sortTtCol('start_time')" class="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-700">시작{{ ttColArrow('start_time') }}</th>
+              <th @click="sortTtCol('duration_minutes')" class="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-700">길이{{ ttColArrow('duration_minutes') }}</th>
+              <th @click="sortTtCol('program')" class="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-700">과정{{ ttColArrow('program') }}</th>
+              <th @click="sortTtCol('instructor')" class="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-700">담당 강사{{ ttColArrow('instructor') }}</th>
+              <th @click="sortTtCol('frequency')" class="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-700">반복{{ ttColArrow('frequency') }}</th>
               <th class="px-3 py-2"></th>
             </tr>
           </thead>
@@ -777,9 +777,13 @@
       </div>
       <!-- 검색/필터 -->
       <div class="flex flex-wrap items-center gap-2 mb-3">
-        <input v-model="stuSearch" placeholder="이름·아이디·학교·학년·보호자·전화 검색" class="input w-72 py-1" />
-        <select v-model="stuStatusFilter" class="input w-32 py-1">
-          <option value="">전체 상태</option>
+        <input v-model="stuSearch" placeholder="원번·이름·학교·학년·보호자·전화 검색" class="input w-64 py-1" />
+        <select v-model="stuSchoolFilter" class="input w-28 py-1">
+          <option value="">학교급 전체</option>
+          <option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
+        </select>
+        <select v-model="stuStatusFilter" class="input w-28 py-1">
+          <option value="">상태 전체</option>
           <option value="ENROLLED">재원</option>
           <option value="ON_LEAVE">휴원</option>
           <option value="WITHDRAWN">퇴원</option>
@@ -791,10 +795,13 @@
         <table class="w-full text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
+              <th @click="sortStu('enroll_no')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">원번{{ stuArrow('enroll_no') }}</th>
               <th @click="sortStu('real_name')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">이름{{ stuArrow('real_name') }}</th>
-              <th @click="sortStu('username')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">아이디{{ stuArrow('username') }}</th>
-              <th @click="sortStu('school_name')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">학교/학년{{ stuArrow('school_name') }}</th>
-              <th @click="sortStu('branch')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">지점{{ stuArrow('branch') }}</th>
+              <th @click="sortStu('birth_date')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">생년월일{{ stuArrow('birth_date') }}</th>
+              <th @click="sortStu('school_type')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">학교급{{ stuArrow('school_type') }}</th>
+              <th @click="sortStu('school_name')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">학교{{ stuArrow('school_name') }}</th>
+              <th @click="sortStu('grade')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">학년{{ stuArrow('grade') }}</th>
+              <th v-if="showBranchCol" @click="sortStu('branch')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">지점{{ stuArrow('branch') }}</th>
               <th class="text-left px-3 py-2">보호자</th>
               <th @click="sortStu('enrollment_status')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">상태{{ stuArrow('enrollment_status') }}</th>
               <th class="px-3 py-2"></th>
@@ -802,15 +809,18 @@
           </thead>
           <tbody>
             <tr v-for="s in filteredStudents" :key="s.id" class="border-t align-middle hover:bg-slate-50">
+              <td class="px-3 py-2 font-mono text-slate-500">{{ s.enroll_no || '-' }}</td>
               <td class="px-3 py-2 whitespace-nowrap font-medium">{{ s.real_name || s.username }}</td>
-              <td class="px-3 py-2 text-slate-500">{{ s.username }}</td>
-              <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ schoolLabel(s.school_type) }} {{ s.school_name }} {{ s.grade ? s.grade+'학년' : '' }}</td>
-              <td class="px-3 py-2 text-slate-500">{{ s.branch }}</td>
-              <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ s.parent_name || '-' }} <span v-if="s.guardian_count" class="text-xs text-slate-400">({{ s.guardian_count }})</span></td>
+              <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ s.birth_date || '-' }}</td>
+              <td class="px-3 py-2 text-slate-500">{{ schoolLabel(s.school_type) || '-' }}</td>
+              <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ s.school_name || '-' }}</td>
+              <td class="px-3 py-2 text-slate-500">{{ s.grade ? s.grade+'학년' : '-' }}</td>
+              <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ s.branch }}</td>
+              <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ s.parent_name || '-' }} <span v-if="s.guardian_count" class="text-xs text-slate-400" title="연결된 보호자 수">({{ s.guardian_count }})</span></td>
               <td class="px-3 py-2"><span :class="['px-2 py-0.5 rounded text-xs', stuStatusBadge(s.enrollment_status).cls]">{{ stuStatusBadge(s.enrollment_status).label }}</span></td>
               <td class="px-3 py-2 text-right"><button @click="openStudent(s)" class="text-xs text-indigo-600 hover:underline">상세</button></td>
             </tr>
-            <tr v-if="filteredStudents.length===0"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 학생이 없습니다.</td></tr>
+            <tr v-if="filteredStudents.length===0"><td :colspan="showBranchCol?10:9" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 학생이 없습니다.</td></tr>
           </tbody>
         </table>
       </div>
@@ -835,6 +845,7 @@
             <!-- 인적사항 -->
             <div v-if="stuTab==='info'" class="space-y-2">
               <div class="grid grid-cols-2 gap-2">
+                <div><label class="lbl">원번</label><input :value="stuForm.enroll_no || '-'" class="input bg-slate-50" readonly /></div>
                 <div><label class="lbl">이름</label><input v-model="stuForm.real_name" class="input" /></div>
                 <div><label class="lbl">생년월일</label><input v-model="stuForm.birth_date" type="date" class="input" /></div>
                 <div><label class="lbl">성별</label><select v-model="stuForm.gender" class="input"><option value="">-</option><option value="M">남</option><option value="F">여</option></select></div>
@@ -1216,20 +1227,29 @@
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="bg-slate-50 text-slate-500 text-xs">
-              <tr><th class="px-3 py-2 text-left w-20">코드</th><th class="px-3 py-2 text-left">이름</th><th class="px-3 py-2 text-center w-24">소속 인원</th><th class="px-3 py-2 text-center w-20">활성</th><th class="px-3 py-2 w-32"></th></tr>
+              <tr><th class="px-3 py-2 text-left w-20">코드</th><th class="px-3 py-2 text-left">이름</th><th class="px-3 py-2 text-center w-20">직원</th><th class="px-3 py-2 text-center w-20">학생</th><th class="px-3 py-2 text-left">기타 연결</th><th class="px-3 py-2 text-center w-20">활성</th><th class="px-3 py-2 w-40"></th></tr>
             </thead>
             <tbody>
               <tr v-for="b in branchAdmin" :key="b.id" class="border-t align-middle">
                 <td class="px-3 py-2 font-mono text-slate-500">{{ b.code }}</td>
                 <td class="px-3 py-2"><input v-model="b.name" class="input py-1 w-48" /></td>
-                <td class="px-3 py-2 text-center text-slate-500">{{ b.member_count }}</td>
+                <td class="px-3 py-2 text-center text-slate-500">{{ b.staff_count }}</td>
+                <td class="px-3 py-2 text-center text-slate-500">{{ b.student_count }}</td>
+                <td class="px-3 py-2 text-[11px] text-slate-400">
+                  <span v-if="b.timetable_count">시간표 {{ b.timetable_count }} </span>
+                  <span v-if="b.lead_count">· 상담 {{ b.lead_count }} </span>
+                  <span v-if="b.class_count">· 반 {{ b.class_count }}</span>
+                  <span v-if="b.deletable" class="text-emerald-500">연결 없음</span>
+                </td>
                 <td class="px-3 py-2 text-center"><span :class="b.is_active ? 'text-emerald-600' : 'text-rose-500'">{{ b.is_active ? '활성' : '비활성' }}</span></td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
                   <button @click="saveBranch(b)" class="text-xs text-indigo-600 hover:underline">저장</button>
                   <button @click="toggleBranch(b)" class="ml-2 text-xs text-slate-500 hover:underline">{{ b.is_active ? '비활성화' : '활성화' }}</button>
+                  <button v-if="b.deletable" @click="deleteBranch(b)" class="ml-2 text-xs text-rose-500 hover:underline">삭제</button>
+                  <span v-else class="ml-2 text-[11px] text-slate-300" title="연결된 정보가 있어 삭제 불가">삭제불가</span>
                 </td>
               </tr>
-              <tr v-if="branchAdmin.length===0"><td colspan="5" class="px-3 py-4 text-center text-xs text-slate-400">지점이 없습니다.</td></tr>
+              <tr v-if="branchAdmin.length===0"><td colspan="7" class="px-3 py-4 text-center text-xs text-slate-400">지점이 없습니다.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1598,12 +1618,13 @@ createApp({
       leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' },
       myClasses: [], myInd: [], myAtt: [],
       docPreview: { show:false, url:'', x:0, y:0 },
-      students: [], stuSearch: '', stuStatusFilter: '', stuSortKey: 'real_name', stuSortDir: 'asc',
+      students: [], stuSearch: '', stuStatusFilter: '', stuSchoolFilter: '', stuSortKey: 'enroll_no', stuSortDir: 'asc',
       stuDetail: null, stuTab: 'info', stuForm: {},
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'guardian',l:'보호자'}],
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteCounselAt: '', stuEditLogId: null, stuEditLogText: '',
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
+      ttSortKey: '', ttSortDir: 'asc',
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteCounselAt: '', showDeletedLeads: null, editLogId: null, editLogText: '',
       showLeadForm: false,
@@ -1691,11 +1712,19 @@ createApp({
       return !!(p && (p.edit_all_branch || (p.editable_branch_ids||[]).length));
     },
     stuCanEdit(){ return this.stuDetail ? this.canEditBranch(this.stuDetail.branch_id) : false; },
+    showBranchCol(){
+      // 여러 지점을 보는 사용자(본부·지부장·겸직)만 지점 컬럼 표시. 단일 지점은 숨김.
+      if (this.me && this.me.user.admin_type === 'Super Admin') return true;
+      const p = this.myProfile; if (!p) return false;
+      if (p.edit_all_branch) return true;
+      return (p.viewable_branch_ids||[]).length > 1;
+    },
     filteredStudents(){
       const q = (this.stuSearch||'').trim().toLowerCase();
       let list = this.students.slice();
       if (this.stuStatusFilter) list = list.filter(s => s.enrollment_status===this.stuStatusFilter);
-      if (q) list = list.filter(s => [s.real_name, s.username, s.school_name, this.schoolLabel(s.school_type),
+      if (this.stuSchoolFilter) list = list.filter(s => s.school_type===this.stuSchoolFilter);
+      if (q) list = list.filter(s => [s.enroll_no, s.real_name, s.username, s.school_name, this.schoolLabel(s.school_type),
             String(s.grade||''), s.parent_name, s.parent_phone].filter(Boolean).join(' ').toLowerCase().includes(q));
       const key = this.stuSortKey, dir = this.stuSortDir==='asc' ? 1 : -1;
       list.sort((a,b)=>{ const x=(a[key]??'')+'', y=(b[key]??'')+''; return x.localeCompare(y,'ko')*dir; });
@@ -1745,7 +1774,7 @@ createApp({
     },
     filteredTt(){
       const f = this.ttFilter;
-      return this.ttAll.filter(s=>{
+      let list = this.ttAll.filter(s=>{
         if (f.name){ const n=((s.student.real_name||'')+' '+s.student.username).toLowerCase(); if(!n.includes(f.name.toLowerCase())) return false; }
         if (f.weekday!=='' && s.weekday!==Number(f.weekday)) return false;
         if (f.instructor_id==='__none__'){ if (s.instructor) return false; }
@@ -1759,6 +1788,22 @@ createApp({
         }
         return true;
       });
+      const k = this.ttSortKey;
+      if (k){
+        const val = s => {
+          if (k==='student') return (s.student.real_name||s.student.username||'');
+          if (k==='instructor') return s.instructor ? (s.instructor.real_name||s.instructor.username||'') : '';
+          if (k==='program') return this.optLabel('program', s.program) || s.subject || '';
+          if (k==='weekday') return String(s.weekday).padStart(2,'0');
+          if (k==='frequency') return s.frequency||'';
+          if (k==='duration_minutes') return Number(s.duration_minutes)||0;
+          if (k==='start_time') return (s.start_time||'');
+          return s[k]||'';
+        };
+        const dir = this.ttSortDir==='asc'?1:-1;
+        list = list.slice().sort((a,b)=>{ const x=val(a),y=val(b); return (x<y?-1:x>y?1:0)*dir; });
+      }
+      return list;
     },
     staffRoleOptions(){
       const all = [
@@ -1772,6 +1817,23 @@ createApp({
         {v:'EXTERNAL_INSTRUCTOR_ADMIN', l:'외부 강사 관리자'},
       ];
       return this.isActorAllBranch ? all : all.filter(r=>!r.allBranch);
+    },
+    headerLabel(){
+      if (!this.me) return '';
+      const nm = this.me.real_name || this.me.user.username;
+      const p = this.myProfile;
+      if (!p) return this.me.user.admin_type==='Super Admin' ? nm+'(본부)' : nm;
+      if (p.role==='HQ_ADMIN' || (this.me.user.admin_type==='Super Admin' && !p.role)) return nm+'(본부)';
+      if (p.role==='HR_ADMIN') return nm+'(인사)';
+      if (p.role==='REGIONAL_MANAGER'){
+        const names=(p.viewable_branches||[]).map(b=>b.name).join('·');
+        return nm+'('+(names? names+' ':'')+'지부장)';
+      }
+      const b = p.branch ? p.branch.name : '';
+      // 원장+지부장 겸직: 소속 지점 외 추가 열람 지점이 있으면 표기
+      const extra = (p.viewable_branches||[]).filter(x=> !p.branch || x.id!==p.branch.id).map(x=>x.name);
+      if (b && extra.length) return nm+'('+b+' / '+extra.join('·')+' 지부)';
+      return nm + (b ? '('+b+')' : '');
     },
     roleBadge(){
       if (!this.me) return '';
@@ -2248,6 +2310,11 @@ createApp({
       try { await api('PUT','/api/admin/academy/branches', { id:b.id, name:b.name }); this.notify('저장되었습니다.'); this.loadBranches(); }
       catch(e){ this.notify(e.message,false); }
     },
+    async deleteBranch(b){
+      if (!window.confirm(b.name+' 지점을 삭제하시겠습니까? (연결된 정보가 없을 때만 가능)')) return;
+      try { await api('DELETE','/api/admin/academy/branches?id='+b.id); this.notify('삭제되었습니다.'); this.loadBranchAdmin(); this.loadBranches(); }
+      catch(e){ this.notify(e.message,false); }
+    },
     async toggleBranch(b){
       try { await api('PUT','/api/admin/academy/branches', { id:b.id, is_active:!b.is_active }); this.notify(b.is_active?'비활성화되었습니다.':'활성화되었습니다.'); this.loadBranchAdmin(); this.loadBranches(); }
       catch(e){ this.notify(e.message,false); }
@@ -2388,6 +2455,8 @@ createApp({
       if (this.leadSortKey===key) this.leadSortDir = this.leadSortDir==='asc' ? 'desc' : 'asc';
       else { this.leadSortKey = key; this.leadSortDir = 'desc'; }
     },
+    sortTtCol(k){ if (this.ttSortKey===k) this.ttSortDir = this.ttSortDir==='asc'?'desc':'asc'; else { this.ttSortKey=k; this.ttSortDir='asc'; } },
+    ttColArrow(k){ return this.ttSortKey===k ? (this.ttSortDir==='asc'?' ▲':' ▼') : ' ↕'; },
     nowLocal(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); },
     // ── 학생 관리 ──
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },

@@ -222,6 +222,21 @@ def _staff_no_prefix(role, branch):
     return "%02d" % (n % 100)
 
 
+def gen_enroll_no(branch):
+    """원번 생성: 지점 prefix(2자리) + 일련 4자리(지점별 최대값+1)."""
+    if branch is None:
+        prefix = "00"
+    else:
+        digits = "".join(ch for ch in (branch.code or "") if ch.isdigit())
+        prefix = "%02d" % ((int(digits) if digits else 0) % 100)
+    maxseq = 0
+    for sp in StudentProfile.objects.filter(enroll_no__startswith=prefix).exclude(enroll_no=""):
+        tail = sp.enroll_no[len(prefix):]
+        if tail.isdigit():
+            maxseq = max(maxseq, int(tail))
+    return "%s%04d" % (prefix, maxseq + 1)
+
+
 def gen_staff_no(role, branch):
     """지점 prefix + 일련 3자리 사번 생성(지점별 최대값+1)."""
     prefix = _staff_no_prefix(role, branch)
@@ -1053,6 +1068,7 @@ class ConvertLeadAdminAPI(APIView):
             apply_role(user, AcademyRole.STUDENT, lead.branch)
             StudentProfile.objects.create(
                 user=user,
+                enroll_no=gen_enroll_no(lead.branch),
                 birth_date=data.get("birth_date"),
                 gender=data.get("gender", "") or "",
                 zipcode=data.get("zipcode", "") or "",
@@ -1132,8 +1148,16 @@ class BranchAdminAPI(APIView):
             return self.error("본부 관리자만 지점을 관리할 수 있습니다.")
         out = []
         for b in Branch.objects.all():
+            staff_c = AcademyProfile.objects.filter(branch_id=b.id, role__in=STAFF_ROLES).count()
+            student_c = AcademyProfile.objects.filter(branch_id=b.id, role=AcademyRole.STUDENT).count()
+            tt_c = StudentTimetable.objects.filter(branch_id=b.id).count()
+            lead_c = Lead.objects.filter(branch_id=b.id).count()
+            class_c = CourseClass.objects.filter(branch_id=b.id).count()
             out.append({"id": b.id, "code": b.code, "name": b.name, "is_active": b.is_active,
-                        "member_count": AcademyProfile.objects.filter(branch_id=b.id).count()})
+                        "staff_count": staff_c, "student_count": student_c,
+                        "timetable_count": tt_c, "lead_count": lead_c, "class_count": class_c,
+                        "deletable": (staff_c == 0 and student_c == 0 and tt_c == 0
+                                      and lead_c == 0 and class_c == 0)})
         return self.success(out)
 
     @admin_role_required
@@ -1171,6 +1195,35 @@ class BranchAdminAPI(APIView):
         if "is_active" in request.data:
             b.is_active = bool(request.data.get("is_active"))
         b.save()
+        return self.success("ok")
+
+    @admin_role_required
+    def delete(self, request):
+        if not self._require_hq(request):
+            return self.error("본부 관리자만 삭제할 수 있습니다.")
+        b = Branch.objects.filter(id=request.GET.get("id")).first()
+        if not b:
+            return self.error("지점이 없습니다.")
+        blockers = []
+        staff_c = AcademyProfile.objects.filter(branch_id=b.id, role__in=STAFF_ROLES).count()
+        student_c = AcademyProfile.objects.filter(branch_id=b.id, role=AcademyRole.STUDENT).count()
+        tt_c = StudentTimetable.objects.filter(branch_id=b.id).count()
+        lead_c = Lead.objects.filter(branch_id=b.id).count()
+        class_c = CourseClass.objects.filter(branch_id=b.id).count()
+        if staff_c:
+            blockers.append("직원 %d명" % staff_c)
+        if student_c:
+            blockers.append("학생 %d명" % student_c)
+        if tt_c:
+            blockers.append("개별시간표 %d건" % tt_c)
+        if lead_c:
+            blockers.append("상담 %d건" % lead_c)
+        if class_c:
+            blockers.append("반/특강 %d건" % class_c)
+        if blockers:
+            return self.error("연결된 정보가 있어 삭제할 수 없습니다 (" + ", ".join(blockers)
+                              + "). 비활성(폐점)으로 처리하세요.")
+        b.delete()
         return self.success("ok")
 
 
@@ -1300,6 +1353,8 @@ class StudentListAdminAPI(APIView):
                 real_name = ""
             sp = getattr(u, "student_profile", None)
             out.append({"id": u.id, "username": u.username, "real_name": real_name,
+                        "enroll_no": (sp.enroll_no if sp else ""),
+                        "birth_date": (str(sp.birth_date) if (sp and sp.birth_date) else ""),
                         "branch": (p.branch.name if p.branch_id else ""),
                         "branch_id": p.branch_id,
                         "school_type": (sp.school_type if sp else ""),
@@ -1551,6 +1606,7 @@ def _student_profile_dict(sp):
         return {}
     return {
         "real_name": "",  # 상위에서 채움
+        "enroll_no": sp.enroll_no or "",
         "birth_date": str(sp.birth_date) if sp.birth_date else "",
         "gender": sp.gender or "",
         "zipcode": sp.zipcode or "", "address": sp.address or "", "address_detail": sp.address_detail or "",

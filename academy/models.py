@@ -329,6 +329,7 @@ class StudentProfile(models.Model):
     """학생 등록 정보(56 필드의 1차 구현형). 등록 전환(입회원 신청) 시 생성."""
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                 related_name="student_profile")
+    enroll_no = models.CharField(max_length=16, blank=True, default="")  # 원번(지점2+일련4, 등록 전환 시 자동)
     birth_date = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=8, blank=True, default="")  # M / F
     zipcode = models.CharField(max_length=16, blank=True, default="")

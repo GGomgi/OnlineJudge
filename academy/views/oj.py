@@ -177,6 +177,10 @@ class MyAcademyProfileAPI(APIView):
         from ..services import editable_branch_ids, viewable_branch_ids, can_manage_staff
         edit_ids = editable_branch_ids(request.user)   # None=전체
         view_ids = viewable_branch_ids(request.user)
+        vbranches = []
+        if view_ids:
+            vbranches = [{"id": b.id, "name": b.name}
+                         for b in Branch.objects.filter(id__in=view_ids)]
         return self.success({
             "role": profile.role,
             "role_label": role_label,
@@ -186,6 +190,7 @@ class MyAcademyProfileAPI(APIView):
             "edit_all_branch": edit_ids is None,                 # 전지점 수정 가능(본부/super)
             "editable_branch_ids": edit_ids or [],               # 수정 가능 지점(빈 배열=수정 불가)
             "viewable_branch_ids": [] if view_ids is None else view_ids,
+            "viewable_branches": vbranches,                      # 열람 지점 이름(헤더·표시용)
             "can_manage_staff": can_manage_staff(request.user),
         })
 
