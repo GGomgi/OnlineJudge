@@ -793,13 +793,15 @@
       <div class="flex items-center gap-2 mb-3">
         <input v-model="stuSearch" placeholder="1차 검색 (원번·이름·학교·학년·보호자)" class="input flex-1 min-w-0 py-1" />
         <input v-model="stuSearch2" placeholder="2차 검색" class="input flex-1 min-w-0 py-1" />
-        <select v-model="stuStatusFilter" class="input w-28 py-1 shrink-0">
-          <option value="">상태 전체</option>
-          <option value="ENROLLED">재원</option>
-          <option value="ON_LEAVE">휴원</option>
-          <option value="WITHDRAWN">퇴원</option>
-        </select>
-        <span class="text-xs text-slate-400 shrink-0">{{ filteredStudents.length }}명</span>
+        <div class="shrink-0 w-28">
+          <select v-model="stuStatusFilter" class="input py-1">
+            <option value="">상태 전체</option>
+            <option value="ENROLLED">재원</option>
+            <option value="ON_LEAVE">휴원</option>
+            <option value="WITHDRAWN">퇴원</option>
+          </select>
+        </div>
+        <span class="text-xs text-slate-400 shrink-0 whitespace-nowrap">{{ filteredStudents.length }}명</span>
       </div>
       <!-- 목록 -->
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
@@ -2293,13 +2295,17 @@ createApp({
       } else if (this.isActorAllBranch && !this.isAllBranchRole(s._role) && !s._branch_id) return this.notify('지점을 선택하세요.', false);
       const reason = window.prompt('변경 사유를 입력하세요 (이력에 기록됩니다)');
       if (reason===null) return;
+      const oldBranchId = s.branch ? s.branch.id : null;
+      const branchChanged = this.isActorAllBranch && !this.isAllBranchRole(s._role) && !this.isRegionalRole(s._role) && s._branch_id!==oldBranchId;
       try {
         const body = { user_id:s.user_id, role:s._role, reason };
         if (this.isRegionalRole(s._role)) body.managed_branch_ids = s._managed_branch_ids;
         else if (this.isActorAllBranch && !this.isAllBranchRole(s._role)) { body.branch_id = s._branch_id; body.managed_branch_ids = s._managed_branch_ids || []; }
         await api('POST','/api/admin/academy/assign_role', body);
         this.notify((s.real_name||s.username) + ' 정보가 수정되었습니다.');
-        this.loadStaff();
+        await this.loadStaff();
+        // 지점이 바뀌었으면 사번 재발급 제안(사번 prefix가 소속 지점 기준)
+        if (branchChanged) this.reissueSabun({ user_id:s.user_id, real_name:s.real_name, staff_no:s.staff_no });
       } catch(e){ this.notify(e.message,false); }
     },
     async toggleStaffActive(s){
