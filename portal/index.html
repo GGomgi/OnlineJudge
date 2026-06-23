@@ -737,6 +737,7 @@
         <div><label class="lbl">강사</label><select v-model="ttFilter.instructor_id" class="input w-28"><option value="">전체</option><option value="__none__">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
         <div><label class="lbl">과정</label><select v-model="ttFilter.program" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
         <button @click="resetTtFilter" class="btn-secondary text-xs">초기화</button>
+        <label class="flex items-center gap-1 text-xs text-slate-500 self-center whitespace-nowrap"><input type="checkbox" v-model="ttShowEnded" @change="loadAllTt" class="w-4 h-4"> 삭제(종료) 보기</label>
         <span class="text-xs text-slate-400 ml-auto self-center">{{ filteredTt.length }}건</span>
         </div>
       </div>
@@ -763,21 +764,21 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="s in filteredTt" :key="s.id" :class="['border-t align-middle', ttRowDirty(s) ? 'bg-amber-50 ring-1 ring-amber-200' : '']">
-              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> {{ s.student.real_name || s.student.username }} <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">휴원중지</span></td>
-              <td class="px-3 py-2"><select v-model.number="s.weekday" class="input py-1 w-16 px-2"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
-              <td class="px-3 py-2"><input v-model="s.start_time" type="time" class="input py-1 w-28" /></td>
-              <td class="px-3 py-2"><select v-model.number="s.duration_minutes" class="input py-1 w-24 px-2"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
-              <td class="px-3 py-2"><select v-model="s.program" class="input py-1 w-32 px-2"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></td>
-              <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" class="input py-1 w-28 px-2"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
-              <td class="px-3 py-2"><select v-model="s.frequency" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
+            <tr v-for="s in filteredTt" :key="s.id" :class="['border-t align-middle', s.status==='ENDED' ? 'bg-rose-50 opacity-70' : (ttRowDirty(s) ? 'bg-amber-50 ring-1 ring-amber-200' : '')]">
+              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> <span :class="s.status==='ENDED' ? 'line-through text-rose-400' : ''">{{ s.student.real_name || s.student.username }}</span> <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">휴원중지</span><span v-if="s.status==='ENDED'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600">삭제(종료)</span></td>
+              <td class="px-3 py-2"><select v-model.number="s.weekday" :disabled="s.status==='ENDED'" class="input py-1 w-16 px-2"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
+              <td class="px-3 py-2"><input v-model="s.start_time" :disabled="s.status==='ENDED'" type="time" class="input py-1 w-28" /></td>
+              <td class="px-3 py-2"><select v-model.number="s.duration_minutes" :disabled="s.status==='ENDED'" class="input py-1 w-24 px-2"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
+              <td class="px-3 py-2"><select v-model="s.program" :disabled="s.status==='ENDED'" class="input py-1 w-32 px-2"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></td>
+              <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" :disabled="s.status==='ENDED'" class="input py-1 w-28 px-2"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id && s.status!=='ENDED'" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
+              <td class="px-3 py-2"><select v-model="s.frequency" :disabled="s.status==='ENDED'" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
-                <template v-if="canEditBranch(s.branch && s.branch.id)">
+                <template v-if="s.status!=='ENDED' && canEditBranch(s.branch && s.branch.id)">
                   <span v-if="ttRowDirty(s)" class="text-[11px] text-amber-600 mr-1">✏️ 수정중</span>
                   <button @click="saveTt(s)" :class="['text-xs hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">수정</button>
                 </template>
                 <button @mouseenter="openTtHistory(s,$event)" @mouseleave="scheduleCloseTt" class="ml-2 text-xs text-slate-500 hover:underline">이력</button>
-                <span v-if="!canEditBranch(s.branch && s.branch.id)" class="text-[11px] text-slate-400 ml-1">열람</span>
+                <span v-if="s.status!=='ENDED' && !canEditBranch(s.branch && s.branch.id)" class="text-[11px] text-slate-400 ml-1">열람</span>
               </td>
             </tr>
             <tr v-if="filteredTt.length===0"><td colspan="8" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 개별 수업이 없습니다.</td></tr>
@@ -1702,7 +1703,7 @@ createApp({
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteCounselAt: '', stuEditLogId: null, stuEditLogText: '',
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
-      ttSortKey: '', ttSortDir: 'asc',
+      ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteCounselAt: '', showDeletedLeads: null, editLogId: null, editLogText: '',
@@ -2133,7 +2134,7 @@ createApp({
     },
     async loadAllTt(){
       try {
-        const d = await api('GET','/api/admin/academy/student_timetable');
+        const d = await api('GET','/api/admin/academy/student_timetable' + (this.ttShowEnded ? '?show_ended=1' : ''));
         this.ttAll = (d.results || d).map(s=>{
           const row = { ...s, start_time: this.hm(s.start_time), _instructor_id: s.instructor ? s.instructor.id : null };
           row._orig = { weekday: row.weekday, start_time: row.start_time, duration_minutes: row.duration_minutes,

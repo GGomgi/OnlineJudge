@@ -1501,9 +1501,11 @@ class StudentTimetableAdminAPI(APIView):
 
     @admin_role_required
     def get(self, request):
-        """student_id 로 특정 학생의 시간표, 또는 branch/weekday 로 지점 전체 조회."""
-        qs = StudentTimetable.objects.select_related(
-            "student", "branch", "instructor").exclude(status="ENDED")
+        """student_id 로 특정 학생의 시간표, 또는 branch/weekday 로 지점 전체 조회.
+        종료(ENDED, 퇴원 등)는 기본 숨김. show_ended=1 이면 포함(삭제 보기)."""
+        qs = StudentTimetable.objects.select_related("student", "branch", "instructor")
+        if request.GET.get("show_ended") != "1":
+            qs = qs.exclude(status="ENDED")
         student_id = request.GET.get("student_id")
         if student_id:
             qs = qs.filter(student_id=student_id)
