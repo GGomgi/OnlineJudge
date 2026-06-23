@@ -1447,6 +1447,13 @@ class StudentListAdminAPI(APIView):
         # 보호자 수 집계
         gcounts = dict(GuardianStudent.objects.values("student_id")
                        .annotate(c=Count("id")).values_list("student_id", "c"))
+        # 수강 중(미종료) 과목명 집계
+        subj_map = {}
+        for sid, subj in StudentTimetable.objects.exclude(status="ENDED").values_list("student_id", "subject"):
+            if subj:
+                subj_map.setdefault(sid, [])
+                if subj not in subj_map[sid]:
+                    subj_map[sid].append(subj)
         out = []
         for p in qs:
             u = p.user
@@ -1469,6 +1476,7 @@ class StudentListAdminAPI(APIView):
                         "enrollment_status": (sp.enrollment_status if sp else EnrollmentStatus.ENROLLED),
                         "weekly_sessions": (sp.weekly_sessions if sp else None),
                         "guardian_count": gcounts.get(u.id, 0),
+                        "subjects": subj_map.get(u.id, []),
                         "slot_count": counts.get(u.id, 0)})
         return self.success(out)
 
@@ -1881,13 +1889,20 @@ class StudentGuardianAdminAPI(APIView):
         if prof and not can_manage_branch(request.user, prof.branch_id):
             return self.error("No permission for this branch")
         branch = (prof.branch if prof and prof.branch_id else None) or Branch.objects.first()
-        norm = _norm_phone(data.get("parent_phone"))
-        if not norm:
-            return self.error("보호자 연락처를 입력하세요.")
         parent_user = None
-        pp = AcademyProfile.objects.select_related("user").filter(role=AcademyRole.PARENT, phone=norm).first()
-        if pp:
-            parent_user = pp.user
+        # 검색에서 고른 기존 보호자(parent_id) 직접 연결
+        if data.get("parent_id"):
+            parent_user = User.objects.filter(id=data.get("parent_id"),
+                                              academy_profile__role=AcademyRole.PARENT).first()
+            if not parent_user:
+                return self.error("보호자 계정을 찾을 수 없습니다.")
+        norm = _norm_phone(data.get("parent_phone"))
+        if parent_user is None and not norm:
+            return self.error("보호자 연락처를 입력하세요.")
+        if parent_user is None:
+            pp = AcademyProfile.objects.select_related("user").filter(role=AcademyRole.PARENT, phone=norm).first()
+            if pp:
+                parent_user = pp.user
         if parent_user is None:
             username = "p" + norm
             if User.objects.filter(username=username).exists():
@@ -1950,6 +1965,38 @@ class StudentGuardianAdminAPI(APIView):
         p.set_password(pw)
         p.save()
         return self.success("ok")
+
+
+class GuardianSearchAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """보호자(학부모) 검색. 이름·연락처·연결 학생명으로 검색, 연결 학생 정보 포함."""
+        q = (request.GET.get("q") or "").strip()
+        parents = AcademyProfile.objects.select_related("user").filter(role=AcademyRole.PARENT)
+        out = []
+        for pp in parents[:500]:
+            pu = pp.user
+            try:
+                pname = pu.userprofile.real_name or ""
+            except Exception:
+                pname = ""
+            children = []
+            for g in GuardianStudent.objects.select_related("student").filter(parent=pu):
+                cu = g.student
+                csp = getattr(cu, "student_profile", None)
+                try:
+                    cname = cu.userprofile.real_name or cu.username
+                except Exception:
+                    cname = cu.username
+                children.append({"id": cu.id, "name": cname,
+                                 "school_type": (csp.school_type if csp else ""),
+                                 "school_name": (csp.school_name if csp else ""),
+                                 "grade": (csp.grade if csp else "")})
+            hay = " ".join([pname, pp.phone] + [c["name"] for c in children]).lower()
+            if q and q.lower() not in hay:
+                continue
+            out.append({"parent_id": pu.id, "name": pname, "phone": pp.phone, "children": children})
+        return self.success(out[:200])
 
 
 class StudentCounselAdminAPI(APIView):
