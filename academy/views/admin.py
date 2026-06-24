@@ -1269,11 +1269,18 @@ class ConvertLeadAdminAPI(APIView):
                     prog = (row.get("program") or "")
                     freq = row.get("frequency") or "WEEKLY"
                     subj = row.get("subject") or resolve_program_label(prog)
+                    # 격주 번갈아 짝 슬롯(week_offset=1)은 시작일을 1주 밀어 반대 주차에 수업
+                    af = data.get("lesson_start_date")
+                    if freq == "BIWEEKLY" and row.get("week_offset") and af:
+                        try:
+                            af = (datetime.strptime(af, "%Y-%m-%d").date() + timedelta(days=7)).isoformat()
+                        except (ValueError, TypeError):
+                            pass
                     StudentTimetable.objects.create(
                         student=user, branch=lead.branch, class_type=LessonType.PRIVATE,
                         weekday=wd, start_time=tm, duration_minutes=dur,
                         program=prog, subject=subj, frequency=freq,
-                        active_from=data.get("lesson_start_date"))
+                        active_from=af)
             # 학부모(보호자) 계정 생성/연결 — 자녀 기록 열람용(11 §9)
             parent_user = get_or_create_guardian(
                 user, lead, lead.branch,

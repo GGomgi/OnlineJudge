@@ -844,33 +844,42 @@
               <p v-if="convertForm.weekly_sessions > 0" class="text-xs text-indigo-600">수업 1회 <b>{{ lessonDurationMin }}분</b> (학교급·횟수 기준 자동 적용)</p>
               <div v-if="convertForm.weekly_sessions > 0" class="space-y-2">
                 <label class="lbl">회차별 과정 · 요일 · 시간 <span class="text-rose-500">*</span></label>
-                <div v-for="(row,i) in convertForm.schedule" :key="i"
-                     class="grid items-center gap-1" style="grid-template-columns: 2rem 1.4fr 0.9fr 0.9fr 0.9fr 0.9fr auto;">
-                  <span class="text-xs text-slate-400">{{ i+1 }}회</span>
-                  <select v-model.number="row.programIdx" class="input px-1" title="과정">
-                    <option v-for="(p,pi) in convertForm.programs" :key="pi" :value="pi">{{ composedProgramLabel(p) }}</option>
-                  </select>
-                  <select v-model.number="row.day" class="input px-1">
-                    <option :value="-1" disabled>요일</option>
-                    <option v-for="(d,di) in days" :key="di" :value="di">{{ d }}</option>
-                  </select>
-                  <select v-model="row.ampm" class="input px-1">
-                    <option value="AM">오전</option>
-                    <option value="PM">오후</option>
-                  </select>
-                  <select v-model.number="row.hour" class="input px-1">
-                    <option :value="null" disabled>시</option>
-                    <option v-for="h in hours12" :key="h" :value="h">{{ h }}시</option>
-                  </select>
-                  <select v-model.number="row.min" class="input px-1">
-                    <option :value="null" disabled>분</option>
-                    <option v-for="m in minutes" :key="m" :value="m">{{ String(m).padStart(2,'0') }}분</option>
-                  </select>
-                  <label class="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap" title="격주(2주에 1회)">
-                    <input type="checkbox" v-model="row.biweekly" class="w-3.5 h-3.5" />격주
-                  </label>
+                <div v-for="(row,i) in convertForm.schedule" :key="i">
+                  <div class="grid items-center gap-1" style="grid-template-columns: 2rem 1.4fr 0.9fr 0.9fr 0.9fr 0.9fr auto;">
+                    <span class="text-xs text-slate-400">{{ i+1 }}회</span>
+                    <select v-model.number="row.programIdx" class="input px-1" title="과정">
+                      <option v-for="(p,pi) in convertForm.programs" :key="pi" :value="pi">{{ composedProgramLabel(p) }}</option>
+                    </select>
+                    <select v-model.number="row.day" class="input px-1">
+                      <option :value="-1" disabled>요일</option>
+                      <option v-for="(d,di) in days" :key="di" :value="di">{{ d }}</option>
+                    </select>
+                    <select v-model="row.ampm" class="input px-1">
+                      <option value="AM">오전</option>
+                      <option value="PM">오후</option>
+                    </select>
+                    <select v-model.number="row.hour" class="input px-1">
+                      <option :value="null" disabled>시</option>
+                      <option v-for="h in hours12" :key="h" :value="h">{{ h }}시</option>
+                    </select>
+                    <select v-model.number="row.min" class="input px-1">
+                      <option :value="null" disabled>분</option>
+                      <option v-for="m in minutes" :key="m" :value="m">{{ String(m).padStart(2,'0') }}분</option>
+                    </select>
+                    <label class="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap" title="격주(2주에 1회 번갈아)">
+                      <input type="checkbox" v-model="row.biweekly" @change="onBiweeklyToggle(row)" class="w-3.5 h-3.5" />격주
+                    </label>
+                  </div>
+                  <!-- 격주 체크 시: 번갈아 들을 과정(같은 요일·시간, 반대 주차). 격주 체크 없음 -->
+                  <div v-if="row.biweekly" class="grid items-center gap-1 mt-1" style="grid-template-columns: 2rem 1.4fr auto;">
+                    <span class="text-xs text-amber-500 text-right">↳</span>
+                    <select v-model.number="row.altProgramIdx" class="input px-1 border-amber-300" title="격주 번갈아 과정">
+                      <option v-for="(p,pi) in convertForm.programs" :key="pi" :value="pi">{{ composedProgramLabel(p) }}</option>
+                    </select>
+                    <span class="text-[11px] text-amber-600 whitespace-nowrap">격주 번갈아 (같은 요일·시간, 다음 주에 수강)</span>
+                  </div>
                 </div>
-                <p class="text-[11px] text-slate-400">과정을 격주로 번갈아 들으면, 같은 요일·시간에 과정만 다르게 두 줄을 두고 양쪽 모두 <b>격주</b>를 체크하세요.</p>
+                <p class="text-[11px] text-slate-400"><b>격주</b>를 체크하면 같은 요일·시간에 <b>번갈아 들을 과정</b> 줄이 아래에 생깁니다(2주에 한 번씩 교대).</p>
               </div>
             </template>
           </div>
@@ -3566,8 +3575,30 @@ createApp({
       const n = this.convertForm.weekly_sessions || 0;
       const cur = this.convertForm.schedule;
       const next = [];
-      for (let i=0; i<n; i++) next.push(cur[i] || { programIdx:0, day:-1, ampm:'PM', hour:null, min:null, biweekly:false });
+      for (let i=0; i<n; i++) next.push(cur[i] || { programIdx:0, day:-1, ampm:'PM', hour:null, min:null, biweekly:false, altProgramIdx:0 });
       this.convertForm.schedule = next;
+    },
+    onBiweeklyToggle(row){
+      // 격주 켜면 번갈아 과정 기본값을 다른 과정으로(과정 2개 이상일 때)
+      if (row.biweekly && (row.altProgramIdx==null || row.altProgramIdx===row.programIdx)){
+        row.altProgramIdx = (this.convertForm.programs.length>1) ? (row.programIdx===0?1:0) : row.programIdx;
+      }
+    },
+    buildClassSchedule(){
+      const f = this.convertForm, out = [];
+      f.schedule.forEach(s=>{
+        const time = this.to24(s.ampm, s.hour, s.min);
+        const p = f.programs[s.programIdx] || f.programs[0];
+        if (s.biweekly){
+          // 격주: 같은 요일·시간으로 두 슬롯(반대 주차로 번갈아)
+          out.push({ day:s.day, time, program:(p?p.value:''), subject:this.composedProgramLabel(p), frequency:'BIWEEKLY', week_offset:0 });
+          const ap = f.programs[s.altProgramIdx] || p;
+          out.push({ day:s.day, time, program:(ap?ap.value:''), subject:this.composedProgramLabel(ap), frequency:'BIWEEKLY', week_offset:1 });
+        } else {
+          out.push({ day:s.day, time, program:(p?p.value:''), subject:this.composedProgramLabel(p), frequency:'WEEKLY', week_offset:0 });
+        }
+      });
+      return out;
     },
     to24(ampm, hour, min){
       if (hour===null || min===null) return '';
@@ -3647,7 +3678,7 @@ createApp({
           programs: JSON.stringify(f.programs),
           lesson_start_date: f.lesson_start_date,
           weekly_sessions: f.schedule_pending ? null : f.weekly_sessions,
-          class_schedule: JSON.stringify(f.schedule_pending ? [] : f.schedule.map(s=>{ const p=f.programs[s.programIdx]||f.programs[0]; return { day:s.day, time:this.to24(s.ampm,s.hour,s.min), program:(p?p.value:''), subject:this.composedProgramLabel(p), frequency:s.biweekly?'BIWEEKLY':'WEEKLY' }; })),
+          class_schedule: JSON.stringify(f.schedule_pending ? [] : this.buildClassSchedule()),
           schedule_pending: f.schedule_pending,
           parent_login_id: f.parent_login_id || '', parent_password: f.parent_password || '',
           consent_privacy: true, consent_guardian_name: f.consent_guardian_name,
