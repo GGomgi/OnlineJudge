@@ -396,6 +396,20 @@
         <div class="w-32 shrink-0"><select v-model="dashFilter.instructor" class="input py-1"><option value="">강사 전체</option><option v-for="t in dashInstructors" :key="t" :value="t">{{ t }}</option></select></div>
         <div v-if="showBranchCol" class="w-32 shrink-0"><select v-model="dashFilter.branch" class="input py-1"><option value="">지점 전체</option><option v-for="b in dashBranches" :key="b" :value="b">{{ b }}</option></select></div>
       </div>
+      <!-- 위: 오늘 상담 예약 -->
+      <div v-if="dashReservations.length" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-amber-300">
+        <div class="text-xs font-semibold text-amber-600 mb-2">📅 오늘 상담 예약 <span class="text-slate-400 font-normal">{{ dashReservations.length }}건</span></div>
+        <ul class="divide-y">
+          <li v-for="rv in dashReservations" :key="rv.id" class="flex items-center gap-2 py-1.5 text-sm">
+            <span class="font-mono text-amber-700 w-14 shrink-0">{{ rv.time }}</span>
+            <span class="font-medium whitespace-nowrap">{{ rv.student_name }}</span>
+            <span class="text-xs text-slate-400 whitespace-nowrap">· 학부모 {{ rv.parent_name }}</span>
+            <span v-if="showBranchCol" class="text-xs text-slate-400 whitespace-nowrap">· {{ rv.branch }}</span>
+            <span v-if="rv.note" class="text-xs text-slate-500 ml-2 truncate">{{ rv.note }}</span>
+          </li>
+        </ul>
+      </div>
+      <!-- 아래: 수업표 -->
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
@@ -575,7 +589,7 @@
           </button>
         </div>
         <label v-if="isManager" class="flex items-center gap-2 text-xs text-slate-500 ml-auto shrink-0 whitespace-nowrap">
-          <input type="checkbox" :checked="!!showDeletedLeads" @change="toggleShowDeleted" class="w-4 h-4"> 삭제된 항목도 보기
+          <input type="checkbox" :checked="!!showDeletedLeads" @change="toggleShowDeleted" class="w-4 h-4"> 숨김된 항목도 보기
         </label>
       </div>
       <div class="flex items-center gap-2 mb-2 text-xs text-slate-500">
@@ -612,8 +626,8 @@
               </div>
               <div v-if="r.status==='CONVERTED'" class="text-[11px] text-emerald-600 mt-1">@{{ r.converted_username }}</div>
               <div class="mt-1">
-                <span v-if="r.is_hidden" class="text-[11px] text-rose-600">삭제됨 <button v-if="canEditBranch(r.branch && r.branch.id)" @click.stop="restoreLead(r)" class="text-indigo-500 hover:underline ml-1">복원</button></span>
-                <button v-else-if="canEditBranch(r.branch && r.branch.id)" @click.stop="deleteLead(r)" class="text-[11px] text-rose-400 hover:underline">삭제</button>
+                <span v-if="r.is_hidden" class="text-[11px] text-rose-600">숨김됨 <button v-if="canEditBranch(r.branch && r.branch.id)" @click.stop="restoreLead(r)" class="text-indigo-500 hover:underline ml-1">복원</button></span>
+                <button v-else-if="canEditBranch(r.branch && r.branch.id)" @click.stop="deleteLead(r)" class="text-[11px] text-rose-400 hover:underline">숨김</button>
               </div>
             </div>
           </div>
@@ -626,10 +640,11 @@
               <ul class="space-y-1">
                 <li v-for="g in r.logs" :key="g.id" :class="['text-sm rounded px-3 py-1.5', g.is_hidden ? 'bg-rose-50' : 'bg-slate-50']">
                   <div class="flex items-center gap-1 text-xs text-slate-400">
-                    <span>{{ channelLabel(g.channel) }}</span>
+                    <span class="text-slate-500 font-medium">{{ g.author }}</span>
+                    <span>· {{ dt(g.create_time) }} 작성</span>
+                    <span class="ml-auto">{{ channelLabel(g.channel) }}</span>
                     <span v-if="g.counsel_at" class="text-slate-400">· 상담 {{ dt(g.counsel_at) }}</span>
-                    <span v-if="g.is_hidden" class="text-rose-500">· 삭제됨</span>
-                    <span class="ml-auto">{{ dt(g.create_time) }} {{ g.author }}</span>
+                    <span v-if="g.is_hidden" class="text-rose-500">· 숨김됨</span>
                   </div>
                   <template v-if="editLogId===g.id">
                     <textarea v-model="editLogText" rows="2" class="input mt-1"></textarea>
@@ -2217,6 +2232,7 @@ createApp({
     dashBranches(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.branch).filter(Boolean))]; },
     dashCheckedIn(){ const ids=new Set(this.dashLessons.filter(l=>l.att.in).map(l=>l.student_id)); return ids.size; },
     dashCheckedOut(){ const ids=new Set(this.dashLessons.filter(l=>l.att.out).map(l=>l.student_id)); return ids.size; },
+    dashReservations(){ const f=this.dashFilter; return (this.dashData.reservations||[]).filter(rv => !f.branch || rv.branch===f.branch); },
     dashAllDone(){ const ls=this.dashLessons; return ls.length>0 && ls.every(l=>this.isAbsent(l) || l.att.out); },
     nowClock(){ const d=new Date(this.clockNow); const p=x=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); },
     dashIsToday(){ return this.dashDate===this.todayStr; },
@@ -3094,8 +3110,8 @@ createApp({
       this.loadLeads();
     },
     async deleteLead(r){
-      if (!window.confirm('이 상담을 삭제하시겠습니까?')) return;
-      try { await api('POST','/api/admin/academy/lead/delete', { lead_id:r.id, hidden:true }); this.notify('삭제되었습니다.'); this.loadLeads(); }
+      if (!window.confirm('이 상담을 목록에서 숨기시겠습니까? (영구 삭제가 아니라 숨김 처리됩니다)')) return;
+      try { await api('POST','/api/admin/academy/lead/delete', { lead_id:r.id, hidden:true }); this.notify('숨김 처리되었습니다.'); this.loadLeads(); }
       catch(e){ this.notify(e.message,false); }
     },
     async restoreLead(r){

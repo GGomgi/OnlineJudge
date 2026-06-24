@@ -2317,9 +2317,24 @@ class DashboardAdminAPI(APIView):
                                  "note_tag": a.note_tag, "note": a.note}
         for l in lessons:
             l["att"] = att.get(l["student_id"], {"in": "", "out": "", "note_tag": "", "note": ""})
+        # 그날 상담 예약(KST 하루) — 위쪽 상담 일정 섹션용
+        day_lo = _kst_to_utc(d, "00:00")
+        day_hi = _kst_to_utc(d + timedelta(days=1), "00:00")
+        rq = CounselReservation.objects.select_related("lead", "lead__branch").filter(
+            status="ACTIVE", scheduled_at__gte=day_lo, scheduled_at__lt=day_hi)
+        if view is not None:
+            rq = rq.filter(lead__branch_id__in=view)
+        if bid:
+            rq = rq.filter(lead__branch_id=bid)
+        reservations = []
+        for rv in rq.order_by("scheduled_at"):
+            reservations.append({
+                "id": rv.id, "lead_id": rv.lead_id, "time": _hm_kst(rv.scheduled_at),
+                "student_name": rv.lead.student_name, "parent_name": rv.lead.parent_name,
+                "branch": (rv.lead.branch.name if rv.lead.branch_id else ""), "note": rv.note})
         WD = ["월", "화", "수", "목", "금", "토", "일"]
         return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
-                             "total": len(lessons), "present": len(att)})
+                             "total": len(lessons), "present": len(att), "reservations": reservations})
 
 
 def _kst_to_utc(d, hm):
