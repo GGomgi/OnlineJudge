@@ -46,6 +46,13 @@
     <span v-if="notePop.note">{{ notePop.note }}</span><span v-else class="text-slate-400">사유 없음</span>
   </div>
 
+  <!-- 상담예약중 배지 호버: 예약 일시 + 메모 -->
+  <div v-if="resvPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-60 pointer-events-none" :style="{ left: resvPop.x+'px', top: resvPop.y+'px' }">
+    <div class="font-semibold text-amber-600">📅 {{ resvPop.at }}</div>
+    <div class="mt-1 text-slate-600 whitespace-pre-wrap">{{ resvPop.note || '메모 없음' }}</div>
+    <div v-if="resvPop.by" class="mt-1 text-[11px] text-slate-400">{{ resvPop.by }}</div>
+  </div>
+
   <!-- 대시보드 학생 호버 팝오버 -->
   <div v-if="dashPop.show" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
     <div class="font-bold text-sm mb-1">{{ dashPop.l.student_name }}</div>
@@ -600,7 +607,8 @@
               <div class="text-xs text-slate-400">{{ dt(r.create_time) }}</div>
               <div class="mt-2 flex items-center justify-end gap-1">
                 <span v-if="r.display_status==='상담예약중' && nextReservation(r)" class="text-[11px] text-amber-600">📅 {{ dt(nextReservation(r).scheduled_at) }}</span>
-                <span :class="['inline-block px-2 py-0.5 rounded text-xs', leadChip(r).cls]">{{ leadChip(r).label }}</span>
+                <span :class="['inline-block px-2 py-0.5 rounded text-xs', leadChip(r).cls, r.display_status==='상담예약중' ? 'cursor-help' : '']"
+                      @mouseenter="r.display_status==='상담예약중' && nextReservation(r) && showResvPop(r,$event)" @mouseleave="hideResvPop">{{ leadChip(r).label }}</span>
               </div>
               <div v-if="r.status==='CONVERTED'" class="text-[11px] text-emerald-600 mt-1">@{{ r.converted_username }}</div>
               <div class="mt-1">
@@ -2084,6 +2092,7 @@ createApp({
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteTime: { date:'', ampm:'오전', hour:'', min:'00' }, showDeletedLeads: null, editLogId: null, editLogText: '',
       resvForm: { date:'', ampm:'오전', hour:'', min:'00', note:'' },
+      resvPop: { show:false, x:0, y:0, at:'', note:'', by:'' },
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
       convertingLead: null, convertError: '',
@@ -3406,6 +3415,8 @@ createApp({
       catch(e){ this.notify(e.message,false); }
     },
     nextReservation(r){ return (r.reservations||[]).find(rv => !rv.is_past) || null; },
+    showResvPop(r,e){ const rv=this.nextReservation(r); if(!rv) return; this.resvPop={ show:true, at:this.dt(rv.scheduled_at), note:rv.note, by:rv.created_by||'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
+    hideResvPop(){ this.resvPop.show=false; },
     leadChip(r){ return ({
       '상담':{label:'상담',cls:'bg-sky-50 text-sky-700'},
       '상담예약중':{label:'상담예약중',cls:'bg-amber-50 text-amber-700'},
