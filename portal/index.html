@@ -53,6 +53,17 @@
     <div v-if="resvPop.by || resvPop.created" class="mt-1 text-[11px] text-slate-400">{{ resvPop.by }}<span v-if="resvPop.created"> · {{ dt(resvPop.created) }} 작성</span></div>
   </div>
 
+  <!-- 휴원/퇴원 상태 이력 호버 팝오버 -->
+  <div v-if="statusPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72 pointer-events-none" :style="{ left: statusPop.x+'px', top: statusPop.y+'px' }">
+    <div class="font-semibold mb-1">{{ statusPop.name }} · 상태 이력</div>
+    <ul class="space-y-1">
+      <li v-for="(h,i) in statusPop.list" :key="i" class="flex gap-2">
+        <span class="text-slate-400 shrink-0 w-20">{{ h.date }}</span>
+        <span class="flex-1"><b>{{ stuStatusBadge(h.from).label }}</b> → <b>{{ stuStatusBadge(h.to).label }}</b><span v-if="h.reason" class="text-slate-500"> · {{ h.reason }}</span><span v-if="h.actor" class="text-slate-400"> ({{ h.actor }})</span></span>
+      </li>
+    </ul>
+  </div>
+
   <!-- 대시보드 학생 호버 팝오버 -->
   <div v-if="dashPop.show" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
     <div class="font-bold text-sm mb-1">{{ dashPop.l.student_name }}</div>
@@ -1156,7 +1167,7 @@
                 <span v-if="siblingCount(s)>=2" @mouseenter="showSiblings(s,$event)" @mouseleave="scheduleCloseSib" class="cursor-pointer hover:underline text-indigo-600">{{ s.parent_name || '-' }} <span class="text-xs text-indigo-400">(형제 {{ siblingCount(s) }})</span></span>
                 <span v-else>{{ s.parent_name || '-' }}</span>
               </td>
-              <td class="px-3 py-2"><span :class="['px-2 py-0.5 rounded text-xs', stuStatusBadge(s.enrollment_status).cls]">{{ stuStatusBadge(s.enrollment_status).label }}</span></td>
+              <td class="px-3 py-2"><span :class="['px-2 py-0.5 rounded text-xs', stuStatusBadge(s.enrollment_status).cls, (s.status_history&&s.status_history.length) ? 'cursor-help' : '']" @mouseenter="(s.status_history&&s.status_history.length) && showStatusPop(s,$event)" @mouseleave="hideStatusPop">{{ stuStatusBadge(s.enrollment_status).label }}</span></td>
               <td class="px-3 py-2 text-right"><button @click="openStudent(s)" class="text-xs text-indigo-600 hover:underline">상세</button></td>
             </tr>
             <tr v-if="filteredStudents.length===0"><td :colspan="showBranchCol?10:9" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 학생이 없습니다.</td></tr>
@@ -1237,10 +1248,12 @@
             <!-- 상담 타임라인 -->
             <div v-if="stuTab==='counsel'" class="space-y-3">
               <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
-                <div class="flex flex-wrap gap-2 items-center">
-                  <select v-model="stuNoteChannel" class="input w-24 py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select>
-                  <input v-model="stuNoteCounselAt" type="datetime-local" class="input w-52 py-1" />
-                  <span class="text-xs text-slate-400">상담 방법 · 일시</span>
+                <div class="flex gap-2 items-center flex-wrap">
+                  <div class="w-20 shrink-0"><select v-model="stuNoteChannel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
+                  <div class="w-32 shrink-0"><input v-model="stuNoteTime.date" type="date" class="input py-1" /></div>
+                  <div class="w-20 shrink-0"><select v-model="stuNoteTime.ampm" class="input py-1"><option>오전</option><option>오후</option></select></div>
+                  <div class="w-16 shrink-0"><select v-model="stuNoteTime.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in 12" :key="h" :value="h">{{ h }}시</option></select></div>
+                  <div class="w-20 shrink-0"><select v-model="stuNoteTime.min" class="input py-1"><option v-for="m in minOptions" :key="m" :value="m">{{ m }}분</option></select></div>
                 </div>
                 <textarea v-model="stuNoteText" rows="2" placeholder="상담 내용 입력" class="input"></textarea>
                 <div class="flex justify-end"><button @click="addStuNote" class="btn-secondary text-sm">기록 추가</button></div>
@@ -2091,9 +2104,10 @@ createApp({
       docPreview: { show:false, url:'', x:0, y:0 },
       students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
+      statusPop: { show:false, x:0, y:0, name:'', list:[] },
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'guardian',l:'보호자'}],
-      stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteCounselAt: '', stuEditLogId: null, stuEditLogText: '',
+      stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '',
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
@@ -3288,6 +3302,8 @@ createApp({
     sortStu(k){ if (this.stuSortKey===k) this.stuSortDir = this.stuSortDir==='asc'?'desc':'asc'; else { this.stuSortKey=k; this.stuSortDir='asc'; } },
     stuArrow(k){ return this.stuSortKey===k ? (this.stuSortDir==='asc'?' ▲':' ▼') : ''; },
     stuStatusBadge(s){ return ({ENROLLED:{label:'재원',cls:'bg-emerald-50 text-emerald-700'},ON_LEAVE:{label:'휴원',cls:'bg-amber-50 text-amber-700'},WITHDRAWN:{label:'퇴원',cls:'bg-slate-100 text-slate-500'}})[s] || {label:s||'-',cls:'bg-slate-100 text-slate-500'}; },
+    showStatusPop(s,e){ this.statusPop={ show:true, name:(s.real_name||s.username), list:(s.status_history||[]), x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
+    hideStatusPop(){ this.statusPop.show=false; },
     async openStudent(s){
       try {
         const d = await api('GET','/api/admin/academy/student_detail/info?student_id='+s.id);
@@ -3297,7 +3313,7 @@ createApp({
         this.buildStuTimetables(d);
         if (!this.ttInstructors.length) this.loadTtInstructors();
         if (!(this.options.program||[]).length) this.loadOptions();
-        this.stuNoteText=''; this.stuNoteChannel='VISIT'; this.stuNoteCounselAt=this.nowLocal(); this.stuEditLogId=null;
+        this.stuNoteText=''; this.stuNoteChannel='VISIT'; this.stuNoteTime=this.nowParts(); this.stuEditLogId=null;
         this.stuStatusNew = d.enrollment_status==='ENROLLED' ? 'ON_LEAVE' : 'ENROLLED';
         this.stuStatusReason=''; this.stuStatusDate=this.todayStr;
         this.gdForm = { parent_name:'', parent_phone:'', relation:'', password:'' };
@@ -3336,10 +3352,11 @@ createApp({
       if (!this.stuNoteText.trim()) return;
       try {
         const body = { student_id:this.stuDetail.id, summary:this.stuNoteText, channel:this.stuNoteChannel };
-        if (this.stuNoteCounselAt) body.counsel_at = this.stuNoteCounselAt;
+        const cAt = this.composeAt(this.stuNoteTime);
+        if (cAt) body.counsel_at = cAt;
         const lead = await api('POST','/api/admin/academy/student_counsel', body);
         this.stuDetail.lead = lead; this.stuDetail.lead_id = lead.id;
-        this.stuNoteText=''; this.stuNoteCounselAt=this.nowLocal(); this.stuNoteChannel='VISIT';
+        this.stuNoteText=''; this.stuNoteTime=this.nowParts(); this.stuNoteChannel='VISIT';
         this.notify('상담 기록이 추가되었습니다.');
       } catch(e){ this.notify(e.message,false); }
     },

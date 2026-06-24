@@ -1545,7 +1545,22 @@ class StudentListAdminAPI(APIView):
                         "weekly_sessions": (sp.weekly_sessions if sp else None),
                         "guardian_count": gcounts.get(u.id, 0),
                         "subjects": subj_map.get(u.id, []),
-                        "slot_count": counts.get(u.id, 0)})
+                        "slot_count": counts.get(u.id, 0),
+                        "status_history": []})
+        # 휴원/퇴원 학생은 상태 변경 이력을 함께 내려 목록에서 호버로 보기
+        non_enrolled = [r["id"] for r in out
+                        if r["enrollment_status"] in (EnrollmentStatus.ON_LEAVE, EnrollmentStatus.WITHDRAWN)]
+        if non_enrolled:
+            hist = {}
+            for c in StudentStatusChange.objects.select_related("actor").filter(
+                    student_id__in=non_enrolled).order_by("-create_time"):
+                hist.setdefault(c.student_id, []).append({
+                    "from": c.from_status, "to": c.to_status, "reason": c.reason,
+                    "date": (str(c.effective_date) if c.effective_date else str(c.create_time)[:10]),
+                    "actor": (_name_of(c.actor) if c.actor_id else "")})
+            for r in out:
+                if r["id"] in hist:
+                    r["status_history"] = hist[r["id"]]
         return self.success(out)
 
 
