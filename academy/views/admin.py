@@ -2360,6 +2360,61 @@ class AttendanceNoteAdminAPI(APIView):
         return self.success(out)
 
 
+class TimetableCalendarAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """월간/주간 달력용 일자별 수업 집계. month=YYYY-MM 또는 from/to.
+        student_id 주면 해당 학생만(보강 추가 달력용)."""
+        view = viewable_branch_ids(request.user)
+        sid = request.GET.get("student_id")
+        m = request.GET.get("month")
+        if m:
+            y, mo = m.split("-")
+            d0 = date_cls(int(y), int(mo), 1)
+            d1 = date_cls(int(y) + (mo == "12"), (int(mo) % 12) + 1, 1) - timedelta(days=1)
+        else:
+            try:
+                d0 = datetime.strptime(request.GET.get("from"), "%Y-%m-%d").date()
+                d1 = datetime.strptime(request.GET.get("to"), "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                d0 = now().date().replace(day=1)
+                d1 = d0 + timedelta(days=30)
+        # 패턴 시간표를 기간 내 날짜로 펼침(생성 없이 계산만)
+        slots = StudentTimetable.objects.select_related("branch").filter(status="ACTIVE")
+        if sid:
+            slots = slots.filter(student_id=sid)
+        if view is not None:
+            slots = slots.filter(branch_id__in=view)
+        slots = list(slots)
+        days = {}
+        cur = d0
+        while cur <= d1:
+            wd = cur.weekday()
+            items = []
+            for s in slots:
+                if s.weekday != wd:
+                    continue
+                if s.frequency == "BIWEEKLY" and s.active_from and ((cur - s.active_from).days // 7) % 2 != 0:
+                    continue
+                items.append({"timetable_id": s.id, "start_time": str(s.start_time)[:5],
+                              "subject": s.subject or resolve_program_label(s.program) or "미지정",
+                              "weekday": s.weekday, "program": s.program})
+            # 보강(makeup) 인스턴스도 포함
+            mk = LessonOccurrence.objects.filter(date=cur, is_makeup=True)
+            if sid:
+                mk = mk.filter(student_id=sid)
+            if view is not None:
+                mk = mk.filter(branch_id__in=view)
+            for o in mk:
+                items.append({"timetable_id": None, "start_time": str(o.start_time)[:5],
+                              "subject": (o.subject or "보강") + " (보강)", "makeup": True})
+            if items:
+                items.sort(key=lambda x: x["start_time"])
+                days[str(cur)] = {"count": len(items), "items": items}
+            cur += timedelta(days=1)
+        return self.success({"from": str(d0), "to": str(d1), "days": days})
+
+
 class LessonStatusAdminAPI(APIView):
     @admin_role_required
     def post(self, request):
