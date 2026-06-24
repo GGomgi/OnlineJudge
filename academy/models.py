@@ -504,6 +504,23 @@ class StudentStatusChange(models.Model):
         ordering = ["-create_time"]
 
 
+class DailyAttendance(models.Model):
+    """일일 등원/하원 출결(개별 수업 운영용). 학생·날짜 1건."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="daily_attendances")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="+")
+    date = models.DateField()
+    check_in_at = models.DateTimeField(null=True, blank=True)
+    check_out_at = models.DateTimeField(null=True, blank=True)
+    note = models.CharField(max_length=255, blank=True, default="")
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_daily_attendance"
+        unique_together = ("student", "date")
+
+
 class StaffChangeLog(models.Model):
     """직원 변경 이력 통합(역할/지점/활성·비활성/사번 재발급). 사유 포함."""
     staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,

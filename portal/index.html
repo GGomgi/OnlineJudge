@@ -339,6 +339,55 @@
       </div>
     </section>
 
+    <!-- ============ 관리자: 오늘 운영 대시보드 ============ -->
+    <section v-if="tab==='dashboard'">
+      <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h2 class="text-lg font-bold">오늘 운영 <span class="text-sm font-normal text-slate-400">(수업 · 등원/하원)</span></h2>
+        <div class="flex items-center gap-2">
+          <button @click="dashShift(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500">◀</button>
+          <input v-model="dashDate" @change="loadDashboard" type="date" class="input w-40 py-1" />
+          <button @click="dashShift(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500">▶</button>
+          <button @click="dashToday" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-sm">오늘</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 mb-3 text-sm">
+        <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-600">{{ dashData.weekday ? dashData.weekday+'요일' : '' }}</span>
+        <span class="text-slate-500">수업 <b>{{ dashData.total||0 }}</b>건</span>
+        <span class="text-emerald-600">등원 <b>{{ dashCheckedIn }}</b>명</span>
+        <span class="text-indigo-600">하원 <b>{{ dashCheckedOut }}</b>명</span>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs">
+            <tr>
+              <th class="text-left px-3 py-2 w-20">시각</th>
+              <th class="text-left px-3 py-2">학생</th>
+              <th class="text-left px-3 py-2">과목</th>
+              <th class="text-left px-3 py-2">강사</th>
+              <th v-if="showBranchCol" class="text-left px-3 py-2">지점</th>
+              <th class="text-center px-3 py-2 w-44">등원 / 하원</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(l,i) in dashData.lessons" :key="i" class="border-t align-middle hover:bg-slate-50">
+              <td class="px-3 py-2 font-mono whitespace-nowrap">{{ l.start_time }}</td>
+              <td class="px-3 py-2 font-medium whitespace-nowrap">{{ l.student_name }}</td>
+              <td class="px-3 py-2 text-slate-500">{{ l.subject }}</td>
+              <td class="px-3 py-2 text-slate-500">{{ l.instructor }}</td>
+              <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
+              <td class="px-3 py-2">
+                <div class="flex items-center justify-center gap-1">
+                  <button @click="checkAtt(l,'in')" :class="['text-xs px-2 py-1 rounded', l.att.in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50']">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
+                  <button @click="checkAtt(l,'out')" :class="['text-xs px-2 py-1 rounded', l.att.out ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50']">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="(dashData.lessons||[]).length===0"><td :colspan="showBranchCol?6:5" class="px-3 py-8 text-center text-sm text-slate-400">이 날짜에 수업이 없습니다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- ============ 관리자: 상담·등록 ============ -->
     <section v-if="tab==='leadmgr' && !convertingLead && !showLeadForm">
       <div class="flex items-center justify-between mb-3 gap-2">
@@ -1778,6 +1827,7 @@ createApp({
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
+      dashDate: '', dashData: { lessons:[], weekday:'', total:0 },
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
@@ -1873,6 +1923,8 @@ createApp({
       const p = this.myProfile;
       return !!(p && (p.edit_all_branch || (p.editable_branch_ids||[]).length));
     },
+    dashCheckedIn(){ const ids=new Set((this.dashData.lessons||[]).filter(l=>l.att.in).map(l=>l.student_id)); return ids.size; },
+    dashCheckedOut(){ const ids=new Set((this.dashData.lessons||[]).filter(l=>l.att.out).map(l=>l.student_id)); return ids.size; },
     ttUnassignedCount(){
       // 재원이면서 개별 시간표 슬롯이 없는 학생 수(수업 추가 대상)
       return this.students.filter(s => s.enrollment_status==='ENROLLED' && !s.slot_count).length;
@@ -2024,7 +2076,7 @@ createApp({
     tabs(){
       if (!this.me) return [ {key:'login',label:'로그인'}, {key:'lead',label:'상담 신청'} ];
       if (this.isStaff){
-        const t = [ {key:'leadmgr',label:'신규 상담·등록'}, {key:'students',label:'학생 관리'}, {key:'indtt',label:'개별 시간표'}, {key:'classes',label:'그룹·특강'} ];
+        const t = [ {key:'dashboard',label:'오늘 운영'}, {key:'leadmgr',label:'신규 상담·등록'}, {key:'students',label:'학생 관리'}, {key:'indtt',label:'개별 시간표'}, {key:'classes',label:'그룹·특강'} ];
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
         t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ❗' : '')});
         if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
@@ -2082,6 +2134,7 @@ createApp({
       else if (key==='staff') this.loadStaff();
       else if (key==='options'){ this.loadOptionAdmin(); this.loadBranchAdmin(); }
       else if (key==='devlog') this.loadDevlog(true);
+      else if (key==='dashboard') this.loadDashboard();
       else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); this.loadStudents(); }
       else if (key==='students'){ this.loadStudents(); this.loadOptions(); }
       else if (key==='children') this.loadChildren();
@@ -2694,6 +2747,26 @@ createApp({
     sortTtCol(k){ if (this.ttSortKey===k) this.ttSortDir = this.ttSortDir==='asc'?'desc':'asc'; else { this.ttSortKey=k; this.ttSortDir='asc'; } },
     ttColArrow(k){ return this.ttSortKey===k ? (this.ttSortDir==='asc'?' ▲':' ▼') : ' ↕'; },
     nowLocal(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); },
+    // ── 오늘 운영 대시보드 ──
+    async loadDashboard(){
+      if (!this.dashDate) this.dashDate = this.todayStr;
+      try { this.dashData = await api('GET','/api/admin/academy/dashboard?date='+this.dashDate); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    dashToday(){ this.dashDate = this.todayStr; this.loadDashboard(); },
+    dashShift(n){
+      const d = new Date(this.dashDate+'T00:00:00'); d.setDate(d.getDate()+n);
+      this.dashDate = d.toISOString().slice(0,10); this.loadDashboard();
+    },
+    async checkAtt(l, kind){
+      const cur = kind==='in' ? l.att.in : l.att.out;
+      const clear = !!cur;  // 이미 찍혀 있으면 취소
+      try {
+        const r = await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, kind, date:this.dashDate, clear });
+        // 같은 학생의 모든 수업 행에 반영
+        for (const x of this.dashData.lessons){ if (x.student_id===l.student_id) x.att = { in:r.in, out:r.out }; }
+      } catch(e){ this.notify(e.message,false); }
+    },
     // ── 학생 관리 ──
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
     siblingCount(s){ const k=(s.parent_phone||'').replace(/\D/g,''); return k ? (this.siblingGroups[k]||[]).length : 1; },

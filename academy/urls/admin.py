@@ -13,7 +13,8 @@ from ..views.admin import (AssignRoleAPI, StaffAdminAPI, StaffStatusAPI, StaffDe
                            ClassEnrollmentAdminAPI, TimetableSlotAdminAPI,
                            ClassSessionAdminAPI, GenerateSessionsAPI,
                            AttendanceAdminAPI, LeadAdminAPI, CounselingNoteAdminAPI,
-                           ConvertLeadAdminAPI, CloseLeadAdminAPI, DevLogAdminAPI)
+                           ConvertLeadAdminAPI, CloseLeadAdminAPI, DevLogAdminAPI,
+                           DashboardAdminAPI, AttendanceCheckAdminAPI)
 
 urlpatterns = [
     url(r"^academy/staff/?$", StaffAdminAPI.as_view(), name="academy_staff"),
@@ -53,4 +54,6 @@ urlpatterns = [
     url(r"^academy/session/generate/?$", GenerateSessionsAPI.as_view(), name="academy_session_generate"),
     url(r"^academy/attendance/?$", AttendanceAdminAPI.as_view(), name="academy_attendance"),
     url(r"^academy/devlog/?$", DevLogAdminAPI.as_view(), name="academy_devlog"),
+    url(r"^academy/dashboard/?$", DashboardAdminAPI.as_view(), name="academy_dashboard"),
+    url(r"^academy/attendance_check/?$", AttendanceCheckAdminAPI.as_view(), name="academy_attendance_check"),
 ]

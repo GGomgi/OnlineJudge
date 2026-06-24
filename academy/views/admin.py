@@ -23,7 +23,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       Lead, LeadStatus, CounselingLog, CounselingLogEdit, StudentProfile, EnrollmentStatus,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
-                      TimetableChange, StudentStatusChange, StaffChangeLog)
+                      TimetableChange, StudentStatusChange, StaffChangeLog, DailyAttendance)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 import os as _os
 from django.conf import settings as _settings
@@ -2167,3 +2167,89 @@ class DevLogAdminAPI(APIView):
         start = max(0, end - limit)
         return self.success({"items": items[start:end], "start": start,
                              "has_more": start > 0, "total": total})
+
+
+# ── 일일 운영 대시보드(오늘 수업 + 등원/하원 출결) ──
+
+def _hm_kst(dt):
+    """저장된 UTC datetime을 KST(+9) HH:MM 문자열로."""
+    if not dt:
+        return ""
+    return (dt + timedelta(hours=9)).strftime("%H:%M")
+
+
+class DashboardAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """지정일(기본 오늘)의 개별 수업 + 등원/하원 출결."""
+        ds = request.GET.get("date")
+        try:
+            d = datetime.strptime(ds, "%Y-%m-%d").date() if ds else now().date()
+        except (TypeError, ValueError):
+            d = now().date()
+        wd = d.weekday()
+        view = viewable_branch_ids(request.user)  # None=전체
+        slots = StudentTimetable.objects.select_related("student", "instructor", "branch").filter(
+            weekday=wd, status="ACTIVE")
+        if view is not None:
+            slots = slots.filter(branch_id__in=view)
+        bid = request.GET.get("branch_id")
+        if bid:
+            slots = slots.filter(branch_id=bid)
+        slots = slots.order_by("start_time")
+
+        lessons = []
+        sids = set()
+        for s in slots:
+            # 격주: active_from 기준 짝수 주만
+            if s.frequency == "BIWEEKLY" and s.active_from:
+                if ((d - s.active_from).days // 7) % 2 != 0:
+                    continue
+            sids.add(s.student_id)
+            try:
+                sname = s.student.userprofile.real_name or s.student.username
+            except Exception:
+                sname = s.student.username
+            lessons.append({
+                "student_id": s.student_id, "student_name": sname,
+                "start_time": str(s.start_time)[:5], "duration_minutes": s.duration_minutes,
+                "subject": s.subject or resolve_program_label(s.program) or "미지정",
+                "instructor": _name_of(s.instructor) if s.instructor_id else "미배정",
+                "branch": (s.branch.name if s.branch_id else ""),
+            })
+        att = {}
+        for a in DailyAttendance.objects.filter(date=d, student_id__in=sids):
+            att[a.student_id] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)}
+        for l in lessons:
+            l["att"] = att.get(l["student_id"], {"in": "", "out": ""})
+        WD = ["월", "화", "수", "목", "금", "토", "일"]
+        return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
+                             "total": len(lessons), "present": len(att)})
+
+
+class AttendanceCheckAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """등원/하원 체크. {student_id, kind:'in'|'out', date?, clear?}"""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        try:
+            d = datetime.strptime(data.get("date"), "%Y-%m-%d").date() if data.get("date") else now().date()
+        except (TypeError, ValueError):
+            d = now().date()
+        a, _ = DailyAttendance.objects.get_or_create(
+            student=u, date=d, defaults={"branch": (prof.branch if prof and prof.branch_id else None)})
+        clear = bool(data.get("clear"))
+        if data.get("kind") == "in":
+            a.check_in_at = None if clear else now()
+        elif data.get("kind") == "out":
+            a.check_out_at = None if clear else now()
+        else:
+            return self.error("kind 값이 올바르지 않습니다.")
+        a.save()
+        return self.success({"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)})
