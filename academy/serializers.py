@@ -318,7 +318,7 @@ class LeadSerializer(serializers.ModelSerializer):
         for r in obj.reservations.all():
             if r.status != "ACTIVE":
                 continue
-            out.append({"id": r.id, "scheduled_at": r.scheduled_at,
+            out.append({"id": r.id, "scheduled_at": r.scheduled_at.isoformat() if r.scheduled_at else None,
                         "note": r.note, "created_by": self._name(r.created_by),
                         "is_past": bool(r.scheduled_at and r.scheduled_at < now())})
         return out
