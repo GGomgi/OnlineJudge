@@ -1119,9 +1119,18 @@ class CounselingNoteAdminAPI(APIView):
 class ReservationAdminAPI(APIView):
     @admin_role_required
     def post(self, request):
-        """상담 예약 추가. {lead_id, date'YYYY-MM-DD', time'HH:MM', note?}. 등록 후에도 계속 가능."""
+        """상담 예약 추가. {lead_id 또는 student_id, at 또는 date+time, note?}. 등록 후에도 계속 가능."""
         data = request.data
-        lead = Lead.objects.filter(id=data.get("lead_id")).first()
+        if data.get("student_id") and not data.get("lead_id"):
+            u = User.objects.filter(id=data.get("student_id")).first()
+            if not u:
+                return self.error("학생이 없습니다.")
+            prof = getattr(u, "academy_profile", None)
+            if prof and not can_manage_branch(request.user, prof.branch_id):
+                return self.error("No permission for this branch")
+            lead = _get_or_create_student_lead(u)
+        else:
+            lead = Lead.objects.filter(id=data.get("lead_id")).first()
         if not lead:
             return self.error("상담 신청이 없습니다.")
         if not can_manage_branch(request.user, lead.branch_id):

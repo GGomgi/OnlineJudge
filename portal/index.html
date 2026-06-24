@@ -1291,6 +1291,31 @@
                 </li>
                 <li v-if="!stuDetail.lead || stuDetail.lead.logs.length===0" class="text-xs text-slate-400">상담 기록이 없습니다.</li>
               </ul>
+
+              <!-- 상담 예약(여러 건) -->
+              <div class="border-t pt-3">
+                <div class="text-xs font-semibold text-slate-500 mb-1">상담 예약</div>
+                <ul class="space-y-1">
+                  <li v-for="rv in (stuDetail.lead ? (stuDetail.lead.reservations||[]) : [])" :key="rv.id" class="flex items-center gap-2 text-sm rounded px-3 py-1.5" :class="rv.is_past ? 'bg-slate-50 text-slate-400' : 'bg-amber-50'">
+                    <span class="font-medium">{{ dt(rv.scheduled_at) }}</span>
+                    <span class="text-[11px]" :class="rv.is_past ? 'text-slate-400' : 'text-amber-600'">{{ rv.is_past ? '지난 예약' : '예약' }}</span>
+                    <span v-if="rv.note" class="text-xs text-slate-500">· {{ rv.note }}</span>
+                    <span class="ml-auto text-[11px] text-slate-400">{{ rv.created_by }}</span>
+                    <button v-if="stuCanEdit" @click="cancelStuReservation(rv)" class="text-[11px] text-rose-400 hover:underline">취소</button>
+                  </li>
+                  <li v-if="!stuDetail.lead || !(stuDetail.lead.reservations||[]).length" class="text-xs text-slate-400">예약 없음</li>
+                </ul>
+                <div v-if="stuCanEdit" class="mt-2 space-y-2">
+                  <div class="flex gap-2 items-center flex-wrap">
+                    <div class="w-32 shrink-0"><input v-model="stuResvForm.date" type="date" class="input py-1" /></div>
+                    <div class="w-20 shrink-0"><select v-model="stuResvForm.ampm" class="input py-1"><option>오전</option><option>오후</option></select></div>
+                    <div class="w-16 shrink-0"><select v-model="stuResvForm.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in 12" :key="h" :value="h">{{ h }}시</option></select></div>
+                    <div class="w-20 shrink-0"><select v-model="stuResvForm.min" class="input py-1"><option v-for="m in minOptions" :key="m" :value="m">{{ m }}분</option></select></div>
+                  </div>
+                  <textarea v-model="stuResvForm.note" rows="2" placeholder="메모(선택)" class="input py-1"></textarea>
+                  <div class="flex justify-end"><button @click="addStuReservation" class="btn-secondary text-sm">예약 추가</button></div>
+                </div>
+              </div>
             </div>
 
             <!-- 상태 이력 -->
@@ -2128,6 +2153,7 @@ createApp({
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'guardian',l:'보호자'},{k:'cred',l:'아이디 관리'}],
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '',
+      stuResvForm: { date:'', ampm:'오전', hour:'', min:'00', note:'' },
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
@@ -3317,6 +3343,8 @@ createApp({
     async saveStuCred(c){ try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, id:c.id, site:c.site, login_id:c.login_id, password:c.password }); c._orig={ site:c.site, login_id:c.login_id, password:c.password }; this.notify('수정되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async addStuCred(){ const n=this.stuCredNew; if(!((n.site||'').trim()||(n.login_id||'').trim()||(n.password||'').trim())) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, site:n.site, login_id:n.login_id, password:n.password }); this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds(); this.notify('추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async deleteStuCred(c){ if(!confirm('이 사이트 계정을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/student_credential?id='+c.id); this.loadStuCreds(); this.notify('삭제되었습니다.'); } catch(e){ this.notify(e.message,false); } },
+    async addStuReservation(){ const f=this.stuResvForm; const at=this.composeAt(f); if(!at) return this.notify('예약 날짜와 시(시각)를 선택하세요.', false); try { const lead=await api('POST','/api/admin/academy/lead/reservation', { student_id:this.stuDetail.id, at, note:f.note }); this.stuDetail.lead=lead; this.stuDetail.lead_id=lead.id; this.stuResvForm={ date:'', ampm:'오전', hour:'', min:'00', note:'' }; this.notify('상담 예약이 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
+    async cancelStuReservation(rv){ if(!confirm('이 예약을 취소할까요?')) return; try { const lead=await api('DELETE','/api/admin/academy/lead/reservation?reservation_id='+rv.id); this.stuDetail.lead=lead; this.notify('예약이 취소되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     siblingCount(s){ const k=(s.parent_phone||'').replace(/\D/g,''); return k ? (this.siblingGroups[k]||[]).length : 1; },
     showSiblings(s, e){
       clearTimeout(this._sibTimer);
@@ -3344,6 +3372,7 @@ createApp({
         this.stuStatusReason=''; this.stuStatusDate=this.todayStr;
         this.gdForm = { parent_name:'', parent_phone:'', relation:'', password:'' };
         this.stuCreds=[]; this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds();
+        this.stuResvForm={ date:'', ampm:'오전', hour:'', min:'00', note:'' };
       } catch(e){ this.notify(e.message,false); }
     },
     buildStuTimetables(d){
