@@ -2201,10 +2201,6 @@ class DashboardAdminAPI(APIView):
         lessons = []
         sids = set()
         for s in slots:
-            # 격주: active_from 기준 짝수 주만
-            if s.frequency == "BIWEEKLY" and s.active_from:
-                if ((d - s.active_from).days // 7) % 2 != 0:
-                    continue
             sids.add(s.student_id)
             try:
                 sname = s.student.userprofile.real_name or s.student.username
@@ -2216,6 +2212,7 @@ class DashboardAdminAPI(APIView):
                 "subject": s.subject or resolve_program_label(s.program) or "미지정",
                 "instructor": _name_of(s.instructor) if s.instructor_id else "미배정",
                 "branch": (s.branch.name if s.branch_id else ""),
+                "biweekly": s.frequency == "BIWEEKLY",
             })
         att = {}
         for a in DailyAttendance.objects.filter(date=d, student_id__in=sids):

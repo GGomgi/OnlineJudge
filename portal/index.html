@@ -344,10 +344,10 @@
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 class="text-lg font-bold">오늘 운영 <span class="text-sm font-normal text-slate-400">(수업 · 등원/하원)</span></h2>
         <div class="flex items-center gap-2">
-          <button @click="dashShift(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500">◀</button>
-          <input v-model="dashDate" @change="loadDashboard" type="date" class="input w-40 py-1" />
-          <button @click="dashShift(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500">▶</button>
-          <button @click="dashToday" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-sm">오늘</button>
+          <button @click="dashShift(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 shrink-0">◀</button>
+          <div class="w-40 shrink-0"><input v-model="dashDate" @change="loadDashboard" type="date" class="input py-1" /></div>
+          <button @click="dashShift(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 shrink-0">▶</button>
+          <button @click="dashToday" class="px-3 py-1 rounded border border-slate-200 text-slate-500 text-sm shrink-0 whitespace-nowrap">오늘</button>
         </div>
       </div>
       <div class="flex items-center gap-3 mb-3 text-sm">
@@ -371,14 +371,14 @@
           <tbody>
             <tr v-for="(l,i) in dashData.lessons" :key="i" class="border-t align-middle hover:bg-slate-50">
               <td class="px-3 py-2 font-mono whitespace-nowrap">{{ l.start_time }}</td>
-              <td class="px-3 py-2 font-medium whitespace-nowrap">{{ l.student_name }}</td>
+              <td class="px-3 py-2 font-medium whitespace-nowrap">{{ l.student_name }}<span v-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span></td>
               <td class="px-3 py-2 text-slate-500">{{ l.subject }}</td>
-              <td class="px-3 py-2 text-slate-500">{{ l.instructor }}</td>
+              <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
               <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
               <td class="px-3 py-2">
                 <div class="flex items-center justify-center gap-1">
                   <button @click="checkAtt(l,'in')" :class="['text-xs px-2 py-1 rounded', l.att.in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50']">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
-                  <button @click="checkAtt(l,'out')" :class="['text-xs px-2 py-1 rounded', l.att.out ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50']">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
+                  <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
                 </div>
               </td>
             </tr>
@@ -776,7 +776,7 @@
               <td class="px-2 py-2"><input v-model="r.start_time" type="time" class="input py-1 w-28" /></td>
               <td class="px-2 py-2"><select v-model.number="r.duration_minutes" class="input py-1 w-24 px-2"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
               <td class="px-2 py-2"><select v-model="r.program" class="input py-1 w-32 px-2"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></td>
-              <td class="px-2 py-2"><select v-model.number="r.instructor_id" class="input py-1 w-28 px-2"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></td>
+              <td class="px-2 py-2"><div class="flex items-center gap-1"><select v-model.number="r.instructor_id" :class="['input py-1 w-28 px-2', !r.instructor_id ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!r.instructor_id" class="text-rose-500 font-bold">!</span></div></td>
               <td class="px-2 py-2"><select v-model="r.frequency" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-2 py-2 text-right whitespace-nowrap">
                 <button v-if="i>0" @click="copyFromAbove(i)" class="text-xs text-indigo-600 hover:underline">위내용복사</button>
@@ -828,7 +828,7 @@
               <td class="px-3 py-2"><input v-model="s.start_time" :disabled="s.status==='ENDED'" type="time" :class="ttCls(s,'start_time','py-1 w-28')" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" :disabled="s.status==='ENDED'" :class="ttCls(s,'duration_minutes','py-1 w-24 px-2')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
               <td class="px-3 py-2"><select v-model="s.program" :disabled="s.status==='ENDED'" :class="ttCls(s,'program','py-1 w-32 px-2')"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></td>
-              <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" :disabled="s.status==='ENDED'" :class="ttCls(s,'instr','py-1 w-28 px-2')"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id && s.status!=='ENDED'" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
+              <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" :disabled="s.status==='ENDED'" :class="[ttCls(s,'instr','py-1 w-28 px-2'), (!s._instructor_id && s.status!=='ENDED') ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id && s.status!=='ENDED'" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
               <td class="px-3 py-2"><select v-model="s.frequency" :disabled="s.status==='ENDED'" :class="ttCls(s,'frequency','py-1 w-20 px-2')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
                 <template v-if="s.status!=='ENDED' && canEditBranch(s.branch && s.branch.id)">
@@ -949,7 +949,7 @@
                       <div class="w-28 shrink-0"><input v-model="s.start_time" type="time" :class="ttCls(s,'start_time','py-1 !pl-1 !pr-0')" /></div>
                       <div class="w-16 shrink-0"><select v-model.number="s.duration_minutes" :class="ttCls(s,'duration_minutes','py-1 !pl-1 !pr-0')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></div>
                       <div class="w-32 shrink-0"><select v-model="s.program" :class="ttCls(s,'program','py-1 !pl-1 !pr-0')"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
-                      <div class="w-20 shrink-0"><select v-model.number="s._instructor_id" :class="ttCls(s,'instr','py-1 !pl-1 !pr-0')"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
+                      <div class="w-20 shrink-0"><select v-model.number="s._instructor_id" :class="[ttCls(s,'instr','py-1 !pl-1 !pr-0'), !s._instructor_id ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
                       <div class="w-14 shrink-0"><select v-model="s.frequency" :class="ttCls(s,'frequency','py-1 !pl-1 !pr-0')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></div>
                       <span v-if="s.status==='PAUSED'" class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 shrink-0">휴원중지</span>
                       <span class="ml-auto flex gap-2 shrink-0 pl-1">
@@ -1093,7 +1093,7 @@
                 <li v-for="p in gdSearchList" :key="p.parent_id" class="flex items-start gap-2 bg-slate-50 rounded px-3 py-2">
                   <div class="min-w-0">
                     <div class="text-sm font-medium">{{ p.name || '(이름없음)' }} <span class="text-xs text-slate-400">{{ p.phone }}</span></div>
-                    <div class="text-xs text-slate-500">자녀: <span v-for="(c,i) in p.children" :key="c.id">{{ i>0?', ':'' }}{{ c.name }}({{ schoolLabel(c.school_type) }}{{ c.grade?' '+c.grade+'학년':'' }})</span><span v-if="!p.children.length">없음</span></div>
+                    <div class="text-xs text-slate-500">자녀: <span v-for="(c,i) in p.children" :key="c.id">{{ i>0?', ':'' }}{{ c.name }}({{ c.school_name }}{{ schoolSuffix(c.school_type) }}{{ c.grade?' '+c.grade+'학년':'' }})</span><span v-if="!p.children.length">없음</span></div>
                   </div>
                   <button @click="selectGuardian(p)" class="ml-auto shrink-0 text-xs px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700">연결</button>
                 </li>
@@ -1970,7 +1970,7 @@ createApp({
     filteredStudentModal(){
       const q = this.studentModalFilter.trim().toLowerCase();
       let list = this.studentModalList;
-      if (this.modalUnassignedOnly) list = list.filter(u=>(u.slot_count||0)===0);
+      if (this.modalUnassignedOnly) list = list.filter(u=>(u.slot_count||0)===0 && u.enrollment_status==='ENROLLED');
       if (q) list = list.filter(u=>((u.real_name||'')+' '+u.username).toLowerCase().includes(q));
       return list;
     },
@@ -2755,10 +2755,13 @@ createApp({
     },
     dashToday(){ this.dashDate = this.todayStr; this.loadDashboard(); },
     dashShift(n){
-      const d = new Date(this.dashDate+'T00:00:00'); d.setDate(d.getDate()+n);
-      this.dashDate = d.toISOString().slice(0,10); this.loadDashboard();
+      const d = new Date((this.dashDate||this.todayStr)+'T00:00:00'); d.setDate(d.getDate()+n);
+      const p = x => String(x).padStart(2,'0');
+      this.dashDate = d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+      this.loadDashboard();
     },
     async checkAtt(l, kind){
+      if (kind==='out' && !l.att.in) return this.notify('등원 후 하원할 수 있습니다.', false);
       const cur = kind==='in' ? l.att.in : l.att.out;
       const clear = !!cur;  // 이미 찍혀 있으면 취소
       try {
