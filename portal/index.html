@@ -40,6 +40,15 @@
     <img :src="docPreview.url" class="max-w-xs max-h-80 rounded" />
   </div>
 
+  <!-- 대시보드 학생 호버 팝오버 -->
+  <div v-if="dashPop.show" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
+    <div class="font-bold text-sm mb-1">{{ dashPop.l.student_name }}</div>
+    <div class="text-slate-500">{{ dashPop.l.school_name }}{{ schoolSuffix(dashPop.l.school_type) }} {{ dashPop.l.grade ? dashPop.l.grade+'학년' : '' }}</div>
+    <div class="mt-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span></div>
+    <div>학생: <span class="text-slate-600">{{ dashPop.l.student_phone || '-' }}</span></div>
+    <div v-if="dashPop.l.att.note_tag || dashPop.l.att.note" class="mt-1 pt-1 border-t">비고: <span v-if="dashPop.l.att.note_tag" class="px-1 rounded" :style="attTagStyle(dashPop.l.att.note_tag)">{{ attTagLabel(dashPop.l.att.note_tag) }}</span> <span class="text-slate-600">{{ dashPop.l.att.note }}</span></div>
+  </div>
+
   <!-- 형제(보호자 연결 학생) 호버 팝오버 -->
   <div v-if="sibPop.show" class="fixed z-50 bg-white rounded-lg shadow-xl border w-72 overflow-y-auto" style="max-height:18rem"
        :style="{ left: sibPop.x+'px', top: sibPop.y+'px' }"
@@ -352,39 +361,45 @@
           <button @click="dashToday" class="px-3 py-1 rounded border border-slate-200 text-slate-500 text-sm shrink-0 whitespace-nowrap">오늘</button>
         </div>
       </div>
-      <div class="flex items-center gap-3 mb-3 text-sm">
+      <div class="flex items-center gap-3 mb-2 text-sm flex-wrap">
         <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-600">{{ dashData.weekday ? dashData.weekday+'요일' : '' }}</span>
-        <span class="text-slate-500">수업 <b>{{ dashData.total||0 }}</b>건</span>
+        <span class="text-slate-500">수업 <b>{{ dashLessons.length }}</b>건</span>
         <span class="text-emerald-600">등원 <b>{{ dashCheckedIn }}</b>명</span>
         <span class="text-indigo-600">하원 <b>{{ dashCheckedOut }}</b>명</span>
+      </div>
+      <div class="flex items-center gap-2 mb-3 flex-wrap">
+        <input v-model="dashFilter.q" placeholder="학생 검색" class="input w-36 py-1" />
+        <div class="w-32"><select v-model="dashFilter.subject" class="input py-1"><option value="">과목 전체</option><option v-for="s in dashSubjects" :key="s" :value="s">{{ s }}</option></select></div>
+        <div class="w-32"><select v-model="dashFilter.instructor" class="input py-1"><option value="">강사 전체</option><option v-for="t in dashInstructors" :key="t" :value="t">{{ t }}</option></select></div>
+        <div v-if="showBranchCol" class="w-32"><select v-model="dashFilter.branch" class="input py-1"><option value="">지점 전체</option><option v-for="b in dashBranches" :key="b" :value="b">{{ b }}</option></select></div>
       </div>
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
-              <th class="text-left px-3 py-2 w-20">시각</th>
-              <th class="text-left px-3 py-2">학생</th>
+              <th class="text-left px-3 py-2 w-16">시각</th>
+              <th class="text-left px-3 py-2 w-28">학생</th>
               <th class="text-left px-3 py-2">과목</th>
               <th class="text-left px-3 py-2">강사</th>
               <th v-if="showBranchCol" class="text-left px-3 py-2">지점</th>
-              <th class="text-center px-3 py-2 w-52">등원 / 하원</th>
+              <th class="text-center px-3 py-2 w-64">등원 / 하원</th>
               <th class="text-left px-3 py-2 w-28">비고</th>
             </tr>
           </thead>
           <tbody>
-            <template v-for="(l,i) in dashData.lessons" :key="i">
+            <template v-for="(l,i) in dashLessons" :key="i">
               <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?7:6" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock.slice(0,5) }}</td></tr>
               <tr class="border-t align-middle hover:bg-slate-50">
                 <td class="px-3 py-2 font-mono whitespace-nowrap">{{ l.start_time }}</td>
-                <td class="px-3 py-2 font-medium whitespace-nowrap">{{ l.student_name }}<span v-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
+                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
                 <td class="px-3 py-2 text-slate-500">{{ l.subject }}</td>
                 <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
                 <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
                 <td class="px-3 py-2">
-                  <div class="flex items-center justify-center gap-1">
-                    <button @click="checkAtt(l,'in')" :class="['text-xs px-2 py-1 rounded', l.att.in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50']">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
+                  <div class="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <button @click="checkAtt(l,'in')" :class="['text-xs px-2 py-1 rounded whitespace-nowrap', l.att.in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50']">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
                     <span v-if="elapsedInfo(l)" :class="['text-[11px]', elapsedInfo(l).over ? 'text-rose-500 font-bold' : 'text-slate-400']">({{ elapsedInfo(l).mins }}분{{ elapsedInfo(l).over ? ' 종료' : '' }})</span>
-                    <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
+                    <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded whitespace-nowrap', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
                     <button @click="openAtt(l)" class="text-[11px] text-slate-400 hover:text-indigo-600" title="시각 수정·비고">✏️</button>
                   </div>
                 </td>
@@ -409,9 +424,21 @@
             <button @click="attModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
           </div>
           <div class="p-5 space-y-3">
-            <div class="grid grid-cols-2 gap-2">
-              <div><label class="lbl">등원 시각</label><input v-model="attForm.in" type="time" class="input py-1" /></div>
-              <div><label class="lbl">하원 시각</label><input v-model="attForm.out" type="time" class="input py-1" /></div>
+            <div>
+              <label class="lbl">등원 시각 <span class="text-slate-400">(±10분: 등·하원 같이 이동)</span></label>
+              <div class="flex items-center gap-1">
+                <button @click="attShiftIn(-10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">-10분</button>
+                <input v-model="attForm.in" type="time" class="input py-1 w-28" />
+                <button @click="attShiftIn(10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">+10분</button>
+              </div>
+            </div>
+            <div>
+              <label class="lbl">하원 시각 <span class="text-slate-400">(±10분: 하원만 이동)</span></label>
+              <div class="flex items-center gap-1">
+                <button @click="attShiftOut(-10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">-10분</button>
+                <input v-model="attForm.out" type="time" class="input py-1 w-28" />
+                <button @click="attShiftOut(10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">+10분</button>
+              </div>
             </div>
             <div><label class="lbl">시각 변경 사유 <span class="text-slate-400">(시각 수정 시)</span></label><input v-model="attForm.reason" placeholder="예: 학부모 사전연락 - 30분 일찍 등원" class="input py-1" /></div>
             <div class="border-t pt-2">
@@ -1881,6 +1908,7 @@ createApp({
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
       attModal: null, attForm: { in:'', out:'', reason:'', note_tag:'', note:'' }, attNoteTags: [], attHist: [],
+      dashFilter: { q:'', subject:'', instructor:'', branch:'' }, dashPop: { show:false, x:0, y:0, l:{att:{}} },
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
@@ -1977,14 +2005,27 @@ createApp({
       const p = this.myProfile;
       return !!(p && (p.edit_all_branch || (p.editable_branch_ids||[]).length));
     },
-    dashCheckedIn(){ const ids=new Set((this.dashData.lessons||[]).filter(l=>l.att.in).map(l=>l.student_id)); return ids.size; },
-    dashCheckedOut(){ const ids=new Set((this.dashData.lessons||[]).filter(l=>l.att.out).map(l=>l.student_id)); return ids.size; },
+    dashLessons(){
+      const f=this.dashFilter; const q=(f.q||'').trim().toLowerCase();
+      return (this.dashData.lessons||[]).filter(l=>{
+        if (f.subject && l.subject!==f.subject) return false;
+        if (f.instructor && l.instructor!==f.instructor) return false;
+        if (f.branch && l.branch!==f.branch) return false;
+        if (q && !(l.student_name||'').toLowerCase().includes(q)) return false;
+        return true;
+      });
+    },
+    dashSubjects(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.subject))]; },
+    dashInstructors(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.instructor))]; },
+    dashBranches(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.branch).filter(Boolean))]; },
+    dashCheckedIn(){ const ids=new Set(this.dashLessons.filter(l=>l.att.in).map(l=>l.student_id)); return ids.size; },
+    dashCheckedOut(){ const ids=new Set(this.dashLessons.filter(l=>l.att.out).map(l=>l.student_id)); return ids.size; },
     nowClock(){ const d=new Date(this.clockNow); const p=x=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); },
     dashIsToday(){ return this.dashDate===this.todayStr; },
     nowMin(){ const d=new Date(this.clockNow); return d.getHours()*60+d.getMinutes(); },
     nowLineIndex(){
       // 현재 시각보다 시작이 늦은 첫 수업 인덱스(없으면 끝)
-      const ls=this.dashData.lessons||[];
+      const ls=this.dashLessons;
       for (let i=0;i<ls.length;i++){ if (this.hmMin(ls[i].start_time) > this.nowMin) return i; }
       return ls.length;
     },
@@ -2849,6 +2890,11 @@ createApp({
       this.loadDashboard();
     },
     hmMin(hm){ if(!hm) return 0; const p=hm.split(':'); return (+p[0])*60+(+p[1]); },
+    shiftHM(hm, delta){ if(!hm) return hm; let m=this.hmMin(hm)+delta; m=Math.max(0,Math.min(1439,m)); const p=x=>String(x).padStart(2,'0'); return p(Math.floor(m/60))+':'+p(m%60); },
+    attShiftIn(delta){ if(!this.attForm.in) return; this.attForm.in=this.shiftHM(this.attForm.in,delta); if(this.attForm.out) this.attForm.out=this.shiftHM(this.attForm.out,delta); },
+    attShiftOut(delta){ if(!this.attForm.out) return; this.attForm.out=this.shiftHM(this.attForm.out,delta); },
+    showDashPop(l,e){ this.dashPop={ show:true, l, x:Math.min(e.clientX+8,window.innerWidth-280), y:Math.min(e.clientY+8,window.innerHeight-180) }; },
+    hideDashPop(){ this.dashPop.show=false; },
     elapsedInfo(l){
       // 등원 후 경과(분). 하원했으면 등원~하원, 아니면 등원~현재(오늘만).
       if (!l.att.in) return null;

@@ -2205,11 +2205,16 @@ class DashboardAdminAPI(APIView):
         lessons = []
         sids = set()
         for s in slots:
+            # 격주: 수업 시작일(active_from) 기준 짝수 주에만 표시
+            if s.frequency == "BIWEEKLY" and s.active_from:
+                if ((d - s.active_from).days // 7) % 2 != 0:
+                    continue
             sids.add(s.student_id)
             try:
                 sname = s.student.userprofile.real_name or s.student.username
             except Exception:
                 sname = s.student.username
+            sp = getattr(s.student, "student_profile", None)
             lessons.append({
                 "student_id": s.student_id, "student_name": sname,
                 "start_time": str(s.start_time)[:5], "duration_minutes": s.duration_minutes,
@@ -2217,6 +2222,11 @@ class DashboardAdminAPI(APIView):
                 "instructor": _name_of(s.instructor) if s.instructor_id else "미배정",
                 "branch": (s.branch.name if s.branch_id else ""),
                 "biweekly": s.frequency == "BIWEEKLY",
+                "school_type": (sp.school_type if sp else ""),
+                "school_name": (sp.school_name if sp else ""),
+                "grade": (sp.grade if sp else ""),
+                "parent_phone": (sp.parent_phone if sp else ""),
+                "student_phone": (sp.student_phone if sp else ""),
             })
         att = {}
         for a in DailyAttendance.objects.filter(date=d, student_id__in=sids):
