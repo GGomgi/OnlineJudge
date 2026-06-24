@@ -1016,7 +1016,7 @@
                     <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}
                     <span class="block text-[10px] opacity-70">{{ it.subject }}<template v-if="it.makeup"> · 보강</template></span>
                   </div>
-                  <div v-for="(rv,k) in ttSlotResv(d.date,sl.mins)" :key="'r'+k" :title="rv.note" class="mb-0.5 px-1.5 py-1 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
+                  <div v-for="(rv,k) in ttSlotResv(d.date,sl.mins)" :key="'r'+k" @mouseenter="showCalResv(rv,d.date,$event)" @mouseleave="hideResvPop" class="mb-0.5 px-1.5 py-1 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
                     <span class="font-semibold">📅 {{ rv.time }}</span> {{ rv.student_name }}
                     <span v-if="rv.note" class="block text-[10px] opacity-70">{{ truncate(rv.note,10) }}</span>
                   </div>
@@ -1037,7 +1037,7 @@
                    :class="['mb-0.5 px-1 py-0.5 rounded truncate leading-tight cursor-default', calItemCls(it)]">
                 <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<template v-if="it.makeup"> ·보강</template>
               </div>
-              <div v-for="(rv,k) in (ttCalResv[c.date]||[])" :key="'r'+k" :title="rv.note" class="mb-0.5 px-1 py-0.5 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
+              <div v-for="(rv,k) in (ttCalResv[c.date]||[])" :key="'r'+k" @mouseenter="showCalResv(rv,c.date,$event)" @mouseleave="hideResvPop" class="mb-0.5 px-1 py-0.5 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
                 <div class="truncate">📅 {{ rv.time }} {{ rv.student_name }}</div>
                 <div v-if="rv.note" class="text-[10px] opacity-70 truncate">{{ truncate(rv.note,10) }}</div>
               </div>
@@ -1174,11 +1174,10 @@
               <th v-if="showBranchCol" @click="sortStu('branch')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">지점{{ stuArrow('branch') }}</th>
               <th @click="sortStu('parent_name')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">보호자{{ stuArrow('parent_name') }}</th>
               <th @click="sortStu('enrollment_status')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">상태{{ stuArrow('enrollment_status') }}</th>
-              <th class="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="s in filteredStudents" :key="s.id" class="border-t align-middle hover:bg-slate-50">
+            <tr v-for="s in filteredStudents" :key="s.id" @click="openStudent(s)" class="border-t align-middle hover:bg-indigo-50/50 cursor-pointer">
               <td class="px-3 py-2 font-mono text-slate-500">{{ s.enroll_no || '-' }}</td>
               <td class="px-3 py-2 whitespace-nowrap font-medium">{{ s.real_name || s.username }}</td>
               <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ s.birth_date || '-' }}</td>
@@ -1191,9 +1190,8 @@
                 <span v-else>{{ s.parent_name || '-' }}</span>
               </td>
               <td class="px-3 py-2"><span :class="['px-2 py-0.5 rounded text-xs', stuStatusBadge(s.enrollment_status).cls, (s.status_history&&s.status_history.length) ? 'cursor-help' : '']" @mouseenter="(s.status_history&&s.status_history.length) && showStatusPop(s,$event)" @mouseleave="hideStatusPop">{{ stuStatusBadge(s.enrollment_status).label }}</span></td>
-              <td class="px-3 py-2 text-right"><button @click="openStudent(s)" class="text-xs text-indigo-600 hover:underline">상세</button></td>
             </tr>
-            <tr v-if="filteredStudents.length===0"><td :colspan="showBranchCol?10:9" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 학생이 없습니다.</td></tr>
+            <tr v-if="filteredStudents.length===0"><td :colspan="showBranchCol?9:8" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 학생이 없습니다.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1260,11 +1258,61 @@
                 </div>
                 <div v-else class="text-xs text-rose-400">시간표 미정</div>
               </div>
-              <div><label class="lbl">보호자 이름 <span v-if="stuFieldDirty('parent_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.parent_name" :class="stuCls('parent_name')" /></div>
-              <div><label class="lbl">보호자 연락처 <span v-if="stuFieldDirty('parent_phone')" class="text-amber-600">✏️</span></label><input :value="stuForm.parent_phone" @input="stuForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" :class="stuCls('parent_phone')" placeholder="010-0000-0000" /></div>
+              <!-- 주소 -->
+              <div class="border-t pt-2">
+                <div class="text-xs font-semibold text-slate-500 mb-1">주소</div>
+                <div class="flex gap-2 mb-1">
+                  <input :value="stuForm.zipcode" @click="stuCanEdit && openPostcode('stu')" readonly placeholder="우편번호" class="input w-28 bg-slate-50 cursor-pointer" />
+                  <input :value="stuForm.address" @click="stuCanEdit && openPostcode('stu')" readonly placeholder="주소 (클릭하여 검색)" class="input bg-slate-50 cursor-pointer" />
+                </div>
+                <input v-model="stuForm.address_detail" placeholder="상세주소 (동/호 등)" :class="stuCls('address_detail')" />
+              </div>
+              <!-- 등록 과정 -->
+              <div class="border-t pt-2">
+                <div class="text-xs font-semibold text-slate-500 mb-1">등록 과정 <span class="font-normal text-slate-400">({{ stuPrograms.length }}개)</span></div>
+                <div v-if="stuPrograms.length" class="flex flex-wrap gap-1">
+                  <span v-for="(p,pi) in stuPrograms" :key="pi" class="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">{{ composedProgramLabel(p) }}</span>
+                </div>
+                <div v-else class="text-xs text-slate-400">등록 과정 정보 없음</div>
+              </div>
               <div v-if="stuCanEdit && stuFormDirty" class="flex justify-end gap-2">
                 <button @click="revertStudent" class="btn-secondary text-sm">취소</button>
                 <button @click="saveStudent" class="btn-primary text-sm">수정</button>
+              </div>
+
+              <!-- 보호자 (구 보호자 탭 통합) -->
+              <div class="border-t pt-2">
+                <div class="text-xs font-semibold text-slate-500 mb-1">보호자</div>
+                <ul class="space-y-1">
+                  <li v-for="gd in stuDetail.guardians" :key="gd.link_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-1.5">
+                    <span class="font-medium">{{ gd.name }}</span>
+                    <span class="text-xs text-slate-400">{{ gd.relation }} · {{ gd.phone }} · @{{ gd.username }}</span>
+                    <span v-if="stuCanEdit" class="ml-auto flex gap-2">
+                      <button @click="resetGuardianPw(gd)" class="text-xs text-indigo-500 hover:underline">비번 초기화</button>
+                      <button @click="unlinkGuardian(gd)" class="text-xs text-rose-400 hover:underline">연결 해제</button>
+                    </span>
+                  </li>
+                  <li v-if="stuDetail.guardians.length===0" class="text-xs text-slate-400">연결된 보호자가 없습니다.</li>
+                </ul>
+                <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2 mt-2">
+                  <div class="flex items-center justify-between">
+                    <div class="text-xs font-semibold text-slate-500">보호자 연결 / 계정 생성</div>
+                    <button @click="openGdSearch" class="text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-white">🔍 보호자 검색</button>
+                  </div>
+                  <div v-if="gdSelectedParentId" class="text-[11px] text-emerald-600">✓ 기존 보호자 선택됨 — 아래 [연결]을 누르세요.</div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <input v-model="gdForm.parent_name" @input="gdSelectedParentId=null" placeholder="보호자 이름" class="input py-1" />
+                    <input :value="gdForm.parent_phone" @input="gdForm.parent_phone=formatPhone($event.target.value); gdSelectedParentId=null" inputmode="numeric" placeholder="연락처" class="input py-1" />
+                    <input v-model="gdForm.relation" list="guardianRelationList" placeholder="관계(선택·직접입력)" class="input py-1" />
+                    <input v-if="!gdSelectedParentId" v-model="gdForm.password" placeholder="비밀번호(미입력 시 연락처)" class="input py-1" />
+                  </div>
+                  <datalist id="guardianRelationList"><option value="아버지"><option value="어머니"><option value="할아버지"><option value="할머니"><option value="조부모"></datalist>
+                  <div class="flex justify-end">
+                    <button v-if="gdSelectedParentId" @click="linkGuardian" class="btn-primary text-sm">연결</button>
+                    <button v-else-if="(gdForm.parent_name||'').trim() && (gdForm.parent_phone||'').trim()" @click="linkGuardian" class="btn-secondary text-sm">생성</button>
+                  </div>
+                  <p class="text-[11px] text-slate-400">검색에서 고르면 <b>연결</b>, 직접 작성하면 새 계정 <b>생성</b>됩니다.</p>
+                </div>
               </div>
             </div>
 
@@ -1367,40 +1415,6 @@
                 </li>
                 <li v-if="stuDetail.status_history.length===0" class="text-xs text-slate-400">상태 변경 이력이 없습니다.</li>
               </ul>
-            </div>
-
-            <!-- 보호자 -->
-            <div v-if="stuTab==='guardian'" class="space-y-3">
-              <ul class="space-y-1">
-                <li v-for="gd in stuDetail.guardians" :key="gd.link_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-1.5">
-                  <span class="font-medium">{{ gd.name }}</span>
-                  <span class="text-xs text-slate-400">{{ gd.relation }} · {{ gd.phone }} · @{{ gd.username }}</span>
-                  <span v-if="stuCanEdit" class="ml-auto flex gap-2">
-                    <button @click="resetGuardianPw(gd)" class="text-xs text-indigo-500 hover:underline">비번 초기화</button>
-                    <button @click="unlinkGuardian(gd)" class="text-xs text-rose-400 hover:underline">연결 해제</button>
-                  </span>
-                </li>
-                <li v-if="stuDetail.guardians.length===0" class="text-xs text-slate-400">연결된 보호자가 없습니다.</li>
-              </ul>
-              <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
-                <div class="flex items-center justify-between">
-                  <div class="text-xs font-semibold text-slate-500">보호자 연결 / 계정 생성</div>
-                  <button @click="openGdSearch" class="text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-white">🔍 보호자 검색</button>
-                </div>
-                <div v-if="gdSelectedParentId" class="text-[11px] text-emerald-600">✓ 기존 보호자 선택됨 — 아래 [연결]을 누르세요.</div>
-                <div class="grid grid-cols-2 gap-2">
-                  <input v-model="gdForm.parent_name" @input="gdSelectedParentId=null" placeholder="보호자 이름" class="input py-1" />
-                  <input :value="gdForm.parent_phone" @input="gdForm.parent_phone=formatPhone($event.target.value); gdSelectedParentId=null" inputmode="numeric" placeholder="연락처" class="input py-1" />
-                  <input v-model="gdForm.relation" list="guardianRelationList" placeholder="관계(선택·직접입력)" class="input py-1" />
-                  <input v-if="!gdSelectedParentId" v-model="gdForm.password" placeholder="비밀번호(미입력 시 연락처)" class="input py-1" />
-                </div>
-                <datalist id="guardianRelationList"><option value="아버지"><option value="어머니"><option value="할아버지"><option value="할머니"><option value="조부모"></datalist>
-                <div class="flex justify-end">
-                  <button v-if="gdSelectedParentId" @click="linkGuardian" class="btn-primary text-sm">연결</button>
-                  <button v-else-if="(gdForm.parent_name||'').trim() && (gdForm.parent_phone||'').trim()" @click="linkGuardian" class="btn-secondary text-sm">생성</button>
-                </div>
-                <p class="text-[11px] text-slate-400">검색에서 고르면 <b>연결</b>, 직접 작성하면 새 계정 <b>생성</b>됩니다.</p>
-              </div>
             </div>
 
             <!-- 아이디 관리 -->
@@ -2173,7 +2187,7 @@ createApp({
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
       statusPop: { show:false, x:0, y:0, name:'', list:[] },
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
-      stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'guardian',l:'보호자'},{k:'cred',l:'아이디 관리'}],
+      stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '',
       stuResvForm: { date:'', ampm:'오전', hour:'', min:'00', note:'' },
@@ -2335,8 +2349,9 @@ createApp({
       return this.students.filter(s => s.enrollment_status==='ENROLLED' && !s.slot_count).length;
     },
     stuCanEdit(){ return this.stuDetail ? this.canEditBranch(this.stuDetail.branch_id) : false; },
+    stuPrograms(){ try { const a = JSON.parse(this.stuForm.programs||'[]'); return Array.isArray(a) ? a : []; } catch(e){ return []; } },
     stuFormDirty(){
-      const ks = ['real_name','birth_date','gender','student_phone','school_type','school_name','grade','weekly_sessions','lesson_start_date','enrollment_date','parent_name','parent_phone'];
+      const ks = ['real_name','birth_date','gender','student_phone','school_type','school_name','grade','weekly_sessions','lesson_start_date','enrollment_date','parent_name','parent_phone','zipcode','address','address_detail'];
       return ks.some(k => this.stuFieldDirty(k));
     },
     showBranchCol(){
@@ -2759,6 +2774,7 @@ createApp({
       return (this.ttCalResv[date]||[]).filter(rv=>{ const [h,m]=rv.time.split(':').map(Number); const v=h*60+m; return v>=mins && v<mins+30; });
     },
     truncate(s,n){ s=s||''; return s.length>n ? s.slice(0,n)+'...' : s; },
+    showCalResv(rv,date,e){ this.resvPop={ show:true, at:(date+' '+rv.time+' · '+(rv.student_name||'')), note:rv.note, by:'', created:'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
     calItemCls(it){
       if (it.status==='ABSENT') return 'bg-rose-100 text-rose-500 line-through';
       if (it.makeup) return 'bg-blue-50 text-blue-700 hover:bg-blue-100';
@@ -3204,7 +3220,6 @@ createApp({
     },
     async toggleHideLead(r){
       if (r.is_hidden){ return this.restoreLead(r); }   // 체크 해제 → 복원
-      if (!window.confirm('이 상담을 목록에서 숨기시겠습니까? (영구 삭제가 아니라 숨김 처리됩니다)')) { return; }
       try { await api('POST','/api/admin/academy/lead/delete', { lead_id:r.id, hidden:true }); this.notify('숨김 처리되었습니다.'); this.loadLeads(); }
       catch(e){ this.notify(e.message,false); }
     },
@@ -3646,6 +3661,8 @@ createApp({
         if (target === 'hr'){
           this.hrForm.zipcode = zip; this.hrForm.address = addr;
           this.$nextTick(()=>{ if (this.$refs.hrAddrDetail) this.$refs.hrAddrDetail.focus(); });
+        } else if (target === 'stu'){
+          this.stuForm.zipcode = zip; this.stuForm.address = addr;
         } else {
           this.convertForm.zipcode = zip; this.convertForm.address = addr;
           this.$nextTick(()=>{ if (this.$refs.addrDetail) this.$refs.addrDetail.focus(); });

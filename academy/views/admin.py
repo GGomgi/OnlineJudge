@@ -1294,6 +1294,7 @@ class ConvertLeadAdminAPI(APIView):
                 password=data.get("parent_password", ""))
             lead.status = LeadStatus.CONVERTED
             lead.converted_user = user
+            lead.is_hidden = True  # 등록 전환 완료 시 상담 목록에서 자동 숨김
             lead.save()
         result = LeadSerializer(lead).data
         if parent_user is not None:
@@ -1836,6 +1837,7 @@ def _student_profile_dict(sp):
         "lesson_start_date": str(sp.lesson_start_date) if sp.lesson_start_date else "",
         "weekly_sessions": sp.weekly_sessions,
         "program": sp.program or "",
+        "programs": sp.programs or "",
     }
 
 
