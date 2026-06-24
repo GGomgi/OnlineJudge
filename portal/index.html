@@ -2934,7 +2934,10 @@ createApp({
       if (!this.dashDate) this.dashDate = this.todayStr;
       try { this.dashData = await api('GET','/api/admin/academy/dashboard?date='+this.dashDate); }
       catch(e){ this.notify(e.message,false); }
-      if (!this.attNoteTags.length){ try { this.attNoteTags = (await api('GET','/api/admin/academy/options?category=attendance_note')).filter(o=>o.is_active); } catch(e){} }
+      if (!this.attNoteTags.length){
+        if (!(this.options.attendance_note||[]).length) await this.loadOptions();
+        this.attNoteTags = (this.options.attendance_note||[]);
+      }
     },
     attTagLabel(v){ const t=this.attNoteTags.find(x=>x.value===v); return t?t.label:v; },
     attTagStyle(v){ const t=this.attNoteTags.find(x=>x.value===v); const c=(t&&t.color)||'#64748b'; return { backgroundColor:c+'22', color:c }; },

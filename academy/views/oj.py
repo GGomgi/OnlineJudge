@@ -101,7 +101,8 @@ class OptionListAPI(APIView):
         result = {}
         for opt in OptionItem.objects.filter(is_active=True).order_by("category", "order", "id"):
             result.setdefault(opt.category, []).append(
-                {"value": opt.value, "label": opt.label, "allow_custom": opt.allow_custom})
+                {"value": opt.value, "label": opt.label, "allow_custom": opt.allow_custom,
+                 "color": opt.color, "is_active": True})
         return self.success(result)
 
 
