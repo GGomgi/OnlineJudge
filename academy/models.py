@@ -513,12 +513,27 @@ class DailyAttendance(models.Model):
     date = models.DateField()
     check_in_at = models.DateTimeField(null=True, blank=True)
     check_out_at = models.DateTimeField(null=True, blank=True)
-    note = models.CharField(max_length=255, blank=True, default="")
+    note_tag = models.CharField(max_length=32, blank=True, default="")  # 출결 비고 표시(선택목록 value)
+    note = models.CharField(max_length=255, blank=True, default="")     # 긴 사유
     update_time = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "academy_daily_attendance"
         unique_together = ("student", "date")
+
+
+class AttendanceChange(models.Model):
+    """출결(등원/하원 시각·비고) 변경 이력."""
+    attendance = models.ForeignKey(DailyAttendance, on_delete=models.CASCADE, related_name="changes")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    detail = models.CharField(max_length=255, blank=True, default="")
+    reason = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_attendance_change"
+        ordering = ["-create_time"]
 
 
 class StaffChangeLog(models.Model):
@@ -545,6 +560,7 @@ class OptionCategory(object):
     PROGRAM_LANGUAGE = "program_language"  # 입회원: 언어
     SCHOOL_TYPE = "school_type"            # 상담: 학교 구분
     COUNSELING_PURPOSE = "counseling_purpose"  # 상담: 상담 목적
+    ATTENDANCE_NOTE = "attendance_note"    # 출결: 비고 표시(색상 태그)
 
 
 OPTION_CATEGORIES = [
@@ -552,6 +568,7 @@ OPTION_CATEGORIES = [
     (OptionCategory.PROGRAM_LANGUAGE, "언어"),
     (OptionCategory.SCHOOL_TYPE, "학교 구분"),
     (OptionCategory.COUNSELING_PURPOSE, "상담 목적"),
+    (OptionCategory.ATTENDANCE_NOTE, "출결 비고"),
 ]
 OPTION_CATEGORY_VALUES = [c[0] for c in OPTION_CATEGORIES]
 
@@ -628,6 +645,7 @@ class OptionItem(models.Model):
     order = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     allow_custom = models.BooleanField(default=False)
+    color = models.CharField(max_length=16, blank=True, default="")  # 태그 색(예: #f59e0b), 출결 비고 등
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:

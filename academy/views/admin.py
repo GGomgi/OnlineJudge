@@ -23,7 +23,8 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       Lead, LeadStatus, CounselingLog, CounselingLogEdit, StudentProfile, EnrollmentStatus,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
-                      TimetableChange, StudentStatusChange, StaffChangeLog, DailyAttendance)
+                      TimetableChange, StudentStatusChange, StaffChangeLog, DailyAttendance,
+                      AttendanceChange)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 import os as _os
 from django.conf import settings as _settings
@@ -1361,7 +1362,8 @@ class OptionAdminAPI(APIView):
             return self.error("이미 존재하는 값입니다.")
         opt = OptionItem.objects.create(
             category=data["category"], value=value, label=data["label"],
-            order=data.get("order") or 0, allow_custom=bool(data.get("allow_custom")))
+            order=data.get("order") or 0, allow_custom=bool(data.get("allow_custom")),
+            color=data.get("color") or "")
         return self.success(OptionItemSerializer(opt).data)
 
     @validate_serializer(UpdateOptionSerializer)
@@ -1382,6 +1384,8 @@ class OptionAdminAPI(APIView):
             opt.is_active = data["is_active"]
         if "allow_custom" in data:
             opt.allow_custom = data["allow_custom"]
+        if "color" in data:
+            opt.color = data["color"] or ""
         opt.save()
         return self.success(OptionItemSerializer(opt).data)
 
@@ -2216,18 +2220,28 @@ class DashboardAdminAPI(APIView):
             })
         att = {}
         for a in DailyAttendance.objects.filter(date=d, student_id__in=sids):
-            att[a.student_id] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)}
+            att[a.student_id] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at),
+                                 "note_tag": a.note_tag, "note": a.note}
         for l in lessons:
-            l["att"] = att.get(l["student_id"], {"in": "", "out": ""})
+            l["att"] = att.get(l["student_id"], {"in": "", "out": "", "note_tag": "", "note": ""})
         WD = ["월", "화", "수", "목", "금", "토", "일"]
         return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
                              "total": len(lessons), "present": len(att)})
 
 
+def _kst_to_utc(d, hm):
+    """KST 날짜 d + 'HH:MM'을 저장용 UTC aware datetime으로."""
+    from datetime import time as _t
+    from django.utils import timezone as _tz
+    hh, mm = hm.split(":")
+    naive = datetime.combine(d, _t(int(hh), int(mm))) - timedelta(hours=9)
+    return _tz.make_aware(naive, _tz.utc)
+
+
 class AttendanceCheckAdminAPI(APIView):
     @admin_role_required
     def post(self, request):
-        """등원/하원 체크. {student_id, kind:'in'|'out', date?, clear?}"""
+        """등원/하원 체크/수정. {student_id, kind:'in'|'out', date?, clear?, time?'HH:MM', reason?}"""
         data = request.data
         u = User.objects.filter(id=data.get("student_id")).first()
         if not u:
@@ -2241,12 +2255,77 @@ class AttendanceCheckAdminAPI(APIView):
             d = now().date()
         a, _ = DailyAttendance.objects.get_or_create(
             student=u, date=d, defaults={"branch": (prof.branch if prof and prof.branch_id else None)})
-        clear = bool(data.get("clear"))
-        if data.get("kind") == "in":
-            a.check_in_at = None if clear else now()
-        elif data.get("kind") == "out":
-            a.check_out_at = None if clear else now()
-        else:
+        kind = data.get("kind")
+        if kind not in ("in", "out"):
             return self.error("kind 값이 올바르지 않습니다.")
+        clear = bool(data.get("clear"))
+        tm = (data.get("time") or "").strip()
+        field = "check_in_at" if kind == "in" else "check_out_at"
+        label = "등원" if kind == "in" else "하원"
+        old = _hm_kst(getattr(a, field))
+        if clear:
+            setattr(a, field, None)
+        elif tm:
+            try:
+                setattr(a, field, _kst_to_utc(d, tm))
+            except (ValueError, AttributeError):
+                return self.error("시간 형식이 올바르지 않습니다(HH:MM).")
+        else:
+            setattr(a, field, now())
         a.save()
+        new = _hm_kst(getattr(a, field))
+        # 시각 수정(기존값 있고 명시적 time/clear)은 이력 기록
+        if (tm or clear) and old:
+            AttendanceChange.objects.create(
+                attendance=a, actor=request.user,
+                detail="%s %s → %s" % (label, old or "-", new or "-"),
+                reason=(data.get("reason") or "").strip())
         return self.success({"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)})
+
+
+class AttendanceNoteAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """출결 비고(표시 태그 + 사유). {student_id, date?, note_tag, note}"""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        try:
+            d = datetime.strptime(data.get("date"), "%Y-%m-%d").date() if data.get("date") else now().date()
+        except (TypeError, ValueError):
+            d = now().date()
+        a, _ = DailyAttendance.objects.get_or_create(
+            student=u, date=d, defaults={"branch": (prof.branch if prof and prof.branch_id else None)})
+        old_tag, old_note = a.note_tag, a.note
+        a.note_tag = (data.get("note_tag") or "").strip()
+        a.note = (data.get("note") or "").strip()
+        a.save()
+        if (old_tag, old_note) != (a.note_tag, a.note):
+            AttendanceChange.objects.create(
+                attendance=a, actor=request.user,
+                detail="비고 변경: [%s] %s" % (a.note_tag or "-", a.note or ""),
+                reason="")
+        return self.success({"note_tag": a.note_tag, "note": a.note})
+
+    @admin_role_required
+    def get(self, request):
+        """출결 변경 이력. student_id, date."""
+        u = User.objects.filter(id=request.GET.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        try:
+            d = datetime.strptime(request.GET.get("date"), "%Y-%m-%d").date() if request.GET.get("date") else now().date()
+        except (TypeError, ValueError):
+            d = now().date()
+        a = DailyAttendance.objects.filter(student=u, date=d).first()
+        out = []
+        if a:
+            for c in a.changes.select_related("actor"):
+                out.append({"detail": c.detail, "reason": c.reason,
+                            "actor": _name_of(c.actor) if c.actor_id else "",
+                            "time": str(c.create_time)[:16]})
+        return self.success(out)

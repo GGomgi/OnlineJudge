@@ -367,12 +367,13 @@
               <th class="text-left px-3 py-2">과목</th>
               <th class="text-left px-3 py-2">강사</th>
               <th v-if="showBranchCol" class="text-left px-3 py-2">지점</th>
-              <th class="text-center px-3 py-2 w-44">등원 / 하원</th>
+              <th class="text-center px-3 py-2 w-52">등원 / 하원</th>
+              <th class="text-left px-3 py-2 w-28">비고</th>
             </tr>
           </thead>
           <tbody>
             <template v-for="(l,i) in dashData.lessons" :key="i">
-              <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?6:5" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock.slice(0,5) }}</td></tr>
+              <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?7:6" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock.slice(0,5) }}</td></tr>
               <tr class="border-t align-middle hover:bg-slate-50">
                 <td class="px-3 py-2 font-mono whitespace-nowrap">{{ l.start_time }}</td>
                 <td class="px-3 py-2 font-medium whitespace-nowrap">{{ l.student_name }}<span v-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
@@ -384,14 +385,54 @@
                     <button @click="checkAtt(l,'in')" :class="['text-xs px-2 py-1 rounded', l.att.in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50']">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
                     <span v-if="elapsedInfo(l)" :class="['text-[11px]', elapsedInfo(l).over ? 'text-rose-500 font-bold' : 'text-slate-400']">({{ elapsedInfo(l).mins }}분{{ elapsedInfo(l).over ? ' 종료' : '' }})</span>
                     <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
+                    <button @click="openAtt(l)" class="text-[11px] text-slate-400 hover:text-indigo-600" title="시각 수정·비고">✏️</button>
                   </div>
+                </td>
+                <td class="px-3 py-2 cursor-pointer" @click="openAtt(l)">
+                  <span v-if="l.att.note_tag" class="px-1.5 py-0.5 rounded text-[11px]" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
+                  <span v-else class="text-[11px] text-slate-300 hover:text-indigo-500">비고+</span>
+                  <span v-if="l.att.note" class="text-[10px] text-slate-400 ml-1" :title="l.att.note">📝</span>
                 </td>
               </tr>
             </template>
-            <tr v-if="dashIsToday && nowLineIndex===(dashData.lessons||[]).length && (dashData.lessons||[]).length" class="bg-rose-50"><td :colspan="showBranchCol?6:5" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock.slice(0,5) }} (오늘 수업 종료)</td></tr>
-            <tr v-if="(dashData.lessons||[]).length===0"><td :colspan="showBranchCol?6:5" class="px-3 py-8 text-center text-sm text-slate-400">이 날짜에 수업이 없습니다.</td></tr>
+            <tr v-if="dashIsToday && nowLineIndex===(dashData.lessons||[]).length && (dashData.lessons||[]).length" class="bg-rose-50"><td :colspan="showBranchCol?7:6" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock.slice(0,5) }} (오늘 수업 종료)</td></tr>
+            <tr v-if="(dashData.lessons||[]).length===0"><td :colspan="showBranchCol?7:6" class="px-3 py-8 text-center text-sm text-slate-400">이 날짜에 수업이 없습니다.</td></tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- 출결 상세(시각 수정·비고·이력) 모달 -->
+      <div v-if="attModal" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="attModal=null">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+          <div class="flex items-center justify-between px-5 py-3 border-b">
+            <div class="font-bold">{{ attModal.student_name }} <span class="text-xs font-normal text-slate-400">{{ dashDate }} · {{ attModal.start_time }} {{ attModal.subject }}</span></div>
+            <button @click="attModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+          <div class="p-5 space-y-3">
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="lbl">등원 시각</label><input v-model="attForm.in" type="time" class="input py-1" /></div>
+              <div><label class="lbl">하원 시각</label><input v-model="attForm.out" type="time" class="input py-1" /></div>
+            </div>
+            <div><label class="lbl">시각 변경 사유 <span class="text-slate-400">(시각 수정 시)</span></label><input v-model="attForm.reason" placeholder="예: 학부모 사전연락 - 30분 일찍 등원" class="input py-1" /></div>
+            <div class="border-t pt-2">
+              <label class="lbl">비고 표시</label>
+              <div class="flex flex-wrap gap-1 mb-2">
+                <button @click="attForm.note_tag=''" :class="['px-2 py-1 rounded text-xs border', !attForm.note_tag ? 'border-slate-400' : 'border-slate-200 text-slate-400']">없음</button>
+                <button v-for="t in attNoteTags" :key="t.value" @click="attForm.note_tag=t.value" class="px-2 py-1 rounded text-xs border" :style="attForm.note_tag===t.value ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
+              </div>
+              <textarea v-model="attForm.note" rows="2" placeholder="비고 사유(길게 작성)" class="input"></textarea>
+            </div>
+            <div class="flex justify-end"><button @click="saveAtt" class="btn-primary text-sm">저장</button></div>
+            <div v-if="attHist.length" class="border-t pt-2">
+              <div class="text-xs font-semibold text-slate-500 mb-1">변경 이력</div>
+              <ul class="space-y-1">
+                <li v-for="(h,i) in attHist" :key="i" class="text-[11px] text-slate-500">
+                  <span class="text-slate-400">{{ h.time }} {{ h.actor }}</span> · {{ h.detail }}<span v-if="h.reason"> ({{ h.reason }})</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -1451,6 +1492,7 @@
               <th class="px-3 py-2 text-left w-24">순서</th>
               <th class="px-3 py-2 text-left">표시명</th>
               <th class="px-3 py-2 text-left">값(코드)</th>
+              <th v-if="optCategory==='attendance_note'" class="px-3 py-2 text-center">색상</th>
               <th class="px-3 py-2 text-center">연결</th>
               <th class="px-3 py-2 text-center">자유입력</th>
               <th class="px-3 py-2 text-center">활성</th>
@@ -1469,6 +1511,7 @@
               </td>
               <td class="px-3 py-2"><input v-model="o.label" class="input py-1" /></td>
               <td class="px-3 py-2 text-slate-400 whitespace-nowrap">{{ o.value }}</td>
+              <td v-if="optCategory==='attendance_note'" class="px-3 py-2 text-center"><input type="color" v-model="o.color" class="w-8 h-7 align-middle cursor-pointer" /><span class="ml-1 px-1.5 py-0.5 rounded text-[11px]" :style="{ backgroundColor:(o.color||'#e5e7eb')+'22', color:o.color||'#64748b' }">{{ o.label }}</span></td>
               <td class="px-3 py-2 text-center text-xs" :class="o.usage>0 ? 'text-slate-600' : 'text-emerald-500'">{{ o.usage>0 ? o.usage+'건' : '없음' }}</td>
               <td class="px-3 py-2 text-center"><input type="checkbox" v-model="o.allow_custom" class="w-4 h-4" /></td>
               <td class="px-3 py-2 text-center"><input type="checkbox" v-model="o.is_active" class="w-4 h-4" /></td>
@@ -1478,13 +1521,14 @@
                 <span v-else class="ml-2 text-[11px] text-slate-300" title="연결된 정보가 있어 삭제 불가">삭제불가</span>
               </td>
             </tr>
-            <tr v-if="optList.length===0"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">항목이 없습니다.</td></tr>
+            <tr v-if="optList.length===0"><td :colspan="optCategory==='attendance_note'?8:7" class="px-3 py-6 text-center text-xs text-slate-400">항목이 없습니다.</td></tr>
           </tbody>
           <tfoot>
             <tr class="border-t bg-slate-50">
               <td class="px-3 py-2 text-xs text-slate-300">신규</td>
               <td class="px-3 py-2"><input v-model="optNewForm.label" placeholder="표시명(예: 게임)" class="input py-1" /></td>
               <td class="px-3 py-2"><input v-model="optNewForm.value" placeholder="값(영문 코드)" class="input py-1" /></td>
+              <td v-if="optCategory==='attendance_note'" class="px-3 py-2 text-center"><input type="color" v-model="optNewForm.color" class="w-8 h-7 cursor-pointer" /></td>
               <td class="px-3 py-2"></td>
               <td class="px-3 py-2 text-center"><input type="checkbox" v-model="optNewForm.allow_custom" class="w-4 h-4" /></td>
               <td class="px-3 py-2"></td>
@@ -1836,6 +1880,7 @@ createApp({
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
+      attModal: null, attForm: { in:'', out:'', reason:'', note_tag:'', note:'' }, attNoteTags: [], attHist: [],
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
@@ -1871,6 +1916,7 @@ createApp({
         {v:'program_language', l:'언어 (입회원)'},
         {v:'school_type', l:'학교 구분 (상담)'},
         {v:'counseling_purpose', l:'상담 목적 (상담)'},
+        {v:'attendance_note', l:'출결 비고 (색상 태그)'},
       ],
       optCategory: 'program', optList: [], optNewForm: { value:'', label:'', allow_custom:false },
       durations: [60, 90, 120],
@@ -2556,7 +2602,7 @@ createApp({
     },
     optCategoryLabel(v){ const c = this.optionCategories.find(c=>c.v===v); return c ? c.l : v; },
     async loadOptionAdmin(){
-      this.optNewForm = { value:'', label:'', allow_custom:false };
+      this.optNewForm = { value:'', label:'', allow_custom:false, color:'#f59e0b' };
       try { const d = await api('GET','/api/admin/academy/options?category='+this.optCategory); this.optList = d.results || d; }
       catch(e){ this.notify(e.message,false); }
     },
@@ -2609,7 +2655,7 @@ createApp({
       const f = this.optNewForm;
       if (!f.value.trim() || !f.label.trim()) return this.notify('값(코드)과 표시명을 입력하세요.', false);
       try {
-        await api('POST','/api/admin/academy/options', { category:this.optCategory, value:f.value.trim(), label:f.label.trim(), order:this.optList.length, allow_custom:f.allow_custom });
+        await api('POST','/api/admin/academy/options', { category:this.optCategory, value:f.value.trim(), label:f.label.trim(), order:this.optList.length, allow_custom:f.allow_custom, color:f.color||'' });
         this.notify('항목이 추가되었습니다.');
         await this.loadOptionAdmin(); await this.loadOptions();
       } catch(e){ this.notify(e.message,false); }
@@ -2617,7 +2663,7 @@ createApp({
     async saveOption(o){
       if (!o.label.trim()) return this.notify('표시명을 입력하세요.', false);
       try {
-        await api('PUT','/api/admin/academy/options', { id:o.id, label:o.label, order:o.order, is_active:o.is_active, allow_custom:o.allow_custom });
+        await api('PUT','/api/admin/academy/options', { id:o.id, label:o.label, order:o.order, is_active:o.is_active, allow_custom:o.allow_custom, color:o.color||'' });
         this.notify('저장되었습니다.');
         await this.loadOptions();
       } catch(e){ this.notify(e.message,false); }
@@ -2769,6 +2815,31 @@ createApp({
       if (!this.dashDate) this.dashDate = this.todayStr;
       try { this.dashData = await api('GET','/api/admin/academy/dashboard?date='+this.dashDate); }
       catch(e){ this.notify(e.message,false); }
+      if (!this.attNoteTags.length){ try { this.attNoteTags = (await api('GET','/api/admin/academy/options?category=attendance_note')).filter(o=>o.is_active); } catch(e){} }
+    },
+    attTagLabel(v){ const t=this.attNoteTags.find(x=>x.value===v); return t?t.label:v; },
+    attTagStyle(v){ const t=this.attNoteTags.find(x=>x.value===v); const c=(t&&t.color)||'#64748b'; return { backgroundColor:c+'22', color:c }; },
+    async openAtt(l){
+      this.attModal = l;
+      this.attForm = { in:l.att.in||'', out:l.att.out||'', reason:'', note_tag:l.att.note_tag||'', note:l.att.note||'' };
+      this._attOrig = { in:l.att.in||'', out:l.att.out||'' };
+      try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+this.dashDate); } catch(e){ this.attHist=[]; }
+    },
+    async saveAtt(){
+      const l=this.attModal;
+      try {
+        // 시각 변경분만 반영(이력 기록)
+        if (this.attForm.in !== this._attOrig.in){
+          if (this.attForm.in) await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, date:this.dashDate, kind:'in', time:this.attForm.in, reason:this.attForm.reason });
+          else await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, date:this.dashDate, kind:'in', clear:true, reason:this.attForm.reason });
+        }
+        if (this.attForm.out !== this._attOrig.out){
+          if (this.attForm.out) await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, date:this.dashDate, kind:'out', time:this.attForm.out, reason:this.attForm.reason });
+          else await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, date:this.dashDate, kind:'out', clear:true, reason:this.attForm.reason });
+        }
+        await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:this.dashDate, note_tag:this.attForm.note_tag, note:this.attForm.note });
+        this.notify('저장되었습니다.'); this.attModal=null; this.loadDashboard();
+      } catch(e){ this.notify(e.message,false); }
     },
     dashToday(){ this.dashDate = this.todayStr; this.loadDashboard(); },
     dashShift(n){

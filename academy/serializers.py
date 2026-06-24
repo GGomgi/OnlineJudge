@@ -369,7 +369,7 @@ class CloseLeadSerializer(serializers.Serializer):
 class OptionItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OptionItem
-        fields = ["id", "category", "value", "label", "order", "is_active", "allow_custom"]
+        fields = ["id", "category", "value", "label", "order", "is_active", "allow_custom", "color"]
 
 
 class CreateOptionSerializer(serializers.Serializer):
@@ -378,6 +378,7 @@ class CreateOptionSerializer(serializers.Serializer):
     label = serializers.CharField(max_length=64)
     order = serializers.IntegerField(required=False, default=0)
     allow_custom = serializers.BooleanField(required=False, default=False)
+    color = serializers.CharField(max_length=16, required=False, allow_blank=True)
 
 
 class UpdateOptionSerializer(serializers.Serializer):
@@ -386,6 +387,7 @@ class UpdateOptionSerializer(serializers.Serializer):
     order = serializers.IntegerField(required=False)
     is_active = serializers.BooleanField(required=False)
     allow_custom = serializers.BooleanField(required=False)
+    color = serializers.CharField(max_length=16, required=False, allow_blank=True)
 
 
 class ReorderOptionSerializer(serializers.Serializer):
