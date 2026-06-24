@@ -20,7 +20,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       ALL_BRANCH_ROLES, STAFF_ROLES, Branch,
                       SignupRequest, SignupStatus, CourseClass, ClassEnrollment,
                       TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
-                      Lead, LeadStatus, CounselingLog, CounselingLogEdit, StudentProfile, EnrollmentStatus,
+                      Lead, LeadStatus, CounselingLog, CounselingLogEdit, CounselReservation, StudentProfile, EnrollmentStatus,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
                       TimetableChange, StudentStatusChange, StaffChangeLog, DailyAttendance,
@@ -1023,9 +1023,16 @@ class LeadAdminAPI(APIView):
             return self.error("No branch scope assigned")
         is_mgr = _is_manager(request.user)  # 원장(지점장) 이상
         qs = Lead.objects.select_related("branch", "converted_user").prefetch_related(
-            "logs__author", "logs__edited_by", "logs__edits__actor")
+            "logs__author", "logs__edited_by", "logs__edits__actor",
+            "reservations__created_by")
         status = request.GET.get("status")
-        if status:
+        if status == "RESERVED":  # 상담예약중: 미래 ACTIVE 예약 보유(미전환)
+            qs = qs.filter(status=LeadStatus.NEW, reservations__status="ACTIVE",
+                           reservations__scheduled_at__gte=now()).distinct()
+        elif status == "NEW":  # 상담: NEW 이면서 미래 예약 없음
+            qs = qs.filter(status=LeadStatus.NEW).exclude(
+                reservations__status="ACTIVE", reservations__scheduled_at__gte=now())
+        elif status:
             qs = qs.filter(status=status)
         if not all_branch:
             qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
@@ -1107,6 +1114,43 @@ class CounselingNoteAdminAPI(APIView):
         log.is_hidden = hidden
         log.save()
         return self.success(LeadSerializer(log.lead, context={"show_hidden": _is_manager(request.user)}).data)
+
+
+class ReservationAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """상담 예약 추가. {lead_id, date'YYYY-MM-DD', time'HH:MM', note?}. 등록 후에도 계속 가능."""
+        data = request.data
+        lead = Lead.objects.filter(id=data.get("lead_id")).first()
+        if not lead:
+            return self.error("상담 신청이 없습니다.")
+        if not can_manage_branch(request.user, lead.branch_id):
+            return self.error("No permission for this branch")
+        d = (data.get("date") or "").strip()
+        t = (data.get("time") or "").strip()
+        if not d or not t:
+            return self.error("예약 날짜와 시간을 입력하세요.")
+        try:
+            day = datetime.strptime(d, "%Y-%m-%d").date()
+            sched = _kst_to_utc(day, t)
+        except (ValueError, AttributeError):
+            return self.error("날짜/시간 형식이 올바르지 않습니다.")
+        CounselReservation.objects.create(
+            lead=lead, scheduled_at=sched, note=(data.get("note") or "").strip(),
+            created_by=request.user)
+        return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
+
+    @admin_role_required
+    def delete(self, request):
+        """상담 예약 취소(ACTIVE→CANCELLED)."""
+        r = CounselReservation.objects.select_related("lead").filter(id=request.GET.get("reservation_id")).first()
+        if not r:
+            return self.error("예약이 없습니다.")
+        if not can_manage_branch(request.user, r.lead.branch_id):
+            return self.error("No permission for this branch")
+        r.status = CounselReservation.CANCELLED
+        r.save(update_fields=["status"])
+        return self.success(LeadSerializer(r.lead, context={"show_hidden": _is_manager(request.user)}).data)
 
 
 class PrefsAdminAPI(APIView):

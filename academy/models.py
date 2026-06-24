@@ -321,6 +321,24 @@ class CounselingLogEdit(models.Model):
         ordering = ["-create_time"]
 
 
+class CounselReservation(models.Model):
+    """상담 예약(여러 건). 등록 후에도 계속 받을 수 있으며, 미래 예약이 있으면
+    화면에서 '상담예약중'으로 자동 표시(예약 일시가 지나면 다시 '상담')."""
+    ACTIVE = "ACTIVE"
+    CANCELLED = "CANCELLED"
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="reservations")
+    scheduled_at = models.DateTimeField()
+    note = models.CharField(max_length=255, blank=True, default="")
+    status = models.CharField(max_length=16, default=ACTIVE)  # ACTIVE / CANCELLED
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_counsel_reservation"
+        ordering = ["scheduled_at"]
+
+
 class EnrollmentStatus(object):
     ENROLLED = "ENROLLED"
     ON_LEAVE = "ON_LEAVE"

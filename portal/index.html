@@ -549,6 +549,7 @@
           <select v-model="leadFilter" @change="loadLeads" class="input w-32">
           <option value="">전체</option>
           <option value="NEW">상담</option>
+          <option value="RESERVED">상담예약중</option>
           <option value="CONVERTED">등록완료</option>
           </select>
         </div>
@@ -597,7 +598,7 @@
             </div>
             <div class="text-right shrink-0">
               <div class="text-xs text-slate-400">{{ dt(r.create_time) }}</div>
-              <span :class="['mt-2 inline-block px-2 py-0.5 rounded text-xs', leadBadge(r.status).cls]">{{ leadBadge(r.status).label }}</span>
+              <span :class="['mt-2 inline-block px-2 py-0.5 rounded text-xs', leadChip(r).cls]">{{ leadChip(r).label }}</span>
               <div v-if="r.status==='CONVERTED'" class="text-[11px] text-emerald-600 mt-1">@{{ r.converted_username }}</div>
               <div class="mt-1">
                 <span v-if="r.is_hidden" class="text-[11px] text-rose-600">삭제됨 <button v-if="canEditBranch(r.branch && r.branch.id)" @click.stop="restoreLead(r)" class="text-indigo-500 hover:underline ml-1">복원</button></span>
@@ -654,6 +655,27 @@
                 <div class="flex justify-end">
                   <button @click="addNote(r)" class="btn-secondary text-sm whitespace-nowrap">기록 추가</button>
                 </div>
+              </div>
+            </div>
+
+            <!-- 상담 예약(여러 건) — 등록 후에도 계속 가능 -->
+            <div>
+              <div class="text-xs font-semibold text-slate-500 mb-1">상담 예약</div>
+              <ul class="space-y-1">
+                <li v-for="rv in (r.reservations||[])" :key="rv.id" class="flex items-center gap-2 text-sm rounded px-3 py-1.5" :class="rv.is_past ? 'bg-slate-50 text-slate-400' : 'bg-amber-50'">
+                  <span class="font-medium">{{ dt(rv.scheduled_at) }}</span>
+                  <span class="text-[11px]" :class="rv.is_past ? 'text-slate-400' : 'text-amber-600'">{{ rv.is_past ? '지난 예약' : '예약' }}</span>
+                  <span v-if="rv.note" class="text-xs text-slate-500">· {{ rv.note }}</span>
+                  <span class="ml-auto text-[11px] text-slate-400">{{ rv.created_by }}</span>
+                  <button v-if="canEditBranch(r.branch && r.branch.id)" @click="cancelReservation(r,rv)" class="text-[11px] text-rose-400 hover:underline">취소</button>
+                </li>
+                <li v-if="!(r.reservations||[]).length" class="text-xs text-slate-400">예약 없음</li>
+              </ul>
+              <div v-if="canEditBranch(r.branch && r.branch.id)" class="mt-2 flex flex-wrap gap-2 items-center">
+                <input v-model="resvForm.date" type="date" class="input w-36 py-1" />
+                <input v-model="resvForm.time" type="time" class="input w-28 py-1" />
+                <input v-model="resvForm.note" placeholder="메모(선택)" class="input flex-1 min-w-0 py-1" />
+                <button @click="addReservation(r)" class="btn-secondary text-sm whitespace-nowrap">예약 추가</button>
               </div>
             </div>
 
@@ -2052,6 +2074,7 @@ createApp({
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteCounselAt: '', showDeletedLeads: null, editLogId: null, editLogText: '',
+      resvForm: { date:'', time:'', note:'' },
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
       convertingLead: null, convertError: '',
@@ -3354,6 +3377,25 @@ createApp({
         this.replaceLead(d); this.noteText=''; this.noteCounselAt=this.nowLocal(); this.noteChannel='VISIT'; this.notify('상담 기록이 추가되었습니다.');
       } catch(e){ this.notify(e.message,false); }
     },
+    async addReservation(r){
+      const f=this.resvForm;
+      if (!f.date || !f.time) return this.notify('예약 날짜와 시간을 입력하세요.', false);
+      try {
+        const d = await api('POST','/api/admin/academy/lead/reservation', { lead_id:r.id, date:f.date, time:f.time, note:f.note });
+        this.replaceLead(d); this.resvForm={ date:'', time:'', note:'' }; this.notify('상담 예약이 추가되었습니다.');
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async cancelReservation(r, rv){
+      if (!confirm('이 예약을 취소할까요?')) return;
+      try { const d = await api('DELETE','/api/admin/academy/lead/reservation?reservation_id='+rv.id); this.replaceLead(d); this.notify('예약이 취소되었습니다.'); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    leadChip(r){ return ({
+      '상담':{label:'상담',cls:'bg-sky-50 text-sky-700'},
+      '상담예약중':{label:'상담예약중',cls:'bg-amber-50 text-amber-700'},
+      '등록완료':{label:'등록완료',cls:'bg-emerald-50 text-emerald-700'},
+      '종결':{label:'종결',cls:'bg-slate-100 text-slate-500'},
+    })[r.display_status] || this.leadBadge(r.status); },
     startEditLog(g){ this.editLogId=g.id; this.editLogText=g.summary; },
     async saveEditLog(r, g){
       if (!this.editLogText.trim()) return this.notify('내용을 입력하세요.', false);

@@ -293,6 +293,8 @@ class LeadSerializer(serializers.ModelSerializer):
     branch = serializers.SerializerMethodField()
     logs = serializers.SerializerMethodField()
     converted_username = serializers.SerializerMethodField()
+    reservations = serializers.SerializerMethodField()
+    display_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Lead
@@ -300,7 +302,36 @@ class LeadSerializer(serializers.ModelSerializer):
                   "school_type", "school_name", "grade", "interest", "contact_preference",
                   "purpose", "purpose_detail",
                   "status", "converted_username", "close_reason", "create_time", "logs",
-                  "is_hidden"]
+                  "is_hidden", "reservations", "display_status"]
+
+    def _name(self, u):
+        if not u:
+            return None
+        try:
+            return u.userprofile.real_name or u.username
+        except Exception:
+            return u.username
+
+    def get_reservations(self, obj):
+        from django.utils.timezone import now
+        out = []
+        for r in obj.reservations.all():
+            if r.status != "ACTIVE":
+                continue
+            out.append({"id": r.id, "scheduled_at": r.scheduled_at,
+                        "note": r.note, "created_by": self._name(r.created_by),
+                        "is_past": bool(r.scheduled_at and r.scheduled_at < now())})
+        return out
+
+    def get_display_status(self, obj):
+        from django.utils.timezone import now
+        if obj.status == "CONVERTED":
+            return "등록완료"
+        if obj.status == "CLOSED":
+            return "종결"
+        has_future = any(r.status == "ACTIVE" and r.scheduled_at and r.scheduled_at >= now()
+                         for r in obj.reservations.all())
+        return "상담예약중" if has_future else "상담"
 
     def get_branch(self, obj):
         return {"id": obj.branch.id, "code": obj.branch.code, "name": obj.branch.name} if obj.branch_id else None
