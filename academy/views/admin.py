@@ -1126,15 +1126,23 @@ class ReservationAdminAPI(APIView):
             return self.error("상담 신청이 없습니다.")
         if not can_manage_branch(request.user, lead.branch_id):
             return self.error("No permission for this branch")
+        at = (data.get("at") or "").strip()  # 단일 일시 'YYYY-MM-DDTHH:MM'
         d = (data.get("date") or "").strip()
         t = (data.get("time") or "").strip()
-        if not d or not t:
-            return self.error("예약 날짜와 시간을 입력하세요.")
-        try:
-            day = datetime.strptime(d, "%Y-%m-%d").date()
-            sched = _kst_to_utc(day, t)
-        except (ValueError, AttributeError):
-            return self.error("날짜/시간 형식이 올바르지 않습니다.")
+        if at:
+            try:
+                day_s, time_s = at.replace(" ", "T").split("T")[:2]
+                day = datetime.strptime(day_s, "%Y-%m-%d").date()
+                sched = _kst_to_utc(day, time_s[:5])
+            except (ValueError, AttributeError):
+                return self.error("예약 일시 형식이 올바르지 않습니다.")
+        elif d and t:
+            try:
+                sched = _kst_to_utc(datetime.strptime(d, "%Y-%m-%d").date(), t)
+            except (ValueError, AttributeError):
+                return self.error("날짜/시간 형식이 올바르지 않습니다.")
+        else:
+            return self.error("예약 일시를 입력하세요.")
         CounselReservation.objects.create(
             lead=lead, scheduled_at=sched, note=(data.get("note") or "").strip(),
             created_by=request.user)

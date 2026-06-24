@@ -646,10 +646,9 @@
                 <li v-if="r.logs.length===0" class="text-xs text-slate-400">기록 없음</li>
               </ul>
               <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED' && canEditBranch(r.branch && r.branch.id)" class="mt-2 space-y-2">
-                <div class="flex flex-wrap gap-2 items-center">
-                  <select v-model="noteChannel" class="input w-24 py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select>
-                  <input v-model="noteCounselAt" type="datetime-local" class="input w-52 py-1" title="상담 일시" />
-                  <span class="text-xs text-slate-400">상담 방법 · 일시</span>
+                <div class="flex gap-2 items-center">
+                  <div class="w-24 shrink-0"><select v-model="noteChannel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
+                  <div class="flex-1 min-w-0"><input v-model="noteCounselAt" type="datetime-local" class="input py-1" title="상담 방법 · 일시" /></div>
                 </div>
                 <textarea v-model="noteText" rows="3" placeholder="상담 내용 입력 (여러 줄 작성 가능)" class="input"></textarea>
                 <div class="flex justify-end">
@@ -671,11 +670,10 @@
                 </li>
                 <li v-if="!(r.reservations||[]).length" class="text-xs text-slate-400">예약 없음</li>
               </ul>
-              <div v-if="canEditBranch(r.branch && r.branch.id)" class="mt-2 flex flex-wrap gap-2 items-center">
-                <input v-model="resvForm.date" type="date" class="input w-36 py-1" />
-                <input v-model="resvForm.time" type="time" class="input w-28 py-1" />
-                <input v-model="resvForm.note" placeholder="메모(선택)" class="input flex-1 min-w-0 py-1" />
-                <button @click="addReservation(r)" class="btn-secondary text-sm whitespace-nowrap">예약 추가</button>
+              <div v-if="canEditBranch(r.branch && r.branch.id)" class="mt-2 space-y-2">
+                <input v-model="resvForm.at" type="datetime-local" class="input py-1" title="예약 일시" />
+                <textarea v-model="resvForm.note" rows="2" placeholder="메모(선택)" class="input py-1"></textarea>
+                <div class="flex justify-end"><button @click="addReservation(r)" class="btn-secondary text-sm whitespace-nowrap">예약 추가</button></div>
               </div>
             </div>
 
@@ -2074,7 +2072,7 @@ createApp({
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteCounselAt: '', showDeletedLeads: null, editLogId: null, editLogText: '',
-      resvForm: { date:'', time:'', note:'' },
+      resvForm: { at:'', note:'' },
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
       convertingLead: null, convertError: '',
@@ -3379,10 +3377,10 @@ createApp({
     },
     async addReservation(r){
       const f=this.resvForm;
-      if (!f.date || !f.time) return this.notify('예약 날짜와 시간을 입력하세요.', false);
+      if (!f.at) return this.notify('예약 일시를 입력하세요.', false);
       try {
-        const d = await api('POST','/api/admin/academy/lead/reservation', { lead_id:r.id, date:f.date, time:f.time, note:f.note });
-        this.replaceLead(d); this.resvForm={ date:'', time:'', note:'' }; this.notify('상담 예약이 추가되었습니다.');
+        const d = await api('POST','/api/admin/academy/lead/reservation', { lead_id:r.id, at:f.at, note:f.note });
+        this.replaceLead(d); this.resvForm={ at:'', note:'' }; this.notify('상담 예약이 추가되었습니다.');
       } catch(e){ this.notify(e.message,false); }
     },
     async cancelReservation(r, rv){
