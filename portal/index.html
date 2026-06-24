@@ -48,7 +48,7 @@
     <ul class="p-2 space-y-1">
       <li v-for="c in sibPop.list" :key="c.id" @click="openStudent(c); sibPop.show=false" class="text-sm rounded px-2 py-1 hover:bg-indigo-50 cursor-pointer">
         <div class="font-medium text-indigo-700">{{ c.real_name || c.username }} <span class="text-[11px] text-slate-400 font-mono">{{ c.enroll_no }}</span></div>
-        <div class="text-xs text-slate-500">{{ schoolLabel(c.school_type) }} {{ c.school_name }} {{ c.grade ? c.grade+'학년' : '' }}</div>
+        <div class="text-xs text-slate-500">{{ c.school_name }}{{ schoolSuffix(c.school_type) }} {{ c.grade ? c.grade+'학년' : '' }}</div>
         <div class="text-xs text-indigo-500">{{ (c.subjects && c.subjects.length) ? c.subjects.join(', ') : '수강 과목 없음' }}</div>
       </li>
     </ul>
@@ -342,7 +342,9 @@
     <!-- ============ 관리자: 오늘 운영 대시보드 ============ -->
     <section v-if="tab==='dashboard'">
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <h2 class="text-lg font-bold">오늘 운영 <span class="text-sm font-normal text-slate-400">(수업 · 등원/하원)</span></h2>
+        <h2 class="text-lg font-bold">오늘 운영 <span class="text-sm font-normal text-slate-400">(수업 · 등원/하원)</span>
+          <span class="ml-2 font-mono text-base text-indigo-600">🕒 {{ nowClock }}</span>
+        </h2>
         <div class="flex items-center gap-2">
           <button @click="dashShift(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 shrink-0">◀</button>
           <div class="w-40 shrink-0"><input v-model="dashDate" @change="loadDashboard" type="date" class="input py-1" /></div>
@@ -369,19 +371,24 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(l,i) in dashData.lessons" :key="i" class="border-t align-middle hover:bg-slate-50">
-              <td class="px-3 py-2 font-mono whitespace-nowrap">{{ l.start_time }}</td>
-              <td class="px-3 py-2 font-medium whitespace-nowrap">{{ l.student_name }}<span v-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span></td>
-              <td class="px-3 py-2 text-slate-500">{{ l.subject }}</td>
-              <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
-              <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
-              <td class="px-3 py-2">
-                <div class="flex items-center justify-center gap-1">
-                  <button @click="checkAtt(l,'in')" :class="['text-xs px-2 py-1 rounded', l.att.in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50']">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
-                  <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
-                </div>
-              </td>
-            </tr>
+            <template v-for="(l,i) in dashData.lessons" :key="i">
+              <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?6:5" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock.slice(0,5) }}</td></tr>
+              <tr class="border-t align-middle hover:bg-slate-50">
+                <td class="px-3 py-2 font-mono whitespace-nowrap">{{ l.start_time }}</td>
+                <td class="px-3 py-2 font-medium whitespace-nowrap">{{ l.student_name }}<span v-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
+                <td class="px-3 py-2 text-slate-500">{{ l.subject }}</td>
+                <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
+                <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
+                <td class="px-3 py-2">
+                  <div class="flex items-center justify-center gap-1">
+                    <button @click="checkAtt(l,'in')" :class="['text-xs px-2 py-1 rounded', l.att.in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50']">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
+                    <span v-if="elapsedInfo(l)" :class="['text-[11px]', elapsedInfo(l).over ? 'text-rose-500 font-bold' : 'text-slate-400']">({{ elapsedInfo(l).mins }}분{{ elapsedInfo(l).over ? ' 종료' : '' }})</span>
+                    <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
+                  </div>
+                </td>
+              </tr>
+            </template>
+            <tr v-if="dashIsToday && nowLineIndex===(dashData.lessons||[]).length && (dashData.lessons||[]).length" class="bg-rose-50"><td :colspan="showBranchCol?6:5" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock.slice(0,5) }} (오늘 수업 종료)</td></tr>
             <tr v-if="(dashData.lessons||[]).length===0"><td :colspan="showBranchCol?6:5" class="px-3 py-8 text-center text-sm text-slate-400">이 날짜에 수업이 없습니다.</td></tr>
           </tbody>
         </table>
@@ -439,8 +446,7 @@
                 <span class="text-xs font-normal text-slate-400">· 학부모 {{ r.parent_name }}</span>
               </div>
               <div class="text-sm text-slate-500 mt-1">
-                {{ r.branch?.name }} · {{ schoolLabel(r.school_type) }} {{ r.grade }}
-                <span v-if="r.school_name"> · {{ r.school_name }}</span>
+                {{ r.branch?.name }}<span v-if="r.school_name"> · {{ r.school_name }}{{ schoolSuffix(r.school_type) }}</span><span v-if="r.grade"> · {{ r.grade }}학년</span>
               </div>
               <div class="text-sm text-slate-500">{{ r.parent_phone }} <span class="text-xs text-indigo-600">· {{ purposeLabel(r) }}</span></div>
               <div v-if="r.interest" class="text-xs text-slate-400 mt-1">문의: {{ r.interest }}</div>
@@ -554,8 +560,8 @@
             </div>
             <div class="grid grid-cols-3 gap-3">
               <div><label class="lbl">학교 구분</label><input :value="schoolLabel(convertForm.school_type)||'-'" class="input bg-slate-50" readonly /></div>
-              <div><label class="lbl">학교</label><input :value="(convertForm.school_name||'-') + (convertForm.school_name ? schoolSuffix(convertForm.school_type) : '')" class="input bg-slate-50" readonly /></div>
-              <div><label class="lbl">학년</label><input :value="convertForm.grade ? convertForm.grade+'학년' : '-'" class="input bg-slate-50" readonly /></div>
+              <div><label class="lbl">학교</label><div class="flex items-center gap-1"><input :value="convertForm.school_name||'-'" class="input bg-slate-50 min-w-0" readonly /><span v-if="convertForm.school_name && schoolSuffix(convertForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(convertForm.school_type) }}</span></div></div>
+              <div><label class="lbl">학년</label><div class="flex items-center gap-1"><input :value="convertForm.grade||'-'" class="input bg-slate-50 min-w-0" readonly /><span v-if="convertForm.grade" class="text-xs text-slate-400 whitespace-nowrap">학년</span></div></div>
             </div>
             <div>
               <label class="lbl">학생 휴대폰 <span class="text-rose-500">*</span></label>
@@ -931,7 +937,9 @@
                 <div><label class="lbl">학교 이름 <span v-if="stuFieldDirty('school_name')" class="text-amber-600">✏️</span></label>
                   <div class="flex items-center gap-1"><input v-model="stuForm.school_name" :class="stuCls('school_name','min-w-0')" /><span v-if="schoolSuffix(stuForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(stuForm.school_type) }}</span></div>
                 </div>
-                <div><label class="lbl">학년 <span v-if="stuFieldDirty('grade')" class="text-amber-600">✏️</span></label><input v-model="stuForm.grade" :class="stuCls('grade')" /></div>
+                <div><label class="lbl">학년 <span v-if="stuFieldDirty('grade')" class="text-amber-600">✏️</span></label>
+                  <div class="flex items-center gap-1"><input v-model="stuForm.grade" :class="stuCls('grade','min-w-0')" /><span class="text-xs text-slate-400 whitespace-nowrap">학년</span></div>
+                </div>
                 <div><label class="lbl">등록일 <span v-if="stuFieldDirty('enrollment_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.enrollment_date" type="date" :class="stuCls('enrollment_date')" /></div>
                 <div><label class="lbl">수업 시작일 <span v-if="stuFieldDirty('lesson_start_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.lesson_start_date" type="date" :class="stuCls('lesson_start_date')" /></div>
                 <div>
@@ -1827,7 +1835,7 @@ createApp({
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
-      dashDate: '', dashData: { lessons:[], weekday:'', total:0 },
+      dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
@@ -1925,6 +1933,15 @@ createApp({
     },
     dashCheckedIn(){ const ids=new Set((this.dashData.lessons||[]).filter(l=>l.att.in).map(l=>l.student_id)); return ids.size; },
     dashCheckedOut(){ const ids=new Set((this.dashData.lessons||[]).filter(l=>l.att.out).map(l=>l.student_id)); return ids.size; },
+    nowClock(){ const d=new Date(this.clockNow); const p=x=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); },
+    dashIsToday(){ return this.dashDate===this.todayStr; },
+    nowMin(){ const d=new Date(this.clockNow); return d.getHours()*60+d.getMinutes(); },
+    nowLineIndex(){
+      // 현재 시각보다 시작이 늦은 첫 수업 인덱스(없으면 끝)
+      const ls=this.dashData.lessons||[];
+      for (let i=0;i<ls.length;i++){ if (this.hmMin(ls[i].start_time) > this.nowMin) return i; }
+      return ls.length;
+    },
     ttUnassignedCount(){
       // 재원이면서 개별 시간표 슬롯이 없는 학생 수(수업 추가 대상)
       return this.students.filter(s => s.enrollment_status==='ENROLLED' && !s.slot_count).length;
@@ -2760,6 +2777,26 @@ createApp({
       this.dashDate = d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
       this.loadDashboard();
     },
+    hmMin(hm){ if(!hm) return 0; const p=hm.split(':'); return (+p[0])*60+(+p[1]); },
+    elapsedInfo(l){
+      // 등원 후 경과(분). 하원했으면 등원~하원, 아니면 등원~현재(오늘만).
+      if (!l.att.in) return null;
+      const start = this.hmMin(l.att.in);
+      let end;
+      if (l.att.out) end = this.hmMin(l.att.out);
+      else if (this.dashIsToday) end = this.nowMin;
+      else return null;
+      const mins = Math.max(0, end - start);
+      return { mins, over: mins >= (l.duration_minutes||60), done: !!l.att.out };
+    },
+    attStatusTag(l){
+      // 미등원/지각 (오늘, 미하원 기준)
+      if (l.att.out) return null;
+      const startM = this.hmMin(l.start_time);
+      if (l.att.in){ return this.hmMin(l.att.in) > startM ? {label:'지각', cls:'bg-amber-100 text-amber-700'} : null; }
+      if (this.dashIsToday && this.nowMin > startM) return {label:'미등원', cls:'bg-rose-100 text-rose-600'};
+      return null;
+    },
     async checkAtt(l, kind){
       if (kind==='out' && !l.att.in) return this.notify('등원 후 하원할 수 있습니다.', false);
       const cur = kind==='in' ? l.att.in : l.att.out;
@@ -3139,6 +3176,7 @@ createApp({
   },
   mounted(){
     this.boot();
+    setInterval(()=>{ this.clockNow = Date.now(); }, 1000);  // 실시간 시계/경과시간
     // 브라우저 이탈(새로고침·뒤로가기·앞으로가기·창 닫기) 시 작성 중 내용 있으면 경고
     window.addEventListener('beforeunload', (e)=>{
       if (this.isDirty()){ e.preventDefault(); e.returnValue=''; return ''; }
