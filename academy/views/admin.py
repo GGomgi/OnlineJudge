@@ -2240,7 +2240,7 @@ class DashboardAdminAPI(APIView):
                 "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
                 "branch": (o.branch.name if o.branch_id else ""),
                 "biweekly": biweekly, "is_makeup": o.is_makeup,
-                "status": o.status, "lesson_note": o.note,
+                "status": o.status, "lesson_note": o.note, "no_makeup": o.no_makeup,
                 "school_type": (sp.school_type if sp else ""),
                 "school_name": (sp.school_name if sp else ""),
                 "grade": (sp.grade if sp else ""),
@@ -2431,8 +2431,33 @@ class LessonStatusAdminAPI(APIView):
         o.status = st
         if "note" in data:
             o.note = (data.get("note") or "").strip()
+        if "no_makeup" in data:
+            o.no_makeup = bool(data.get("no_makeup"))
+        if st == OccurrenceStatus.SCHEDULED:
+            o.no_makeup = False
         o.save()
-        return self.success({"status": o.status, "note": o.note})
+        return self.success({"status": o.status, "note": o.note, "no_makeup": o.no_makeup})
+
+
+class PendingMakeupAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """보강 필요 리스트: 결석(ABSENT)인데 보강 미배정·보강 안 함 아닌 수업."""
+        view = viewable_branch_ids(request.user)
+        qs = LessonOccurrence.objects.select_related("student", "branch").filter(
+            status=OccurrenceStatus.ABSENT, is_makeup=False, no_makeup=False)
+        if view is not None:
+            qs = qs.filter(branch_id__in=view)
+        made = set(LessonOccurrence.objects.filter(is_makeup=True, makeup_for__isnull=False)
+                   .values_list("makeup_for_id", flat=True))
+        out = []
+        for o in qs.order_by("-date", "start_time")[:300]:
+            if o.id in made:
+                continue
+            out.append({"occ_id": o.id, "student_id": o.student_id, "student_name": _name_of(o.student),
+                        "date": str(o.date), "start_time": str(o.start_time)[:5],
+                        "subject": o.subject or "미지정", "branch": (o.branch.name if o.branch_id else "")})
+        return self.success(out)
 
 
 class LessonEditAdminAPI(APIView):

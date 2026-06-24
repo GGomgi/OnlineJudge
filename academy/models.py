@@ -529,6 +529,7 @@ class LessonOccurrence(models.Model):
     is_makeup = models.BooleanField(default=False)          # 보강 수업 여부
     makeup_for = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name="makeups")   # 어떤 결석에 대한 보강인지
+    no_makeup = models.BooleanField(default=False)          # 결석이지만 보강 안 함(학부모 미희망)
     note = models.CharField(max_length=255, blank=True, default="")  # 결석/보강 사유
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
