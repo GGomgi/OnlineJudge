@@ -567,12 +567,11 @@
         <h2 class="text-lg font-bold">신규 상담 · 등록 <span class="text-sm font-normal text-slate-400">(등록 이전 상담 기록)</span></h2>
         <div class="flex items-center gap-2">
           <button v-if="hasAnyEdit" @click="openLeadForm" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 상담 등록</button>
-          <select v-model="leadFilter" @change="loadLeads" class="input w-32">
-          <option value="">전체</option>
-          <option value="NEW">상담</option>
-          <option value="RESERVED">상담예약중</option>
-          <option value="CONVERTED">등록완료</option>
-          </select>
+          <div class="flex items-center gap-1">
+            <label v-for="s in ['상담','상담예약중','등록완료']" :key="s" class="flex items-center gap-1 text-xs px-2 py-1 rounded border cursor-pointer whitespace-nowrap select-none" :class="leadStatusSel.includes(s) ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'">
+              <input type="checkbox" :checked="leadStatusSel.includes(s)" @change="toggleLeadStatus(s)" class="w-3.5 h-3.5"> {{ s }}
+            </label>
+          </div>
         </div>
       </div>
       <div class="flex items-center gap-2 mb-2">
@@ -2107,7 +2106,7 @@ createApp({
       absentPrompt: null,
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
-      leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
+      leadStatusSel: [], leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteTime: { date:'', ampm:'오전', hour:'', min:'00' }, showDeletedLeads: null, editLogId: null, editLogText: '',
       resvForm: { date:'', ampm:'오전', hour:'', min:'00', note:'' },
       resvPop: { show:false, x:0, y:0, at:'', note:'', by:'' },
@@ -2197,6 +2196,8 @@ createApp({
                           r.school_name, this.schoolLabel(r.school_type), String(r.grade||'')]
                          .filter(Boolean).join(' ').toLowerCase();
       let list = this.leads.slice();
+      // 상태 복수 선택(체크) 필터 — 선택 없으면 전체
+      if (this.leadStatusSel.length) list = list.filter(r => this.leadStatusSel.includes(r.display_status));
       // 1번 칸으로 먼저 좁히고, 그 결과에서 2번 칸으로 재검색(AND)
       const q1 = (this.leadSearch||'').trim().toLowerCase();
       const q2 = (this.leadSearch2||'').trim().toLowerCase();
@@ -3102,10 +3103,11 @@ createApp({
     async loadLeads(){
       this.convertingLead = null; this.showLeadForm = false;
       if (this.isManager && this.showDeletedLeads===null) await this.loadPrefs();
-      const sd = (this.isManager && this.showDeletedLeads) ? '&show_deleted=1' : '';
-      try { const d = await api('GET','/api/admin/academy/lead?status='+this.leadFilter+sd); this.leads = d.results || d; }
+      const sd = (this.isManager && this.showDeletedLeads) ? '?show_deleted=1' : '';
+      try { const d = await api('GET','/api/admin/academy/lead'+sd); this.leads = d.results || d; }
       catch(e){ this.notify(e.message,false); }
     },
+    toggleLeadStatus(s){ const i=this.leadStatusSel.indexOf(s); if(i>=0) this.leadStatusSel.splice(i,1); else this.leadStatusSel.push(s); this.leadPage=1; },
     async loadPrefs(){ try { const p = await api('GET','/api/admin/academy/prefs'); this.showDeletedLeads = !!(p && p.show_deleted_leads); } catch(e){ this.showDeletedLeads=false; } },
     async toggleShowDeleted(){
       this.showDeletedLeads = !this.showDeletedLeads;
