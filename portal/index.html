@@ -55,6 +55,14 @@
     <div v-if="dashPop.l.att.note_tag || dashPop.l.att.note" class="mt-1 pt-1 border-t">비고: <span v-if="dashPop.l.att.note_tag" class="px-1 rounded" :style="attTagStyle(dashPop.l.att.note_tag)">{{ attTagLabel(dashPop.l.att.note_tag) }}</span> <span class="text-slate-600">{{ dashPop.l.att.note }}</span></div>
   </div>
 
+  <!-- 시간표 달력 수업 호버: 최근 진도(개별 진도 관리 연결 예정) -->
+  <div v-if="calPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-60 pointer-events-none" :style="{ left: calPop.x+'px', top: calPop.y+'px' }">
+    <div class="font-bold text-sm">{{ calPop.it.student_name }}</div>
+    <div class="text-slate-500">{{ calPop.date }} {{ calPop.it.start_time }} · {{ calPop.it.subject }}<template v-if="calPop.it.makeup"> (보강)</template></div>
+    <div v-if="calPop.it.status==='ABSENT'" class="mt-1 text-rose-500">결석</div>
+    <div class="mt-2 pt-2 border-t text-slate-400">최근 진도: <span class="text-slate-300">개별 진도 관리 연결 예정</span></div>
+  </div>
+
   <!-- 형제(보호자 연결 학생) 호버 팝오버 -->
   <div v-if="sibPop.show" class="fixed z-50 bg-white rounded-lg shadow-xl border w-72 overflow-y-auto" style="max-height:18rem"
        :style="{ left: sibPop.x+'px', top: sibPop.y+'px' }"
@@ -396,7 +404,7 @@
           </thead>
           <tbody>
             <template v-for="(l,i) in dashLessons" :key="i">
-              <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?8:7" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock.slice(0,5) }}</td></tr>
+              <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?8:7" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }}</td></tr>
               <tr class="border-t align-middle hover:bg-slate-50" :class="isAbsent(l) ? 'bg-rose-50/50' : ''">
                 <td class="px-3 py-2 font-mono whitespace-nowrap">{{ l.start_time }}</td>
                 <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline" :class="isAbsent(l) ? 'line-through text-slate-400' : ''" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
@@ -422,7 +430,7 @@
                 </td>
               </tr>
             </template>
-            <tr v-if="dashIsToday && nowLineIndex===(dashData.lessons||[]).length && (dashData.lessons||[]).length" class="bg-rose-50"><td :colspan="showBranchCol?8:7" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock.slice(0,5) }} (오늘 수업 종료)</td></tr>
+            <tr v-if="dashIsToday && nowLineIndex===(dashData.lessons||[]).length && (dashData.lessons||[]).length" class="bg-rose-50"><td :colspan="showBranchCol?8:7" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }} ({{ dashAllDone ? '오늘 수업 종료' : '오늘 마지막 수업 중' }})</td></tr>
             <tr v-if="(dashData.lessons||[]).length===0"><td :colspan="showBranchCol?8:7" class="px-3 py-8 text-center text-sm text-slate-400">이 날짜에 수업이 없습니다.</td></tr>
           </tbody>
         </table>
@@ -884,20 +892,18 @@
     <!-- ============ 관리자: 개별 시간표 ============ -->
     <section v-if="tab==='indtt'">
       <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
-        <h2 class="text-lg font-bold">개별 시간표</h2>
-        <button v-if="hasAnyEdit" @click="toggleTtAdd" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">
+        <!-- 보기 전환 -->
+        <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+          <button @click="switchTtView('week')" :class="['px-3 py-1.5', ttView==='week' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">주간</button>
+          <button @click="switchTtView('month')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='month' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">월간</button>
+          <button @click="switchTtView('list')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='list' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">목록</button>
+        </div>
+        <button v-if="hasAnyEdit" @click="openTtAdd" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">
           + 수업 추가
           <span :class="['ml-1 px-1.5 py-0.5 rounded text-[11px]', ttUnassignedCount>0 ? 'bg-rose-500' : 'bg-indigo-500']">{{ ttUnassignedCount>0 ? '미등록 '+ttUnassignedCount+'명!' : '미등록 없음' }}</span>
         </button>
       </div>
       <p class="text-xs text-slate-400 mb-3">전체 학생의 개별 수업을 필터로 조회·관리합니다. 입회원 신청서의 요일/시간은 등록 시 자동 생성됩니다.</p>
-
-      <!-- 보기 전환 -->
-      <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm mb-3">
-        <button @click="switchTtView('list')" :class="['px-3 py-1.5', ttView==='list' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">목록</button>
-        <button @click="switchTtView('week')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='week' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">주간</button>
-        <button @click="switchTtView('month')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='month' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">월간</button>
-      </div>
 
       <!-- ===== 달력(주간/월간) ===== -->
       <div v-if="ttView!=='list'" class="bg-white rounded-xl shadow-sm p-3 mb-4">
@@ -910,30 +916,30 @@
           </div>
           <div><label class="lbl">과정</label><select v-model="ttFilter.program" @change="loadTtCal" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
           <div><label class="lbl">강사</label><select v-model="ttFilter.instructor_id" @change="loadTtCal" class="input w-28"><option value="">전체</option><option value="__none__">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
-          <span class="text-xs text-slate-400 ml-auto self-center">수업 클릭 → 결석 지정/취소</span>
+          <span class="text-xs text-slate-400 ml-auto self-center">수업에 마우스를 올리면 최근 진도를 봅니다(개별 진도 관리 연결 예정)</span>
         </div>
 
-        <!-- 주간: 시간×요일 격자 -->
+        <!-- 주간: 시간(30분)×요일 격자 -->
         <div v-if="ttView==='week'" class="overflow-x-auto">
           <table class="w-full border-collapse text-xs">
             <thead>
               <tr>
-                <th class="w-12 border border-slate-100 bg-slate-50 py-1"></th>
+                <th class="w-14 border border-slate-100 bg-slate-50 py-1"></th>
                 <th v-for="(d,i) in ttWeekDates" :key="i" class="border border-slate-100 bg-slate-50 py-1 font-medium" :class="d.isToday ? 'text-indigo-600' : 'text-slate-500'">{{ d.label }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="h in ttWeekHours" :key="h">
-                <td class="border border-slate-100 bg-slate-50 text-center text-[11px] text-slate-400 align-top py-1">{{ h }}시</td>
+              <tr v-for="sl in ttWeekSlots" :key="sl.mins">
+                <td class="border border-slate-100 bg-slate-50 text-center text-[11px] align-top py-1" :class="sl.half ? 'text-slate-300' : 'text-slate-400'">{{ sl.label }}</td>
                 <td v-for="(d,i) in ttWeekDates" :key="i" class="border border-slate-100 align-top p-0.5 min-w-[110px]" :class="d.isToday ? 'bg-indigo-50/30' : ''">
-                  <button v-for="(it,j) in ttCellItems(d.date,h)" :key="j" @click="clickCalLesson(it,d.date)"
-                          :class="['block w-full text-left mb-0.5 px-1.5 py-1 rounded leading-tight', calItemCls(it)]">
+                  <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
+                       :class="['mb-0.5 px-1.5 py-1 rounded leading-tight cursor-default', calItemCls(it)]">
                     <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}
                     <span class="block text-[10px] opacity-70">{{ it.subject }}<template v-if="it.makeup"> · 보강</template></span>
-                  </button>
+                  </div>
                 </td>
               </tr>
-              <tr v-if="ttWeekHours.length===0"><td :colspan="8" class="text-center text-xs text-slate-400 py-6">이 주에 수업이 없습니다.</td></tr>
+              <tr v-if="ttWeekSlots.length===0"><td :colspan="8" class="text-center text-xs text-slate-400 py-6">이 주에 수업이 없습니다.</td></tr>
             </tbody>
           </table>
         </div>
@@ -944,10 +950,10 @@
           <div v-for="(c,i) in ttMonthCells" :key="i" class="border border-slate-100 rounded min-h-[80px] p-1" :class="!c.date ? 'bg-slate-50/50' : (c.isToday ? 'bg-indigo-50/40' : '')">
             <template v-if="c.date">
               <div class="text-[11px] mb-0.5" :class="c.isToday ? 'text-indigo-600 font-bold' : 'text-slate-400'">{{ c.day }}</div>
-              <button v-for="(it,j) in (ttCalDays[c.date] ? ttCalDays[c.date].items : [])" :key="j" @click="clickCalLesson(it,c.date)"
-                      :class="['block w-full text-left mb-0.5 px-1 py-0.5 rounded truncate leading-tight', calItemCls(it)]">
+              <div v-for="(it,j) in (ttCalDays[c.date] ? ttCalDays[c.date].items : [])" :key="j" @mouseenter="showCalPop(it,c.date,$event)" @mouseleave="hideCalPop"
+                   :class="['mb-0.5 px-1 py-0.5 rounded truncate leading-tight cursor-default', calItemCls(it)]">
                 <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<template v-if="it.makeup"> ·보강</template>
-              </button>
+              </div>
             </template>
           </div>
         </div>
@@ -2083,7 +2089,8 @@ createApp({
       durations: [60, 90, 120],
       ttStudent: null, ttSearch: '', ttResults: [], ttAll: [], ttInstructors: [], showTtAdd: false,
       ttFilter: { name:'', weekday:'', from:'', to:'', instructor_id:'', program:'' },
-      ttView: 'list', ttCalDays: {}, ttCalAnchor: '', ttCalMonth: '',
+      ttView: 'week', ttCalDays: {}, ttCalAnchor: '', ttCalMonth: '',
+      calPop: { show:false, x:0, y:0, date:'', it:{} },
       ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' },
       classes: [], sel: null, roster: [],
       classForm: { name:'', branch_id:null, track:'', level:'' },
@@ -2154,6 +2161,7 @@ createApp({
     dashBranches(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.branch).filter(Boolean))]; },
     dashCheckedIn(){ const ids=new Set(this.dashLessons.filter(l=>l.att.in).map(l=>l.student_id)); return ids.size; },
     dashCheckedOut(){ const ids=new Set(this.dashLessons.filter(l=>l.att.out).map(l=>l.student_id)); return ids.size; },
+    dashAllDone(){ const ls=this.dashLessons; return ls.length>0 && ls.every(l=>this.isAbsent(l) || l.att.out); },
     nowClock(){ const d=new Date(this.clockNow); const p=x=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); },
     dashIsToday(){ return this.dashDate===this.todayStr; },
     nowMin(){ const d=new Date(this.clockNow); return d.getHours()*60+d.getMinutes(); },
@@ -2281,12 +2289,16 @@ createApp({
         out.push({ date:ds, label:WD[i]+' '+(dt.getMonth()+1)+'/'+dt.getDate(), isToday:ds===this.todayStr }); }
       return out;
     },
-    ttWeekHours(){
-      let lo=24, hi=0;
+    ttWeekSlots(){
+      let lo=24*60, hi=0;
+      const toM=t=>{ const [h,m]=t.split(':').map(Number); return h*60+m; };
       this.ttWeekDates.forEach(d=>{ const day=this.ttCalDays[d.date]; if(!day) return;
-        day.items.forEach(it=>{ const h=parseInt(it.start_time); if(h<lo)lo=h; if(h>hi)hi=h; }); });
+        day.items.forEach(it=>{ const mm=toM(it.start_time); if(mm<lo)lo=mm; if(mm>hi)hi=mm; }); });
       if (lo>hi) return [];
-      const out=[]; for(let h=lo;h<=hi;h++) out.push(h); return out;
+      lo=Math.floor(lo/30)*30; hi=Math.floor(hi/30)*30;
+      const p=x=>String(x).padStart(2,'0'); const out=[];
+      for(let m=lo;m<=hi;m+=30) out.push({ mins:m, half:(m%60!==0), label:p(Math.floor(m/60))+':'+p(m%60) });
+      return out;
     },
     ttCalTitle(){
       if (this.ttView==='month') return this.ttCalMonth;
@@ -2403,7 +2415,7 @@ createApp({
       else if (key==='options'){ this.loadOptionAdmin(); this.loadBranchAdmin(); }
       else if (key==='devlog') this.loadDevlog(true);
       else if (key==='dashboard') this.loadDashboard();
-      else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); this.loadStudents(); }
+      else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); this.loadStudents(); this.switchTtView(this.ttView); }
       else if (key==='students'){ this.loadStudents(); this.loadOptions(); }
       else if (key==='children') this.loadChildren();
       else if (key==='hr'){ this.loadStaffProfile().then(()=> this.$nextTick(()=> this.hrSigInit())); }
@@ -2535,7 +2547,7 @@ createApp({
     },
     blurIfTimeComplete(e){ if (/^\d{2}:\d{2}$/.test(e.target.value)) e.target.blur(); },
     async loadTtInstructors(){
-      try { const d = await api('GET','/api/admin/academy/staff'); this.ttInstructors = d.results || d; } catch(e){}
+      try { const d = await api('GET','/api/admin/academy/instructors'); this.ttInstructors = d.results || d; } catch(e){}
     },
     async loadAllTt(){
       try {
@@ -2579,28 +2591,18 @@ createApp({
       this.loadTtCal();
     },
     ttCalToday(){ this.ttCalAnchor=this.todayStr; this.ttCalMonth=this.todayStr.slice(0,7); this.loadTtCal(); },
-    ttCellItems(date,hour){ const day=this.ttCalDays[date]; if(!day) return []; return day.items.filter(it=>parseInt(it.start_time)===hour); },
+    ttSlotItems(date,mins){
+      const day=this.ttCalDays[date]; if(!day) return [];
+      return day.items.filter(it=>{ const [h,m]=it.start_time.split(':').map(Number); const v=h*60+m; return v>=mins && v<mins+30; });
+    },
     calItemCls(it){
       if (it.status==='ABSENT') return 'bg-rose-100 text-rose-500 line-through';
       if (it.makeup) return 'bg-blue-50 text-blue-700 hover:bg-blue-100';
       return 'bg-slate-50 text-slate-600 hover:bg-indigo-50';
     },
-    async clickCalLesson(it,date){
-      const absent = it.status==='ABSENT';
-      const who = (it.student_name||'')+' · '+date+' '+it.start_time;
-      if (!absent && !window.confirm(who+' 수업을 결석 처리할까요?')) return;
-      if (absent && !window.confirm(who+' 결석을 취소(예정으로 복원)할까요?')) return;
-      const status = absent ? 'SCHEDULED' : 'ABSENT';
-      try {
-        if (it.makeup || !it.timetable_id){
-          await api('POST','/api/admin/academy/lesson_status', { occ_id:it.occ_id, status });
-        } else {
-          await api('POST','/api/admin/academy/lesson_absence', { timetable_id:it.timetable_id, date, status });
-        }
-        this.notify(absent ? '결석을 취소했습니다.' : '결석 처리했습니다.');
-        this.loadTtCal();
-      } catch(e){ this.notify(e.message,false); }
-    },
+    showCalPop(it,date,e){ this.calPop={ show:true, it, date, x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
+    hideCalPop(){ this.calPop.show=false; },
+    openTtAdd(){ this.ttView='list'; this.showTtAdd=true; },
     onFilterFrom(){ const f=this.ttFilter; if (f.from && (!f.to || f.to < f.from)) f.to = f.from; },
     toggleTtAdd(){ this.showTtAdd = !this.showTtAdd; if (!this.showTtAdd){ this.ttStudents=[]; this.ttAddRows=[]; } },
     async loadAllStudents(){

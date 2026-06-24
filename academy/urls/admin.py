@@ -1,6 +1,6 @@
 from django.conf.urls import url
 
-from ..views.admin import (AssignRoleAPI, StaffAdminAPI, StaffStatusAPI, StaffDeleteAPI,
+from ..views.admin import (AssignRoleAPI, StaffAdminAPI, InstructorListAPI, StaffStatusAPI, StaffDeleteAPI,
                            StaffReissueSabunAPI, StaffHistoryAPI, HRNoticeAdminAPI,
                            LeadDeleteAdminAPI, PrefsAdminAPI,
                            StaffDetailAdminAPI, StaffDocUploadAdminAPI, StaffDocAdminAPI,
@@ -20,6 +20,7 @@ from ..views.admin import (AssignRoleAPI, StaffAdminAPI, StaffStatusAPI, StaffDe
 
 urlpatterns = [
     url(r"^academy/staff/?$", StaffAdminAPI.as_view(), name="academy_staff"),
+    url(r"^academy/instructors/?$", InstructorListAPI.as_view(), name="academy_instructors"),
     url(r"^academy/staff/status/?$", StaffStatusAPI.as_view(), name="academy_staff_status"),
     url(r"^academy/staff/delete/?$", StaffDeleteAPI.as_view(), name="academy_staff_delete"),
     url(r"^academy/staff/reissue_sabun/?$", StaffReissueSabunAPI.as_view(), name="academy_staff_reissue"),

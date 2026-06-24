@@ -292,6 +292,20 @@ def _staff_brief(profile):
     }
 
 
+class InstructorListAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """담당 강사 선택용 경량 목록(인사관리 권한 불필요). 열람 가능 지점의 교직원."""
+        view = viewable_branch_ids(request.user)
+        qs = AcademyProfile.objects.select_related(
+            "user", "user__staff_profile", "branch").filter(
+            role__in=STAFF_ROLES, user__is_disabled=False)
+        if view is not None:
+            qs = qs.filter(branch_id__in=view)
+        qs = qs.order_by("branch_id", "user__username")
+        return self.success([_staff_brief(p) for p in qs])
+
+
 class StaffAdminAPI(APIView):
     @admin_role_required
     def get(self, request):
