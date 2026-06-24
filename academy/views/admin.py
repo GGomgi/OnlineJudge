@@ -23,7 +23,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       Lead, LeadStatus, CounselingLog, CounselingLogEdit, CounselReservation, StudentProfile, EnrollmentStatus,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
-                      TimetableChange, StudentStatusChange, StaffChangeLog, DailyAttendance,
+                      TimetableChange, StudentStatusChange, StudentCredential, StaffChangeLog, DailyAttendance,
                       AttendanceChange, LessonOccurrence, OccurrenceStatus)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 import os as _os
@@ -2113,6 +2113,59 @@ class StudentCounselAdminAPI(APIView):
             channel=data.get("channel") or "VISIT",
             summary=summary, counsel_at=data.get("counsel_at") or None)
         return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
+
+
+class StudentCredentialAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """학생 사이트 계정 목록. ?student_id="""
+        u = User.objects.filter(id=request.GET.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_view_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        out = [{"id": c.id, "site": c.site, "login_id": c.login_id, "password": c.password}
+               for c in u.site_credentials.all()]
+        return self.success(out)
+
+    @admin_role_required
+    def post(self, request):
+        """사이트 계정 추가/수정. id 있으면 수정, 없으면 추가. {student_id, id?, site, login_id, password}"""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        fields = {"site": (data.get("site") or "").strip(),
+                  "login_id": (data.get("login_id") or "").strip(),
+                  "password": (data.get("password") or "").strip()}
+        if data.get("id"):
+            c = StudentCredential.objects.filter(id=data.get("id"), student=u).first()
+            if not c:
+                return self.error("항목이 없습니다.")
+            for k, v in fields.items():
+                setattr(c, k, v)
+            c.save()
+        else:
+            last = u.site_credentials.order_by("-order").first()
+            c = StudentCredential.objects.create(
+                student=u, order=((last.order + 1) if last else 0), **fields)
+        return self.success({"id": c.id, **fields})
+
+    @admin_role_required
+    def delete(self, request):
+        """사이트 계정 삭제. ?id="""
+        c = StudentCredential.objects.select_related("student").filter(id=request.GET.get("id")).first()
+        if not c:
+            return self.error("항목이 없습니다.")
+        prof = getattr(c.student, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("No permission for this branch")
+        c.delete()
+        return self.success(True)
 
 
 # ── 개발일지(Claude Code 세션 트랜스크립트 뷰어, 본부 관리자 전용) ──

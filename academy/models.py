@@ -504,6 +504,23 @@ class GuardianStudent(models.Model):
         unique_together = ("parent", "student")
 
 
+class StudentCredential(models.Model):
+    """학생 사이트 계정(스크래치 등). 어린 학생이 자주 잊어 학원에서 관리.
+    사이트/아이디/비밀번호를 줄 단위로 저장(별도 목록화 없이 자유 입력)."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="site_credentials")
+    site = models.CharField(max_length=64, blank=True, default="")
+    login_id = models.CharField(max_length=128, blank=True, default="")
+    password = models.CharField(max_length=128, blank=True, default="")
+    order = models.PositiveSmallIntegerField(default=0)
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_student_credential"
+        ordering = ["order", "id"]
+
+
 class StudentStatusChange(models.Model):
     """학생 등록상태 변경 이력(재원↔휴원↔퇴원↔재등록). 휴원/퇴원 모아보기·재등록 관리·
     안내문자 연계의 근거 자료로 영구 보존한다."""

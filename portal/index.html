@@ -1354,6 +1354,25 @@
                 <p class="text-[11px] text-slate-400">검색에서 고르면 <b>연결</b>, 직접 작성하면 새 계정 <b>생성</b>됩니다.</p>
               </div>
             </div>
+
+            <!-- 아이디 관리 -->
+            <div v-if="stuTab==='cred'" class="space-y-2">
+              <p class="text-xs text-slate-400">학생이 쓰는 사이트의 아이디·비밀번호를 관리합니다. 한 줄에 하나씩, [저장]으로 추가·수정합니다.</p>
+              <div v-for="c in stuCreds" :key="c.id" class="flex gap-2 items-center">
+                <div class="w-32 shrink-0"><input v-model="c.site" placeholder="사이트(예: 스크래치)" class="input py-1" /></div>
+                <div class="flex-1 min-w-0"><input v-model="c.login_id" placeholder="아이디" class="input py-1" /></div>
+                <div class="flex-1 min-w-0"><input v-model="c.password" placeholder="비밀번호" class="input py-1" /></div>
+                <button v-if="stuCanEdit" @click="saveStuCred(c)" class="btn-secondary text-xs shrink-0">저장</button>
+                <button v-if="stuCanEdit" @click="deleteStuCred(c)" class="text-rose-400 text-xs hover:underline shrink-0">삭제</button>
+              </div>
+              <div v-if="!stuCreds.length" class="text-xs text-slate-400">등록된 사이트 계정이 없습니다.</div>
+              <div v-if="stuCanEdit" class="flex gap-2 items-center pt-2 border-t mt-2">
+                <div class="w-32 shrink-0"><input v-model="stuCredNew.site" placeholder="사이트(예: 스크래치)" class="input py-1" /></div>
+                <div class="flex-1 min-w-0"><input v-model="stuCredNew.login_id" placeholder="아이디" class="input py-1" /></div>
+                <div class="flex-1 min-w-0"><input v-model="stuCredNew.password" placeholder="비밀번호" class="input py-1" /></div>
+                <button @click="addStuCred" class="btn-primary text-xs shrink-0">저장</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2106,7 +2125,8 @@ createApp({
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
       statusPop: { show:false, x:0, y:0, name:'', list:[] },
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
-      stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'guardian',l:'보호자'}],
+      stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'status',l:'상태 이력'},{k:'guardian',l:'보호자'},{k:'cred',l:'아이디 관리'}],
+      stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '',
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
@@ -3291,6 +3311,10 @@ createApp({
     },
     // ── 학생 관리 ──
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
+    async loadStuCreds(){ if(!this.stuDetail) return; try { this.stuCreds = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); } catch(e){ this.stuCreds=[]; } },
+    async saveStuCred(c){ try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, id:c.id, site:c.site, login_id:c.login_id, password:c.password }); this.notify('저장되었습니다.'); } catch(e){ this.notify(e.message,false); } },
+    async addStuCred(){ const n=this.stuCredNew; if(!((n.site||'').trim()||(n.login_id||'').trim()||(n.password||'').trim())) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, site:n.site, login_id:n.login_id, password:n.password }); this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds(); this.notify('추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
+    async deleteStuCred(c){ if(!confirm('이 사이트 계정을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/student_credential?id='+c.id); this.loadStuCreds(); this.notify('삭제되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     siblingCount(s){ const k=(s.parent_phone||'').replace(/\D/g,''); return k ? (this.siblingGroups[k]||[]).length : 1; },
     showSiblings(s, e){
       clearTimeout(this._sibTimer);
@@ -3317,6 +3341,7 @@ createApp({
         this.stuStatusNew = d.enrollment_status==='ENROLLED' ? 'ON_LEAVE' : 'ENROLLED';
         this.stuStatusReason=''; this.stuStatusDate=this.todayStr;
         this.gdForm = { parent_name:'', parent_phone:'', relation:'', password:'' };
+        this.stuCreds=[]; this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds();
       } catch(e){ this.notify(e.message,false); }
     },
     buildStuTimetables(d){
