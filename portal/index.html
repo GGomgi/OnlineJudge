@@ -598,7 +598,10 @@
             </div>
             <div class="text-right shrink-0">
               <div class="text-xs text-slate-400">{{ dt(r.create_time) }}</div>
-              <span :class="['mt-2 inline-block px-2 py-0.5 rounded text-xs', leadChip(r).cls]">{{ leadChip(r).label }}</span>
+              <div class="mt-2 flex items-center justify-end gap-1">
+                <span v-if="r.display_status==='상담예약중' && nextReservation(r)" class="text-[11px] text-amber-600">📅 {{ dt(nextReservation(r).scheduled_at) }}</span>
+                <span :class="['inline-block px-2 py-0.5 rounded text-xs', leadChip(r).cls]">{{ leadChip(r).label }}</span>
+              </div>
               <div v-if="r.status==='CONVERTED'" class="text-[11px] text-emerald-600 mt-1">@{{ r.converted_username }}</div>
               <div class="mt-1">
                 <span v-if="r.is_hidden" class="text-[11px] text-rose-600">삭제됨 <button v-if="canEditBranch(r.branch && r.branch.id)" @click.stop="restoreLead(r)" class="text-indigo-500 hover:underline ml-1">복원</button></span>
@@ -3402,6 +3405,7 @@ createApp({
       try { const d = await api('DELETE','/api/admin/academy/lead/reservation?reservation_id='+rv.id); this.replaceLead(d); this.notify('예약이 취소되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
+    nextReservation(r){ return (r.reservations||[]).find(rv => !rv.is_past) || null; },
     leadChip(r){ return ({
       '상담':{label:'상담',cls:'bg-sky-50 text-sky-700'},
       '상담예약중':{label:'상담예약중',cls:'bg-amber-50 text-amber-700'},
