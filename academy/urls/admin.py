@@ -16,7 +16,7 @@ from ..views.admin import (AssignRoleAPI, StaffAdminAPI, StaffStatusAPI, StaffDe
                            ConvertLeadAdminAPI, CloseLeadAdminAPI, DevLogAdminAPI,
                            DashboardAdminAPI, AttendanceCheckAdminAPI, AttendanceNoteAdminAPI,
                            LessonStatusAdminAPI, MakeupAddAdminAPI, TimetableCalendarAPI,
-                           LessonEditAdminAPI, PendingMakeupAPI)
+                           LessonEditAdminAPI, PendingMakeupAPI, LessonAbsenceAPI)
 
 urlpatterns = [
     url(r"^academy/staff/?$", StaffAdminAPI.as_view(), name="academy_staff"),
@@ -64,4 +64,5 @@ urlpatterns = [
     url(r"^academy/timetable_calendar/?$", TimetableCalendarAPI.as_view(), name="academy_timetable_calendar"),
     url(r"^academy/lesson_edit/?$", LessonEditAdminAPI.as_view(), name="academy_lesson_edit"),
     url(r"^academy/pending_makeup/?$", PendingMakeupAPI.as_view(), name="academy_pending_makeup"),
+    url(r"^academy/lesson_absence/?$", LessonAbsenceAPI.as_view(), name="academy_lesson_absence"),
 ]
