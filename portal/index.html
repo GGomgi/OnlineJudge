@@ -548,8 +548,7 @@
           <button v-if="hasAnyEdit" @click="openLeadForm" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 상담 등록</button>
           <select v-model="leadFilter" @change="loadLeads" class="input w-32">
           <option value="">전체</option>
-          <option value="NEW">신규</option>
-          <option value="COUNSELING">상담중</option>
+          <option value="NEW">상담</option>
           <option value="CONVERTED">등록완료</option>
           </select>
         </div>
@@ -2972,8 +2971,8 @@ createApp({
       return d.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3');
     },
     leadBadge(s){ return ({
-      NEW:{label:'신규',cls:'bg-sky-50 text-sky-700'},
-      COUNSELING:{label:'상담중',cls:'bg-amber-50 text-amber-700'},
+      NEW:{label:'상담',cls:'bg-sky-50 text-sky-700'},
+      COUNSELING:{label:'상담',cls:'bg-sky-50 text-sky-700'},
       CONVERTED:{label:'등록완료',cls:'bg-emerald-50 text-emerald-700'},
       CLOSED:{label:'종결',cls:'bg-slate-100 text-slate-500'},
     })[s] || {label:s,cls:'bg-slate-100'}; },

@@ -1071,9 +1071,7 @@ class CounselingNoteAdminAPI(APIView):
             summary=data["summary"],
             counsel_at=data.get("counsel_at"),
             next_contact_at=data.get("next_contact_at"))
-        if lead.status == LeadStatus.NEW:
-            lead.status = LeadStatus.COUNSELING
-            lead.save()
+        # 상태 단순화: 상담기록을 남겨도 '상담(NEW)' 유지(상담중 개념 폐지).
         return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
 
     @admin_role_required
