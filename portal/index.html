@@ -1359,10 +1359,10 @@
             <div v-if="stuTab==='cred'" class="space-y-2">
               <p class="text-xs text-slate-400">학생이 쓰는 사이트의 아이디·비밀번호를 관리합니다. 한 줄에 하나씩, [저장]으로 추가·수정합니다.</p>
               <div v-for="c in stuCreds" :key="c.id" class="flex gap-2 items-center">
-                <div class="w-32 shrink-0"><input v-model="c.site" placeholder="사이트(예: 스크래치)" class="input py-1" /></div>
-                <div class="flex-1 min-w-0"><input v-model="c.login_id" placeholder="아이디" class="input py-1" /></div>
-                <div class="flex-1 min-w-0"><input v-model="c.password" placeholder="비밀번호" class="input py-1" /></div>
-                <button v-if="stuCanEdit" @click="saveStuCred(c)" class="btn-secondary text-xs shrink-0">저장</button>
+                <div class="w-32 shrink-0"><input v-model="c.site" placeholder="사이트(예: 스크래치)" :class="['input py-1', credFieldDirty(c,'site') ? 'ring-2 ring-amber-400 border-amber-400' : '']" /></div>
+                <div class="flex-1 min-w-0"><input v-model="c.login_id" placeholder="아이디" :class="['input py-1', credFieldDirty(c,'login_id') ? 'ring-2 ring-amber-400 border-amber-400' : '']" /></div>
+                <div class="flex-1 min-w-0"><input v-model="c.password" placeholder="비밀번호" :class="['input py-1', credFieldDirty(c,'password') ? 'ring-2 ring-amber-400 border-amber-400' : '']" /></div>
+                <button v-if="stuCanEdit" @click="saveStuCred(c)" :class="['text-xs shrink-0', credDirty(c) ? 'btn-primary' : 'btn-secondary']">수정</button>
                 <button v-if="stuCanEdit" @click="deleteStuCred(c)" class="text-rose-400 text-xs hover:underline shrink-0">삭제</button>
               </div>
               <div v-if="!stuCreds.length" class="text-xs text-slate-400">등록된 사이트 계정이 없습니다.</div>
@@ -1370,7 +1370,7 @@
                 <div class="w-32 shrink-0"><input v-model="stuCredNew.site" placeholder="사이트(예: 스크래치)" class="input py-1" /></div>
                 <div class="flex-1 min-w-0"><input v-model="stuCredNew.login_id" placeholder="아이디" class="input py-1" /></div>
                 <div class="flex-1 min-w-0"><input v-model="stuCredNew.password" placeholder="비밀번호" class="input py-1" /></div>
-                <button @click="addStuCred" class="btn-primary text-xs shrink-0">저장</button>
+                <button @click="addStuCred" class="btn-primary text-xs shrink-0">추가</button>
               </div>
             </div>
           </div>
@@ -3311,8 +3311,10 @@ createApp({
     },
     // ── 학생 관리 ──
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
-    async loadStuCreds(){ if(!this.stuDetail) return; try { this.stuCreds = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); } catch(e){ this.stuCreds=[]; } },
-    async saveStuCred(c){ try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, id:c.id, site:c.site, login_id:c.login_id, password:c.password }); this.notify('저장되었습니다.'); } catch(e){ this.notify(e.message,false); } },
+    async loadStuCreds(){ if(!this.stuDetail) return; try { const d = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); this.stuCreds = d.map(c=>({ ...c, _orig:{ site:c.site, login_id:c.login_id, password:c.password } })); } catch(e){ this.stuCreds=[]; } },
+    credFieldDirty(c, f){ return c._orig && c[f] !== c._orig[f]; },
+    credDirty(c){ return ['site','login_id','password'].some(f=>this.credFieldDirty(c,f)); },
+    async saveStuCred(c){ try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, id:c.id, site:c.site, login_id:c.login_id, password:c.password }); c._orig={ site:c.site, login_id:c.login_id, password:c.password }; this.notify('수정되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async addStuCred(){ const n=this.stuCredNew; if(!((n.site||'').trim()||(n.login_id||'').trim()||(n.password||'').trim())) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, site:n.site, login_id:n.login_id, password:n.password }); this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds(); this.notify('추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async deleteStuCred(c){ if(!confirm('이 사이트 계정을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/student_credential?id='+c.id); this.loadStuCreds(); this.notify('삭제되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     siblingCount(s){ const k=(s.parent_phone||'').replace(/\D/g,''); return k ? (this.siblingGroups[k]||[]).length : 1; },
