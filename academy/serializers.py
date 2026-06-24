@@ -241,7 +241,7 @@ class MarkAttendanceSerializer(serializers.Serializer):
 
 class LeadCreateSerializer(serializers.Serializer):
     branch_id = serializers.IntegerField()
-    parent_name = serializers.CharField(max_length=64)
+    parent_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
     parent_phone = serializers.CharField(max_length=32)
     student_name = serializers.CharField(max_length=64)
     school_type = serializers.CharField(max_length=16, required=False, allow_blank=True)

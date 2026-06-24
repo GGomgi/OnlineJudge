@@ -188,15 +188,16 @@
       </div>
       <form @submit.prevent="submitLead" class="space-y-3">
         <div>
-          <label class="lbl">지점 <span class="text-rose-500">*</span></label>
-          <select v-model="leadForm.branch_id" @change="saveLeadBranch" class="input">
+          <label class="lbl">지점 <span v-if="leadCanChooseBranch" class="text-rose-500">*</span></label>
+          <select v-if="leadCanChooseBranch" v-model="leadForm.branch_id" @change="saveLeadBranch" class="input">
             <option :value="null" disabled>지점 선택</option>
-            <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+            <option v-for="b in leadBranchOptions" :key="b.id" :value="b.id">{{ b.name }}</option>
           </select>
+          <div v-else class="input bg-slate-50 text-slate-600 flex items-center cursor-default">{{ leadFixedBranchName || '내 지점' }}</div>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="lbl">학부모 이름 <span class="text-rose-500">*</span></label>
+            <label class="lbl">학부모 이름 <span v-if="leadParentNameRequired" class="text-rose-500">*</span><span v-else class="text-slate-400 text-[11px]">(선택)</span></label>
             <input v-model="leadForm.parent_name" class="input" />
           </div>
           <div>
@@ -2118,6 +2119,20 @@ createApp({
       const r = this.myProfile && this.myProfile.role;
       return ['HQ_ADMIN','HR_ADMIN','REGIONAL_MANAGER','BRANCH_MANAGER','VICE_PRINCIPAL'].includes(r);
     },
+    leadCanChooseBranch(){
+      // 로그아웃(학부모)·본부(전지점)·다지점 원장만 지점 선택 가능. 그 외 직원은 관리 지점 고정.
+      if (!this.me) return true;
+      if (this.isActorAllBranch) return true;
+      const ids = (this.myProfile && this.myProfile.editable_branch_ids) || [];
+      return ids.length > 1;
+    },
+    leadBranchOptions(){
+      if (!this.me || this.isActorAllBranch) return this.branches;
+      const ids = (this.myProfile && this.myProfile.editable_branch_ids) || [];
+      return ids.length ? this.branches.filter(b => ids.includes(b.id)) : this.branches;
+    },
+    leadFixedBranchName(){ const b = this.branches.find(x => x.id === this.leadForm.branch_id); return b ? b.name : ''; },
+    leadParentNameRequired(){ return !this.me; },  // 학부모(로그아웃) 직접 작성 시에만 필수
     filteredLeads(){
       const hayOf = r => [r.student_name, r.parent_name, r.parent_phone, r.student_phone,
                           r.school_name, this.schoolLabel(r.school_type), String(r.grade||'')]
@@ -3001,7 +3016,8 @@ createApp({
       try {
         const f = this.leadForm;
         if (!f.branch_id) return this.notify('지점을 선택하세요.', false);
-        if (!f.parent_name || !f.parent_phone || !f.student_name) return this.notify('학부모 이름·연락처·자녀 이름은 필수입니다.', false);
+        if (this.leadParentNameRequired && !(f.parent_name||'').trim()) return this.notify('학부모 이름을 입력하세요.', false);
+        if (!f.parent_phone || !f.student_name) return this.notify('학부모 연락처·자녀 이름은 필수입니다.', false);
         if (!f.school_type) return this.notify('학교 구분을 선택하세요.', false);
         if (!(f.school_name||'').trim()) return this.notify('학교 이름을 입력하세요.', false);
         if (!String(f.grade||'').trim()) return this.notify('학년을 입력하세요.', false);

@@ -148,9 +148,14 @@ class LeadCreateAPI(APIView):
         branch = Branch.objects.filter(id=data["branch_id"], is_active=True).first()
         if not branch:
             return self.error("Invalid branch")
+        # 로그아웃(학부모 직접 작성) 시에만 학부모 이름 필수. 학원 관계자 작성 시 생략 가능.
+        is_staff = bool(getattr(request.user, "is_authenticated", False))
+        parent_name = (data.get("parent_name") or "").strip()
+        if not is_staff and not parent_name:
+            return self.error("학부모 이름을 입력해주세요.")
         Lead.objects.create(
             branch=branch,
-            parent_name=data["parent_name"],
+            parent_name=parent_name,
             parent_phone=data["parent_phone"],
             student_name=data["student_name"],
             school_type=data.get("school_type", "") or "",
