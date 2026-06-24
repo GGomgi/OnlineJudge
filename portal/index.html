@@ -359,6 +359,7 @@
           <div class="w-40 shrink-0"><input v-model="dashDate" @change="loadDashboard" type="date" class="input py-1" /></div>
           <button @click="dashShift(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 shrink-0">▶</button>
           <button @click="dashToday" class="px-3 py-1 rounded border border-slate-200 text-slate-500 text-sm shrink-0 whitespace-nowrap">오늘</button>
+          <button @click="openMakeup" class="px-3 py-1.5 rounded bg-blue-600 text-white text-sm shrink-0 whitespace-nowrap hover:bg-blue-700">+ 보강 추가</button>
         </div>
       </div>
       <div class="flex items-center gap-3 mb-2 text-sm flex-wrap">
@@ -389,18 +390,25 @@
           <tbody>
             <template v-for="(l,i) in dashLessons" :key="i">
               <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?7:6" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock.slice(0,5) }}</td></tr>
-              <tr class="border-t align-middle hover:bg-slate-50">
+              <tr class="border-t align-middle hover:bg-slate-50" :class="l.status==='ABSENT' ? 'bg-rose-50/50' : ''">
                 <td class="px-3 py-2 font-mono whitespace-nowrap">{{ l.start_time }}</td>
-                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
+                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline" :class="l.status==='ABSENT' ? 'line-through text-slate-400' : ''" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="l.status==='ABSENT'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600">결석</span><span v-else-if="attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
                 <td class="px-3 py-2 text-slate-500">{{ l.subject }}</td>
                 <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
                 <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
                 <td class="px-3 py-2">
                   <div class="flex items-center justify-center gap-1 whitespace-nowrap">
-                    <button @click="checkAtt(l,'in')" :class="['text-xs px-2 py-1 rounded whitespace-nowrap', l.att.in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50']">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
-                    <span v-if="elapsedInfo(l)" :class="['text-[11px]', elapsedInfo(l).over ? 'text-rose-500 font-bold' : 'text-slate-400']">({{ elapsedInfo(l).mins }}분{{ elapsedInfo(l).over ? ' 종료' : '' }})</span>
-                    <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded whitespace-nowrap', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
-                    <button @click="openAtt(l)" class="text-[11px] text-slate-400 hover:text-indigo-600" title="시각 수정·비고">✏️</button>
+                    <template v-if="l.status!=='ABSENT'">
+                      <button @click="checkAtt(l,'in')" :class="['text-xs px-2 py-1 rounded whitespace-nowrap', l.att.in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50']">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
+                      <span v-if="elapsedInfo(l)" :class="['text-[11px]', elapsedInfo(l).over ? 'text-rose-500 font-bold' : 'text-slate-400']">({{ elapsedInfo(l).mins }}분{{ elapsedInfo(l).over ? ' 종료' : '' }})</span>
+                      <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded whitespace-nowrap', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
+                      <button @click="openAtt(l)" class="text-[11px] text-slate-400 hover:text-indigo-600" title="시각 수정·비고">✏️</button>
+                      <button @click="setAbsent(l)" class="text-[11px] text-slate-400 hover:text-rose-500" title="결석 처리">결석</button>
+                    </template>
+                    <template v-else>
+                      <span class="text-xs text-rose-500">결석{{ l.lesson_note ? ' · '+l.lesson_note : '' }}</span>
+                      <button @click="setScheduled(l)" class="text-[11px] text-indigo-500 hover:underline ml-1">복원</button>
+                    </template>
                   </div>
                 </td>
                 <td class="px-3 py-2 cursor-pointer" @click="openAtt(l)">
@@ -414,6 +422,47 @@
             <tr v-if="(dashData.lessons||[]).length===0"><td :colspan="showBranchCol?7:6" class="px-3 py-8 text-center text-sm text-slate-400">이 날짜에 수업이 없습니다.</td></tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- 보강 추가 모달 -->
+      <div v-if="makeupOpen" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="makeupOpen=false">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+          <div class="flex items-center justify-between px-5 py-3 border-b">
+            <div class="font-bold">보강 추가 <span class="text-xs font-normal text-slate-400">{{ dashDate }}</span></div>
+            <button @click="makeupOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+          <div class="p-5 space-y-3">
+            <div v-if="!mkForm.student_id">
+              <label class="lbl">학생 검색</label>
+              <input v-model="mkQ" placeholder="이름·원번" class="input py-1" />
+              <ul class="mt-1 max-h-48 overflow-y-auto border rounded-lg divide-y">
+                <li v-for="s in mkStudentList" :key="s.id" @click="selectMkStudent(s)" class="px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer">
+                  {{ s.real_name }} <span class="text-xs text-slate-400 font-mono">{{ s.enroll_no }}</span> <span class="text-xs text-slate-400">{{ s.branch }}</span>
+                </li>
+                <li v-if="mkStudentList.length===0" class="px-3 py-3 text-xs text-slate-400 text-center">검색 결과 없음</li>
+              </ul>
+            </div>
+            <template v-else>
+              <div class="flex items-center gap-2 bg-slate-50 rounded px-3 py-2 text-sm">
+                <span class="font-medium">{{ mkForm.student_name }}</span>
+                <button @click="mkForm.student_id=null" class="ml-auto text-xs text-slate-400 hover:underline">변경</button>
+              </div>
+              <div>
+                <label class="lbl">정규 수업 선택 <span class="text-slate-400">(보강 대상)</span></label>
+                <select v-model="mkForm.source_id" @change="onMkSource" class="input py-1">
+                  <option :value="null">직접 입력(정규수업 없이)</option>
+                  <option v-for="t in mkSourceList" :key="t.id" :value="t.id">{{ days[t.weekday] }} {{ t.start_time }} · {{ t.subject }}</option>
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class="lbl">보강 시각</label><input v-model="mkForm.time" type="time" class="input py-1" /></div>
+                <div><label class="lbl">과정</label><select v-model="mkForm.program" class="input py-1"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+              </div>
+              <div><label class="lbl">사유</label><input v-model="mkForm.note" placeholder="예: 6/22 결석 보강" class="input py-1" /></div>
+              <div class="flex justify-end"><button @click="addMakeup" class="btn-primary text-sm">보강 추가</button></div>
+            </template>
+          </div>
+        </div>
       </div>
 
       <!-- 출결 상세(시각 수정·비고·이력) 모달 -->
@@ -1909,6 +1958,7 @@ createApp({
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
       attModal: null, attForm: { in:'', out:'', reason:'', note_tag:'', note:'' }, attNoteTags: [], attHist: [],
       dashFilter: { q:'', subject:'', instructor:'', branch:'' }, dashPop: { show:false, x:0, y:0, l:{att:{}} },
+      makeupOpen: false, mkQ: '', mkForm: { student_id:null, student_name:'', source_id:null, time:'', program:'', note:'' }, mkSourceList: [],
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
@@ -2015,6 +2065,7 @@ createApp({
         return true;
       });
     },
+    mkStudentList(){ const q=(this.mkQ||'').trim().toLowerCase(); if(!q) return this.students.slice(0,20); return this.students.filter(s=>((s.real_name||'')+' '+s.enroll_no).toLowerCase().includes(q)).slice(0,30); },
     dashSubjects(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.subject))]; },
     dashInstructors(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.instructor))]; },
     dashBranches(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.branch).filter(Boolean))]; },
@@ -2895,6 +2946,32 @@ createApp({
     attShiftOut(delta){ if(!this.attForm.out) return; this.attForm.out=this.shiftHM(this.attForm.out,delta); },
     showDashPop(l,e){ this.dashPop={ show:true, l, x:Math.min(e.clientX+8,window.innerWidth-280), y:Math.min(e.clientY+8,window.innerHeight-180) }; },
     hideDashPop(){ this.dashPop.show=false; },
+    async setAbsent(l){
+      const note = window.prompt('결석 사유 (선택)') ?? '';
+      try { await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'ABSENT', note }); this.notify('결석 처리되었습니다.'); this.loadDashboard(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async setScheduled(l){
+      try { await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'SCHEDULED', note:'' }); this.notify('복원되었습니다.'); this.loadDashboard(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    openMakeup(){ if(!this.students.length) this.loadStudents(); this.makeupOpen=true; this.mkQ=''; this.mkForm={ student_id:null, student_name:'', source_id:null, time:'', program:'', note:'' }; this.mkSourceList=[]; },
+    async selectMkStudent(s){
+      this.mkForm.student_id=s.id; this.mkForm.student_name=s.real_name||s.username;
+      try { const d=await api('GET','/api/admin/academy/student_detail/info?student_id='+s.id); this.mkSourceList=(d.timetables||[]); } catch(e){ this.mkSourceList=[]; }
+    },
+    onMkSource(){
+      const t=this.mkSourceList.find(x=>x.id===this.mkForm.source_id);
+      if (t){ this.mkForm.time=t.start_time; this.mkForm.program=t.program||''; }
+    },
+    async addMakeup(){
+      const f=this.mkForm;
+      if (!f.time) return this.notify('보강 시각을 입력하세요.', false);
+      try {
+        await api('POST','/api/admin/academy/makeup_add', { student_id:f.student_id, date:this.dashDate, start_time:f.time, source_timetable_id:f.source_id, program:f.program, note:f.note });
+        this.notify('보강이 추가되었습니다.'); this.makeupOpen=false; this.loadDashboard();
+      } catch(e){ this.notify(e.message,false); }
+    },
     elapsedInfo(l){
       // 등원 후 경과(분). 하원했으면 등원~하원, 아니면 등원~현재(오늘만).
       if (!l.att.in) return null;

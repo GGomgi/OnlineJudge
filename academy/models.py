@@ -504,6 +504,41 @@ class StudentStatusChange(models.Model):
         ordering = ["-create_time"]
 
 
+class OccurrenceStatus(object):
+    SCHEDULED = "SCHEDULED"   # 예정(정규 또는 보강)
+    ABSENT = "ABSENT"         # 결석
+    CANCELLED = "CANCELLED"   # 취소
+
+
+class LessonOccurrence(models.Model):
+    """일자별 수업 인스턴스. 정규 시간표(패턴)에서 날짜마다 생성되거나, 보강으로 직접 추가.
+    수업 상태(예정/결석/보강)를 이 인스턴스에 기록. 등원/하원 출결은 일자별(DailyAttendance)."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="lesson_occurrences")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    source_timetable = models.ForeignKey("StudentTimetable", null=True, blank=True,
+                                         on_delete=models.SET_NULL, related_name="occurrences")
+    date = models.DateField()
+    start_time = models.TimeField()
+    duration_minutes = models.PositiveSmallIntegerField(default=60)
+    program = models.CharField(max_length=32, blank=True, default="")
+    subject = models.CharField(max_length=64, blank=True, default="")
+    instructor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    status = models.CharField(max_length=16, default=OccurrenceStatus.SCHEDULED)
+    is_makeup = models.BooleanField(default=False)          # 보강 수업 여부
+    makeup_for = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="makeups")   # 어떤 결석에 대한 보강인지
+    note = models.CharField(max_length=255, blank=True, default="")  # 결석/보강 사유
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_lesson_occurrence"
+        unique_together = ("source_timetable", "date")
+        ordering = ["date", "start_time"]
+
+
 class DailyAttendance(models.Model):
     """일일 등원/하원 출결(개별 수업 운영용). 학생·날짜 1건."""
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,

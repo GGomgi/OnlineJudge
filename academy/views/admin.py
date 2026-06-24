@@ -24,7 +24,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
                       TimetableChange, StudentStatusChange, StaffChangeLog, DailyAttendance,
-                      AttendanceChange)
+                      AttendanceChange, LessonOccurrence, OccurrenceStatus)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 import os as _os
 from django.conf import settings as _settings
@@ -2182,10 +2182,34 @@ def _hm_kst(dt):
     return (dt + timedelta(hours=9)).strftime("%H:%M")
 
 
+def ensure_occurrences(d, branch_ids=None):
+    """지정일 d의 정규 수업 인스턴스를 시간표 패턴에서 생성(없는 것만). branch_ids=None이면 전체."""
+    wd = d.weekday()
+    slots = StudentTimetable.objects.select_related("instructor", "branch").filter(
+        weekday=wd, status="ACTIVE")
+    if branch_ids is not None:
+        slots = slots.filter(branch_id__in=branch_ids)
+    existing = set(LessonOccurrence.objects.filter(date=d, source_timetable__isnull=False)
+                   .values_list("source_timetable_id", flat=True))
+    for s in slots:
+        # 격주: 수업 시작일 기준 짝수 주만 인스턴스 생성
+        if s.frequency == "BIWEEKLY" and s.active_from:
+            if ((d - s.active_from).days // 7) % 2 != 0:
+                continue
+        if s.id in existing:
+            continue
+        LessonOccurrence.objects.get_or_create(
+            source_timetable=s, date=d,
+            defaults={"student_id": s.student_id, "branch_id": s.branch_id,
+                      "start_time": s.start_time, "duration_minutes": s.duration_minutes,
+                      "program": s.program, "subject": s.subject or resolve_program_label(s.program) or "미지정",
+                      "instructor_id": s.instructor_id})
+
+
 class DashboardAdminAPI(APIView):
     @admin_role_required
     def get(self, request):
-        """지정일(기본 오늘)의 개별 수업 + 등원/하원 출결."""
+        """지정일(기본 오늘)의 수업 인스턴스(정규+보강) + 등원/하원 출결."""
         ds = request.GET.get("date")
         try:
             d = datetime.strptime(ds, "%Y-%m-%d").date() if ds else now().date()
@@ -2193,35 +2217,30 @@ class DashboardAdminAPI(APIView):
             d = now().date()
         wd = d.weekday()
         view = viewable_branch_ids(request.user)  # None=전체
-        slots = StudentTimetable.objects.select_related("student", "instructor", "branch").filter(
-            weekday=wd, status="ACTIVE")
+        ensure_occurrences(d, view)
+        occ = LessonOccurrence.objects.select_related("student", "instructor", "branch", "source_timetable").filter(
+            date=d).exclude(status=OccurrenceStatus.CANCELLED)
         if view is not None:
-            slots = slots.filter(branch_id__in=view)
+            occ = occ.filter(branch_id__in=view)
         bid = request.GET.get("branch_id")
         if bid:
-            slots = slots.filter(branch_id=bid)
-        slots = slots.order_by("start_time")
+            occ = occ.filter(branch_id=bid)
+        occ = occ.order_by("start_time")
 
         lessons = []
         sids = set()
-        for s in slots:
-            # 격주: 수업 시작일(active_from) 기준 짝수 주에만 표시
-            if s.frequency == "BIWEEKLY" and s.active_from:
-                if ((d - s.active_from).days // 7) % 2 != 0:
-                    continue
-            sids.add(s.student_id)
-            try:
-                sname = s.student.userprofile.real_name or s.student.username
-            except Exception:
-                sname = s.student.username
-            sp = getattr(s.student, "student_profile", None)
+        for o in occ:
+            sids.add(o.student_id)
+            sp = getattr(o.student, "student_profile", None)
+            biweekly = bool(o.source_timetable and o.source_timetable.frequency == "BIWEEKLY")
             lessons.append({
-                "student_id": s.student_id, "student_name": sname,
-                "start_time": str(s.start_time)[:5], "duration_minutes": s.duration_minutes,
-                "subject": s.subject or resolve_program_label(s.program) or "미지정",
-                "instructor": _name_of(s.instructor) if s.instructor_id else "미배정",
-                "branch": (s.branch.name if s.branch_id else ""),
-                "biweekly": s.frequency == "BIWEEKLY",
+                "occ_id": o.id, "student_id": o.student_id, "student_name": _name_of(o.student),
+                "start_time": str(o.start_time)[:5], "duration_minutes": o.duration_minutes,
+                "subject": o.subject or "미지정",
+                "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
+                "branch": (o.branch.name if o.branch_id else ""),
+                "biweekly": biweekly, "is_makeup": o.is_makeup,
+                "status": o.status, "lesson_note": o.note,
                 "school_type": (sp.school_type if sp else ""),
                 "school_name": (sp.school_name if sp else ""),
                 "grade": (sp.grade if sp else ""),
@@ -2339,3 +2358,64 @@ class AttendanceNoteAdminAPI(APIView):
                             "actor": _name_of(c.actor) if c.actor_id else "",
                             "time": str(c.create_time)[:16]})
         return self.success(out)
+
+
+class LessonStatusAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """수업 인스턴스 상태 변경(결석/예정 복원). {occ_id, status:'ABSENT'|'SCHEDULED', note?}"""
+        data = request.data
+        o = LessonOccurrence.objects.select_related("branch").filter(id=data.get("occ_id")).first()
+        if not o:
+            return self.error("수업이 없습니다.")
+        if not can_manage_branch(request.user, o.branch_id):
+            return self.error("권한이 없습니다.")
+        st = data.get("status")
+        if st not in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.ABSENT):
+            return self.error("상태 값이 올바르지 않습니다.")
+        o.status = st
+        if "note" in data:
+            o.note = (data.get("note") or "").strip()
+        o.save()
+        return self.success({"status": o.status, "note": o.note})
+
+
+class MakeupAddAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """보강 추가. {student_id, date, start_time'HH:MM', duration?, program?, instructor_id?,
+        source_timetable_id?(정규수업), makeup_for?(결석 occ_id), note?}"""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        try:
+            d = datetime.strptime(data.get("date"), "%Y-%m-%d").date() if data.get("date") else now().date()
+        except (TypeError, ValueError):
+            d = now().date()
+        tm = (data.get("start_time") or "").strip()
+        if not tm:
+            return self.error("보강 시각을 입력하세요.")
+        try:
+            from datetime import time as _t
+            hh, mm = tm.split(":")
+            st_time = _t(int(hh), int(mm))
+        except (ValueError, AttributeError):
+            return self.error("시각 형식이 올바르지 않습니다(HH:MM).")
+        src = StudentTimetable.objects.filter(id=data.get("source_timetable_id")).first()
+        dur = data.get("duration") or (src.duration_minutes if src else 60)
+        prog = data.get("program") or (src.program if src else "")
+        subj = resolve_program_label(prog) or (src.subject if src else "") or "보강"
+        instr = data.get("instructor_id")
+        if instr is None and src:
+            instr = src.instructor_id
+        occ = LessonOccurrence.objects.create(
+            student=u, branch_id=(prof.branch_id if prof else (src.branch_id if src else None)),
+            source_timetable=None, date=d, start_time=st_time, duration_minutes=dur,
+            program=prog, subject=subj, instructor_id=instr,
+            status=OccurrenceStatus.SCHEDULED, is_makeup=True,
+            makeup_for_id=data.get("makeup_for"), note=(data.get("note") or "").strip())
+        return self.success({"occ_id": occ.id})
