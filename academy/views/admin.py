@@ -2435,6 +2435,38 @@ class LessonStatusAdminAPI(APIView):
         return self.success({"status": o.status, "note": o.note})
 
 
+class LessonEditAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """오늘 하루 수업 인스턴스 시각/길이 변경 + 사유(이력). {occ_id, start_time'HH:MM', duration?, reason?}"""
+        data = request.data
+        o = LessonOccurrence.objects.select_related("branch").filter(id=data.get("occ_id")).first()
+        if not o:
+            return self.error("수업이 없습니다.")
+        if not can_manage_branch(request.user, o.branch_id):
+            return self.error("권한이 없습니다.")
+        tm = (data.get("start_time") or "").strip()
+        if not tm:
+            return self.error("시각을 입력하세요.")
+        from datetime import time as _t
+        try:
+            hh, mm = tm.split(":")
+            new_time = _t(int(hh), int(mm))
+        except (ValueError, AttributeError):
+            return self.error("시각 형식이 올바르지 않습니다(HH:MM).")
+        old = str(o.start_time)[:5]
+        o.start_time = new_time
+        if data.get("duration"):
+            o.duration_minutes = data.get("duration")
+        o.save()
+        if old != tm:
+            TimetableChange.objects.create(
+                student=o.student, actor=request.user, action="UPDATE",
+                reason=(data.get("reason") or "").strip() or "오늘 수업 시각 변경",
+                detail=("%s 수업 시각 %s → %s (오늘 하루)" % (str(o.date), old, tm))[:255])
+        return self.success({"start_time": str(o.start_time)[:5]})
+
+
 class MakeupAddAdminAPI(APIView):
     @admin_role_required
     def post(self, request):

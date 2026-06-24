@@ -40,6 +40,12 @@
     <img :src="docPreview.url" class="max-w-xs max-h-80 rounded" />
   </div>
 
+  <!-- 비고 호버 팝오버 -->
+  <div v-if="notePop.show" class="fixed z-[60] bg-slate-800 text-white rounded-lg shadow-xl px-3 py-2 text-xs max-w-xs pointer-events-none" :style="{ left: notePop.x+'px', top: notePop.y+'px' }">
+    <span class="px-1.5 py-0.5 rounded mr-1" :style="notePop.tagStyle">{{ notePop.tag }}</span>
+    <span v-if="notePop.note">{{ notePop.note }}</span><span v-else class="text-slate-400">사유 없음</span>
+  </div>
+
   <!-- 보강 달력 일자 호버 팝오버 -->
   <div v-if="mkDayPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-2 text-xs w-44 pointer-events-none" :style="{ left: mkDayPop.x+'px', top: mkDayPop.y+'px' }">
     <div class="font-bold mb-1">{{ mkDayPop.date }}</div>
@@ -404,14 +410,13 @@
                 <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
                 <td class="px-3 py-2">
                   <div class="flex items-center gap-1 whitespace-nowrap" :class="isAbsent(l) ? 'opacity-50' : ''">
-                    <button @click="checkAtt(l,'in')" :disabled="isAbsent(l)" :class="['text-xs px-2 py-1 rounded w-24 text-center', l.att.in ? 'bg-emerald-100 text-emerald-700' : (isAbsent(l) ? 'bg-slate-50 text-slate-300 cursor-not-allowed' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50')]">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
-                    <span class="w-14 text-right text-[11px]" :class="elapsedInfo(l)&&elapsedInfo(l).over ? 'text-rose-500 font-bold' : 'text-slate-400'">{{ elapsedInfo(l) ? '('+elapsedInfo(l).mins+'분)' : '' }}</span>
-                    <button @click="checkAtt(l,'out')" :disabled="isAbsent(l) || !l.att.in" :class="['text-xs px-2 py-1 rounded w-20 text-center', l.att.out ? 'bg-indigo-100 text-indigo-700' : ((l.att.in && !isAbsent(l)) ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
-                    <button @click="openAtt(l)" class="w-5 text-center text-[11px] text-slate-400 hover:text-indigo-600" title="시각 수정·비고">✏️</button>
+                    <button @click="checkAtt(l,'in')" :disabled="isAbsent(l)" :class="['text-xs px-2 py-1 rounded text-center', l.att.in ? 'bg-emerald-100 text-emerald-700' : (isAbsent(l) ? 'bg-slate-50 text-slate-300 cursor-not-allowed' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50')]">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
+                    <span v-if="elapsedInfo(l)" class="text-[11px]" :class="elapsedInfo(l).over ? 'text-rose-500 font-bold' : 'text-slate-400'">({{ elapsedInfo(l).mins }}분)</span>
+                    <button @click="checkAtt(l,'out')" :disabled="isAbsent(l) || !l.att.in" :class="['text-xs px-2 py-1 rounded text-center ml-1', l.att.out ? 'bg-indigo-100 text-indigo-700' : ((l.att.in && !isAbsent(l)) ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
                   </div>
                 </td>
                 <td class="px-3 py-2">
-                  <span v-if="l.att.note_tag" @click="openAtt(l)" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)" :title="l.att.note || ''">{{ attTagLabel(l.att.note_tag) }}</span>
+                  <span v-if="l.att.note_tag" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
                   <span v-else @click="openAtt(l)" class="text-[11px] text-slate-300 hover:text-indigo-500 cursor-pointer">비고+</span>
                 </td>
               </tr>
@@ -486,27 +491,19 @@
       <div v-if="attModal" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="attModal=null">
         <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b">
-            <div class="font-bold">{{ attModal.student_name }} <span class="text-xs font-normal text-slate-400">{{ dashDate }} · {{ attModal.start_time }} {{ attModal.subject }}</span></div>
+            <div class="font-bold">{{ attModal.student_name }} <span class="text-xs font-normal text-slate-400">{{ dashDate }} · {{ attModal.subject }}</span></div>
             <button @click="attModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
           </div>
           <div class="p-5 space-y-3">
             <div>
-              <label class="lbl">등원 시각 <span class="text-slate-400">(±10분: 등·하원 같이 이동)</span></label>
+              <label class="lbl">오늘 수업 시각 <span class="text-slate-400">(오늘 하루만 변경 · ±10분)</span></label>
               <div class="flex items-center gap-1">
-                <button @click="attShiftIn(-10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">-10분</button>
-                <input v-model="attForm.in" type="time" class="input py-1 w-28" />
-                <button @click="attShiftIn(10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">+10분</button>
+                <button @click="attShiftLesson(-10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">-10분</button>
+                <input v-model="attForm.lessonTime" type="time" class="input py-1 w-28" />
+                <button @click="attShiftLesson(10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">+10분</button>
               </div>
             </div>
-            <div>
-              <label class="lbl">하원 시각 <span class="text-slate-400">(±10분: 하원만 이동)</span></label>
-              <div class="flex items-center gap-1">
-                <button @click="attShiftOut(-10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">-10분</button>
-                <input v-model="attForm.out" type="time" class="input py-1 w-28" />
-                <button @click="attShiftOut(10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">+10분</button>
-              </div>
-            </div>
-            <div><label class="lbl">시각 변경 사유 <span class="text-slate-400">(시각 수정 시)</span></label><input v-model="attForm.reason" placeholder="예: 학부모 사전연락 - 30분 일찍 등원" class="input py-1" /></div>
+            <div><label class="lbl">시각 변경 사유 <span class="text-slate-400">(시각 변경 시)</span></label><input v-model="attForm.reason" placeholder="예: 학부모 사전연락 - 1시간 일찍" class="input py-1" /></div>
             <div class="border-t pt-2">
               <label class="lbl">비고 표시</label>
               <div class="flex flex-wrap gap-1 mb-2">
@@ -1973,7 +1970,8 @@ createApp({
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
-      attModal: null, attForm: { in:'', out:'', reason:'', note_tag:'', note:'' }, attNoteTags: [], attHist: [],
+      attModal: null, attForm: { lessonTime:'', reason:'', note_tag:'', note:'' }, attNoteTags: [], attHist: [],
+      notePop: { show:false, x:0, y:0, tag:'', note:'', tagStyle:{} },
       dashFilter: { q:'', subject:'', instructor:'', branch:'' }, dashPop: { show:false, x:0, y:0, l:{att:{}} },
       makeupOpen: false, mkQ: '', mkForm: { student_id:null, student_name:'', source_id:null, time:'', program:'', note:'', date:'' }, mkSourceList: [],
       mkMonth: '', mkCal: {}, mkSelDay: '', mkDayPop: { show:false, x:0, y:0, date:'', items:[] },
@@ -2943,24 +2941,26 @@ createApp({
     attTagStyle(v){ const t=this.attNoteTags.find(x=>x.value===v); const c=(t&&t.color)||'#64748b'; return { backgroundColor:c+'22', color:c }; },
     async openAtt(l){
       this.attModal = l;
-      this.attForm = { in:l.att.in||'', out:l.att.out||'', reason:'', note_tag:l.att.note_tag||'', note:l.att.note||'' };
-      this._attOrig = { in:l.att.in||'', out:l.att.out||'' };
+      this.attForm = { lessonTime:l.start_time||'', reason:'', note_tag:l.att.note_tag||'', note:l.att.note||'' };
+      this._attOrig = { lessonTime:l.start_time||'', note_tag:l.att.note_tag||'' };
       try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+this.dashDate); } catch(e){ this.attHist=[]; }
     },
+    attShiftLesson(delta){ if(this.attForm.lessonTime) this.attForm.lessonTime=this.shiftHM(this.attForm.lessonTime,delta); },
+    showNotePop(l,e){ this.notePop={ show:true, tag:this.attTagLabel(l.att.note_tag), note:l.att.note||'', tagStyle:this.attTagStyle(l.att.note_tag), x:Math.min(e.clientX+10,window.innerWidth-260), y:Math.min(e.clientY+10,window.innerHeight-80) }; },
+    hideNotePop(){ this.notePop.show=false; },
     async saveAtt(){
       const l=this.attModal;
       try {
-        // 시각 변경분만 반영(이력 기록)
-        if (this.attForm.in !== this._attOrig.in){
-          if (this.attForm.in) await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, date:this.dashDate, kind:'in', time:this.attForm.in, reason:this.attForm.reason });
-          else await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, date:this.dashDate, kind:'in', clear:true, reason:this.attForm.reason });
-        }
-        if (this.attForm.out !== this._attOrig.out){
-          if (this.attForm.out) await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, date:this.dashDate, kind:'out', time:this.attForm.out, reason:this.attForm.reason });
-          else await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, date:this.dashDate, kind:'out', clear:true, reason:this.attForm.reason });
+        // 오늘 수업 시각 변경(인스턴스, 이력)
+        if (this.attForm.lessonTime && this.attForm.lessonTime !== this._attOrig.lessonTime){
+          await api('POST','/api/admin/academy/lesson_edit', { occ_id:l.occ_id, start_time:this.attForm.lessonTime, reason:this.attForm.reason });
         }
         await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:this.dashDate, note_tag:this.attForm.note_tag, note:this.attForm.note });
-        this.notify('저장되었습니다.'); this.attModal=null; this.loadDashboard();
+        const becameAbsent = this.attForm.note_tag==='ABSENT' && this._attOrig.note_tag!=='ABSENT';
+        this.notify('저장되었습니다.'); this.attModal=null; await this.loadDashboard();
+        if (becameAbsent && window.confirm('결석 처리되었습니다. 보강을 지금 잡으시겠습니까?')){
+          this.openMakeup(); this.$nextTick(()=> this.selectMkStudent({ id:l.student_id, real_name:l.student_name }));
+        }
       } catch(e){ this.notify(e.message,false); }
     },
     dashToday(){ this.dashDate = this.todayStr; this.loadDashboard(); },
