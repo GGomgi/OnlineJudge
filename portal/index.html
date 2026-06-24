@@ -646,9 +646,12 @@
                 <li v-if="r.logs.length===0" class="text-xs text-slate-400">기록 없음</li>
               </ul>
               <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED' && canEditBranch(r.branch && r.branch.id)" class="mt-2 space-y-2">
-                <div class="flex gap-2 items-center">
-                  <div class="w-24 shrink-0"><select v-model="noteChannel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
-                  <div class="flex-1 min-w-0"><input v-model="noteCounselAt" type="datetime-local" class="input py-1" title="상담 방법 · 일시" /></div>
+                <div class="flex gap-2 items-center flex-wrap">
+                  <div class="w-20 shrink-0"><select v-model="noteChannel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
+                  <div class="w-32 shrink-0"><input v-model="noteTime.date" type="date" class="input py-1" /></div>
+                  <div class="w-20 shrink-0"><select v-model="noteTime.ampm" class="input py-1"><option>오전</option><option>오후</option></select></div>
+                  <div class="w-16 shrink-0"><select v-model="noteTime.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in 12" :key="h" :value="h">{{ h }}시</option></select></div>
+                  <div class="w-20 shrink-0"><select v-model="noteTime.min" class="input py-1"><option v-for="m in minOptions" :key="m" :value="m">{{ m }}분</option></select></div>
                 </div>
                 <textarea v-model="noteText" rows="3" placeholder="상담 내용 입력 (여러 줄 작성 가능)" class="input"></textarea>
                 <div class="flex justify-end">
@@ -671,7 +674,12 @@
                 <li v-if="!(r.reservations||[]).length" class="text-xs text-slate-400">예약 없음</li>
               </ul>
               <div v-if="canEditBranch(r.branch && r.branch.id)" class="mt-2 space-y-2">
-                <input v-model="resvForm.at" type="datetime-local" class="input py-1" title="예약 일시" />
+                <div class="flex gap-2 items-center flex-wrap">
+                  <div class="w-32 shrink-0"><input v-model="resvForm.date" type="date" class="input py-1" /></div>
+                  <div class="w-20 shrink-0"><select v-model="resvForm.ampm" class="input py-1"><option>오전</option><option>오후</option></select></div>
+                  <div class="w-16 shrink-0"><select v-model="resvForm.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in 12" :key="h" :value="h">{{ h }}시</option></select></div>
+                  <div class="w-20 shrink-0"><select v-model="resvForm.min" class="input py-1"><option v-for="m in minOptions" :key="m" :value="m">{{ m }}분</option></select></div>
+                </div>
                 <textarea v-model="resvForm.note" rows="2" placeholder="메모(선택)" class="input py-1"></textarea>
                 <div class="flex justify-end"><button @click="addReservation(r)" class="btn-secondary text-sm whitespace-nowrap">예약 추가</button></div>
               </div>
@@ -2071,8 +2079,8 @@ createApp({
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadFilter: '', leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
-      noteChannel: 'VISIT', noteCounselAt: '', showDeletedLeads: null, editLogId: null, editLogText: '',
-      resvForm: { at:'', note:'' },
+      noteChannel: 'VISIT', noteTime: { date:'', ampm:'오전', hour:'', min:'00' }, showDeletedLeads: null, editLogId: null, editLogText: '',
+      resvForm: { date:'', ampm:'오전', hour:'', min:'00', note:'' },
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
       convertingLead: null, convertError: '',
@@ -2153,6 +2161,7 @@ createApp({
     },
     leadFixedBranchName(){ const b = this.branches.find(x => x.id === this.leadForm.branch_id); return b ? b.name : ''; },
     leadParentNameRequired(){ return !this.me; },  // 학부모(로그아웃) 직접 작성 시에만 필수
+    minOptions(){ const out=[]; for(let m=0;m<60;m+=5) out.push(String(m).padStart(2,'0')); return out; },
     filteredLeads(){
       const hayOf = r => [r.student_name, r.parent_name, r.parent_phone, r.student_phone,
                           r.school_name, this.schoolLabel(r.school_type), String(r.grade||'')]
@@ -3104,6 +3113,9 @@ createApp({
     sortTtCol(k){ if (this.ttSortKey===k) this.ttSortDir = this.ttSortDir==='asc'?'desc':'asc'; else { this.ttSortKey=k; this.ttSortDir='asc'; } },
     ttColArrow(k){ return this.ttSortKey===k ? (this.ttSortDir==='asc'?' ▲':' ▼') : ' ↕'; },
     nowLocal(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); },
+    localDate(d){ const p=x=>String(x).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); },
+    nowParts(){ const d=new Date(); let h=d.getHours(); const ampm=h<12?'오전':'오후'; let hh=h%12; if(hh===0)hh=12; return { date:this.localDate(d), ampm, hour:hh, min:String(Math.floor(d.getMinutes()/5)*5).padStart(2,'0') }; },
+    composeAt(p){ if(!p.date||!p.hour) return ''; let h=parseInt(p.hour); if(p.ampm==='오후'&&h!==12)h+=12; if(p.ampm==='오전'&&h===12)h=0; return p.date+'T'+String(h).padStart(2,'0')+':'+p.min; },
     // ── 오늘 운영 대시보드 ──
     async loadDashboard(){
       if (!this.dashDate) this.dashDate = this.todayStr;
@@ -3363,24 +3375,26 @@ createApp({
     toggleLead(r){
       const opening = this.openLeadId!==r.id;
       this.openLeadId = opening ? r.id : null; this.noteText=''; this.editLogId=null;
-      if (opening) { this.noteChannel='VISIT'; this.noteCounselAt = this.nowLocal(); }
+      if (opening) { this.noteChannel='VISIT'; this.noteTime = this.nowParts(); this.resvForm = { date:'', ampm:'오전', hour:'', min:'00', note:'' }; }
     },
     replaceLead(updated){ const i=this.leads.findIndex(x=>x.id===updated.id); if(i>=0) this.leads.splice(i,1,updated); },
     async addNote(r){
       if (!this.noteText.trim()) return;
       try {
         const body = { lead_id:r.id, summary:this.noteText, channel:this.noteChannel };
-        if (this.noteCounselAt) body.counsel_at = this.noteCounselAt;
+        const cAt = this.composeAt(this.noteTime);
+        if (cAt) body.counsel_at = cAt;
         const d = await api('POST','/api/admin/academy/lead/note', body);
-        this.replaceLead(d); this.noteText=''; this.noteCounselAt=this.nowLocal(); this.noteChannel='VISIT'; this.notify('상담 기록이 추가되었습니다.');
+        this.replaceLead(d); this.noteText=''; this.noteTime=this.nowParts(); this.noteChannel='VISIT'; this.notify('상담 기록이 추가되었습니다.');
       } catch(e){ this.notify(e.message,false); }
     },
     async addReservation(r){
       const f=this.resvForm;
-      if (!f.at) return this.notify('예약 일시를 입력하세요.', false);
+      const at = this.composeAt(f);
+      if (!at) return this.notify('예약 날짜와 시(시각)를 선택하세요.', false);
       try {
-        const d = await api('POST','/api/admin/academy/lead/reservation', { lead_id:r.id, at:f.at, note:f.note });
-        this.replaceLead(d); this.resvForm={ at:'', note:'' }; this.notify('상담 예약이 추가되었습니다.');
+        const d = await api('POST','/api/admin/academy/lead/reservation', { lead_id:r.id, at, note:f.note });
+        this.replaceLead(d); this.resvForm={ date:'', ampm:'오전', hour:'', min:'00', note:'' }; this.notify('상담 예약이 추가되었습니다.');
       } catch(e){ this.notify(e.message,false); }
     },
     async cancelReservation(r, rv){
