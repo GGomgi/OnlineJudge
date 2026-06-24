@@ -2048,8 +2048,9 @@ const { createApp } = Vue;
 
 const ROLE_LABELS = {HQ_ADMIN:'본부 관리자',HR_ADMIN:'인사 관리자',REGIONAL_MANAGER:'지부장',BRANCH_MANAGER:'원장',VICE_PRINCIPAL:'부원장',INSTRUCTOR:'강사',TA:'조교',STUDENT:'학생',PARENT:'학부모',EXTERNAL_INSTRUCTOR_ADMIN:'외부 강사'};
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
-// 옛 비고 태그 코드(선택목록 개편 전 데이터) 폴백 라벨
+// 옛 비고 태그 코드(선택목록 개편 전 데이터) 폴백 라벨·색
 const LEGACY_TAG_LABELS = {LATE:'지각',EXCUSED:'사유결석',LEAVE:'조퇴',EARLY_LEAVE:'조퇴',PRE_CONTACT:'사전연락',MAKEUP:'보강',ABSENT:'결석',PRESENT:'출석'};
+const LEGACY_TAG_COLORS = {LATE:'#f59e0b',EXCUSED:'#8b5cf6',LEAVE:'#f97316',EARLY_LEAVE:'#f97316',PRE_CONTACT:'#3b82f6',MAKEUP:'#10b981',ABSENT:'#ef4444',PRESENT:'#10b981'};
 const ATT_CLASS = {PRESENT:'text-emerald-700 bg-emerald-50',LATE:'text-amber-700 bg-amber-50',ABSENT:'text-rose-700 bg-rose-50',EARLY_LEAVE:'text-orange-700 bg-orange-50',EXCUSED:'text-slate-700 bg-slate-100'};
 
 function getCookie(name){
@@ -3157,7 +3158,7 @@ createApp({
       }
     },
     attTagLabel(v){ const t=this.attNoteTags.find(x=>x.value===v); return t ? t.label : (LEGACY_TAG_LABELS[v] || v); },
-    attTagStyle(v){ const t=this.attNoteTags.find(x=>x.value===v); const c=(t&&t.color)||'#64748b'; return { backgroundColor:c+'22', color:c }; },
+    attTagStyle(v){ const t=this.attNoteTags.find(x=>x.value===v); const c=(t&&t.color)||LEGACY_TAG_COLORS[v]||'#64748b'; return { backgroundColor:c+'22', color:c }; },
     async openAtt(l){
       this.attModal = l;
       const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.att.note_tag||'');
