@@ -1214,6 +1214,12 @@ class ConvertLeadAdminAPI(APIView):
         if User.objects.filter(username=username).exists():
             return self.error("Login ID already exists")
 
+        # 보호자 이름(입회원 신청서에서 입력/수정) 반영 — 보호자 계정·학생 기록에 사용
+        pn = (data.get("parent_name") or "").strip()
+        if pn and pn != lead.parent_name:
+            lead.parent_name = pn
+            lead.save(update_fields=["parent_name"])
+
         with transaction.atomic():
             user = User.objects.create(username=username, is_disabled=False)
             user.set_password(data["password"])
@@ -2606,7 +2612,23 @@ class TimetableCalendarAPI(APIView):
                 items.sort(key=lambda x: x["start_time"])
                 days[str(cur)] = {"count": len(items), "items": items}
             cur += timedelta(days=1)
-        return self.success({"from": str(d0), "to": str(d1), "days": days})
+        # 상담 예약(달력에 함께 표시) — 기간 내 ACTIVE 예약을 KST 날짜로 버킷
+        resv = {}
+        if not sid:  # 학생 단건(보강 달력)에서는 예약 제외
+            rq = CounselReservation.objects.select_related("lead", "lead__branch").filter(
+                status="ACTIVE",
+                scheduled_at__gte=_kst_to_utc(d0, "00:00"),
+                scheduled_at__lt=_kst_to_utc(d1 + timedelta(days=1), "00:00"))
+            if view is not None:
+                rq = rq.filter(lead__branch_id__in=view)
+            if bid:
+                rq = rq.filter(lead__branch_id=bid)
+            for rv in rq.order_by("scheduled_at"):
+                ds = str((rv.scheduled_at + timedelta(hours=9)).date())
+                resv.setdefault(ds, []).append({
+                    "id": rv.id, "time": _hm_kst(rv.scheduled_at),
+                    "student_name": rv.lead.student_name, "note": rv.note})
+        return self.success({"from": str(d0), "to": str(d1), "days": days, "reservations": resv})
 
 
 class LessonStatusAdminAPI(APIView):

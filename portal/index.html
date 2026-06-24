@@ -636,8 +636,10 @@
               </div>
               <div v-if="r.status==='CONVERTED'" class="text-[11px] text-emerald-600 mt-1">@{{ r.converted_username }}</div>
               <div class="mt-1">
-                <span v-if="r.is_hidden" class="text-[11px] text-rose-600">숨김됨 <button v-if="canEditBranch(r.branch && r.branch.id)" @click.stop="restoreLead(r)" class="text-indigo-500 hover:underline ml-1">복원</button></span>
-                <button v-else-if="canEditBranch(r.branch && r.branch.id)" @click.stop="deleteLead(r)" class="text-[11px] text-rose-400 hover:underline">숨김</button>
+                <label v-if="canEditBranch(r.branch && r.branch.id)" @click.stop class="flex items-center justify-end gap-1 text-[11px] cursor-pointer" :class="r.is_hidden ? 'text-rose-600' : 'text-slate-400'">
+                  <input type="checkbox" :checked="r.is_hidden" @change="toggleHideLead(r)" class="w-3.5 h-3.5"> 숨김
+                </label>
+                <span v-else-if="r.is_hidden" class="text-[11px] text-rose-600">숨김됨</span>
               </div>
             </div>
           </div>
@@ -756,10 +758,14 @@
                 </div>
               </div>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-3 gap-3">
               <div>
                 <label class="lbl">생년월일 <span class="text-rose-500">*</span></label>
                 <input v-model="convertForm.birth_date" @change="checkBirth" type="date" min="1900-01-01" :max="todayStr" class="input" />
+              </div>
+              <div>
+                <label class="lbl">보호자 이름 <span class="text-rose-500">*</span></label>
+                <input v-model="convertForm.parent_name" class="input" placeholder="보호자 성함" />
               </div>
               <div>
                 <label class="lbl">보호자 연락처</label>
@@ -1010,6 +1016,10 @@
                     <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}
                     <span class="block text-[10px] opacity-70">{{ it.subject }}<template v-if="it.makeup"> · 보강</template></span>
                   </div>
+                  <div v-for="(rv,k) in ttSlotResv(d.date,sl.mins)" :key="'r'+k" :title="rv.note" class="mb-0.5 px-1.5 py-1 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
+                    <span class="font-semibold">📅 {{ rv.time }}</span> {{ rv.student_name }}
+                    <span v-if="rv.note" class="block text-[10px] opacity-70">{{ truncate(rv.note,10) }}</span>
+                  </div>
                 </td>
               </tr>
               <tr v-if="ttWeekSlots.length===0"><td :colspan="8" class="text-center text-xs text-slate-400 py-6">이 주에 수업이 없습니다.</td></tr>
@@ -1026,6 +1036,10 @@
               <div v-for="(it,j) in (ttCalDays[c.date] ? ttCalDays[c.date].items : [])" :key="j" @mouseenter="showCalPop(it,c.date,$event)" @mouseleave="hideCalPop"
                    :class="['mb-0.5 px-1 py-0.5 rounded truncate leading-tight cursor-default', calItemCls(it)]">
                 <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<template v-if="it.makeup"> ·보강</template>
+              </div>
+              <div v-for="(rv,k) in (ttCalResv[c.date]||[])" :key="'r'+k" :title="rv.note" class="mb-0.5 px-1 py-0.5 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
+                <div class="truncate">📅 {{ rv.time }} {{ rv.student_name }}</div>
+                <div v-if="rv.note" class="text-[10px] opacity-70 truncate">{{ truncate(rv.note,10) }}</div>
               </div>
             </template>
           </div>
@@ -2184,7 +2198,7 @@ createApp({
       convertingLead: null, convertError: '',
       hours12: [1,2,3,4,5,6,7,8,9,10,11,12],
       minutes: [0,5,10,15,20,25,30,35,40,45,50,55],
-      convertForm: { student_name:'', gender:'', birth_date:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
+      convertForm: { student_name:'', gender:'', birth_date:'', parent_name:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
       showParentLogin: false, parentLogin: { id:'', pw:'' },
       dragIndex: null, dragOverIndex: null,
@@ -2216,7 +2230,7 @@ createApp({
       durations: [60, 90, 120],
       ttStudent: null, ttSearch: '', ttResults: [], ttAll: [], ttInstructors: [], showTtAdd: false,
       ttFilter: { name:'', weekday:'', from:'', to:'', instructor_id:'', program:'' },
-      ttView: 'week', ttCalDays: {}, ttCalAnchor: '', ttCalMonth: '',
+      ttView: 'week', ttCalDays: {}, ttCalResv: {}, ttCalAnchor: '', ttCalMonth: '',
       calPop: { show:false, x:0, y:0, date:'', it:{} },
       ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' },
       classes: [], sel: null, roster: [],
@@ -2437,8 +2451,9 @@ createApp({
     ttWeekSlots(){
       let lo=24*60, hi=0;
       const toM=t=>{ const [h,m]=t.split(':').map(Number); return h*60+m; };
-      this.ttWeekDates.forEach(d=>{ const day=this.ttCalDays[d.date]; if(!day) return;
-        day.items.forEach(it=>{ const mm=toM(it.start_time); if(mm<lo)lo=mm; if(mm>hi)hi=mm; }); });
+      this.ttWeekDates.forEach(d=>{ const day=this.ttCalDays[d.date];
+        if(day) day.items.forEach(it=>{ const mm=toM(it.start_time); if(mm<lo)lo=mm; if(mm>hi)hi=mm; });
+        (this.ttCalResv[d.date]||[]).forEach(rv=>{ const mm=toM(rv.time); if(mm<lo)lo=mm; if(mm>hi)hi=mm; }); });
       if (lo>hi) return [];
       lo=Math.floor(lo/30)*30; hi=Math.floor(hi/30)*30;
       const p=x=>String(x).padStart(2,'0'); const out=[];
@@ -2719,11 +2734,11 @@ createApp({
       const f=this.ttFilter;
       let qs='';
       if (this.ttView==='month'){ qs='month='+this.ttCalMonth; }
-      else { const w=this.ttWeekDates; if(!w.length){ this.ttCalDays={}; return; } qs='from='+w[0].date+'&to='+w[6].date; }
+      else { const w=this.ttWeekDates; if(!w.length){ this.ttCalDays={}; this.ttCalResv={}; return; } qs='from='+w[0].date+'&to='+w[6].date; }
       if (f.program) qs+='&program='+encodeURIComponent(f.program);
       if (f.instructor_id) qs+='&instructor_id='+encodeURIComponent(f.instructor_id);
-      try { const d=await api('GET','/api/admin/academy/timetable_calendar?'+qs); this.ttCalDays=d.days||{}; }
-      catch(e){ this.ttCalDays={}; this.notify(e.message,false); }
+      try { const d=await api('GET','/api/admin/academy/timetable_calendar?'+qs); this.ttCalDays=d.days||{}; this.ttCalResv=d.reservations||{}; }
+      catch(e){ this.ttCalDays={}; this.ttCalResv={}; this.notify(e.message,false); }
     },
     ttCalShift(n){
       if (this.ttView==='month'){
@@ -2740,6 +2755,10 @@ createApp({
       const day=this.ttCalDays[date]; if(!day) return [];
       return day.items.filter(it=>{ const [h,m]=it.start_time.split(':').map(Number); const v=h*60+m; return v>=mins && v<mins+30; });
     },
+    ttSlotResv(date,mins){
+      return (this.ttCalResv[date]||[]).filter(rv=>{ const [h,m]=rv.time.split(':').map(Number); const v=h*60+m; return v>=mins && v<mins+30; });
+    },
+    truncate(s,n){ s=s||''; return s.length>n ? s.slice(0,n)+'...' : s; },
     calItemCls(it){
       if (it.status==='ABSENT') return 'bg-rose-100 text-rose-500 line-through';
       if (it.makeup) return 'bg-blue-50 text-blue-700 hover:bg-blue-100';
@@ -3183,6 +3202,12 @@ createApp({
       try { await api('POST','/api/admin/academy/prefs', { show_deleted_leads:this.showDeletedLeads }); } catch(e){}
       this.loadLeads();
     },
+    async toggleHideLead(r){
+      if (r.is_hidden){ return this.restoreLead(r); }   // 체크 해제 → 복원
+      if (!window.confirm('이 상담을 목록에서 숨기시겠습니까? (영구 삭제가 아니라 숨김 처리됩니다)')) { return; }
+      try { await api('POST','/api/admin/academy/lead/delete', { lead_id:r.id, hidden:true }); this.notify('숨김 처리되었습니다.'); this.loadLeads(); }
+      catch(e){ this.notify(e.message,false); }
+    },
     async deleteLead(r){
       if (!window.confirm('이 상담을 목록에서 숨기시겠습니까? (영구 삭제가 아니라 숨김 처리됩니다)')) return;
       try { await api('POST','/api/admin/academy/lead/delete', { lead_id:r.id, hidden:true }); this.notify('숨김 처리되었습니다.'); this.loadLeads(); }
@@ -3547,6 +3572,7 @@ createApp({
       const phoneDigits = String(r.parent_phone||'').replace(/\D/g,'');
       this.convertForm = {
         student_name: r.student_name, gender:'', birth_date:'',
+        parent_name: r.parent_name||'',
         parent_phone: r.parent_phone, school_type: r.school_type||'', school_name: r.school_name||'', grade: r.grade||'',
         student_phone:'', zipcode:'', address:'', address_detail:'',
         program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date: this.todayStr, weekly_sessions:0, schedule:[], schedule_pending:false,
@@ -3647,6 +3673,7 @@ createApp({
       if (!f.login_id) this.genLoginId();
       if (!f.login_id || !f.password) return this.failConvert('아이디·비밀번호를 확인하세요.');
       if (f.password.length < 6) return this.failConvert('비밀번호는 6자 이상이어야 합니다.');
+      if (!(f.parent_name||'').trim()) return this.failConvert('보호자 이름을 입력하세요.');
       if (!f.student_phone) return this.failConvert('학생 휴대폰을 입력하세요. (보호자번호와 동일 버튼 사용 가능)');
       if (!f.zipcode || !f.address) return this.failConvert('우편번호 검색으로 주소를 입력하세요.');
       for (let i=0;i<f.programs.length;i++){ const p=f.programs[i];
@@ -3664,13 +3691,21 @@ createApp({
         for (const s of f.schedule){ const k=s.day+'@'+this.to24(s.ampm,s.hour,s.min);
           if (seen[k] && !(seen[k].biweekly && s.biweekly)) return this.failConvert('같은 요일·시각이 중복되었습니다. (격주 번갈아 수강이면 양쪽 모두 격주 체크)');
           seen[k]=s; }
+        // 격주 번갈아: 두 과정이 반드시 달라야 함(격주의 의미)
+        for (const s of f.schedule){
+          if (s.biweekly){
+            const a=f.programs[s.programIdx], b=f.programs[s.altProgramIdx];
+            if (!b || s.altProgramIdx===s.programIdx || (a&&b&&a.value===b.value && JSON.stringify(a)===JSON.stringify(b)))
+              return this.failConvert('격주 번갈아 수강은 두 과정이 서로 달라야 합니다. 번갈아 들을 과정을 다르게 선택하세요.');
+          }
+        }
       }
       if (!f.consent_privacy) return this.failConvert('개인정보 수집·이용에 동의해 주세요.');
       if (!f.consent_guardian_name) return this.failConvert('법정대리인 성명을 입력하세요.');
       if (!this.sig.hasInk) return this.failConvert('서명을 입력해 주세요.');
       try {
         const body = {
-          lead_id: r.id, login_id: f.login_id, password: f.password, birth_date: f.birth_date,
+          lead_id: r.id, parent_name: f.parent_name, login_id: f.login_id, password: f.password, birth_date: f.birth_date,
           gender: f.gender || '', student_phone: f.student_phone, zipcode: f.zipcode,
           address: f.address, address_detail: f.address_detail || '',
           program: f.programs[0].value, program_language: f.programs[0].value==='LANG' ? f.programs[0].language : '',

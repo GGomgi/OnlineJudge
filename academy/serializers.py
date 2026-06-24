@@ -359,6 +359,7 @@ class AddCounselingNoteSerializer(serializers.Serializer):
 
 class ConvertLeadSerializer(serializers.Serializer):
     lead_id = serializers.IntegerField()
+    parent_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
     login_id = serializers.CharField(max_length=32)
     password = serializers.CharField(min_length=6, max_length=128)
     birth_date = serializers.DateField()
