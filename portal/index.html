@@ -8,6 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     [v-cloak] { display: none; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", sans-serif; }
@@ -1145,6 +1146,53 @@
     <section v-if="tab==='students'">
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 class="text-lg font-bold">학생 관리 <span class="text-sm font-normal text-slate-400">(인적사항·상담·상태·보호자 통합)</span></h2>
+        <button v-if="hasAnyEdit" @click="openBulk" class="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 whitespace-nowrap">📊 엑셀 일괄등록</button>
+      </div>
+
+      <!-- 엑셀 일괄등록 모달 -->
+      <div v-if="bulkOpen" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="bulkOpen=false">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4">
+          <div class="flex items-center justify-between px-5 py-3 border-b">
+            <div class="font-bold">엑셀 일괄등록</div>
+            <button @click="bulkOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+          <div class="p-5 space-y-3">
+            <ol class="text-xs text-slate-500 list-decimal pl-4 space-y-0.5">
+              <li><b>양식 다운로드</b>로 엑셀을 받아 ‘설명’ 시트를 보고 ‘입력’ 시트에 학생을 채웁니다.</li>
+              <li>채운 파일을 <b>파일 선택</b>으로 올리면 아래에 미리보기가 나옵니다.</li>
+              <li><b>등록 실행</b>을 누르면 계정·등록정보가 생성됩니다. (시간표는 등록 후 따로 배정)</li>
+            </ol>
+            <div class="flex flex-wrap gap-2 items-center">
+              <button @click="downloadBulkTemplate" class="btn-secondary text-sm">⬇ 양식 다운로드</button>
+              <input ref="bulkFile" type="file" accept=".xlsx,.xls,.csv" @change="onBulkFile" class="text-xs" />
+            </div>
+            <div v-if="bulkRows.length" class="border rounded-lg overflow-hidden">
+              <div class="bg-slate-50 px-3 py-1.5 text-xs text-slate-500">미리보기 — 총 <b>{{ bulkRows.length }}</b>행</div>
+              <div class="max-h-60 overflow-auto">
+                <table class="w-full text-[11px]">
+                  <thead class="bg-slate-50 text-slate-400"><tr><th class="px-2 py-1 text-left">지점</th><th class="px-2 py-1 text-left">학생</th><th class="px-2 py-1 text-left">생년월일</th><th class="px-2 py-1 text-left">학교</th><th class="px-2 py-1 text-left">보호자</th><th class="px-2 py-1 text-left">과정</th><th class="px-2 py-1 text-left">아이디</th></tr></thead>
+                  <tbody>
+                    <tr v-for="(r,i) in bulkRows.slice(0,50)" :key="i" class="border-t">
+                      <td class="px-2 py-1">{{ r.branch }}</td><td class="px-2 py-1 font-medium">{{ r.student_name }}</td><td class="px-2 py-1">{{ r.birth_date }}</td><td class="px-2 py-1">{{ r.school_name }}</td><td class="px-2 py-1">{{ r.parent_name }}</td><td class="px-2 py-1">{{ r.programs }}</td><td class="px-2 py-1">{{ r.login_id }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div v-if="bulkResults" class="border rounded-lg p-3 text-sm space-y-1">
+              <div class="font-semibold">결과: 성공 <span class="text-emerald-600">{{ bulkResults.ok }}</span> / 전체 {{ bulkResults.total }}</div>
+              <ul class="max-h-48 overflow-auto text-xs space-y-0.5">
+                <li v-for="x in bulkResults.results" :key="x.row" :class="x.ok ? 'text-slate-500' : 'text-rose-500'">
+                  {{ x.row }}행 {{ x.student_name }} — <template v-if="x.ok">✓ 등록(@{{ x.username }})</template><template v-else>✗ {{ x.error }}</template>
+                </li>
+              </ul>
+            </div>
+            <div class="flex justify-end gap-2">
+              <button @click="bulkOpen=false" class="btn-secondary text-sm">닫기</button>
+              <button v-if="bulkRows.length" @click="runBulk" :disabled="bulkBusy" class="btn-primary text-sm">{{ bulkBusy ? '등록 중…' : ('등록 실행 ('+bulkRows.length+'행)') }}</button>
+            </div>
+          </div>
+        </div>
       </div>
       <!-- 검색/필터 -->
       <div class="flex items-center gap-2 mb-3">
@@ -2184,6 +2232,7 @@ createApp({
       myClasses: [], myInd: [], myAtt: [],
       docPreview: { show:false, url:'', x:0, y:0 },
       students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
+      bulkOpen: false, bulkRows: [], bulkResults: null, bulkBusy: false,
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
       statusPop: { show:false, x:0, y:0, name:'', list:[] },
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
@@ -3386,6 +3435,68 @@ createApp({
     },
     // ── 학생 관리 ──
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
+    // ── 엑셀 일괄등록 ──
+    openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkResults=null; if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
+    bulkColumns(){ return ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','학생연락처','우편번호','주소','상세주소','아이디','비밀번호','등록과정','주횟수','수업시작일']; },
+    downloadBulkTemplate(){
+      if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
+      const cols=this.bulkColumns();
+      const branchNames=(this.branches||[]).map(b=>b.name).join(' / ')||'(지점명)';
+      const progNames=(this.options.program||[]).map(o=>o.label).join(' / ')||'(과정명)';
+      const schoolNames=(this.options.school_type||[]).map(o=>o.label).join(' / ')||'초/중/고';
+      const guide=[
+        ['엑셀 일괄등록 — 작성 안내'],
+        [''],
+        ['· "입력" 시트의 첫 줄(머리글)은 지우지 마세요. 둘째 줄부터 한 학생씩 입력합니다.'],
+        ['· 지점: 정확한 지점명으로 입력. 사용 가능: '+branchNames],
+        ['· 생년월일/수업시작일: YYYY-MM-DD 형식 (예: 2014-03-09)'],
+        ['· 성별: 남 또는 여'],
+        ['· 학교구분: '+schoolNames],
+        ['· 등록과정: 여러 개면 콤마로 구분 (예: 웹, 블록코딩). 사용 가능: '+progNames],
+        ['· 아이디: 비우면 [이름+생일MMDD]로 자동 생성 (예: 홍길동0309)'],
+        ['· 비밀번호: 비우면 보호자 연락처 숫자, 그것도 없으면 123456'],
+        ['· 주횟수: 숫자만. 시간표(요일/시간)는 등록 후 [시간표]에서 배정합니다.'],
+        [''],
+        ['※ 여러 상황 예시는 "입력" 시트의 샘플 3줄을 참고하세요(등록 전 샘플은 지우세요).'],
+      ];
+      const samples=[
+        {'지점':branchNames.split(' / ')[0]||'인천청라','학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':(this.options.school_type&&this.options.school_type[0]?this.options.school_type[0].label:'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','학생연락처':'','우편번호':'','주소':'','상세주소':'','아이디':'','비밀번호':'','등록과정':(this.options.program&&this.options.program[0]?this.options.program[0].label:'웹'),'주횟수':'2','수업시작일':this.todayStr},
+        {'지점':branchNames.split(' / ')[0]||'인천청라','학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':(this.options.school_type&&this.options.school_type[1]?this.options.school_type[1].label:'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','학생연락처':'010-9999-8888','우편번호':'','주소':'','상세주소':'','아이디':'seoyeon1120','비밀번호':'pass1234','등록과정':((this.options.program||[]).slice(0,2).map(o=>o.label).join(', ')||'웹, 블록코딩'),'주횟수':'1','수업시작일':this.todayStr},
+        {'지점':branchNames.split(' / ')[0]||'인천청라','학생이름':'박지호','생년월일':'2015-06-01','성별':'남','학교구분':(this.options.school_type&&this.options.school_type[0]?this.options.school_type[0].label:'초'),'학교이름':'가현초','학년':'3','보호자이름':'박맘','보호자연락처':'010-5555-6666','학생연락처':'','우편번호':'','주소':'','상세주소':'','아이디':'','비밀번호':'','등록과정':'','주횟수':'','수업시작일':''},
+      ];
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(guide), '설명');
+      const ws=XLSX.utils.json_to_sheet(samples, { header:cols });
+      XLSX.utils.book_append_sheet(wb, ws, '입력');
+      XLSX.writeFile(wb, '학생_일괄등록_양식.xlsx');
+    },
+    onBulkFile(e){
+      const file=e.target.files&&e.target.files[0]; if(!file) return;
+      if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
+      const reader=new FileReader();
+      reader.onload=(ev)=>{
+        try {
+          const wb=XLSX.read(ev.target.result, { type:'array', cellDates:true });
+          const sheet=wb.Sheets['입력'] || wb.Sheets[wb.SheetNames.find(n=>n!=='설명')] || wb.Sheets[wb.SheetNames[0]];
+          const raw=XLSX.utils.sheet_to_json(sheet, { defval:'', raw:false });
+          const M={ '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','수업시작일':'lesson_start_date' };
+          const fmtDate=v=>{ if(!v) return ''; if(v instanceof Date){ const p=x=>String(x).padStart(2,'0'); return v.getFullYear()+'-'+p(v.getMonth()+1)+'-'+p(v.getDate()); } return String(v).trim().slice(0,10); };
+          this.bulkRows = raw.map(o=>{ const r={}; for(const k in M){ r[M[k]] = (o[k]!=null?String(o[k]).trim():''); } r.birth_date=fmtDate(o['생년월일']); r.lesson_start_date=fmtDate(o['수업시작일']); return r; })
+            .filter(r=>r.student_name);
+          this.bulkResults=null;
+          this.notify(this.bulkRows.length+'행을 읽었습니다.');
+        } catch(err){ this.notify('파일을 읽지 못했습니다: '+err.message, false); }
+      };
+      reader.readAsArrayBuffer(file);
+    },
+    async runBulk(){
+      if (!this.bulkRows.length) return;
+      this.bulkBusy=true;
+      try { this.bulkResults = await api('POST','/api/admin/academy/bulk_register', { rows:this.bulkRows });
+        this.notify('등록 완료: 성공 '+this.bulkResults.ok+' / '+this.bulkResults.total); this.loadStudents(); }
+      catch(e){ this.notify(e.message,false); }
+      finally { this.bulkBusy=false; }
+    },
     async loadStuCreds(){ if(!this.stuDetail) return; try { const d = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); this.stuCreds = d.map(c=>({ ...c, _orig:{ site:c.site, login_id:c.login_id, password:c.password } })); } catch(e){ this.stuCreds=[]; } },
     credFieldDirty(c, f){ return c._orig && c[f] !== c._orig[f]; },
     credDirty(c){ return ['site','login_id','password'].some(f=>this.credFieldDirty(c,f)); },

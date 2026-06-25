@@ -1587,6 +1587,111 @@ class StudentListAdminAPI(APIView):
         return self.success(out)
 
 
+def _bulk_parse_date(s):
+    s = (s or "").strip().replace("/", "-").replace(".", "-")
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+
+
+def _resolve_opt_value(category, text):
+    """선택목록 라벨 또는 값(코드)을 value(코드)로 해석. 매칭 없으면 ''."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    for o in OptionItem.objects.filter(category=category):
+        if t == o.value or t == o.label:
+            return o.value
+    return ""
+
+
+class BulkRegisterAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """엑셀 일괄등록(브라우저에서 파싱한 행 JSON). {rows:[{branch, student_name, birth_date,
+        gender, school_type, school_name, grade, parent_name, parent_phone, student_phone,
+        zipcode, address, address_detail, login_id, password, programs, weekly_sessions,
+        lesson_start_date}]}. 행마다 학생 계정+등록정보 생성(시간표는 추후)."""
+        rows = request.data.get("rows") or []
+        if not isinstance(rows, list):
+            return self.error("rows 형식 오류")
+        if len(rows) > 500:
+            return self.error("한 번에 최대 500행까지 등록할 수 있습니다.")
+        branches = {}
+        for b in Branch.objects.all():
+            branches[b.name] = b
+            if b.code:
+                branches[b.code] = b
+        results = []
+        for i, row in enumerate(rows):
+            r = {k: ("" if v is None else str(v).strip()) for k, v in (row or {}).items()}
+            res = {"row": i + 1, "student_name": r.get("student_name", ""),
+                   "ok": False, "error": "", "username": ""}
+            try:
+                name = r.get("student_name", "")
+                if not name:
+                    raise ValueError("학생 이름이 비어 있습니다.")
+                branch = branches.get(r.get("branch", ""))
+                if not branch:
+                    raise ValueError("지점을 찾을 수 없습니다: %s" % r.get("branch", ""))
+                if not can_manage_branch(request.user, branch.id):
+                    raise ValueError("이 지점에 권한이 없습니다: %s" % branch.name)
+                bd = _bulk_parse_date(r.get("birth_date"))
+                login_id = (r.get("login_id") or "").lower()
+                if not login_id:
+                    if not bd:
+                        raise ValueError("아이디가 없고 생년월일도 없어 아이디 자동 생성 불가")
+                    login_id = name.replace(" ", "") + "%02d%02d" % (bd.month, bd.day)
+                if User.objects.filter(username=login_id).exists():
+                    raise ValueError("이미 존재하는 아이디: %s" % login_id)
+                pw = r.get("password") or (r.get("parent_phone", "").replace("-", "")) or "123456"
+                if len(pw) < 6:
+                    pw = (pw + "000000")[:6]
+                gender = {"남": "M", "여": "F", "M": "M", "F": "F"}.get(r.get("gender", ""), "")
+                progs = []
+                for tok in (r.get("programs", "").replace("，", ",").split(",")):
+                    tok = tok.strip()
+                    if not tok:
+                        continue
+                    val = _resolve_opt_value("program", tok)
+                    progs.append({"value": val, "language": "", "custom": ("" if val else tok)})
+                ws = r.get("weekly_sessions", "")
+                try:
+                    ws = int(float(ws)) if ws else None
+                except ValueError:
+                    ws = None
+                with transaction.atomic():
+                    user = User.objects.create(username=login_id, is_disabled=False)
+                    user.set_password(pw)
+                    user.save()
+                    UserProfile.objects.create(user=user, real_name=name)
+                    apply_role(user, AcademyRole.STUDENT, branch)
+                    StudentProfile.objects.create(
+                        user=user, enroll_no=gen_enroll_no(branch),
+                        birth_date=bd, gender=gender,
+                        zipcode=r.get("zipcode", ""), address=r.get("address", ""),
+                        address_detail=r.get("address_detail", ""),
+                        student_phone=r.get("student_phone", ""),
+                        parent_name=r.get("parent_name", ""), parent_phone=r.get("parent_phone", ""),
+                        school_type=_resolve_opt_value("school_type", r.get("school_type")),
+                        school_name=r.get("school_name", ""), grade=r.get("grade", ""),
+                        enrollment_date=now().date(), enrollment_status=EnrollmentStatus.ENROLLED,
+                        program=(progs[0]["value"] if progs else ""),
+                        programs=_json.dumps(progs, ensure_ascii=False),
+                        weekly_sessions=ws,
+                        lesson_start_date=_bulk_parse_date(r.get("lesson_start_date")))
+                res["ok"] = True
+                res["username"] = login_id
+            except Exception as e:
+                res["error"] = str(e)
+            results.append(res)
+        return self.success({"total": len(results),
+                             "ok": sum(1 for x in results if x["ok"]), "results": results})
+
+
 class StudentWeeklyAdminAPI(APIView):
     @admin_role_required
     def post(self, request):
