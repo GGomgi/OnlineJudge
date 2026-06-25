@@ -13,6 +13,7 @@ from ..models import (AcademyProfile, AcademyRole, Branch, SignupRequest, Course
                       AttendanceRecord, Lead, OptionItem)
 from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROLES,
                       HRNotice, StaffDocument, StaffProfileHistory)
+from ..models import DevRequest, DevRequestComment
 
 TRACKED_HR_FIELDS = ["zipcode", "address", "address_detail", "phone",
                      "dependents_decided", "dependents", "emergency_contacts",
@@ -458,3 +459,127 @@ class MyAttendanceAPI(APIView):
                 "memo": r.memo,
             })
         return self.success(results)
+
+
+# ── 개발 요청 게시판(로그인한 모든 사용자) ──
+
+def _u_name(u):
+    if not u:
+        return ""
+    try:
+        return u.userprofile.real_name or u.username
+    except Exception:
+        return u.username
+
+
+def _is_admin(u):
+    return bool(u and u.is_authenticated and u.is_admin_role())
+
+
+_DEV_STATUSES = (DevRequest.NONE, DevRequest.REVIEWING, DevRequest.IN_PROGRESS,
+                 DevRequest.CONFIRMED, DevRequest.DONE)
+
+
+class DevRequestAPI(APIView):
+    @login_required
+    def get(self, request):
+        """목록(?없음) 또는 상세(?id=). 숨김 글은 작성자·관리자만."""
+        me = request.user
+        admin = _is_admin(me)
+        rid = request.GET.get("id")
+        if rid:
+            o = DevRequest.objects.select_related("author").filter(id=rid).first()
+            if not o or (o.is_hidden and not admin and o.author_id != me.id):
+                return self.error("글이 없습니다.")
+            comments = []
+            for c in o.comments.select_related("author").all():
+                if c.is_hidden and not admin and c.author_id != me.id:
+                    continue
+                comments.append({"id": c.id, "author": _u_name(c.author), "author_id": c.author_id,
+                                 "body": c.body, "is_hidden": c.is_hidden,
+                                 "time": str(c.create_time)[:16], "mine": c.author_id == me.id})
+            return self.success({"id": o.id, "title": o.title, "body": o.body, "status": o.status,
+                                 "author": _u_name(o.author), "author_id": o.author_id,
+                                 "time": str(o.create_time)[:16], "is_hidden": o.is_hidden,
+                                 "mine": o.author_id == me.id, "can_status": admin, "comments": comments})
+        from django.db.models import Count
+        qs = DevRequest.objects.select_related("author").all()
+        if not admin:
+            qs = qs.filter(Q(is_hidden=False) | Q(author_id=me.id))
+        cc = dict(DevRequestComment.objects.filter(is_hidden=False).values("request_id")
+                  .annotate(c=Count("id")).values_list("request_id", "c"))
+        out = [{"id": o.id, "title": o.title, "status": o.status, "author": _u_name(o.author),
+                "time": str(o.create_time)[:16], "is_hidden": o.is_hidden,
+                "mine": o.author_id == me.id, "comments": cc.get(o.id, 0)} for o in qs[:300]]
+        return self.success(out)
+
+    @login_required
+    def post(self, request):
+        title = (request.data.get("title") or "").strip()
+        if not title:
+            return self.error("제목을 입력하세요.")
+        o = DevRequest.objects.create(author=request.user, title=title[:200],
+                                      body=(request.data.get("body") or ""))
+        return self.success({"id": o.id})
+
+    @login_required
+    def put(self, request):
+        o = DevRequest.objects.filter(id=request.data.get("id")).first()
+        if not o:
+            return self.error("글이 없습니다.")
+        admin = _is_admin(request.user)
+        is_owner = (o.author_id == request.user.id)
+        # 상태 변경은 관리자만
+        if "status" in request.data:
+            if not admin:
+                return self.error("상태 변경 권한이 없습니다.")
+            st = request.data.get("status")
+            if st in _DEV_STATUSES:
+                o.status = st
+        # 제목/본문 수정은 작성자 또는 관리자
+        if "title" in request.data or "body" in request.data:
+            if not (is_owner or admin):
+                return self.error("수정 권한이 없습니다.")
+            if "title" in request.data:
+                t = (request.data.get("title") or "").strip()
+                if t:
+                    o.title = t[:200]
+            if "body" in request.data:
+                o.body = request.data.get("body") or ""
+        o.save()
+        return self.success({"id": o.id, "status": o.status})
+
+    @login_required
+    def delete(self, request):
+        o = DevRequest.objects.filter(id=request.GET.get("id")).first()
+        if not o:
+            return self.error("글이 없습니다.")
+        if o.author_id != request.user.id and not _is_admin(request.user):
+            return self.error("권한이 없습니다.")
+        o.is_hidden = True
+        o.save(update_fields=["is_hidden"])
+        return self.success(True)
+
+
+class DevCommentAPI(APIView):
+    @login_required
+    def post(self, request):
+        o = DevRequest.objects.filter(id=request.data.get("request_id")).first()
+        if not o:
+            return self.error("글이 없습니다.")
+        body = (request.data.get("body") or "").strip()
+        if not body:
+            return self.error("내용을 입력하세요.")
+        DevRequestComment.objects.create(request=o, author=request.user, body=body)
+        return self.success(True)
+
+    @login_required
+    def delete(self, request):
+        c = DevRequestComment.objects.filter(id=request.GET.get("id")).first()
+        if not c:
+            return self.error("덧글이 없습니다.")
+        if c.author_id != request.user.id and not _is_admin(request.user):
+            return self.error("권한이 없습니다.")
+        c.is_hidden = True
+        c.save(update_fields=["is_hidden"])
+        return self.success(True)

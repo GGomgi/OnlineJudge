@@ -504,6 +504,41 @@ class GuardianStudent(models.Model):
         unique_together = ("parent", "student")
 
 
+class DevRequest(models.Model):
+    """개발 요청 게시판 글. 모든 로그인 사용자 작성 가능, 상태는 관리자만 변경."""
+    NONE = "NONE"            # 접수
+    REVIEWING = "REVIEWING"  # 검토중
+    IN_PROGRESS = "IN_PROGRESS"  # 개발중
+    CONFIRMED = "CONFIRMED"  # 확인함
+    DONE = "DONE"            # 해결
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="dev_requests")
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True, default="")  # 마크다운
+    status = models.CharField(max_length=16, default=NONE)
+    is_hidden = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_dev_request"
+        ordering = ["-create_time"]
+
+
+class DevRequestComment(models.Model):
+    """개발 요청 글의 덧글."""
+    request = models.ForeignKey(DevRequest, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="+")
+    body = models.TextField()
+    is_hidden = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_dev_request_comment"
+        ordering = ["create_time"]
+
+
 class StudentCredential(models.Model):
     """학생 사이트 계정(스크래치 등). 어린 학생이 자주 잊어 학원에서 관리.
     사이트/아이디/비밀번호를 줄 단위로 저장(별도 목록화 없이 자유 입력)."""
