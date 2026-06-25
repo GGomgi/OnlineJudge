@@ -1146,7 +1146,10 @@
     <section v-if="tab==='students'">
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 class="text-lg font-bold">학생 관리 <span class="text-sm font-normal text-slate-400">(인적사항·상담·상태·보호자 통합)</span></h2>
-        <button v-if="hasAnyEdit" @click="openBulk" class="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 whitespace-nowrap">📊 엑셀 일괄등록</button>
+        <div v-if="hasAnyEdit" class="flex gap-2">
+          <button @click="openBulk" class="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 whitespace-nowrap">📥 엑셀 등록</button>
+          <button @click="exportStudents" class="px-3 py-1.5 rounded border border-slate-300 text-slate-600 text-sm hover:bg-slate-50 whitespace-nowrap">💾 저장</button>
+        </div>
       </div>
 
       <!-- 엑셀 일괄등록 모달 -->
@@ -1164,7 +1167,6 @@
             </ol>
             <div class="flex flex-wrap gap-2 items-center">
               <button @click="downloadBulkTemplate" class="btn-secondary text-sm">⬇ 양식 다운로드</button>
-              <button @click="exportStudents" class="btn-secondary text-sm">⬆ 기존 데이터 내보내기</button>
               <input ref="bulkFile" type="file" accept=".xlsx,.xls,.csv" @change="onBulkFile" class="text-xs" />
             </div>
             <!-- 검증/결과 표 -->
@@ -3448,7 +3450,7 @@ createApp({
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
     // ── 엑셀 일괄등록 ──
     openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
-    bulkColumns(){ return ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','학생연락처','우편번호','주소','상세주소','아이디','비밀번호','등록과정','주횟수','시간표','등록일','수업시작일']; },
+    bulkColumns(){ return ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','학생연락처','우편번호','주소','상세주소','등록과정','주횟수','시간표','등록일','수업시작일']; },
     downloadBulkTemplate(){
       if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
       const cols=this.bulkColumns();
@@ -3464,8 +3466,8 @@ createApp({
         ['· 성별: 남 또는 여'],
         ['· 학교구분: '+schoolNames],
         ['· 등록과정: 여러 개면 콤마로 구분 (예: 웹, 블록코딩). 사용 가능: '+progNames],
-        ['· 아이디: 비우면 [이름+생일MMDD]로 자동 생성 (예: 홍길동0309)'],
-        ['· 비밀번호: 비우면 보호자 연락처 숫자, 그것도 없으면 123456'],
+        ['· 아이디는 입력하지 않습니다 — 업로드 시 [이름+생일MMDD]로 자동 생성됩니다 (예: 홍길동0309).'],
+        ['· 비밀번호도 양식에 없습니다 (기본값으로 자동 설정).'],
         ['· 주횟수: 숫자만(비우면 시간표 항목 수로 자동).'],
         ['· 시간표: "요일 시각 과정" 형식, 여러 개는 콤마. 예: 월 16:00 웹, 수 17:00 블록코딩'],
         ['     (격주 번갈아 수업은 일괄등록에서 제외 — 등록 후 [시간표]에서 설정하세요.)'],
@@ -3474,12 +3476,12 @@ createApp({
         ['※ 업로드 후 [검증]으로 오류·시간표 해석을 먼저 확인하고, [확정 등록]을 눌러야 생성됩니다.'],
         ['※ 여러 상황 예시는 "입력" 시트의 샘플 3줄을 참고하세요(등록 전 샘플은 지우세요).'],
       ];
-      const b0=branchNames.split(' / ')[0]||'인천청라';
+      const b0=(this.myProfile&&this.myProfile.branch&&this.myProfile.branch.name)||branchNames.split(' / ')[0]||'인천청라';
       const sc=(i,d)=>(this.options.school_type&&this.options.school_type[i]?this.options.school_type[i].label:d);
       const samples=[
-        {'지점':b0,'학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':sc(0,'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','학생연락처':'','우편번호':'','주소':'','상세주소':'','아이디':'','비밀번호':'','등록과정':(this.options.program&&this.options.program[0]?this.options.program[0].label:'웹'),'주횟수':'2','시간표':'월 16:00, 수 16:00','등록일':'','수업시작일':this.todayStr},
-        {'지점':b0,'학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':sc(1,'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','학생연락처':'010-9999-8888','우편번호':'','주소':'','상세주소':'','아이디':'seoyeon1120','비밀번호':'pass1234','등록과정':((this.options.program||[]).slice(0,2).map(o=>o.label).join(', ')||'웹, 블록코딩'),'주횟수':'','시간표':'화 17:00 '+(this.options.program&&this.options.program[0]?this.options.program[0].label:'웹'),'등록일':this.todayStr,'수업시작일':this.todayStr},
-        {'지점':b0,'학생이름':'박지호','생년월일':'2015-06-01','성별':'남','학교구분':sc(0,'초'),'학교이름':'가현초','학년':'3','보호자이름':'박맘','보호자연락처':'010-5555-6666','학생연락처':'','우편번호':'','주소':'','상세주소':'','아이디':'','비밀번호':'','등록과정':'','주횟수':'','시간표':'','등록일':'','수업시작일':''},
+        {'지점':b0,'학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':sc(0,'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','학생연락처':'','우편번호':'','주소':'','상세주소':'','등록과정':(this.options.program&&this.options.program[0]?this.options.program[0].label:'웹'),'주횟수':'2','시간표':'월 16:00, 수 16:00','등록일':'','수업시작일':this.todayStr},
+        {'지점':b0,'학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':sc(1,'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','학생연락처':'010-9999-8888','우편번호':'','주소':'','상세주소':'','등록과정':((this.options.program||[]).slice(0,2).map(o=>o.label).join(', ')||'웹, 블록코딩'),'주횟수':'','시간표':'화 17:00 '+(this.options.program&&this.options.program[0]?this.options.program[0].label:'웹'),'등록일':this.todayStr,'수업시작일':this.todayStr},
+        {'지점':b0,'학생이름':'박지호','생년월일':'2015-06-01','성별':'남','학교구분':sc(0,'초'),'학교이름':'가현초','학년':'3','보호자이름':'박맘','보호자연락처':'010-5555-6666','학생연락처':'','우편번호':'','주소':'','상세주소':'','등록과정':'','주횟수':'','시간표':'','등록일':'','수업시작일':''},
       ];
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(guide), '설명');
@@ -3527,7 +3529,7 @@ createApp({
       try {
         const rows = await api('GET','/api/admin/academy/bulk_export');
         if (!rows.length) return this.notify('내보낼 학생이 없습니다.', false);
-        const header = ['원번', ...this.bulkColumns()];
+        const header = ['원번','아이디', ...this.bulkColumns()];
         const wb=XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows, { header }), '입력');
         XLSX.writeFile(wb, '학생_내보내기_'+this.todayStr+'.xlsx');
