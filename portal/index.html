@@ -1158,38 +1158,49 @@
           </div>
           <div class="p-5 space-y-3">
             <ol class="text-xs text-slate-500 list-decimal pl-4 space-y-0.5">
-              <li><b>양식 다운로드</b>로 엑셀을 받아 ‘설명’ 시트를 보고 ‘입력’ 시트에 학생을 채웁니다.</li>
-              <li>채운 파일을 <b>파일 선택</b>으로 올리면 아래에 미리보기가 나옵니다.</li>
-              <li><b>등록 실행</b>을 누르면 계정·등록정보가 생성됩니다. (시간표는 등록 후 따로 배정)</li>
+              <li><b>양식 다운로드</b>(또는 <b>기존 데이터 내보내기</b>)로 엑셀을 받아 ‘설명’ 시트를 보고 ‘입력’ 시트를 채웁니다.</li>
+              <li>채운 파일을 올린 뒤 <b>검증</b>으로 오류·시간표 해석을 먼저 확인합니다(이때는 생성 안 됨).</li>
+              <li>문제없으면 <b>확정 등록</b>으로 정상 행만 생성합니다.</li>
             </ol>
             <div class="flex flex-wrap gap-2 items-center">
               <button @click="downloadBulkTemplate" class="btn-secondary text-sm">⬇ 양식 다운로드</button>
+              <button @click="exportStudents" class="btn-secondary text-sm">⬆ 기존 데이터 내보내기</button>
               <input ref="bulkFile" type="file" accept=".xlsx,.xls,.csv" @change="onBulkFile" class="text-xs" />
             </div>
-            <div v-if="bulkRows.length" class="border rounded-lg overflow-hidden">
-              <div class="bg-slate-50 px-3 py-1.5 text-xs text-slate-500">미리보기 — 총 <b>{{ bulkRows.length }}</b>행</div>
-              <div class="max-h-60 overflow-auto">
+            <!-- 검증/결과 표 -->
+            <div v-if="bulkValidated" class="border rounded-lg overflow-hidden">
+              <div class="bg-slate-50 px-3 py-1.5 text-xs flex items-center gap-3">
+                <span>총 <b>{{ bulkValidated.total }}</b>행</span>
+                <span class="text-emerald-600">정상 <b>{{ bulkValidated.ok }}</b></span>
+                <span class="text-rose-500">오류 <b>{{ bulkValidated.fail }}</b></span>
+                <span v-if="bulkValidated.commit" class="ml-auto text-emerald-600 font-semibold">✓ 등록 완료</span>
+                <span v-else class="ml-auto text-slate-400">검증 결과 (미생성)</span>
+              </div>
+              <div class="max-h-72 overflow-auto">
                 <table class="w-full text-[11px]">
-                  <thead class="bg-slate-50 text-slate-400"><tr><th class="px-2 py-1 text-left">지점</th><th class="px-2 py-1 text-left">학생</th><th class="px-2 py-1 text-left">생년월일</th><th class="px-2 py-1 text-left">학교</th><th class="px-2 py-1 text-left">보호자</th><th class="px-2 py-1 text-left">과정</th><th class="px-2 py-1 text-left">아이디</th></tr></thead>
+                  <thead class="bg-slate-50 text-slate-400"><tr><th class="px-2 py-1 text-left w-8">행</th><th class="px-2 py-1 text-left w-14">상태</th><th class="px-2 py-1 text-left">학생</th><th class="px-2 py-1 text-left">아이디</th><th class="px-2 py-1 text-left">시간표/메시지</th></tr></thead>
                   <tbody>
-                    <tr v-for="(r,i) in bulkRows.slice(0,50)" :key="i" class="border-t">
-                      <td class="px-2 py-1">{{ r.branch }}</td><td class="px-2 py-1 font-medium">{{ r.student_name }}</td><td class="px-2 py-1">{{ r.birth_date }}</td><td class="px-2 py-1">{{ r.school_name }}</td><td class="px-2 py-1">{{ r.parent_name }}</td><td class="px-2 py-1">{{ r.programs }}</td><td class="px-2 py-1">{{ r.login_id }}</td>
+                    <tr v-for="x in bulkValidated.results" :key="x.row" class="border-t align-top">
+                      <td class="px-2 py-1 text-slate-400">{{ x.row }}</td>
+                      <td class="px-2 py-1"><span :class="['px-1.5 py-0.5 rounded', x.ok ? (x.warnings&&x.warnings.length ? 'bg-amber-100 text-amber-700':'bg-emerald-100 text-emerald-700') : 'bg-rose-100 text-rose-600']">{{ x.ok ? (x.created?'등록':(x.warnings&&x.warnings.length?'경고':'정상')) : '오류' }}</span></td>
+                      <td class="px-2 py-1 font-medium">{{ x.student_name }}</td>
+                      <td class="px-2 py-1 font-mono">{{ x.login_id }}</td>
+                      <td class="px-2 py-1">
+                        <span v-if="!x.ok" class="text-rose-500">{{ x.error }}</span>
+                        <template v-else>
+                          <span class="text-slate-500">{{ (x.timetable_preview||[]).join(', ') || '시간표 없음' }}</span>
+                          <span v-for="(w,wi) in (x.warnings||[])" :key="wi" class="block text-amber-600">⚠ {{ w }}</span>
+                        </template>
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </div>
-            <div v-if="bulkResults" class="border rounded-lg p-3 text-sm space-y-1">
-              <div class="font-semibold">결과: 성공 <span class="text-emerald-600">{{ bulkResults.ok }}</span> / 전체 {{ bulkResults.total }}</div>
-              <ul class="max-h-48 overflow-auto text-xs space-y-0.5">
-                <li v-for="x in bulkResults.results" :key="x.row" :class="x.ok ? 'text-slate-500' : 'text-rose-500'">
-                  {{ x.row }}행 {{ x.student_name }} — <template v-if="x.ok">✓ 등록(@{{ x.username }})</template><template v-else>✗ {{ x.error }}</template>
-                </li>
-              </ul>
-            </div>
             <div class="flex justify-end gap-2">
               <button @click="bulkOpen=false" class="btn-secondary text-sm">닫기</button>
-              <button v-if="bulkRows.length" @click="runBulk" :disabled="bulkBusy" class="btn-primary text-sm">{{ bulkBusy ? '등록 중…' : ('등록 실행 ('+bulkRows.length+'행)') }}</button>
+              <button v-if="bulkRows.length && !(bulkValidated&&bulkValidated.commit)" @click="validateBulk" :disabled="bulkBusy" class="btn-secondary text-sm">{{ bulkBusy ? '처리 중…' : '검증' }}</button>
+              <button v-if="bulkValidated && !bulkValidated.commit && bulkValidated.ok>0" @click="runBulk" :disabled="bulkBusy" class="btn-primary text-sm">{{ bulkBusy ? '등록 중…' : ('확정 등록 ('+bulkValidated.ok+'행)') }}</button>
             </div>
           </div>
         </div>
@@ -2232,7 +2243,7 @@ createApp({
       myClasses: [], myInd: [], myAtt: [],
       docPreview: { show:false, url:'', x:0, y:0 },
       students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
-      bulkOpen: false, bulkRows: [], bulkResults: null, bulkBusy: false,
+      bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false,
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
       statusPop: { show:false, x:0, y:0, name:'', list:[] },
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
@@ -3436,8 +3447,8 @@ createApp({
     // ── 학생 관리 ──
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
     // ── 엑셀 일괄등록 ──
-    openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkResults=null; if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
-    bulkColumns(){ return ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','학생연락처','우편번호','주소','상세주소','아이디','비밀번호','등록과정','주횟수','수업시작일']; },
+    openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
+    bulkColumns(){ return ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','학생연락처','우편번호','주소','상세주소','아이디','비밀번호','등록과정','주횟수','시간표','등록일','수업시작일']; },
     downloadBulkTemplate(){
       if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
       const cols=this.bulkColumns();
@@ -3455,14 +3466,20 @@ createApp({
         ['· 등록과정: 여러 개면 콤마로 구분 (예: 웹, 블록코딩). 사용 가능: '+progNames],
         ['· 아이디: 비우면 [이름+생일MMDD]로 자동 생성 (예: 홍길동0309)'],
         ['· 비밀번호: 비우면 보호자 연락처 숫자, 그것도 없으면 123456'],
-        ['· 주횟수: 숫자만. 시간표(요일/시간)는 등록 후 [시간표]에서 배정합니다.'],
+        ['· 주횟수: 숫자만(비우면 시간표 항목 수로 자동).'],
+        ['· 시간표: "요일 시각 과정" 형식, 여러 개는 콤마. 예: 월 16:00 웹, 수 17:00 블록코딩'],
+        ['     (격주 번갈아 수업은 일괄등록에서 제외 — 등록 후 [시간표]에서 설정하세요.)'],
+        ['· 등록일: 비우면 오늘. YYYY-MM-DD'],
         [''],
+        ['※ 업로드 후 [검증]으로 오류·시간표 해석을 먼저 확인하고, [확정 등록]을 눌러야 생성됩니다.'],
         ['※ 여러 상황 예시는 "입력" 시트의 샘플 3줄을 참고하세요(등록 전 샘플은 지우세요).'],
       ];
+      const b0=branchNames.split(' / ')[0]||'인천청라';
+      const sc=(i,d)=>(this.options.school_type&&this.options.school_type[i]?this.options.school_type[i].label:d);
       const samples=[
-        {'지점':branchNames.split(' / ')[0]||'인천청라','학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':(this.options.school_type&&this.options.school_type[0]?this.options.school_type[0].label:'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','학생연락처':'','우편번호':'','주소':'','상세주소':'','아이디':'','비밀번호':'','등록과정':(this.options.program&&this.options.program[0]?this.options.program[0].label:'웹'),'주횟수':'2','수업시작일':this.todayStr},
-        {'지점':branchNames.split(' / ')[0]||'인천청라','학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':(this.options.school_type&&this.options.school_type[1]?this.options.school_type[1].label:'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','학생연락처':'010-9999-8888','우편번호':'','주소':'','상세주소':'','아이디':'seoyeon1120','비밀번호':'pass1234','등록과정':((this.options.program||[]).slice(0,2).map(o=>o.label).join(', ')||'웹, 블록코딩'),'주횟수':'1','수업시작일':this.todayStr},
-        {'지점':branchNames.split(' / ')[0]||'인천청라','학생이름':'박지호','생년월일':'2015-06-01','성별':'남','학교구분':(this.options.school_type&&this.options.school_type[0]?this.options.school_type[0].label:'초'),'학교이름':'가현초','학년':'3','보호자이름':'박맘','보호자연락처':'010-5555-6666','학생연락처':'','우편번호':'','주소':'','상세주소':'','아이디':'','비밀번호':'','등록과정':'','주횟수':'','수업시작일':''},
+        {'지점':b0,'학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':sc(0,'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','학생연락처':'','우편번호':'','주소':'','상세주소':'','아이디':'','비밀번호':'','등록과정':(this.options.program&&this.options.program[0]?this.options.program[0].label:'웹'),'주횟수':'2','시간표':'월 16:00, 수 16:00','등록일':'','수업시작일':this.todayStr},
+        {'지점':b0,'학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':sc(1,'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','학생연락처':'010-9999-8888','우편번호':'','주소':'','상세주소':'','아이디':'seoyeon1120','비밀번호':'pass1234','등록과정':((this.options.program||[]).slice(0,2).map(o=>o.label).join(', ')||'웹, 블록코딩'),'주횟수':'','시간표':'화 17:00 '+(this.options.program&&this.options.program[0]?this.options.program[0].label:'웹'),'등록일':this.todayStr,'수업시작일':this.todayStr},
+        {'지점':b0,'학생이름':'박지호','생년월일':'2015-06-01','성별':'남','학교구분':sc(0,'초'),'학교이름':'가현초','학년':'3','보호자이름':'박맘','보호자연락처':'010-5555-6666','학생연락처':'','우편번호':'','주소':'','상세주소':'','아이디':'','비밀번호':'','등록과정':'','주횟수':'','시간표':'','등록일':'','수업시작일':''},
       ];
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(guide), '설명');
@@ -3479,23 +3496,43 @@ createApp({
           const wb=XLSX.read(ev.target.result, { type:'array', cellDates:true });
           const sheet=wb.Sheets['입력'] || wb.Sheets[wb.SheetNames.find(n=>n!=='설명')] || wb.Sheets[wb.SheetNames[0]];
           const raw=XLSX.utils.sheet_to_json(sheet, { defval:'', raw:false });
-          const M={ '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','수업시작일':'lesson_start_date' };
+          const M={ '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','시간표':'timetable','등록일':'enrollment_date','수업시작일':'lesson_start_date' };
           const fmtDate=v=>{ if(!v) return ''; if(v instanceof Date){ const p=x=>String(x).padStart(2,'0'); return v.getFullYear()+'-'+p(v.getMonth()+1)+'-'+p(v.getDate()); } return String(v).trim().slice(0,10); };
-          this.bulkRows = raw.map(o=>{ const r={}; for(const k in M){ r[M[k]] = (o[k]!=null?String(o[k]).trim():''); } r.birth_date=fmtDate(o['생년월일']); r.lesson_start_date=fmtDate(o['수업시작일']); return r; })
+          this.bulkRows = raw.map(o=>{ const r={}; for(const k in M){ r[M[k]] = (o[k]!=null?String(o[k]).trim():''); } r.birth_date=fmtDate(o['생년월일']); r.lesson_start_date=fmtDate(o['수업시작일']); r.enrollment_date=fmtDate(o['등록일']); return r; })
             .filter(r=>r.student_name);
-          this.bulkResults=null;
-          this.notify(this.bulkRows.length+'행을 읽었습니다.');
+          this.bulkValidated=null;
+          this.notify(this.bulkRows.length+'행을 읽었습니다. [검증]을 눌러 확인하세요.');
         } catch(err){ this.notify('파일을 읽지 못했습니다: '+err.message, false); }
       };
       reader.readAsArrayBuffer(file);
     },
+    async validateBulk(){
+      if (!this.bulkRows.length) return;
+      this.bulkBusy=true;
+      try { this.bulkValidated = await api('POST','/api/admin/academy/bulk_register', { rows:this.bulkRows, commit:false });
+        this.notify('검증 완료: 정상 '+this.bulkValidated.ok+' / 오류 '+this.bulkValidated.fail); }
+      catch(e){ this.notify(e.message,false); }
+      finally { this.bulkBusy=false; }
+    },
     async runBulk(){
       if (!this.bulkRows.length) return;
       this.bulkBusy=true;
-      try { this.bulkResults = await api('POST','/api/admin/academy/bulk_register', { rows:this.bulkRows });
-        this.notify('등록 완료: 성공 '+this.bulkResults.ok+' / '+this.bulkResults.total); this.loadStudents(); }
+      try { this.bulkValidated = await api('POST','/api/admin/academy/bulk_register', { rows:this.bulkRows, commit:true });
+        this.notify('등록 완료: 성공 '+this.bulkValidated.ok+' / 전체 '+this.bulkValidated.total); this.loadStudents(); }
       catch(e){ this.notify(e.message,false); }
       finally { this.bulkBusy=false; }
+    },
+    async exportStudents(){
+      if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
+      try {
+        const rows = await api('GET','/api/admin/academy/bulk_export');
+        if (!rows.length) return this.notify('내보낼 학생이 없습니다.', false);
+        const header = ['원번', ...this.bulkColumns()];
+        const wb=XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows, { header }), '입력');
+        XLSX.writeFile(wb, '학생_내보내기_'+this.todayStr+'.xlsx');
+        this.notify(rows.length+'명을 내보냈습니다.');
+      } catch(e){ this.notify(e.message,false); }
     },
     async loadStuCreds(){ if(!this.stuDetail) return; try { const d = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); this.stuCreds = d.map(c=>({ ...c, _orig:{ site:c.site, login_id:c.login_id, password:c.password } })); } catch(e){ this.stuCreds=[]; } },
     credFieldDirty(c, f){ return c._orig && c[f] !== c._orig[f]; },

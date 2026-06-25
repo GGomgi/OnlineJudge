@@ -1608,14 +1608,114 @@ def _resolve_opt_value(category, text):
     return ""
 
 
+def _parse_bulk_timetable(text):
+    """'월 16:00 웹, 수 17:00 블록코딩' → ([{weekday,start_time,program,subject}], warnings[]).
+    토큰: 요일 시각 [과정명]. 격주는 v1 미지원(등록 후 [시간표]에서)."""
+    from datetime import time as _t
+    items, warns = [], []
+    text = (text or "").replace("，", ",").strip()
+    if not text:
+        return items, warns
+    for tok in text.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        parts = tok.split()
+        if len(parts) < 2:
+            warns.append("시간표 형식 오류: '%s' (요일 시각 [과정])" % tok)
+            continue
+        wd = _WD.index(parts[0]) if parts[0] in _WD else -1
+        if wd < 0:
+            warns.append("요일 인식 불가: '%s'" % parts[0])
+            continue
+        tm = parts[1].strip()
+        try:
+            hh, mm = tm.split(":")
+            _t(int(hh), int(mm))
+            tm = "%02d:%02d" % (int(hh), int(mm))
+        except (ValueError, AttributeError):
+            warns.append("시각 형식 오류: '%s' (HH:MM)" % parts[1])
+            continue
+        prog_text = " ".join(parts[2:]).strip()
+        prog = _resolve_opt_value("program", prog_text)
+        subj = resolve_program_label(prog) or prog_text or "수업"
+        items.append({"weekday": wd, "start_time": tm, "program": prog, "subject": subj})
+    return items, warns
+
+
+def _bulk_resolve_row(actor, row, branches, seen_ids):
+    """한 행을 검증·해석. 생성하지 않고 결과/오류/경고/시간표 미리보기 반환."""
+    r = {k: ("" if v is None else str(v).strip()) for k, v in (row or {}).items()}
+    res = {"student_name": r.get("student_name", ""), "ok": False, "error": "",
+           "warnings": [], "login_id": "", "timetable_preview": []}
+    name = r.get("student_name", "")
+    if not name:
+        res["error"] = "학생 이름이 비어 있습니다."
+        return res, None
+    branch = branches.get(r.get("branch", ""))
+    if not branch:
+        res["error"] = "지점을 찾을 수 없습니다: %s" % r.get("branch", "")
+        return res, None
+    if not can_manage_branch(actor, branch.id):
+        res["error"] = "이 지점에 권한이 없습니다: %s" % branch.name
+        return res, None
+    bd = _bulk_parse_date(r.get("birth_date"))
+    login_id = (r.get("login_id") or "").lower()
+    if not login_id:
+        if not bd:
+            res["error"] = "아이디가 없고 생년월일도 없어 아이디 자동 생성 불가"
+            return res, None
+        login_id = name.replace(" ", "") + "%02d%02d" % (bd.month, bd.day)
+    res["login_id"] = login_id
+    if login_id in seen_ids:
+        res["error"] = "파일 안에 중복된 아이디: %s" % login_id
+        return res, None
+    if User.objects.filter(username=login_id).exists():
+        res["error"] = "이미 존재하는 아이디: %s" % login_id
+        return res, None
+    pw = r.get("password") or (r.get("parent_phone", "").replace("-", "")) or "123456"
+    if len(pw) < 6:
+        pw = (pw + "000000")[:6]
+    ws = r.get("weekly_sessions", "")
+    try:
+        ws = int(float(ws)) if ws else None
+    except ValueError:
+        ws = None
+    tt_items, tt_warns = _parse_bulk_timetable(r.get("timetable"))
+    res["warnings"] = tt_warns
+    res["timetable_preview"] = ["%s %s %s" % (_WD[it["weekday"]], it["start_time"], it["subject"]) for it in tt_items]
+    if ws is None and tt_items:
+        ws = len(tt_items)
+    progs = []
+    for tok in r.get("programs", "").replace("，", ",").split(","):
+        tok = tok.strip()
+        if tok:
+            val = _resolve_opt_value("program", tok)
+            progs.append({"value": val, "language": "", "custom": ("" if val else tok)})
+    resolved = {
+        "name": name, "branch": branch, "login_id": login_id, "password": pw,
+        "birth_date": bd, "gender": {"남": "M", "여": "F", "M": "M", "F": "F"}.get(r.get("gender", ""), ""),
+        "zipcode": r.get("zipcode", ""), "address": r.get("address", ""),
+        "address_detail": r.get("address_detail", ""), "student_phone": r.get("student_phone", ""),
+        "parent_name": r.get("parent_name", ""), "parent_phone": r.get("parent_phone", ""),
+        "school_type": _resolve_opt_value("school_type", r.get("school_type")),
+        "school_name": r.get("school_name", ""), "grade": r.get("grade", ""),
+        "programs": progs, "weekly_sessions": ws,
+        "enrollment_date": _bulk_parse_date(r.get("enrollment_date")) or now().date(),
+        "lesson_start_date": _bulk_parse_date(r.get("lesson_start_date")),
+        "timetable": tt_items,
+    }
+    res["ok"] = True
+    return res, resolved
+
+
 class BulkRegisterAPI(APIView):
     @admin_role_required
     def post(self, request):
-        """엑셀 일괄등록(브라우저에서 파싱한 행 JSON). {rows:[{branch, student_name, birth_date,
-        gender, school_type, school_name, grade, parent_name, parent_phone, student_phone,
-        zipcode, address, address_detail, login_id, password, programs, weekly_sessions,
-        lesson_start_date}]}. 행마다 학생 계정+등록정보 생성(시간표는 추후)."""
+        """엑셀 일괄등록. {rows:[...], commit:false|true}.
+        commit=false: 검증만(생성 없음). commit=true: 검증 통과 행만 생성(계정+등록정보+시간표)."""
         rows = request.data.get("rows") or []
+        commit = bool(request.data.get("commit"))
         if not isinstance(rows, list):
             return self.error("rows 형식 오류")
         if len(rows) > 500:
@@ -1625,71 +1725,105 @@ class BulkRegisterAPI(APIView):
             branches[b.name] = b
             if b.code:
                 branches[b.code] = b
-        results = []
+        results, seen_ids = [], set()
         for i, row in enumerate(rows):
-            r = {k: ("" if v is None else str(v).strip()) for k, v in (row or {}).items()}
-            res = {"row": i + 1, "student_name": r.get("student_name", ""),
-                   "ok": False, "error": "", "username": ""}
-            try:
-                name = r.get("student_name", "")
-                if not name:
-                    raise ValueError("학생 이름이 비어 있습니다.")
-                branch = branches.get(r.get("branch", ""))
-                if not branch:
-                    raise ValueError("지점을 찾을 수 없습니다: %s" % r.get("branch", ""))
-                if not can_manage_branch(request.user, branch.id):
-                    raise ValueError("이 지점에 권한이 없습니다: %s" % branch.name)
-                bd = _bulk_parse_date(r.get("birth_date"))
-                login_id = (r.get("login_id") or "").lower()
-                if not login_id:
-                    if not bd:
-                        raise ValueError("아이디가 없고 생년월일도 없어 아이디 자동 생성 불가")
-                    login_id = name.replace(" ", "") + "%02d%02d" % (bd.month, bd.day)
-                if User.objects.filter(username=login_id).exists():
-                    raise ValueError("이미 존재하는 아이디: %s" % login_id)
-                pw = r.get("password") or (r.get("parent_phone", "").replace("-", "")) or "123456"
-                if len(pw) < 6:
-                    pw = (pw + "000000")[:6]
-                gender = {"남": "M", "여": "F", "M": "M", "F": "F"}.get(r.get("gender", ""), "")
-                progs = []
-                for tok in (r.get("programs", "").replace("，", ",").split(",")):
-                    tok = tok.strip()
-                    if not tok:
-                        continue
-                    val = _resolve_opt_value("program", tok)
-                    progs.append({"value": val, "language": "", "custom": ("" if val else tok)})
-                ws = r.get("weekly_sessions", "")
+            res, resolved = _bulk_resolve_row(request.user, row, branches, seen_ids)
+            res["row"] = i + 1
+            if res["ok"] and res.get("login_id"):
+                seen_ids.add(res["login_id"])
+            if res["ok"] and commit:
                 try:
-                    ws = int(float(ws)) if ws else None
-                except ValueError:
-                    ws = None
-                with transaction.atomic():
-                    user = User.objects.create(username=login_id, is_disabled=False)
-                    user.set_password(pw)
-                    user.save()
-                    UserProfile.objects.create(user=user, real_name=name)
-                    apply_role(user, AcademyRole.STUDENT, branch)
-                    StudentProfile.objects.create(
-                        user=user, enroll_no=gen_enroll_no(branch),
-                        birth_date=bd, gender=gender,
-                        zipcode=r.get("zipcode", ""), address=r.get("address", ""),
-                        address_detail=r.get("address_detail", ""),
-                        student_phone=r.get("student_phone", ""),
-                        parent_name=r.get("parent_name", ""), parent_phone=r.get("parent_phone", ""),
-                        school_type=_resolve_opt_value("school_type", r.get("school_type")),
-                        school_name=r.get("school_name", ""), grade=r.get("grade", ""),
-                        enrollment_date=now().date(), enrollment_status=EnrollmentStatus.ENROLLED,
-                        program=(progs[0]["value"] if progs else ""),
-                        programs=_json.dumps(progs, ensure_ascii=False),
-                        weekly_sessions=ws,
-                        lesson_start_date=_bulk_parse_date(r.get("lesson_start_date")))
-                res["ok"] = True
-                res["username"] = login_id
-            except Exception as e:
-                res["error"] = str(e)
+                    self._create(resolved)
+                    res["created"] = True
+                except Exception as e:
+                    res["ok"] = False
+                    res["error"] = "생성 실패: %s" % e
             results.append(res)
-        return self.success({"total": len(results),
-                             "ok": sum(1 for x in results if x["ok"]), "results": results})
+        return self.success({"total": len(results), "commit": commit,
+                             "ok": sum(1 for x in results if x["ok"]),
+                             "fail": sum(1 for x in results if not x["ok"]),
+                             "results": results})
+
+    def _create(self, d):
+        with transaction.atomic():
+            user = User.objects.create(username=d["login_id"], is_disabled=False)
+            user.set_password(d["password"])
+            user.save()
+            UserProfile.objects.create(user=user, real_name=d["name"])
+            apply_role(user, AcademyRole.STUDENT, d["branch"])
+            StudentProfile.objects.create(
+                user=user, enroll_no=gen_enroll_no(d["branch"]),
+                birth_date=d["birth_date"], gender=d["gender"],
+                zipcode=d["zipcode"], address=d["address"], address_detail=d["address_detail"],
+                student_phone=d["student_phone"],
+                parent_name=d["parent_name"], parent_phone=d["parent_phone"],
+                school_type=d["school_type"], school_name=d["school_name"], grade=d["grade"],
+                enrollment_date=d["enrollment_date"], enrollment_status=EnrollmentStatus.ENROLLED,
+                program=(d["programs"][0]["value"] if d["programs"] else ""),
+                programs=_json.dumps(d["programs"], ensure_ascii=False),
+                weekly_sessions=d["weekly_sessions"], lesson_start_date=d["lesson_start_date"])
+            dur = lesson_duration(d["school_type"], d["weekly_sessions"])
+            for it in d["timetable"]:
+                StudentTimetable.objects.create(
+                    student=user, branch=d["branch"], class_type=LessonType.PRIVATE,
+                    weekday=it["weekday"], start_time=it["start_time"], duration_minutes=dur,
+                    program=it["program"], subject=it["subject"], frequency="WEEKLY",
+                    active_from=d["lesson_start_date"])
+
+
+class BulkExportAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """기존 학생을 일괄등록 양식과 동일 컬럼으로 내보내기(JSON). 프론트가 xlsx로 변환."""
+        all_branch, branch_id, role = staff_scope(request.user)
+        qs = AcademyProfile.objects.select_related("user", "user__student_profile", "branch").filter(
+            role=AcademyRole.STUDENT)
+        if not all_branch:
+            view = viewable_branch_ids(request.user)
+            if not view:
+                return self.error("No branch scope assigned")
+            qs = qs.filter(branch_id__in=view)
+        sl_label = {o.value: o.label for o in OptionItem.objects.filter(category="school_type")}
+        pg_label = {o.value: o.label for o in OptionItem.objects.filter(category="program")}
+        WD = _WD
+        tt_map = {}
+        for s in StudentTimetable.objects.exclude(status="ENDED").values(
+                "student_id", "weekday", "start_time", "subject"):
+            tt_map.setdefault(s["student_id"], []).append(
+                "%s %s %s" % (WD[s["weekday"]] if 0 <= s["weekday"] <= 6 else "?",
+                              str(s["start_time"])[:5], s["subject"] or ""))
+        out = []
+        for p in qs.order_by("branch_id", "user__username"):
+            u, sp = p.user, getattr(p.user, "student_profile", None)
+            try:
+                rn = u.userprofile.real_name or ""
+            except Exception:
+                rn = ""
+            progs = []
+            if sp and sp.programs:
+                try:
+                    for pr in _json.loads(sp.programs):
+                        v = pr.get("value")
+                        progs.append(pg_label.get(v, v) if v else (pr.get("custom") or ""))
+                except (ValueError, TypeError):
+                    pass
+            out.append({
+                "원번": (sp.enroll_no if sp else ""), "지점": (p.branch.name if p.branch_id else ""),
+                "학생이름": rn, "생년월일": (str(sp.birth_date) if (sp and sp.birth_date) else ""),
+                "성별": {"M": "남", "F": "여"}.get((sp.gender if sp else ""), ""),
+                "학교구분": sl_label.get((sp.school_type if sp else ""), ""),
+                "학교이름": (sp.school_name if sp else ""), "학년": (sp.grade if sp else ""),
+                "보호자이름": (sp.parent_name if sp else ""), "보호자연락처": (sp.parent_phone if sp else ""),
+                "학생연락처": (sp.student_phone if sp else ""), "우편번호": (sp.zipcode if sp else ""),
+                "주소": (sp.address if sp else ""), "상세주소": (sp.address_detail if sp else ""),
+                "아이디": u.username, "비밀번호": "",
+                "등록과정": ", ".join([x for x in progs if x]),
+                "주횟수": (sp.weekly_sessions if (sp and sp.weekly_sessions) else ""),
+                "시간표": ", ".join(tt_map.get(u.id, [])),
+                "등록일": (str(sp.enrollment_date) if (sp and sp.enrollment_date) else ""),
+                "수업시작일": (str(sp.lesson_start_date) if (sp and sp.lesson_start_date) else ""),
+            })
+        return self.success(out)
 
 
 class StudentWeeklyAdminAPI(APIView):
