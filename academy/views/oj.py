@@ -13,7 +13,7 @@ from ..models import (AcademyProfile, AcademyRole, Branch, SignupRequest, Course
                       AttendanceRecord, Lead, OptionItem)
 from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROLES,
                       HRNotice, StaffDocument, StaffProfileHistory)
-from ..models import DevRequest, DevRequestComment
+from ..models import DevRequest, DevRequestComment, Notification
 
 TRACKED_HR_FIELDS = ["zipcode", "address", "address_detail", "phone",
                      "dependents_decided", "dependents", "emergency_contacts",
@@ -488,6 +488,37 @@ def _is_hq(u):
 
 _DEV_STATUSES = (DevRequest.NONE, DevRequest.REVIEWING, DevRequest.IN_PROGRESS,
                  DevRequest.CONFIRMED, DevRequest.DONE)
+_DEV_LABEL = {"NONE": "접수", "CONFIRMED": "확인", "REVIEWING": "검토중",
+              "IN_PROGRESS": "개발중", "DONE": "완료"}
+
+
+def _notify(recipient_id, actor, kind, text, link_type="", link_id=None):
+    """알림 적립. 받는 사람이 없거나 본인 행동이면 생략."""
+    if not recipient_id or (actor and actor.id == recipient_id):
+        return
+    Notification.objects.create(recipient_id=recipient_id, actor=actor, kind=kind,
+                                text=text, link_type=link_type, link_id=link_id)
+
+
+class NotificationAPI(APIView):
+    @login_required
+    def get(self, request):
+        """내 알림 목록 + 안 읽은 수."""
+        qs = request.user.notifications.select_related("actor")[:50]
+        items = [{"id": n.id, "kind": n.kind, "text": n.text, "actor": _u_name(n.actor),
+                  "link_type": n.link_type, "link_id": n.link_id, "is_read": n.is_read,
+                  "time": str(n.create_time)[:16]} for n in qs]
+        unread = request.user.notifications.filter(is_read=False).count()
+        return self.success({"unread": unread, "items": items})
+
+    @login_required
+    def post(self, request):
+        """읽음 처리. {id} 또는 {all:true}."""
+        if request.data.get("all"):
+            request.user.notifications.filter(is_read=False).update(is_read=True)
+        elif request.data.get("id"):
+            request.user.notifications.filter(id=request.data.get("id")).update(is_read=True)
+        return self.success(request.user.notifications.filter(is_read=False).count())
 
 
 class DevRequestAPI(APIView):
@@ -550,8 +581,11 @@ class DevRequestAPI(APIView):
             if not hq:
                 return self.error("상태 변경은 본부 관리자만 가능합니다.")
             st = request.data.get("status")
-            if st in _DEV_STATUSES:
+            if st in _DEV_STATUSES and st != o.status:
                 o.status = st
+                _notify(o.author_id, request.user, Notification.STATUS,
+                        "내 요청 '%s' 상태가 '%s'(으)로 변경되었습니다." % (o.title[:30], _DEV_LABEL.get(st, st)),
+                        "dev", o.id)
         # 제목/본문 수정은 작성자 또는 본부 관리자
         if "title" in request.data or "body" in request.data:
             if not (is_owner or hq):
@@ -591,6 +625,8 @@ class DevCommentAPI(APIView):
         if not body:
             return self.error("내용을 입력하세요.")
         DevRequestComment.objects.create(request=o, author=request.user, body=body)
+        _notify(o.author_id, request.user, Notification.COMMENT,
+                "내 요청 '%s'에 덧글이 달렸습니다." % o.title[:30], "dev", o.id)
         return self.success(True)
 
     @login_required

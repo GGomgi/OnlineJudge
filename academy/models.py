@@ -539,6 +539,27 @@ class DevRequestComment(models.Model):
         ordering = ["create_time"]
 
 
+class Notification(models.Model):
+    """개인 알림(헤더 종). 내 개발요청 글에 덧글/상태변동 등이 생기면 적립."""
+    COMMENT = "COMMENT"      # 내 글에 덧글
+    STATUS = "STATUS"        # 내 글 상태 변동
+    MESSAGE = "MESSAGE"      # 쪽지 도착
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                  related_name="notifications")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    kind = models.CharField(max_length=16)
+    text = models.CharField(max_length=255, blank=True, default="")
+    link_type = models.CharField(max_length=16, blank=True, default="")  # 'dev' / 'message'
+    link_id = models.IntegerField(null=True, blank=True)
+    is_read = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_notification"
+        ordering = ["-create_time"]
+
+
 class StudentCredential(models.Model):
     """학생 사이트 계정(스크래치 등). 어린 학생이 자주 잊어 학원에서 관리.
     사이트/아이디/비밀번호를 줄 단위로 저장(별도 목록화 없이 자유 입력)."""

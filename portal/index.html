@@ -27,6 +27,26 @@
       </div>
       <div class="flex items-center gap-3 text-sm">
         <template v-if="me">
+          <!-- 알림 종(직원) -->
+          <div v-if="isStaff" class="relative">
+            <button @click="toggleNoti" class="relative px-2 py-1 rounded hover:bg-slate-700" title="알림">
+              <span class="text-lg leading-none">🔔</span>
+              <span v-if="notiUnread>0" class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-[10px] leading-4 text-center">{{ notiUnread>99?'99+':notiUnread }}</span>
+            </button>
+            <div v-if="notiOpen" class="absolute right-0 mt-1 w-80 max-h-96 overflow-auto bg-white text-slate-700 rounded-lg shadow-xl border z-50">
+              <div class="flex items-center justify-between px-3 py-2 border-b text-xs">
+                <span class="font-semibold">알림</span>
+                <button v-if="notiUnread>0" @click="readAllNoti" class="text-indigo-500 hover:underline">모두 읽음</button>
+              </div>
+              <ul class="divide-y">
+                <li v-for="n in notiList" :key="n.id" @click="openNoti(n)" :class="['px-3 py-2 text-xs cursor-pointer hover:bg-slate-50', n.is_read ? 'text-slate-400' : 'text-slate-700 bg-indigo-50/40']">
+                  <div>{{ n.text }}</div>
+                  <div class="text-[10px] text-slate-400 mt-0.5">{{ n.actor }} · {{ dt(n.time) }}</div>
+                </li>
+                <li v-if="notiList.length===0" class="px-3 py-6 text-center text-xs text-slate-400">알림이 없습니다.</li>
+              </ul>
+            </div>
+          </div>
           <span class="text-slate-300">{{ headerLabel }}님
             <span class="ml-1 px-1.5 py-0.5 rounded bg-slate-700 text-[11px]">{{ roleBadge }}</span>
           </span>
@@ -2327,6 +2347,7 @@ createApp({
       students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
       bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false,
       dbView: 'list', dbList: [], dbDetail: null, dbForm: { id:null, title:'', body:'' }, dbComment: '', _dbEditor: null, _dbViewer: null,
+      notiOpen: false, notiUnread: 0, notiList: [], _notiTimer: null,
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
       statusPop: { show:false, x:0, y:0, name:'', list:[] },
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
@@ -3300,6 +3321,7 @@ createApp({
       if (this.me) { await this.loadMyProfile(); if (this.isStaff) await this.loadStaffProfile(); }
       this.tab = this.me ? this.tabs[0].key : 'login';
       this.onTab(this.tab);
+      if (this.me && this.isStaff) this.startNotiPoll();
     },
     async login(){
       try {
@@ -3310,6 +3332,7 @@ createApp({
         if (this.isStaff) await this.loadStaffProfile();
         this.notify('로그인되었습니다.');
         this.tab = this.tabs[0].key; this.onTab(this.tab);
+        if (this.isStaff) this.startNotiPoll();
       } catch(e){ this.notify(e.message, false); }
     },
     onSabunInput(){
@@ -3530,6 +3553,17 @@ createApp({
         for (const x of this.dashData.lessons){ if (x.student_id===l.student_id) x.att = { in:r.in, out:r.out }; }
       } catch(e){ this.notify(e.message,false); }
     },
+    // ── 알림(헤더 종) ──
+    async loadNoti(){ if(!this.isStaff) return; try { const d=await api('GET','/api/academy/notifications'); this.notiUnread=d.unread||0; this.notiList=d.items||[]; } catch(e){} },
+    toggleNoti(){ this.notiOpen=!this.notiOpen; if(this.notiOpen) this.loadNoti(); },
+    async readAllNoti(){ try { await api('POST','/api/academy/notifications', { all:true }); this.notiUnread=0; this.notiList=this.notiList.map(n=>({...n,is_read:true})); } catch(e){} },
+    async openNoti(n){
+      this.notiOpen=false;
+      if(!n.is_read){ try { await api('POST','/api/academy/notifications', { id:n.id }); this.notiUnread=Math.max(0,this.notiUnread-1); } catch(e){} }
+      if(n.link_type==='dev' && n.link_id){ this.go('devboard'); this.$nextTick(()=> this.openDbDetail(n.link_id)); }
+      else if(n.link_type==='message'){ this.go('messages'); }
+    },
+    startNotiPoll(){ if(this._notiTimer) return; this.loadNoti(); this._notiTimer=setInterval(()=>{ if(this.me && this.isStaff) this.loadNoti(); }, 60000); },
     // ── 개발 요청 게시판 ──
     devStatus(s){ return DEV_STATUS[s] || DEV_STATUS.NONE; },
     async loadDevBoard(){ this.dbView='list'; this._destroyDbEditors(); try { this.dbList = await api('GET','/api/academy/dev_request'); } catch(e){ this.notify(e.message,false); } },
