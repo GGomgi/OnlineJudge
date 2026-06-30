@@ -2046,14 +2046,20 @@
           </div>
           <div class="p-5 space-y-3">
             <div>
-              <label class="lbl">받는 사람 <span v-if="msgRecipientName" class="text-emerald-600 text-xs">· {{ msgRecipientName }}</span></label>
-              <div class="border rounded-lg max-h-64 overflow-auto divide-y">
+              <label class="lbl">받는 사람</label>
+              <!-- 기본은 드롭다운(접힘) -->
+              <button type="button" @click="msgPickerOpen=!msgPickerOpen" class="input flex items-center justify-between text-left">
+                <span :class="msgRecipientName ? 'text-slate-700' : 'text-slate-400'">{{ msgRecipientName || '직원 선택' }}</span>
+                <span class="text-slate-400">{{ msgPickerOpen ? '▴' : '▾' }}</span>
+              </button>
+              <!-- 펼쳤을 때만: 지점 → 직원 -->
+              <div v-show="msgPickerOpen" class="border rounded-lg max-h-56 overflow-auto divide-y mt-1">
                 <div v-for="g in msgStaffGroups" :key="g.branch">
                   <button type="button" @click="msgExpand[g.branch]=!msgExpand[g.branch]" class="w-full text-left px-3 py-2 text-sm font-medium bg-slate-50 hover:bg-slate-100 flex items-center gap-1">
                     <span class="text-slate-400">{{ msgExpand[g.branch] ? '▾' : '▸' }}</span> {{ g.branch }} <span class="text-xs text-slate-400">({{ g.staff.length }})</span>
                   </button>
                   <ul v-show="msgExpand[g.branch]">
-                    <li v-for="t in g.staff" :key="t.user_id" @click="msgForm.recipient_id=t.user_id" :class="['px-3 py-1.5 pl-8 text-sm cursor-pointer hover:bg-indigo-50', msgForm.recipient_id===t.user_id ? 'bg-indigo-100 text-indigo-700' : '']">
+                    <li v-for="t in g.staff" :key="t.user_id" @click="pickMsgRecipient(t)" :class="['px-3 py-1.5 pl-8 text-sm cursor-pointer hover:bg-indigo-50', msgForm.recipient_id===t.user_id ? 'bg-indigo-100 text-indigo-700' : '']">
                       {{ t.real_name || t.staff_no }} <span class="text-xs text-slate-400">{{ t.role_label || roleLabel(t.role) }}</span>
                     </li>
                   </ul>
@@ -2411,7 +2417,7 @@ createApp({
       bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false,
       dbView: 'list', dbList: [], dbDetail: null, dbForm: { id:null, title:'', body:'' }, dbComment: '', _dbEditor: null, _dbViewer: null,
       notiOpen: false, notiUnread: 0, notiList: [], _notiTimer: null,
-      msgBox: 'inbox', msgList: [], msgCompose: false, msgForm: { recipient_id:null, body:'' }, msgUnread: 0, msgExpand: {},
+      msgBox: 'inbox', msgList: [], msgCompose: false, msgForm: { recipient_id:null, body:'' }, msgUnread: 0, msgExpand: {}, msgPickerOpen: false,
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
       statusPop: { show:false, x:0, y:0, name:'', list:[] },
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
@@ -3644,8 +3650,9 @@ createApp({
     // ── 쪽지 ──
     async loadMessages(){ if(!this.ttInstructors.length) this.loadTtInstructors(); try { const d=await api('GET','/api/academy/messages?box='+this.msgBox); this.msgList=d.items||[]; this.msgUnread=d.unread||0; } catch(e){ this.notify(e.message,false); } },
     async loadMsgUnread(){ if(!this.isStaff) return; try { const d=await api('GET','/api/academy/messages?box=inbox'); this.msgUnread=d.unread||0; } catch(e){} },
-    openMsgCompose(){ if(!this.ttInstructors.length) this.loadTtInstructors(); this.msgForm={ recipient_id:null, body:'' }; this.msgExpand={}; this.msgCompose=true; },
-    replyMessage(m){ if(!this.ttInstructors.length) this.loadTtInstructors(); const t=this.ttInstructors.find(x=>(x.real_name||x.staff_no)===m.other); this.msgForm={ recipient_id:(t?t.user_id:null), body:'' }; this.msgCompose=true; },
+    pickMsgRecipient(t){ this.msgForm.recipient_id=t.user_id; this.msgPickerOpen=false; },
+    openMsgCompose(){ if(!this.ttInstructors.length) this.loadTtInstructors(); this.msgForm={ recipient_id:null, body:'' }; this.msgExpand={}; this.msgPickerOpen=false; this.msgCompose=true; },
+    replyMessage(m){ if(!this.ttInstructors.length) this.loadTtInstructors(); const t=this.ttInstructors.find(x=>(x.real_name||x.staff_no)===m.other); this.msgForm={ recipient_id:(t?t.user_id:null), body:'' }; this.msgExpand={}; this.msgPickerOpen=false; this.msgCompose=true; },
     async sendMessage(){ const f=this.msgForm; if(!f.recipient_id) return this.notify('받는 사람을 선택하세요.', false); if(!(f.body||'').trim()) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/academy/messages', { recipient_id:f.recipient_id, body:f.body }); this.msgCompose=false; this.notify('쪽지를 보냈습니다.'); if(this.msgBox==='sent') this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
     async readMessage(m){ if(this.msgBox!=='inbox' || m.is_read) return; try { await api('PUT','/api/academy/messages', { id:m.id }); m.is_read=true; this.loadNoti(); } catch(e){} },
     async deleteMessage(m){ if(!confirm('이 쪽지를 삭제할까요?')) return; try { await api('DELETE','/api/academy/messages?id='+m.id); this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
