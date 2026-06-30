@@ -1952,6 +1952,7 @@
           <span v-if="dbDetail.can_status" class="ml-auto flex items-center gap-1">
             상태:
             <select :value="dbDetail.status" @change="setDbStatus($event.target.value)" class="input py-0.5 px-1 w-24 text-xs">
+              <option value="NONE" disabled>접수</option>
               <option v-for="s in devStatusList" :key="s.v" :value="s.v">{{ s.label }}</option>
             </select>
           </span>
@@ -1966,11 +1967,12 @@
         <div class="border-t pt-3">
           <div class="text-xs font-semibold text-slate-500 mb-2">덧글 {{ dbDetail.comments.length }}</div>
           <ul class="space-y-2">
-            <li v-for="c in dbDetail.comments" :key="c.id" class="bg-slate-50 rounded px-3 py-2">
+            <li v-for="c in dbDetail.comments" :key="c.id" :class="['rounded px-3 py-2', c.is_hidden ? 'bg-rose-50' : 'bg-slate-50']">
               <div class="flex items-center gap-2 text-xs text-slate-400">
                 <span class="font-medium text-slate-600">{{ c.author }}</span>
                 <span>{{ dt(c.time) }}</span>
-                <button v-if="c.mine || dbDetail.can_status" @click="deleteDbComment(c)" class="ml-auto text-rose-400 hover:underline">삭제</button>
+                <span v-if="c.is_hidden" class="text-rose-500">· 삭제됨</span>
+                <button v-if="!c.is_hidden && (c.mine || dbDetail.can_status)" @click="deleteDbComment(c)" class="ml-auto text-rose-400 hover:underline">삭제</button>
               </div>
               <div class="text-sm whitespace-pre-wrap mt-0.5">{{ c.body }}</div>
             </li>
@@ -2282,7 +2284,7 @@ const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'
 // 옛 비고 태그 코드(선택목록 개편 전 데이터) 폴백 라벨·색
 const LEGACY_TAG_LABELS = {LATE:'지각',EXCUSED:'사유결석',LEAVE:'조퇴',EARLY_LEAVE:'조퇴',PRE_CONTACT:'사전연락',MAKEUP:'보강',ABSENT:'결석',PRESENT:'출석'};
 const LEGACY_TAG_COLORS = {LATE:'#f59e0b',EXCUSED:'#8b5cf6',LEAVE:'#f97316',EARLY_LEAVE:'#f97316',PRE_CONTACT:'#3b82f6',MAKEUP:'#10b981',ABSENT:'#ef4444',PRESENT:'#10b981'};
-const DEV_STATUS = {NONE:{label:'접수',cls:'bg-slate-100 text-slate-500'},REVIEWING:{label:'검토중',cls:'bg-amber-100 text-amber-700'},IN_PROGRESS:{label:'개발중',cls:'bg-blue-100 text-blue-700'},CONFIRMED:{label:'확인함',cls:'bg-violet-100 text-violet-700'},DONE:{label:'해결',cls:'bg-emerald-100 text-emerald-700'}};
+const DEV_STATUS = {NONE:{label:'접수',cls:'bg-slate-100 text-slate-500'},CONFIRMED:{label:'확인',cls:'bg-violet-100 text-violet-700'},REVIEWING:{label:'검토중',cls:'bg-amber-100 text-amber-700'},IN_PROGRESS:{label:'개발중',cls:'bg-blue-100 text-blue-700'},DONE:{label:'완료',cls:'bg-emerald-100 text-emerald-700'}};
 const ATT_CLASS = {PRESENT:'text-emerald-700 bg-emerald-50',LATE:'text-amber-700 bg-amber-50',ABSENT:'text-rose-700 bg-rose-50',EARLY_LEAVE:'text-orange-700 bg-orange-50',EXCUSED:'text-slate-700 bg-slate-100'};
 
 function getCookie(name){
@@ -2429,7 +2431,7 @@ createApp({
     leadFixedBranchName(){ const b = this.branches.find(x => x.id === this.leadForm.branch_id); return b ? b.name : ''; },
     leadParentNameRequired(){ return !this.me; },  // 학부모(로그아웃) 직접 작성 시에만 필수
     minOptions(){ const out=[]; for(let m=0;m<60;m+=5) out.push(String(m).padStart(2,'0')); return out; },
-    devStatusList(){ return ['NONE','REVIEWING','IN_PROGRESS','CONFIRMED','DONE'].map(v=>({v,label:DEV_STATUS[v].label})); },
+    devStatusList(){ return ['CONFIRMED','REVIEWING','IN_PROGRESS','DONE'].map(v=>({v,label:DEV_STATUS[v].label})); },
     filteredLeads(){
       const hayOf = r => [r.student_name, r.parent_name, r.parent_phone, r.student_phone,
                           r.school_name, this.schoolLabel(r.school_type), String(r.grade||'')]
@@ -2681,8 +2683,8 @@ createApp({
         if (this.me.user.admin_type === 'Super Admin') t.push({key:'devlog',label:'개발일지'});
         return t;
       }
-      if (this.isParent) return [ {key:'children',label:'자녀'}, {key:'lead',label:'상담 신청'}, {key:'devboard',label:'개발 요청'}, {key:'me',label:'내 정보'} ];
-      return [ {key:'timetable',label:'내 시간표'}, {key:'attendance',label:'내 출결'}, {key:'devboard',label:'개발 요청'}, {key:'me',label:'내 정보'} ];
+      if (this.isParent) return [ {key:'children',label:'자녀'}, {key:'lead',label:'상담 신청'}, {key:'me',label:'내 정보'} ];
+      return [ {key:'timetable',label:'내 시간표'}, {key:'attendance',label:'내 출결'}, {key:'me',label:'내 정보'} ];
     },
   },
   methods: {
