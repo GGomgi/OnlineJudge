@@ -466,7 +466,7 @@
               <th class="text-left px-3 py-2">강사</th>
               <th v-if="showBranchCol" class="text-left px-3 py-2">지점</th>
               <th class="text-center px-3 py-2 w-52">등원 / 하원</th>
-              <th class="text-right px-3 py-2 w-16">경과</th>
+              <th class="text-right px-3 py-2 w-24 whitespace-nowrap">경과</th>
               <th class="text-left px-3 py-2 w-28">비고</th>
             </tr>
           </thead>
@@ -491,8 +491,8 @@
                     <span v-else class="text-xs text-rose-500">결석{{ l.no_makeup ? ' (보강X)' : '' }}</span>
                   </div>
                 </td>
-                <td class="px-3 py-2 text-right">
-                  <span v-if="elapsedInfo(l)" class="text-[11px] font-mono" :class="elapsedInfo(l).done ? 'text-emerald-600 font-bold' : (elapsedInfo(l).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ elapsedInfo(l).mins }}분/{{ elapsedInfo(l).dur }}분</span>
+                <td class="px-3 py-2 text-right whitespace-nowrap">
+                  <span v-if="elapsedInfo(l)" class="text-[11px] font-mono" :class="elapsedInfo(l).done ? 'text-emerald-600 font-bold' : (elapsedInfo(l).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ elapsedInfo(l).mins }}분 / {{ elapsedInfo(l).dur }}분</span>
                 </td>
                 <td class="px-3 py-2">
                   <span v-if="isAbsent(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-rose-100 text-rose-600">결석</span>
