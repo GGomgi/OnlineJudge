@@ -539,6 +539,23 @@ class DevRequestComment(models.Model):
         ordering = ["create_time"]
 
 
+class Message(models.Model):
+    """직원 간 1:1 쪽지. 보낸/받은 각 측에서 소프트삭제(상대에겐 영향 없음)."""
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="sent_messages")
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                  related_name="received_messages")
+    body = models.TextField()
+    is_read = models.BooleanField(default=False)
+    sender_hidden = models.BooleanField(default=False)
+    recipient_hidden = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_message"
+        ordering = ["-create_time"]
+
+
 class Notification(models.Model):
     """개인 알림(헤더 종). 내 개발요청 글에 덧글/상태변동 등이 생기면 적립."""
     COMMENT = "COMMENT"      # 내 글에 덧글

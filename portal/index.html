@@ -2008,6 +2008,55 @@
       </div>
     </section>
 
+    <!-- ============ 쪽지 (직원 1:1) ============ -->
+    <section v-if="tab==='messages'" class="max-w-2xl mx-auto">
+      <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h2 class="text-lg font-bold">쪽지</h2>
+        <button @click="openMsgCompose" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">+ 쪽지 쓰기</button>
+      </div>
+      <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm mb-3">
+        <button @click="msgBox='inbox'; loadMessages()" :class="['px-3 py-1.5', msgBox==='inbox' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">받은 쪽지</button>
+        <button @click="msgBox='sent'; loadMessages()" :class="['px-3 py-1.5 border-l border-slate-200', msgBox==='sent' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">보낸 쪽지</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm divide-y">
+        <div v-for="m in msgList" :key="m.id" class="px-4 py-3">
+          <div class="flex items-center gap-2 text-xs text-slate-400">
+            <span class="font-medium text-slate-600">{{ msgBox==='sent' ? ('받는 사람: '+m.other) : m.other }}</span>
+            <span v-if="msgBox==='inbox' && !m.is_read" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600">새 쪽지</span>
+            <span class="ml-auto">{{ dt(m.time) }}</span>
+            <button @click="deleteMessage(m)" class="text-rose-400 hover:underline">삭제</button>
+          </div>
+          <div class="text-sm whitespace-pre-wrap mt-1" :class="(msgBox==='inbox' && !m.is_read) ? 'font-medium' : ''" @click="readMessage(m)">{{ m.body }}</div>
+          <button v-if="msgBox==='inbox'" @click="replyMessage(m)" class="mt-1 text-xs text-indigo-500 hover:underline">답장</button>
+        </div>
+        <div v-if="msgList.length===0" class="px-4 py-8 text-center text-sm text-slate-400">쪽지가 없습니다.</div>
+      </div>
+
+      <!-- 쪽지 쓰기 모달 -->
+      <div v-if="msgCompose" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="msgCompose=false">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+          <div class="flex items-center justify-between px-5 py-3 border-b">
+            <div class="font-bold">쪽지 쓰기</div>
+            <button @click="msgCompose=false" class="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+          <div class="p-5 space-y-3">
+            <div>
+              <label class="lbl">받는 사람</label>
+              <select v-model.number="msgForm.recipient_id" class="input">
+                <option :value="null" disabled>직원 선택</option>
+                <option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}<template v-if="t.branch"> · {{ t.branch.name }}</template></option>
+              </select>
+            </div>
+            <textarea v-model="msgForm.body" rows="5" placeholder="내용" class="input"></textarea>
+            <div class="flex justify-end gap-2">
+              <button @click="msgCompose=false" class="btn-secondary text-sm">취소</button>
+              <button @click="sendMessage" class="btn-primary text-sm">보내기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ 관리자: 개발일지 ============ -->
     <section v-if="tab==='devlog'">
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
@@ -2348,6 +2397,7 @@ createApp({
       bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false,
       dbView: 'list', dbList: [], dbDetail: null, dbForm: { id:null, title:'', body:'' }, dbComment: '', _dbEditor: null, _dbViewer: null,
       notiOpen: false, notiUnread: 0, notiList: [], _notiTimer: null,
+      msgBox: 'inbox', msgList: [], msgCompose: false, msgForm: { recipient_id:null, body:'' },
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
       statusPop: { show:false, x:0, y:0, name:'', list:[] },
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
@@ -2701,6 +2751,7 @@ createApp({
         t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ❗' : '')});
         if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
         t.push({key:'devboard',label:'개발 요청'});
+        t.push({key:'messages',label:'쪽지'});
         if (this.me.user.admin_type === 'Super Admin') t.push({key:'devlog',label:'개발일지'});
         return t;
       }
@@ -2756,6 +2807,7 @@ createApp({
       else if (key==='options'){ this.loadOptionAdmin(); this.loadBranchAdmin(); }
       else if (key==='devlog') this.loadDevlog(true);
       else if (key==='devboard') this.loadDevBoard();
+      else if (key==='messages'){ this.msgBox='inbox'; this.loadMessages(); }
       else if (key==='dashboard') this.loadDashboard();
       else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); this.loadStudents(); this.switchTtView(this.ttView); }
       else if (key==='students'){ this.loadStudents(); this.loadOptions(); }
@@ -3564,6 +3616,13 @@ createApp({
       else if(n.link_type==='message'){ this.go('messages'); }
     },
     startNotiPoll(){ if(this._notiTimer) return; this.loadNoti(); this._notiTimer=setInterval(()=>{ if(this.me && this.isStaff) this.loadNoti(); }, 60000); },
+    // ── 쪽지 ──
+    async loadMessages(){ if(!this.ttInstructors.length) this.loadTtInstructors(); try { const d=await api('GET','/api/academy/messages?box='+this.msgBox); this.msgList=d.items||[]; } catch(e){ this.notify(e.message,false); } },
+    openMsgCompose(){ if(!this.ttInstructors.length) this.loadTtInstructors(); this.msgForm={ recipient_id:null, body:'' }; this.msgCompose=true; },
+    replyMessage(m){ if(!this.ttInstructors.length) this.loadTtInstructors(); const t=this.ttInstructors.find(x=>(x.real_name||x.staff_no)===m.other); this.msgForm={ recipient_id:(t?t.user_id:null), body:'' }; this.msgCompose=true; },
+    async sendMessage(){ const f=this.msgForm; if(!f.recipient_id) return this.notify('받는 사람을 선택하세요.', false); if(!(f.body||'').trim()) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/academy/messages', { recipient_id:f.recipient_id, body:f.body }); this.msgCompose=false; this.notify('쪽지를 보냈습니다.'); if(this.msgBox==='sent') this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
+    async readMessage(m){ if(this.msgBox!=='inbox' || m.is_read) return; try { await api('PUT','/api/academy/messages', { id:m.id }); m.is_read=true; this.loadNoti(); } catch(e){} },
+    async deleteMessage(m){ if(!confirm('이 쪽지를 삭제할까요?')) return; try { await api('DELETE','/api/academy/messages?id='+m.id); this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
     // ── 개발 요청 게시판 ──
     devStatus(s){ return DEV_STATUS[s] || DEV_STATUS.NONE; },
     async loadDevBoard(){ this.dbView='list'; this._destroyDbEditors(); try { this.dbList = await api('GET','/api/academy/dev_request'); } catch(e){ this.notify(e.message,false); } },

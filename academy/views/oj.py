@@ -13,7 +13,7 @@ from ..models import (AcademyProfile, AcademyRole, Branch, SignupRequest, Course
                       AttendanceRecord, Lead, OptionItem)
 from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROLES,
                       HRNotice, StaffDocument, StaffProfileHistory)
-from ..models import DevRequest, DevRequestComment, Notification
+from ..models import DevRequest, DevRequestComment, Notification, Message
 
 TRACKED_HR_FIELDS = ["zipcode", "address", "address_detail", "phone",
                      "dependents_decided", "dependents", "emergency_contacts",
@@ -519,6 +519,68 @@ class NotificationAPI(APIView):
         elif request.data.get("id"):
             request.user.notifications.filter(id=request.data.get("id")).update(is_read=True)
         return self.success(request.user.notifications.filter(is_read=False).count())
+
+
+class MessageAPI(APIView):
+    @login_required
+    def get(self, request):
+        """쪽지함. ?box=inbox(기본)|sent. 받은함이면 안읽음 수도 반환."""
+        if not _is_staff_user(request.user):
+            return self.error("권한이 없습니다.")
+        me = request.user
+        box = request.GET.get("box") or "inbox"
+        if box == "sent":
+            qs = Message.objects.select_related("recipient").filter(sender=me, sender_hidden=False)
+            items = [{"id": m.id, "other": _u_name(m.recipient), "body": m.body,
+                      "is_read": m.is_read, "time": str(m.create_time)[:16], "mine": True} for m in qs[:200]]
+        else:
+            qs = Message.objects.select_related("sender").filter(recipient=me, recipient_hidden=False)
+            items = [{"id": m.id, "other": _u_name(m.sender), "body": m.body,
+                      "is_read": m.is_read, "time": str(m.create_time)[:16], "mine": False} for m in qs[:200]]
+        unread = Message.objects.filter(recipient=me, recipient_hidden=False, is_read=False).count()
+        return self.success({"unread": unread, "items": items})
+
+    @login_required
+    def post(self, request):
+        """쪽지 보내기. {recipient_id, body}."""
+        if not _is_staff_user(request.user):
+            return self.error("권한이 없습니다.")
+        rid = request.data.get("recipient_id")
+        body = (request.data.get("body") or "").strip()
+        if not rid or not body:
+            return self.error("받는 사람과 내용을 입력하세요.")
+        target = User.objects.filter(id=rid).first()
+        if not target or not _is_staff_user(target):
+            return self.error("받는 사람을 찾을 수 없습니다.")
+        Message.objects.create(sender=request.user, recipient=target, body=body)
+        _notify(target.id, request.user, Notification.MESSAGE,
+                "%s님이 쪽지를 보냈습니다." % _u_name(request.user), "message", None)
+        return self.success(True)
+
+    @login_required
+    def put(self, request):
+        """받은 쪽지 읽음 처리. {id}."""
+        m = Message.objects.filter(id=request.data.get("id"), recipient=request.user).first()
+        if m and not m.is_read:
+            m.is_read = True
+            m.save(update_fields=["is_read"])
+        return self.success(True)
+
+    @login_required
+    def delete(self, request):
+        """쪽지 소프트삭제(내 쪽에서만 숨김)."""
+        m = Message.objects.filter(id=request.GET.get("id")).first()
+        if not m:
+            return self.error("쪽지가 없습니다.")
+        if m.sender_id == request.user.id:
+            m.sender_hidden = True
+            m.save(update_fields=["sender_hidden"])
+        elif m.recipient_id == request.user.id:
+            m.recipient_hidden = True
+            m.save(update_fields=["recipient_hidden"])
+        else:
+            return self.error("권한이 없습니다.")
+        return self.success(True)
 
 
 class DevRequestAPI(APIView):
