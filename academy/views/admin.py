@@ -2628,9 +2628,14 @@ class DashboardAdminAPI(APIView):
             sids.add(o.student_id)
             sp = getattr(o.student, "student_profile", None)
             biweekly = bool(o.source_timetable and o.source_timetable.frequency == "BIWEEKLY")
+            # 오늘 하루 시각 변경(정규 시간표와 다른지)
+            time_changed = bool(o.source_timetable and o.source_timetable.start_time
+                                and str(o.start_time)[:5] != str(o.source_timetable.start_time)[:5])
             lessons.append({
                 "occ_id": o.id, "student_id": o.student_id, "student_name": _name_of(o.student),
                 "start_time": str(o.start_time)[:5], "duration_minutes": o.duration_minutes,
+                "time_changed": time_changed, "time_change_reason": (o.time_change_reason if time_changed else ""),
+                "orig_time": (str(o.source_timetable.start_time)[:5] if (time_changed and o.source_timetable) else ""),
                 "subject": o.subject or "미지정",
                 "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
                 "branch": (o.branch.name if o.branch_id else ""),
@@ -2972,11 +2977,14 @@ class LessonEditAdminAPI(APIView):
         o.start_time = new_time
         if data.get("duration"):
             o.duration_minutes = data.get("duration")
+        reason = (data.get("reason") or "").strip()
+        if old != tm:
+            o.time_change_reason = reason or "오늘 수업 시각 변경"
         o.save()
         if old != tm:
             TimetableChange.objects.create(
                 student=o.student, actor=request.user, action="UPDATE",
-                reason=(data.get("reason") or "").strip() or "오늘 수업 시각 변경",
+                reason=reason or "오늘 수업 시각 변경",
                 detail=("%s 수업 시각 %s → %s (오늘 하루)" % (str(o.date), old, tm))[:255])
         return self.success({"start_time": str(o.start_time)[:5]})
 

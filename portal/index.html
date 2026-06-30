@@ -92,6 +92,13 @@
     </ul>
   </div>
 
+  <!-- 오늘 수업 시각 변경 사유 호버(즉시) -->
+  <div v-if="tcPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-2.5 text-xs w-56 pointer-events-none" :style="{ left: tcPop.x+'px', top: tcPop.y+'px' }">
+    <div class="font-semibold text-amber-600">⏱ 오늘 수업 시각 변경</div>
+    <div class="mt-1 text-slate-500">{{ tcPop.orig }} → <b class="text-slate-700">{{ tcPop.now }}</b> (오늘 하루)</div>
+    <div class="mt-1 text-slate-600 whitespace-pre-wrap">{{ tcPop.reason || '사유 없음' }}</div>
+  </div>
+
   <!-- 대시보드 학생 호버 팝오버 -->
   <div v-if="dashPop.show" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
     <div class="font-bold text-sm mb-1">{{ dashPop.l.student_name }}</div>
@@ -467,7 +474,10 @@
             <template v-for="(l,i) in dashLessons" :key="i">
               <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?8:7" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }}</td></tr>
               <tr class="border-t align-middle hover:bg-slate-50" :class="isAbsent(l) ? 'bg-rose-50/50' : ''">
-                <td class="px-3 py-2 font-mono whitespace-nowrap">{{ l.start_time }}</td>
+                <td class="px-3 py-2 font-mono whitespace-nowrap">
+                  <span v-if="l.time_changed" @mouseenter="showTcPop(l,$event)" @mouseleave="hideTcPop" class="text-amber-600 font-bold cursor-help">{{ l.start_time }}</span>
+                  <span v-else>{{ l.start_time }}</span>
+                </td>
                 <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline" :class="isAbsent(l) ? 'line-through text-slate-400' : ''" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
                 <td class="px-3 py-2 text-slate-500">{{ l.subject }}</td>
                 <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
@@ -482,7 +492,7 @@
                   </div>
                 </td>
                 <td class="px-3 py-2 text-right">
-                  <span v-if="elapsedInfo(l)" class="text-[11px]" :class="elapsedInfo(l).over ? 'text-rose-500 font-bold' : 'text-slate-400'">{{ elapsedInfo(l).mins }}분</span>
+                  <span v-if="elapsedInfo(l)" class="text-[11px] font-mono" :class="elapsedInfo(l).done ? 'text-emerald-600 font-bold' : (elapsedInfo(l).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ elapsedInfo(l).mins }}분/{{ elapsedInfo(l).dur }}분</span>
                 </td>
                 <td class="px-3 py-2">
                   <span v-if="isAbsent(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-rose-100 text-rose-600">결석</span>
@@ -2431,6 +2441,7 @@ createApp({
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
       attModal: null, attForm: { lessonTime:'', reason:'', note_tag:'', note:'' }, attNoteTags: [], attHist: [],
       notePop: { show:false, x:0, y:0, tag:'', note:'', tagStyle:{} },
+      tcPop: { show:false, x:0, y:0, orig:'', now:'', reason:'' },
       dashFilter: { q:'', subject:'', instructor:'', branch:'' }, dashPop: { show:false, x:0, y:0, l:{att:{}} },
       makeupOpen: false, mkMode: 'pending', mkPending: [],
       mkForm: { makeup_for:null, student_id:null, student_name:'', origin:'', time:'', date:'', note:'' },
@@ -3531,6 +3542,8 @@ createApp({
     },
     attShiftLesson(delta){ if(this.attForm.lessonTime) this.attForm.lessonTime=this.shiftHM(this.attForm.lessonTime,delta); },
     showNotePop(l,e){ this.notePop={ show:true, tag:this.attTagLabel(l.att.note_tag), note:l.att.note||'', tagStyle:this.attTagStyle(l.att.note_tag), x:Math.min(e.clientX+10,window.innerWidth-260), y:Math.min(e.clientY+10,window.innerHeight-80) }; },
+    showTcPop(l,e){ this.tcPop={ show:true, orig:l.orig_time||'', now:l.start_time, reason:l.time_change_reason||'', x:Math.min(e.clientX+12,window.innerWidth-240), y:Math.min(e.clientY+12,window.innerHeight-120) }; },
+    hideTcPop(){ this.tcPop.show=false; },
     hideNotePop(){ this.notePop.show=false; },
     async saveAtt(){
       const l=this.attModal;
@@ -3616,7 +3629,8 @@ createApp({
       else if (this.dashIsToday) end = this.nowMin;
       else return null;
       const mins = Math.max(0, end - start);
-      return { mins, over: mins >= (l.duration_minutes||60), done: !!l.att.out };
+      const dur = l.duration_minutes||60;
+      return { mins, dur, over: mins > dur, done: !!l.att.out };
     },
     attStatusTag(l){
       // 미등원/지각 (오늘, 미하원 기준)
