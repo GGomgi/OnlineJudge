@@ -24,7 +24,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
                       TimetableChange, StudentStatusChange, StudentCredential, StaffChangeLog, DailyAttendance,
-                      AttendanceChange, LessonOccurrence, OccurrenceStatus)
+                      AttendanceChange, LessonOccurrence, OccurrenceStatus, LessonProgress)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 import os as _os
 from django.conf import settings as _settings
@@ -2651,8 +2651,14 @@ class DashboardAdminAPI(APIView):
         for a in DailyAttendance.objects.filter(date=d, student_id__in=sids):
             att[a.student_id] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at),
                                  "note_tag": a.note_tag, "note": a.note}
+        # 수업별 진도(있으면)
+        prog = {}
+        occ_ids = [l["occ_id"] for l in lessons]
+        for p in LessonProgress.objects.filter(occurrence_id__in=occ_ids, is_hidden=False):
+            prog[p.occurrence_id] = {"content": p.content, "homework": p.homework}
         for l in lessons:
             l["att"] = att.get(l["student_id"], {"in": "", "out": "", "note_tag": "", "note": ""})
+            l["progress"] = prog.get(l["occ_id"])
         # 그날 상담 예약(KST 하루) — 위쪽 상담 일정 섹션용
         day_lo = _kst_to_utc(d, "00:00")
         day_hi = _kst_to_utc(d + timedelta(days=1), "00:00")
@@ -2820,6 +2826,13 @@ class TimetableCalendarAPI(APIView):
         overlay = {}
         for o in occ_q.values("source_timetable_id", "date", "status", "id"):
             overlay[(o["source_timetable_id"], str(o["date"]))] = o
+        # 진도(있으면) occ_id별
+        prog_q = LessonProgress.objects.filter(
+            occurrence__date__gte=d0, occurrence__date__lte=d1, is_hidden=False)
+        if sid:
+            prog_q = prog_q.filter(student_id=sid)
+        prog_by_occ = {p["occurrence_id"]: {"content": p["content"], "homework": p["homework"]}
+                       for p in prog_q.values("occurrence_id", "content", "homework")}
         days = {}
         cur = d0
         while cur <= d1:
@@ -2840,7 +2853,8 @@ class TimetableCalendarAPI(APIView):
                               "branch": (s.branch.name if s.branch_id else ""), "branch_id": s.branch_id,
                               "frequency": s.frequency,
                               "status": (ov["status"] if ov else OccurrenceStatus.SCHEDULED),
-                              "occ_id": (ov["id"] if ov else None)})
+                              "occ_id": (ov["id"] if ov else None),
+                              "progress": (prog_by_occ.get(ov["id"]) if ov else None)})
             # 보강(makeup) 인스턴스도 포함
             mk = LessonOccurrence.objects.select_related("student").filter(date=cur, is_makeup=True)
             if sid:
@@ -2853,7 +2867,8 @@ class TimetableCalendarAPI(APIView):
                 items.append({"timetable_id": None, "start_time": str(o.start_time)[:5],
                               "subject": (o.subject or "보강"), "makeup": True,
                               "student_id": o.student_id, "student_name": _name_of(o.student),
-                              "status": o.status, "occ_id": o.id})
+                              "status": o.status, "occ_id": o.id,
+                              "progress": prog_by_occ.get(o.id)})
             if items:
                 items.sort(key=lambda x: x["start_time"])
                 days[str(cur)] = {"count": len(items), "items": items}
@@ -2987,6 +3002,91 @@ class LessonEditAdminAPI(APIView):
                 reason=reason or "오늘 수업 시각 변경",
                 detail=("%s 수업 시각 %s → %s (오늘 하루)" % (str(o.date), old, tm))[:255])
         return self.success({"start_time": str(o.start_time)[:5]})
+
+
+class LessonProgressAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """진도 조회. ?occ_id= (해당 수업 진도 1건) 또는 ?student_id= (진도표 목록)."""
+        occ_id = request.GET.get("occ_id")
+        if occ_id:
+            p = LessonProgress.objects.filter(occurrence_id=occ_id, is_hidden=False).first()
+            if not p:
+                return self.success(None)
+            return self.success({"id": p.id, "date": str(p.date), "content": p.content,
+                                 "homework": p.homework, "author": _name_of(p.author) if p.author_id else "",
+                                 "time": str(p.update_time)[:16]})
+        sid = request.GET.get("student_id")
+        u = User.objects.filter(id=sid).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_view_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        out = []
+        for p in LessonProgress.objects.select_related("author", "occurrence").filter(
+                student=u, is_hidden=False).order_by("-date", "-id")[:200]:
+            out.append({"id": p.id, "date": str(p.date), "content": p.content, "homework": p.homework,
+                        "subject": (p.occurrence.subject if p.occurrence_id else ""),
+                        "author": _name_of(p.author) if p.author_id else "",
+                        "time": str(p.update_time)[:16]})
+        return self.success(out)
+
+    @admin_role_required
+    def post(self, request):
+        """진도 저장(업서트). {occ_id?, student_id, date?, content, homework}.
+        occ_id 있으면 그 수업의 진도 1건을 갱신/생성, 없으면 자유 기록 생성."""
+        data = request.data
+        content = (data.get("content") or "").strip()
+        homework = (data.get("homework") or "").strip()
+        occ_id = data.get("occ_id")
+        if occ_id:
+            o = LessonOccurrence.objects.select_related("branch").filter(id=occ_id).first()
+            if not o:
+                return self.error("수업이 없습니다.")
+            if not can_manage_branch(request.user, o.branch_id):
+                return self.error("권한이 없습니다.")
+            p, _ = LessonProgress.objects.get_or_create(
+                occurrence=o, defaults={"student_id": o.student_id, "date": o.date})
+            p.student_id = o.student_id
+            p.date = o.date
+            p.is_hidden = False
+        else:
+            u = User.objects.filter(id=data.get("student_id")).first()
+            if not u:
+                return self.error("학생이 없습니다.")
+            prof = getattr(u, "academy_profile", None)
+            if prof and not can_manage_branch(request.user, prof.branch_id):
+                return self.error("권한이 없습니다.")
+            try:
+                d = datetime.strptime(data.get("date"), "%Y-%m-%d").date() if data.get("date") else now().date()
+            except (TypeError, ValueError):
+                d = now().date()
+            if data.get("id"):
+                p = LessonProgress.objects.filter(id=data.get("id"), student=u).first()
+                if not p:
+                    return self.error("진도 기록이 없습니다.")
+                p.date = d
+            else:
+                p = LessonProgress(student=u, date=d)
+        p.content = content
+        p.homework = homework
+        p.author = request.user
+        p.save()
+        return self.success({"id": p.id})
+
+    @admin_role_required
+    def delete(self, request):
+        """진도 소프트삭제."""
+        p = LessonProgress.objects.select_related("student").filter(id=request.GET.get("id")).first()
+        if not p:
+            return self.error("진도 기록이 없습니다.")
+        prof = getattr(p.student, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        p.is_hidden = True
+        p.save(update_fields=["is_hidden"])
+        return self.success(True)
 
 
 class MakeupAddAdminAPI(APIView):

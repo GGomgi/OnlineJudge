@@ -649,6 +649,27 @@ class LessonOccurrence(models.Model):
         ordering = ["date", "start_time"]
 
 
+class LessonProgress(models.Model):
+    """개별 진도 기록. 수업 1회(인스턴스)당 1건이 기본이며, 학생 상세에서 직접
+    추가한 자유 기록은 occurrence 없이 날짜로 남긴다. 수업내용 + 숙제."""
+    occurrence = models.OneToOneField(LessonOccurrence, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="progress")
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="lesson_progress")
+    date = models.DateField()
+    content = models.TextField(blank=True, default="")    # 수업 내용
+    homework = models.TextField(blank=True, default="")   # 숙제
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="+")
+    is_hidden = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_lesson_progress"
+        ordering = ["-date", "-id"]
+
+
 class DailyAttendance(models.Model):
     """일일 등원/하원 출결(개별 수업 운영용). 학생·날짜 1건."""
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
