@@ -295,6 +295,7 @@ class LeadSerializer(serializers.ModelSerializer):
     converted_username = serializers.SerializerMethodField()
     reservations = serializers.SerializerMethodField()
     display_status = serializers.SerializerMethodField()
+    enroll = serializers.SerializerMethodField()
 
     class Meta:
         model = Lead
@@ -302,7 +303,22 @@ class LeadSerializer(serializers.ModelSerializer):
                   "school_type", "school_name", "grade", "interest", "contact_preference",
                   "purpose", "purpose_detail",
                   "status", "converted_username", "close_reason", "create_time", "logs",
-                  "is_hidden", "reservations", "display_status"]
+                  "is_hidden", "reservations", "display_status", "enroll"]
+
+    def get_enroll(self, obj):
+        import json as _j
+        data = None
+        if obj.enroll_data:
+            try:
+                data = _j.loads(obj.enroll_data)
+            except (ValueError, TypeError):
+                data = None
+        return {"status": obj.enroll_status or "",
+                "token": obj.enroll_token or "",
+                "path": ("/portal/?enroll=" + obj.enroll_token) if obj.enroll_token else "",
+                "expires": str(obj.enroll_token_expires)[:16] if obj.enroll_token_expires else "",
+                "submitted_at": str(obj.enroll_submitted_at)[:16] if obj.enroll_submitted_at else "",
+                "data": data}
 
     def _name(self, u):
         if not u:

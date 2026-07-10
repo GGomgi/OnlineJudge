@@ -3,7 +3,7 @@ from django.conf.urls import url
 from ..views.oj import (BranchListAPI, OptionListAPI, LeadCreateAPI, MyTimetableAPI,
                         MyAttendanceAPI, MyAcademyProfileAPI, MyChildrenAPI, GuardianMeAPI,
                         StaffProfileAPI, StaffProfileUploadAPI, ChangePasswordAPI, StaffNameHintAPI,
-                        DevRequestAPI, DevCommentAPI, NotificationAPI, MessageAPI)
+                        DevRequestAPI, DevCommentAPI, NotificationAPI, MessageAPI, EnrollAPI)
 
 urlpatterns = [
     url(r"^academy/branches/?$", BranchListAPI.as_view(), name="academy_branch_list"),
@@ -16,6 +16,7 @@ urlpatterns = [
     url(r"^academy/staff_profile/upload/?$", StaffProfileUploadAPI.as_view(), name="academy_staff_profile_upload"),
     url(r"^academy/change_password/?$", ChangePasswordAPI.as_view(), name="academy_change_password"),
     url(r"^academy/lead/?$", LeadCreateAPI.as_view(), name="academy_lead_create"),
+    url(r"^academy/enroll/?$", EnrollAPI.as_view(), name="academy_enroll"),
     url(r"^academy/my_timetable/?$", MyTimetableAPI.as_view(), name="academy_my_timetable"),
     url(r"^academy/my_attendance/?$", MyAttendanceAPI.as_view(), name="academy_my_attendance"),
     url(r"^academy/dev_request/?$", DevRequestAPI.as_view(), name="academy_dev_request"),

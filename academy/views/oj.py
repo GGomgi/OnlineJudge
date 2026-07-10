@@ -169,6 +169,59 @@ class LeadCreateAPI(APIView):
         return self.success("상담 신청이 접수되었습니다.")
 
 
+class EnrollAPI(APIView):
+    """등록 링크(무로그인). 상담 후 학부모가 인적사항·동의를 원격 작성.
+    GET ?token= 로 프리필 조회, POST 로 제출(직원 검토 후 확정 생성)."""
+    def get(self, request):
+        token = (request.GET.get("token") or "").strip()
+        lead = Lead.objects.select_related("branch").filter(enroll_token=token).first() if token else None
+        if not lead:
+            return self.error("링크가 올바르지 않습니다.")
+        if lead.status == "CONVERTED":
+            return self.error("이미 등록이 완료되었습니다.")
+        if lead.enroll_status == "SUBMITTED":
+            return self.error("이미 제출되었습니다. 학원에서 확인 중입니다.")
+        if lead.enroll_token_expires and lead.enroll_token_expires < now():
+            return self.error("링크가 만료되었습니다. 학원에 재발급을 요청해 주세요.")
+        return self.success({
+            "branch": (lead.branch.name if lead.branch_id else ""),
+            "student_name": lead.student_name, "parent_name": lead.parent_name,
+            "parent_phone": lead.parent_phone, "school_type": lead.school_type,
+            "school_name": lead.school_name, "grade": lead.grade,
+        })
+
+    def post(self, request):
+        data = request.data
+        token = (data.get("token") or "").strip()
+        lead = Lead.objects.filter(enroll_token=token).first() if token else None
+        if not lead:
+            return self.error("링크가 올바르지 않습니다.")
+        if lead.status == "CONVERTED" or lead.enroll_status == "SUBMITTED":
+            return self.error("이미 처리된 신청입니다.")
+        if lead.enroll_token_expires and lead.enroll_token_expires < now():
+            return self.error("링크가 만료되었습니다.")
+        # 학부모 작성 항목(인적사항·주소·보호자·동의). 과정·시간표·계정은 직원이 확정.
+        keep = ["student_name", "birth_date", "gender", "student_phone",
+                "parent_name", "parent_phone", "school_type", "school_name", "grade",
+                "zipcode", "address", "address_detail",
+                "consent_privacy", "consent_guardian_name", "consent_signature"]
+        payload = {k: data.get(k) for k in keep}
+        if not payload.get("consent_privacy"):
+            return self.error("개인정보 수집·이용에 동의해 주세요.")
+        if not (payload.get("consent_guardian_name") or "").strip():
+            return self.error("법정대리인 성명을 입력해 주세요.")
+        # 리드 기본 정보도 최신값으로 반영(직원 확정 화면 프리필용)
+        for f in ("student_name", "parent_name", "parent_phone", "school_type", "school_name", "grade"):
+            if payload.get(f):
+                setattr(lead, f, payload.get(f))
+        lead.enroll_data = _json.dumps(payload, ensure_ascii=False)
+        lead.enroll_status = "SUBMITTED"
+        lead.enroll_submitted_at = now()
+        lead.enroll_token_expires = now()  # 제출 즉시 만료
+        lead.save()
+        return self.success("제출되었습니다. 학원에서 확인 후 등록을 진행합니다.")
+
+
 class StaffNameHintAPI(APIView):
     def get(self, request):
         """로그인 화면용: 사번(username)으로 직원 이름 힌트. 직원 계정만, 활성만."""

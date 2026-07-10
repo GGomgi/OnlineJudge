@@ -18,8 +18,78 @@
 </head>
 <body class="bg-slate-100 text-slate-800">
 <div id="app" v-cloak>
+  <!-- ===== 등록 링크(무로그인 원격 작성) 전용 화면 ===== -->
+  <div v-if="enrollMode" class="min-h-screen bg-slate-50">
+    <header class="bg-slate-900 text-white">
+      <div class="max-w-lg mx-auto px-4 h-14 flex items-center gap-2">
+        <span class="text-lg font-bold tracking-tight">두잉창의코딩</span>
+        <span class="text-xs text-slate-300">입회원 신청서</span>
+      </div>
+    </header>
+    <main class="max-w-lg mx-auto px-4 py-6">
+      <div v-if="enrollError" class="bg-white rounded-xl shadow-sm p-6 text-center">
+        <div class="text-rose-500 font-semibold mb-1">링크를 열 수 없습니다</div>
+        <div class="text-sm text-slate-500">{{ enrollError }}</div>
+      </div>
+      <div v-else-if="enrollDone" class="bg-white rounded-xl shadow-sm p-8 text-center">
+        <div class="text-3xl mb-2">✅</div>
+        <div class="font-bold mb-1">제출되었습니다</div>
+        <div class="text-sm text-slate-500">학원에서 확인 후 등록을 진행합니다. 감사합니다.</div>
+      </div>
+      <div v-else-if="enrollPrefill" class="space-y-4">
+        <div class="bg-white rounded-xl shadow-sm p-4 text-sm text-slate-500">
+          <b class="text-slate-700">{{ enrollPrefill.branch }}</b> 입회 신청서입니다. 아래 정보를 확인·작성해 주세요.
+          <span class="text-xs text-slate-400 block mt-1">과정·수업 시간표는 상담 내용대로 학원에서 배정합니다.</span>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 space-y-3">
+          <div class="text-sm font-semibold text-slate-700 border-b pb-1">학생 · 보호자 정보</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="lbl">학생 성명 <span class="text-rose-500">*</span></label><input v-model="enrollForm.student_name" class="input" /></div>
+            <div><label class="lbl">성별 <span class="text-rose-500">*</span></label>
+              <div class="flex gap-2 pt-1">
+                <label class="flex items-center gap-1 text-sm"><input type="radio" value="M" v-model="enrollForm.gender"> 남</label>
+                <label class="flex items-center gap-1 text-sm"><input type="radio" value="F" v-model="enrollForm.gender"> 여</label>
+              </div>
+            </div>
+            <div><label class="lbl">생년월일 <span class="text-rose-500">*</span></label><input v-model="enrollForm.birth_date" type="date" min="1900-01-01" :max="todayStr" class="input" /></div>
+            <div><label class="lbl">학생 휴대폰</label><input :value="enrollForm.student_phone" @input="enrollForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
+            <div><label class="lbl">보호자 이름 <span class="text-rose-500">*</span></label><input v-model="enrollForm.parent_name" class="input" /></div>
+            <div><label class="lbl">보호자 연락처 <span class="text-rose-500">*</span></label><input :value="enrollForm.parent_phone" @input="enrollForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <div><label class="lbl">학교 구분</label><select v-model="enrollForm.school_type" class="input px-2"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+            <div><label class="lbl">학교</label><input v-model="enrollForm.school_name" class="input px-2 min-w-0" /></div>
+            <div><label class="lbl">학년</label><input v-model="enrollForm.grade" class="input px-2 min-w-0" /></div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 space-y-2">
+          <div class="text-sm font-semibold text-slate-700 border-b pb-1">주소</div>
+          <div class="flex gap-2">
+            <input :value="enrollForm.zipcode" @click="openEnrollPostcode" readonly placeholder="우편번호" class="input w-28 bg-slate-50 cursor-pointer" />
+            <input :value="enrollForm.address" @click="openEnrollPostcode" readonly placeholder="주소 (클릭하여 검색)" class="input bg-slate-50 cursor-pointer" />
+          </div>
+          <input v-model="enrollForm.address_detail" placeholder="상세주소 (동/호 등)" class="input" />
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 space-y-2">
+          <div class="text-sm font-semibold text-slate-700 border-b pb-1">개인정보 수집·이용 동의 <span class="text-rose-500">*</span></div>
+          <p class="text-[11px] text-slate-400">학원은 회원 학습관리·상담·회비정산 등 목적으로 개인정보를 수집·이용합니다.</p>
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" v-model="enrollForm.consent_privacy" class="w-4 h-4"> 위 내용에 동의합니다.</label>
+          <div><label class="lbl">법정대리인 성명 <span class="text-rose-500">*</span></label><input v-model="enrollForm.consent_guardian_name" class="input" placeholder="보호자 성함" /></div>
+          <div>
+            <label class="lbl">서명</label>
+            <canvas ref="enrollSig" width="320" height="120" class="border rounded-lg touch-none bg-white w-full"
+              @pointerdown="esigStart" @pointermove="esigMove" @pointerup="esigEnd" @pointerleave="esigEnd"></canvas>
+            <button type="button" @click="esigClear" class="text-xs text-slate-400 hover:underline mt-1">지우기</button>
+          </div>
+        </div>
+        <button @click="submitEnroll" class="btn-primary w-full">제출하기</button>
+      </div>
+      <div v-else class="text-center text-slate-400 py-10">불러오는 중…</div>
+    </main>
+  </div>
+
   <!-- 상단 바 -->
-  <header class="bg-slate-900 text-white">
+  <header v-if="!enrollMode" class="bg-slate-900 text-white">
     <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <span class="text-lg font-bold tracking-tight">두잉창의코딩</span>
@@ -144,7 +214,7 @@
     </ul>
   </div>
 
-  <nav class="bg-white border-b sticky top-0 z-30 shadow-sm">
+  <nav v-if="!enrollMode" class="bg-white border-b sticky top-0 z-30 shadow-sm">
     <div class="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
       <button v-for="t in tabs" :key="t.key" @click="go(t.key)"
         :class="['px-4 py-3 text-sm whitespace-nowrap border-b-2 -mb-px',
@@ -214,7 +284,7 @@
     </div>
   </div>
 
-  <main class="max-w-5xl mx-auto px-4 py-6">
+  <main v-if="!enrollMode" class="max-w-5xl mx-auto px-4 py-6">
     <!-- 알림 배너 -->
     <div v-if="flash.msg" :class="['mb-4 px-4 py-3 rounded text-sm',
         flash.ok ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200']">
@@ -777,6 +847,24 @@
                 </div>
                 <textarea v-model="resvForm.note" rows="2" placeholder="메모(선택)" class="input py-1"></textarea>
                 <div class="flex justify-end"><button @click="addReservation(r)" class="btn-secondary text-sm whitespace-nowrap">예약 추가</button></div>
+              </div>
+            </div>
+
+            <!-- 등록 링크(학부모 원격 작성) -->
+            <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED' && canEditBranch(r.branch && r.branch.id)" class="border-t pt-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-semibold text-slate-500">등록 링크</span>
+                <span v-if="r.enroll && r.enroll.status==='SUBMITTED'" class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">작성완료</span>
+                <span v-else-if="r.enroll && r.enroll.status==='SENT'" class="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">링크 발송됨</span>
+                <button @click="genEnrollLink(r)" class="ml-auto text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-white">{{ (r.enroll && r.enroll.token) ? '링크 재발급' : '등록 링크 생성' }}</button>
+              </div>
+              <div v-if="r.enroll && r.enroll.token && r.enroll.status!=='SUBMITTED'" class="mt-2 flex items-center gap-2">
+                <input :value="enrollUrl(r)" readonly class="input py-1 text-xs bg-slate-50" />
+                <button @click="copyText(enrollUrl(r))" class="text-xs px-2 py-1 rounded border border-slate-200 hover:bg-white whitespace-nowrap">복사</button>
+                <span class="text-[11px] text-slate-400 whitespace-nowrap">~{{ r.enroll.expires }}</span>
+              </div>
+              <div v-if="r.enroll && r.enroll.status==='SUBMITTED' && r.enroll.data" class="mt-2 text-xs bg-emerald-50 rounded-lg p-2 text-slate-600">
+                학부모 작성 완료({{ r.enroll.submitted_at }}) — 생년월일 {{ r.enroll.data.birth_date }} · 주소 {{ r.enroll.data.address || '-' }}. <b>등록 전환</b> 시 자동 채워집니다.
               </div>
             </div>
 
@@ -2468,6 +2556,9 @@ createApp({
       docPreview: { show:false, url:'', x:0, y:0 },
       students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
       bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false,
+      enrollMode: false, enrollToken: '', enrollPrefill: null, enrollError: '', enrollDone: false,
+      enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', consent_privacy:false, consent_guardian_name:'' },
+      esig: { drawing:false, ctx:null, hasInk:false },
       dbView: 'list', dbList: [], dbDetail: null, dbForm: { id:null, title:'', body:'' }, dbComment: '', _dbEditor: null, _dbViewer: null,
       notiOpen: false, notiUnread: 0, notiList: [], _notiTimer: null,
       msgBox: 'inbox', msgList: [], msgCompose: false, msgForm: { recipient_id:null, body:'' }, msgUnread: 0, msgExpand: {}, msgPickerOpen: false,
@@ -3452,7 +3543,46 @@ createApp({
       try { this.myProfile = await api('GET','/api/academy/my_profile'); }
       catch(e){ this.myProfile = null; }
     },
+    // ── 등록 링크(무로그인 원격 작성) ──
+    async loadEnroll(){
+      try {
+        const d = await api('GET','/api/academy/enroll?token='+encodeURIComponent(this.enrollToken));
+        this.enrollPrefill = d;
+        this.enrollForm = { student_name:d.student_name||'', gender:'', birth_date:'', student_phone:'',
+          parent_name:d.parent_name||'', parent_phone:d.parent_phone||'', school_type:d.school_type||'',
+          school_name:d.school_name||'', grade:d.grade||'', zipcode:'', address:'', address_detail:'',
+          consent_privacy:false, consent_guardian_name:d.parent_name||'' };
+        this.$nextTick(()=> this.esigInit());
+      } catch(e){ this.enrollError = e.message; }
+    },
+    esigInit(){ const c=this.$refs.enrollSig; if(!c) return; const ctx=c.getContext('2d'); ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.strokeStyle='#1e293b'; ctx.clearRect(0,0,c.width,c.height); this.esig.ctx=ctx; this.esig.hasInk=false; },
+    _esigPos(e){ const r=e.target.getBoundingClientRect(); return { x:(e.clientX-r.left)*(e.target.width/r.width), y:(e.clientY-r.top)*(e.target.height/r.height) }; },
+    esigStart(e){ if(!this.esig.ctx) this.esigInit(); this.esig.drawing=true; const p=this._esigPos(e); this.esig.ctx.beginPath(); this.esig.ctx.moveTo(p.x,p.y); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); },
+    esigMove(e){ if(!this.esig.drawing) return; const p=this._esigPos(e); this.esig.ctx.lineTo(p.x,p.y); this.esig.ctx.stroke(); this.esig.hasInk=true; },
+    esigEnd(){ this.esig.drawing=false; },
+    esigClear(){ this.esigInit(); },
+    openEnrollPostcode(){
+      if (typeof daum==='undefined' || !daum.Postcode) return this.notify('주소 검색 모듈을 불러오지 못했습니다.', false);
+      new daum.Postcode({ oncomplete:(data)=>{ this.enrollForm.zipcode=data.zonecode; this.enrollForm.address=(data.roadAddress||data.jibunAddress); } }).open();
+    },
+    async submitEnroll(){
+      const f=this.enrollForm;
+      if(!(f.student_name||'').trim()) return this.notify('학생 성명을 입력하세요.', false);
+      if(!f.gender) return this.notify('성별을 선택하세요.', false);
+      if(!f.birth_date) return this.notify('생년월일을 입력하세요.', false);
+      if(!(f.parent_name||'').trim()||!(f.parent_phone||'').trim()) return this.notify('보호자 이름·연락처를 입력하세요.', false);
+      if(!f.consent_privacy) return this.notify('개인정보 수집·이용에 동의해 주세요.', false);
+      if(!(f.consent_guardian_name||'').trim()) return this.notify('법정대리인 성명을 입력하세요.', false);
+      const sig = (this.esig.hasInk && this.$refs.enrollSig) ? this.$refs.enrollSig.toDataURL('image/png') : '';
+      try {
+        await api('POST','/api/academy/enroll', { token:this.enrollToken, ...f, consent_signature:sig });
+        this.enrollDone=true;
+      } catch(e){ this.notify(e.message,false); }
+    },
     async boot(){
+      // 등록 링크(무로그인 원격 작성) 모드 감지
+      const et = new URLSearchParams(location.search).get('enroll');
+      if (et){ this.enrollMode=true; this.enrollToken=et; await this.loadOptions(); await this.loadEnroll(); return; }
       try { this.me = await api('GET','/api/profile'); } catch(e){ this.me = null; }
       await this.loadBranches();
       await this.loadOptions();
@@ -4044,6 +4174,14 @@ createApp({
       try { const d = await api('DELETE','/api/admin/academy/lead/note?log_id='+g.id+'&hidden=0'); this.replaceLead(d); this.notify('복원되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
+    enrollUrl(r){ return location.origin + (r.enroll ? r.enroll.path : ''); },
+    async genEnrollLink(r){
+      try { const d = await api('POST','/api/admin/academy/lead/enroll_link', { lead_id:r.id });
+        r.enroll = { ...(r.enroll||{}), status:(r.enroll&&r.enroll.status==='SUBMITTED')?'SUBMITTED':'SENT', token:d.token, path:d.path, expires:d.expires };
+        this.notify('등록 링크가 생성되었습니다. 학부모에게 전달하세요.');
+      } catch(e){ this.notify(e.message,false); }
+    },
+    copyText(t){ try { navigator.clipboard.writeText(t); this.notify('복사되었습니다.'); } catch(e){ this.notify('복사 실패 — 직접 선택해 복사하세요.', false); } },
     openConvert(r){
       this.convertingLead = r;
       this.convertError = '';
@@ -4058,6 +4196,18 @@ createApp({
         parent_login_id: phoneDigits, parent_password:'',
         consent_privacy:false, consent_guardian_name:'',
       };
+      // 학부모가 링크로 작성 제출한 인적사항이 있으면 프리필
+      const ed = r.enroll && r.enroll.data;
+      if (ed){
+        const f=this.convertForm;
+        f.student_name=ed.student_name||f.student_name; f.gender=ed.gender||''; f.birth_date=ed.birth_date||'';
+        f.student_phone=ed.student_phone||''; f.parent_name=ed.parent_name||f.parent_name;
+        f.parent_phone=ed.parent_phone||f.parent_phone; f.school_type=ed.school_type||f.school_type;
+        f.school_name=ed.school_name||f.school_name; f.grade=ed.grade||f.grade;
+        f.zipcode=ed.zipcode||''; f.address=ed.address||''; f.address_detail=ed.address_detail||'';
+        f.consent_privacy=!!ed.consent_privacy; f.consent_guardian_name=ed.consent_guardian_name||'';
+        f.parent_login_id = String(f.parent_phone||'').replace(/\D/g,'');
+      }
       this.loadOptions();
       this.$nextTick(()=> this.sigInit());
     },

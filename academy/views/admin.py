@@ -1062,6 +1062,27 @@ class LeadDeleteAdminAPI(APIView):
         return self.success({"lead_id": lead.id, "is_hidden": lead.is_hidden})
 
 
+class EnrollLinkAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """등록 링크 생성/재발급. {lead_id}. 7일 유효 토큰 발급."""
+        lead = Lead.objects.filter(id=request.data.get("lead_id")).first()
+        if not lead:
+            return self.error("상담 신청이 없습니다.")
+        if not can_manage_branch(request.user, lead.branch_id):
+            return self.error("권한이 없습니다.")
+        if lead.status == LeadStatus.CONVERTED:
+            return self.error("이미 등록 완료된 상담입니다.")
+        lead.enroll_token = _rand_str(24)
+        lead.enroll_token_expires = now() + timedelta(days=7)
+        if lead.enroll_status != "SUBMITTED":
+            lead.enroll_status = "SENT"
+        lead.save(update_fields=["enroll_token", "enroll_token_expires", "enroll_status"])
+        return self.success({"token": lead.enroll_token,
+                             "path": "/portal/?enroll=" + lead.enroll_token,
+                             "expires": str(lead.enroll_token_expires)[:16]})
+
+
 class CounselingNoteAdminAPI(APIView):
     @validate_serializer(AddCounselingNoteSerializer)
     @admin_role_required
