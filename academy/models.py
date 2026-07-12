@@ -545,6 +545,34 @@ class DevRequestComment(models.Model):
         ordering = ["create_time"]
 
 
+class MsgTemplateGroup(models.Model):
+    """문자 템플릿 폴더(그룹). 예: 방학안내·특강안내·원비안내."""
+    name = models.CharField(max_length=64)
+    order = models.PositiveSmallIntegerField(default=0)
+    is_hidden = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_msg_template_group"
+        ordering = ["order", "id"]
+
+
+class MsgTemplate(models.Model):
+    """자주 쓰는 문자 템플릿. 본문에 {변수} 토큰 사용(학생 연결 시 자동 채움)."""
+    group = models.ForeignKey(MsgTemplateGroup, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="templates")
+    title = models.CharField(max_length=120)
+    body = models.TextField(blank=True, default="")
+    order = models.PositiveSmallIntegerField(default=0)
+    is_hidden = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_msg_template"
+        ordering = ["order", "id"]
+
+
 class Message(models.Model):
     """직원 간 1:1 쪽지. 보낸/받은 각 측에서 소프트삭제(상대에겐 영향 없음)."""
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,

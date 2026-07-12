@@ -2077,6 +2077,86 @@
       </div>
     </section>
 
+    <!-- ============ 문자 템플릿 (직원) ============ -->
+    <section v-if="tab==='msgtpl'" class="max-w-3xl mx-auto">
+      <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h2 class="text-lg font-bold">문자 템플릿 <span class="text-sm font-normal text-slate-400">(자주 쓰는 안내문 · 변수 자동 채움)</span></h2>
+      </div>
+      <!-- 그룹(폴더) -->
+      <div class="flex items-center gap-1 flex-wrap mb-3">
+        <button v-for="g in msgtplGroups" :key="g.id" @click="selectMsgGroup(g.id)" :class="['px-3 py-1.5 rounded-lg text-sm border', msgtplGroupId===g.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50']">📁 {{ g.name }}</button>
+        <button @click="addMsgGroup" class="px-2 py-1.5 rounded-lg text-sm border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50">+ 그룹</button>
+        <span v-if="msgtplGroupId" class="ml-2 text-xs text-slate-400">
+          <button @click="renameMsgGroup" class="hover:underline">이름변경</button> ·
+          <button @click="deleteMsgGroup" class="text-rose-400 hover:underline">그룹삭제</button>
+        </span>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-3">
+        <!-- 템플릿 목록 -->
+        <div class="bg-white rounded-xl shadow-sm divide-y">
+          <div class="px-3 py-2 flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-500">템플릿</span>
+            <button @click="newMsgTemplate" class="text-xs text-indigo-600 hover:underline">+ 새 템플릿</button>
+          </div>
+          <div v-for="t in msgtplList" :key="t.id" @click="selectMsgTemplate(t)" :class="['px-3 py-2 cursor-pointer hover:bg-slate-50', msgSel && msgSel.id===t.id ? 'bg-indigo-50' : '']">
+            <div class="text-sm font-medium truncate">{{ t.title }}</div>
+            <div class="text-xs text-slate-400 truncate">{{ t.body }}</div>
+          </div>
+          <div v-if="msgtplList.length===0" class="px-3 py-6 text-center text-xs text-slate-400">이 그룹에 템플릿이 없습니다.</div>
+        </div>
+
+        <!-- 작성/편집 -->
+        <div class="bg-white rounded-xl shadow-sm p-4">
+          <!-- 편집 모드 -->
+          <div v-if="msgEdit" class="space-y-2">
+            <div class="text-xs font-semibold text-slate-500">{{ msgEditForm.id ? '템플릿 수정' : '새 템플릿' }}</div>
+            <input v-model="msgEditForm.title" placeholder="제목" class="input py-1" />
+            <select v-model="msgEditForm.group_id" class="input py-1 text-sm"><option :value="null">그룹 없음</option><option v-for="g in msgtplGroups" :key="g.id" :value="g.id">{{ g.name }}</option></select>
+            <textarea v-model="msgEditForm.body" rows="6" placeholder="본문. 변수는 {학생이름} 처럼 중괄호로." class="input text-sm"></textarea>
+            <p class="text-[11px] text-slate-400">자동 변수: {{ msgAutoVarHint }} · 그 외 {토큰}은 작성 시 직접 입력</p>
+            <div class="flex justify-end gap-2">
+              <button @click="msgEdit=false" class="btn-secondary text-xs">취소</button>
+              <button @click="saveMsgTemplate" class="btn-primary text-xs">저장</button>
+            </div>
+          </div>
+          <!-- 작성 모드 -->
+          <div v-else-if="msgSel" class="space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-semibold flex-1 truncate">{{ msgSel.title }}</span>
+              <button @click="editMsgTemplate(msgSel)" class="text-xs text-indigo-500 hover:underline">수정</button>
+              <button @click="deleteMsgTemplate(msgSel)" class="text-xs text-rose-400 hover:underline">삭제</button>
+            </div>
+            <!-- 학생 연결 -->
+            <div>
+              <label class="lbl">학생 연결 <span v-if="msgStudent" class="text-emerald-600">· {{ msgStudent.real_name||msgStudent.username }}</span></label>
+              <input v-model="msgStuQ" @focus="msgStuOpen=true" placeholder="이름·원번 검색(선택)" class="input py-1" />
+              <ul v-if="msgStuOpen && msgStuQ" class="border rounded-lg max-h-40 overflow-auto divide-y mt-1">
+                <li v-for="s in msgStuList" :key="s.id" @click="pickMsgStudent(s)" class="px-2 py-1.5 text-sm hover:bg-indigo-50 cursor-pointer">{{ s.real_name||s.username }} <span class="text-xs text-slate-400">{{ s.enroll_no }} · {{ s.branch }}</span></li>
+                <li v-if="msgStuList.length===0" class="px-2 py-2 text-xs text-slate-400 text-center">결과 없음</li>
+              </ul>
+              <button v-if="msgStudent" @click="msgStudent=null; syncMsgVars()" class="text-[11px] text-slate-400 hover:underline mt-0.5">연결 해제</button>
+            </div>
+            <!-- 본문(편집 가능) -->
+            <div><label class="lbl">본문</label><textarea v-model="msgBody" @input="syncMsgVars" rows="5" class="input text-sm"></textarea></div>
+            <!-- 변수 입력 -->
+            <div v-if="msgTokens.length">
+              <div class="flex items-center justify-between"><label class="lbl mb-0">변수</label><button @click="addMsgVar" class="text-xs text-indigo-500 hover:underline">+ 변수 추가</button></div>
+              <div v-for="k in msgTokens" :key="k" class="flex items-center gap-2 mt-1">
+                <span class="text-xs w-24 shrink-0 truncate" :class="isAutoVar(k) ? 'text-emerald-600' : 'text-slate-500'">{{ '{'+k+'}' }}<span v-if="isAutoVar(k)" class="text-[10px]">(자동)</span></span>
+                <input v-model="msgVars[k]" :placeholder="isAutoVar(k) ? '학생 연결 시 자동' : '값 입력'" class="input py-1 text-sm" />
+              </div>
+            </div>
+            <div v-else><button @click="addMsgVar" class="text-xs text-indigo-500 hover:underline">+ 변수 추가</button></div>
+            <!-- 미리보기 -->
+            <div><label class="lbl">미리보기</label><div class="border rounded-lg p-3 text-sm whitespace-pre-wrap bg-slate-50 min-h-[60px]">{{ msgPreview }}</div></div>
+            <div class="flex justify-end"><button @click="copyMsg" class="btn-primary text-sm">📋 복사하기</button></div>
+          </div>
+          <div v-else class="text-center text-slate-400 text-sm py-10">템플릿을 선택하거나 새로 만드세요.</div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ 개발 요청 게시판 (로그인 모두) ============ -->
     <section v-if="tab==='devboard'" class="max-w-3xl mx-auto">
       <!-- 목록 -->
@@ -2515,6 +2595,7 @@ const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'
 const LEGACY_TAG_LABELS = {LATE:'지각',EXCUSED:'사유결석',LEAVE:'조퇴',EARLY_LEAVE:'조퇴',PRE_CONTACT:'사전연락',MAKEUP:'보강',ABSENT:'결석',PRESENT:'출석'};
 const LEGACY_TAG_COLORS = {LATE:'#f59e0b',EXCUSED:'#8b5cf6',LEAVE:'#f97316',EARLY_LEAVE:'#f97316',PRE_CONTACT:'#3b82f6',MAKEUP:'#10b981',ABSENT:'#ef4444',PRESENT:'#10b981'};
 const DEV_STATUS = {NONE:{label:'접수',cls:'bg-slate-100 text-slate-500'},CONFIRMED:{label:'확인',cls:'bg-violet-100 text-violet-700'},REVIEWING:{label:'검토중',cls:'bg-amber-100 text-amber-700'},IN_PROGRESS:{label:'개발중',cls:'bg-blue-100 text-blue-700'},DONE:{label:'완료',cls:'bg-emerald-100 text-emerald-700'}};
+const MSG_AUTO_VARS = ['학생이름','학부모','지점','학교','학년','원번','이번달','오늘'];
 const ATT_CLASS = {PRESENT:'text-emerald-700 bg-emerald-50',LATE:'text-amber-700 bg-amber-50',ABSENT:'text-rose-700 bg-rose-50',EARLY_LEAVE:'text-orange-700 bg-orange-50',EXCUSED:'text-slate-700 bg-slate-100'};
 
 function getCookie(name){
@@ -2559,6 +2640,8 @@ createApp({
       enrollMode: false, enrollToken: '', enrollPrefill: null, enrollError: '', enrollDone: false,
       enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', consent_privacy:false, consent_guardian_name:'' },
       esig: { drawing:false, ctx:null, hasInk:false },
+      msgtplGroups: [], msgtplGroupId: null, msgtplList: [], msgSel: null, msgEdit: false, msgEditForm: { id:null, group_id:null, title:'', body:'' },
+      msgBody: '', msgVars: {}, msgStudent: null, msgStuQ: '', msgStuOpen: false,
       dbView: 'list', dbList: [], dbDetail: null, dbForm: { id:null, title:'', body:'' }, dbComment: '', _dbEditor: null, _dbViewer: null,
       notiOpen: false, notiUnread: 0, notiList: [], _notiTimer: null,
       msgBox: 'inbox', msgList: [], msgCompose: false, msgForm: { recipient_id:null, body:'' }, msgUnread: 0, msgExpand: {}, msgPickerOpen: false,
@@ -2670,6 +2753,10 @@ createApp({
     leadParentNameRequired(){ return !this.me; },  // 학부모(로그아웃) 직접 작성 시에만 필수
     minOptions(){ const out=[]; for(let m=0;m<60;m+=5) out.push(String(m).padStart(2,'0')); return out; },
     devStatusList(){ return ['CONFIRMED','REVIEWING','IN_PROGRESS','DONE'].map(v=>({v,label:DEV_STATUS[v].label})); },
+    msgAutoVarHint(){ return MSG_AUTO_VARS.map(v=>'{'+v+'}').join(' '); },
+    msgTokens(){ const set=[]; const re=/\{([^}]+)\}/g; let m; while((m=re.exec(this.msgBody||''))){ if(!set.includes(m[1])) set.push(m[1]); } return set; },
+    msgStuList(){ const q=(this.msgStuQ||'').trim().toLowerCase(); if(!q) return []; return (this.students||[]).filter(s=>((s.real_name||'')+' '+(s.enroll_no||'')+' '+(s.username||'')).toLowerCase().includes(q)).slice(0,20); },
+    msgPreview(){ return (this.msgBody||'').replace(/\{([^}]+)\}/g, (mm,k)=>{ const v=this.msgVars[k]; return (v!==undefined && v!=='') ? v : mm; }); },
     msgStaffGroups(){
       const ORDER = {HQ_ADMIN:0,HR_ADMIN:1,REGIONAL_MANAGER:2,BRANCH_MANAGER:3,VICE_PRINCIPAL:4,INSTRUCTOR:5,TA:6,EXTERNAL_INSTRUCTOR_ADMIN:7};
       const groups = {};
@@ -2929,6 +3016,7 @@ createApp({
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
         t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ❗' : '')});
         if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
+        t.push({key:'msgtpl',label:'문자 템플릿'});
         t.push({key:'devboard',label:'개발 요청'});
         if (this.me.user.admin_type === 'Super Admin') t.push({key:'devlog',label:'개발일지'});
         return t;
@@ -2985,6 +3073,7 @@ createApp({
       else if (key==='options'){ this.loadOptionAdmin(); this.loadBranchAdmin(); }
       else if (key==='devlog') this.loadDevlog(true);
       else if (key==='devboard') this.loadDevBoard();
+      else if (key==='msgtpl') this.loadMsgtpl();
       else if (key==='messages'){ this.msgBox='inbox'; this.loadMessages(); }
       else if (key==='dashboard') this.loadDashboard();
       else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); this.loadStudents(); this.switchTtView(this.ttView); }
@@ -3852,6 +3941,37 @@ createApp({
     async sendMessage(){ const f=this.msgForm; if(!f.recipient_id) return this.notify('받는 사람을 선택하세요.', false); if(!(f.body||'').trim()) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/academy/messages', { recipient_id:f.recipient_id, body:f.body }); this.msgCompose=false; this.notify('쪽지를 보냈습니다.'); if(this.msgBox==='sent') this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
     async readMessage(m){ if(this.msgBox!=='inbox' || m.is_read) return; try { await api('PUT','/api/academy/messages', { id:m.id }); m.is_read=true; this.loadNoti(); } catch(e){} },
     async deleteMessage(m){ if(!confirm('이 쪽지를 삭제할까요?')) return; try { await api('DELETE','/api/academy/messages?id='+m.id); this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
+    // ── 문자 템플릿 ──
+    isAutoVar(k){ return MSG_AUTO_VARS.includes(k); },
+    msgAutoValue(k, s){
+      const p=x=>String(x).padStart(2,'0'); const d=new Date();
+      switch(k){
+        case '학생이름': return s ? (s.real_name||s.username||'') : '';
+        case '학부모': return s ? (s.parent_name||'') : '';
+        case '지점': return s ? (s.branch||'') : '';
+        case '학교': return s ? (s.school_name||'') : '';
+        case '학년': return s ? (s.grade ? s.grade+'학년' : '') : '';
+        case '원번': return s ? (s.enroll_no||'') : '';
+        case '이번달': return (d.getMonth()+1)+'월';
+        case '오늘': return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+        default: return '';
+      }
+    },
+    syncMsgVars(){ const nv={ ...this.msgVars }; for(const k of this.msgTokens){ if(this.isAutoVar(k)) nv[k]=this.msgAutoValue(k, this.msgStudent); else if(nv[k]===undefined) nv[k]=''; } this.msgVars=nv; },
+    async loadMsgtpl(){ if(!this.students.length) this.loadStudents(); try { this.msgtplGroups = await api('GET','/api/admin/academy/msg_group'); if(!this.msgtplGroupId && this.msgtplGroups.length) this.msgtplGroupId=this.msgtplGroups[0].id; await this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
+    async loadMsgTemplates(){ if(!this.msgtplGroupId){ this.msgtplList=[]; return; } try { this.msgtplList = await api('GET','/api/admin/academy/msg_template?group_id='+this.msgtplGroupId); } catch(e){ this.msgtplList=[]; } },
+    selectMsgGroup(id){ this.msgtplGroupId=id; this.msgSel=null; this.msgEdit=false; this.loadMsgTemplates(); },
+    async addMsgGroup(){ const n=prompt('그룹 이름 (예: 방학안내)'); if(!n||!n.trim()) return; try { await api('POST','/api/admin/academy/msg_group', { name:n.trim() }); this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
+    async renameMsgGroup(){ const g=this.msgtplGroups.find(x=>x.id===this.msgtplGroupId); if(!g) return; const n=prompt('그룹 이름', g.name); if(!n||!n.trim()) return; try { await api('POST','/api/admin/academy/msg_group', { id:g.id, name:n.trim() }); this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
+    async deleteMsgGroup(){ if(!confirm('이 그룹과 안의 템플릿을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/msg_group?id='+this.msgtplGroupId); this.msgtplGroupId=null; this.msgSel=null; this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
+    newMsgTemplate(){ this.msgEdit=true; this.msgEditForm={ id:null, group_id:this.msgtplGroupId, title:'', body:'' }; },
+    editMsgTemplate(t){ this.msgEdit=true; this.msgEditForm={ id:t.id, group_id:t.group_id, title:t.title, body:t.body }; },
+    async saveMsgTemplate(){ const f=this.msgEditForm; if(!(f.title||'').trim()) return this.notify('제목을 입력하세요.', false); try { const d=await api('POST','/api/admin/academy/msg_template', { id:f.id, group_id:f.group_id, title:f.title, body:f.body }); this.msgEdit=false; await this.loadMsgTemplates(); const t=this.msgtplList.find(x=>x.id===d.id); if(t) this.selectMsgTemplate(t); this.notify('저장되었습니다.'); } catch(e){ this.notify(e.message,false); } },
+    async deleteMsgTemplate(t){ if(!confirm('이 템플릿을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/msg_template?id='+t.id); this.msgSel=null; this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
+    selectMsgTemplate(t){ this.msgSel=t; this.msgEdit=false; this.msgBody=t.body||''; this.msgStudent=null; this.msgStuQ=''; this.msgVars={}; this.syncMsgVars(); },
+    pickMsgStudent(s){ this.msgStudent=s; this.msgStuQ=s.real_name||s.username; this.msgStuOpen=false; this.syncMsgVars(); },
+    addMsgVar(){ const k=prompt('변수 이름 (중괄호 없이, 예: 금액)'); if(!k||!k.trim()) return; const key=k.trim().replace(/[{}]/g,''); this.msgBody=(this.msgBody||'')+' {'+key+'}'; this.syncMsgVars(); },
+    copyMsg(){ const t=this.msgPreview; try { navigator.clipboard.writeText(t); this.notify('복사되었습니다. 문자/카톡에 붙여넣으세요.'); } catch(e){ this.notify('복사 실패 — 미리보기를 직접 선택해 복사하세요.', false); } },
     // ── 개발 요청 게시판 ──
     devStatus(s){ return DEV_STATUS[s] || DEV_STATUS.NONE; },
     async loadDevBoard(){ this.dbView='list'; this._destroyDbEditors(); try { this.dbList = await api('GET','/api/academy/dev_request'); } catch(e){ this.notify(e.message,false); } },

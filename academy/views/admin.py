@@ -24,7 +24,8 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
                       TimetableChange, StudentStatusChange, StudentCredential, StaffChangeLog, DailyAttendance,
-                      AttendanceChange, LessonOccurrence, OccurrenceStatus, LessonProgress)
+                      AttendanceChange, LessonOccurrence, OccurrenceStatus, LessonProgress,
+                      MsgTemplateGroup, MsgTemplate)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 import os as _os
 from django.conf import settings as _settings
@@ -2449,6 +2450,85 @@ class StudentCredentialAdminAPI(APIView):
         if prof and not can_manage_branch(request.user, prof.branch_id):
             return self.error("No permission for this branch")
         c.delete()
+        return self.success(True)
+
+
+class MsgTemplateGroupAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """문자 템플릿 그룹(폴더) 목록."""
+        qs = MsgTemplateGroup.objects.filter(is_hidden=False).order_by("order", "id")
+        return self.success([{"id": g.id, "name": g.name, "order": g.order} for g in qs])
+
+    @admin_role_required
+    def post(self, request):
+        """그룹 추가/이름변경. {id?, name}"""
+        name = (request.data.get("name") or "").strip()
+        if not name:
+            return self.error("이름을 입력하세요.")
+        if request.data.get("id"):
+            g = MsgTemplateGroup.objects.filter(id=request.data.get("id")).first()
+            if not g:
+                return self.error("그룹이 없습니다.")
+            g.name = name
+            g.save(update_fields=["name"])
+        else:
+            last = MsgTemplateGroup.objects.order_by("-order").first()
+            g = MsgTemplateGroup.objects.create(name=name, order=((last.order + 1) if last else 0))
+        return self.success({"id": g.id, "name": g.name})
+
+    @admin_role_required
+    def delete(self, request):
+        """그룹 소프트삭제(그 안 템플릿도 함께 숨김)."""
+        g = MsgTemplateGroup.objects.filter(id=request.GET.get("id")).first()
+        if not g:
+            return self.error("그룹이 없습니다.")
+        g.is_hidden = True
+        g.save(update_fields=["is_hidden"])
+        MsgTemplate.objects.filter(group=g).update(is_hidden=True)
+        return self.success(True)
+
+
+class MsgTemplateAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """템플릿 목록. ?group_id= (없으면 전체)."""
+        qs = MsgTemplate.objects.filter(is_hidden=False)
+        gid = request.GET.get("group_id")
+        if gid:
+            qs = qs.filter(group_id=gid)
+        qs = qs.order_by("order", "id")
+        return self.success([{"id": t.id, "group_id": t.group_id, "title": t.title,
+                              "body": t.body} for t in qs])
+
+    @admin_role_required
+    def post(self, request):
+        """템플릿 추가/수정. {id?, group_id, title, body}"""
+        data = request.data
+        title = (data.get("title") or "").strip()
+        if not title:
+            return self.error("제목을 입력하세요.")
+        if data.get("id"):
+            t = MsgTemplate.objects.filter(id=data.get("id")).first()
+            if not t:
+                return self.error("템플릿이 없습니다.")
+        else:
+            last = MsgTemplate.objects.order_by("-order").first()
+            t = MsgTemplate(order=((last.order + 1) if last else 0))
+        t.group_id = data.get("group_id") or None
+        t.title = title
+        t.body = data.get("body") or ""
+        t.save()
+        return self.success({"id": t.id})
+
+    @admin_role_required
+    def delete(self, request):
+        """템플릿 소프트삭제."""
+        t = MsgTemplate.objects.filter(id=request.GET.get("id")).first()
+        if not t:
+            return self.error("템플릿이 없습니다.")
+        t.is_hidden = True
+        t.save(update_fields=["is_hidden"])
         return self.success(True)
 
 
