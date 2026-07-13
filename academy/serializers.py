@@ -334,10 +334,16 @@ class LeadSerializer(serializers.ModelSerializer):
         for r in obj.reservations.all():
             if r.status != "ACTIVE":
                 continue
+            import json as _je
+            try:
+                edits = _je.loads(r.edit_log) if r.edit_log else []
+            except (ValueError, TypeError):
+                edits = []
             out.append({"id": r.id, "scheduled_at": r.scheduled_at.isoformat() if r.scheduled_at else None,
                         "note": r.note, "created_by": self._name(r.created_by),
                         "created_at": r.create_time.isoformat() if r.create_time else None,
-                        "is_past": bool(r.scheduled_at and r.scheduled_at < now())})
+                        "is_past": bool(r.scheduled_at and r.scheduled_at < now()),
+                        "edits": edits})
         return out
 
     def get_display_status(self, obj):

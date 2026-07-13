@@ -1180,6 +1180,44 @@ class ReservationAdminAPI(APIView):
         return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
 
     @admin_role_required
+    def put(self, request):
+        """상담 예약 수정(일시·메모) + 변경 이력. {reservation_id, at 또는 date+time, note?}"""
+        data = request.data
+        r = CounselReservation.objects.select_related("lead").filter(id=data.get("reservation_id")).first()
+        if not r:
+            return self.error("예약이 없습니다.")
+        if not can_manage_branch(request.user, r.lead.branch_id):
+            return self.error("No permission for this branch")
+        at = (data.get("at") or "").strip()
+        d = (data.get("date") or "").strip()
+        t = (data.get("time") or "").strip()
+        try:
+            if at:
+                day_s, time_s = at.replace(" ", "T").split("T")[:2]
+                sched = _kst_to_utc(datetime.strptime(day_s, "%Y-%m-%d").date(), time_s[:5])
+            elif d and t:
+                sched = _kst_to_utc(datetime.strptime(d, "%Y-%m-%d").date(), t)
+            else:
+                return self.error("예약 일시를 입력하세요.")
+        except (ValueError, AttributeError):
+            return self.error("예약 일시 형식이 올바르지 않습니다.")
+        # 변경 이력(이전 값 보존)
+        new_note = (data.get("note") or "").strip()
+        if sched != r.scheduled_at or new_note != r.note:
+            try:
+                log = _json.loads(r.edit_log) if r.edit_log else []
+            except (ValueError, TypeError):
+                log = []
+            log.append({"time": str(now())[:16], "by": _name_of(request.user),
+                        "old_at": _hm_kst(r.scheduled_at) and (str((r.scheduled_at + timedelta(hours=9)).date()) + " " + _hm_kst(r.scheduled_at)),
+                        "old_note": r.note})
+            r.edit_log = _json.dumps(log, ensure_ascii=False)
+        r.scheduled_at = sched
+        r.note = new_note
+        r.save()
+        return self.success(LeadSerializer(r.lead, context={"show_hidden": _is_manager(request.user)}).data)
+
+    @admin_role_required
     def delete(self, request):
         """상담 예약 취소(ACTIVE→CANCELLED)."""
         r = CounselReservation.objects.select_related("lead").filter(id=request.GET.get("reservation_id")).first()

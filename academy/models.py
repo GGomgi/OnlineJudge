@@ -338,6 +338,7 @@ class CounselReservation(models.Model):
     status = models.CharField(max_length=16, default=ACTIVE)  # ACTIVE / CANCELLED
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
+    edit_log = models.TextField(blank=True, default="")  # 수정 이력 JSON [{time,by,old_at,old_note}]
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:
