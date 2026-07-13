@@ -3971,7 +3971,7 @@ createApp({
     selectMsgTemplate(t){ this.msgSel=t; this.msgEdit=false; this.msgBody=t.body||''; this.msgStudent=null; this.msgStuQ=''; this.msgVars={}; this.syncMsgVars(); },
     pickMsgStudent(s){ this.msgStudent=s; this.msgStuQ=s.real_name||s.username; this.msgStuOpen=false; this.syncMsgVars(); },
     addMsgVar(){ const k=prompt('변수 이름 (중괄호 없이, 예: 금액)'); if(!k||!k.trim()) return; const key=k.trim().replace(/[{}]/g,''); this.msgBody=(this.msgBody||'')+' {'+key+'}'; this.syncMsgVars(); },
-    copyMsg(){ const t=this.msgPreview; try { navigator.clipboard.writeText(t); this.notify('복사되었습니다. 문자/카톡에 붙여넣으세요.'); } catch(e){ this.notify('복사 실패 — 미리보기를 직접 선택해 복사하세요.', false); } },
+    async copyMsg(){ const ok=await this.doCopy(this.msgPreview); this.notify(ok ? '복사되었습니다. 문자/카톡에 붙여넣으세요.' : '복사 실패 — 미리보기를 직접 선택해 복사하세요.', ok); },
     // ── 개발 요청 게시판 ──
     devStatus(s){ return DEV_STATUS[s] || DEV_STATUS.NONE; },
     async loadDevBoard(){ this.dbView='list'; this._destroyDbEditors(); try { this.dbList = await api('GET','/api/academy/dev_request'); } catch(e){ this.notify(e.message,false); } },
@@ -4301,7 +4301,19 @@ createApp({
         this.notify('등록 링크가 생성되었습니다. 학부모에게 전달하세요.');
       } catch(e){ this.notify(e.message,false); }
     },
-    copyText(t){ try { navigator.clipboard.writeText(t); this.notify('복사되었습니다.'); } catch(e){ this.notify('복사 실패 — 직접 선택해 복사하세요.', false); } },
+    async copyText(t){ const ok=await this.doCopy(t); this.notify(ok ? '복사되었습니다.' : '복사 실패 — 직접 선택해 복사하세요.', ok); },
+    async doCopy(text){
+      // HTTPS면 clipboard API, 아니면(http/내부IP) execCommand 폴백
+      if (navigator.clipboard && window.isSecureContext){
+        try { await navigator.clipboard.writeText(text); return true; } catch(e){}
+      }
+      try {
+        const ta=document.createElement('textarea'); ta.value=text;
+        ta.style.position='fixed'; ta.style.top='0'; ta.style.left='-9999px'; ta.setAttribute('readonly','');
+        document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+        const ok=document.execCommand('copy'); document.body.removeChild(ta); return ok;
+      } catch(e){ return false; }
+    },
     openConvert(r){
       this.convertingLead = r;
       this.convertError = '';
