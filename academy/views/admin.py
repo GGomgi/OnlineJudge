@@ -2809,10 +2809,15 @@ class DashboardAdminAPI(APIView):
             rq = rq.filter(lead__branch_id=bid)
         reservations = []
         for rv in rq.order_by("scheduled_at"):
+            try:
+                edits = _json.loads(rv.edit_log) if rv.edit_log else []
+            except (ValueError, TypeError):
+                edits = []
             reservations.append({
                 "id": rv.id, "lead_id": rv.lead_id, "time": _hm_kst(rv.scheduled_at),
                 "student_name": rv.lead.student_name, "parent_name": rv.lead.parent_name,
-                "branch": (rv.lead.branch.name if rv.lead.branch_id else ""), "note": rv.note})
+                "branch": (rv.lead.branch.name if rv.lead.branch_id else ""), "note": rv.note,
+                "edits": edits})
         WD = ["월", "화", "수", "목", "금", "토", "일"]
         return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
                              "total": len(lessons), "present": len(att), "reservations": reservations})

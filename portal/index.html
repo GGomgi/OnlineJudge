@@ -543,6 +543,7 @@
           <li v-for="rv in dashReservations" :key="rv.id" class="flex items-center gap-2 py-1.5 text-sm">
             <span class="font-mono text-amber-700 w-14 shrink-0">{{ rv.time }}</span>
             <span class="font-medium whitespace-nowrap">{{ rv.student_name }}</span>
+            <span v-if="rv.edits && rv.edits.length" @mouseenter="showResvEditPop(rv,$event)" @mouseleave="hideResvEditPop" class="text-[11px] text-amber-500 cursor-help shrink-0">✎{{ rv.edits.length }}</span>
             <span class="text-xs text-slate-400 whitespace-nowrap">· 학부모 {{ rv.parent_name }}</span>
             <span v-if="showBranchCol" class="text-xs text-slate-400 whitespace-nowrap">· {{ rv.branch }}</span>
             <span v-if="rv.note" class="text-xs text-slate-500 ml-2 truncate">{{ rv.note }}</span>
