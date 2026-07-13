@@ -2112,9 +2112,19 @@
           <div v-if="msgEdit" class="space-y-2">
             <div class="text-xs font-semibold text-slate-500">{{ msgEditForm.id ? '템플릿 수정' : '새 템플릿' }}</div>
             <input v-model="msgEditForm.title" placeholder="제목" class="input py-1" />
-            <select v-model="msgEditForm.group_id" class="input py-1 text-sm"><option :value="null">그룹 없음</option><option v-for="g in msgtplGroups" :key="g.id" :value="g.id">{{ g.name }}</option></select>
-            <textarea v-model="msgEditForm.body" rows="6" placeholder="본문. 변수는 {학생이름} 처럼 중괄호로." class="input text-sm"></textarea>
-            <p class="text-[11px] text-slate-400">자동 변수: {{ msgAutoVarHint }} · 그 외 {토큰}은 작성 시 직접 입력</p>
+            <select :value="msgEditForm.group_id" @change="onMsgGroupSelect($event.target.value)" class="input py-1 text-sm">
+              <option :value="null">그룹 없음</option>
+              <option v-for="g in msgtplGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+              <option value="__new__">+ 새 그룹 생성</option>
+            </select>
+            <textarea ref="msgBodyEdit" v-model="msgEditForm.body" rows="6" placeholder="본문. 변수는 {학생이름} 처럼 중괄호로." class="input text-sm"></textarea>
+            <!-- 변수 버튼(커서에 삽입) -->
+            <div class="flex flex-wrap gap-1">
+              <button v-for="v in msgAutoVars" :key="v" type="button" @mousedown.prevent="insertMsgVar(v)" class="text-[11px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100">{{ '{'+v+'}' }}</button>
+              <button v-for="v in msgCustomVars" :key="'c'+v" type="button" @mousedown.prevent="insertMsgVar(v)" class="text-[11px] px-2 py-1 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200">{{ '{'+v+'}' }}</button>
+              <button type="button" @mousedown.prevent="addCustomVar" class="text-[11px] px-2 py-1 rounded-full border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50">+ 변수 추가</button>
+            </div>
+            <p class="text-[11px] text-slate-400">초록=자동 변수(학생 연결 시 자동), 회색=직접 입력 변수. 버튼을 누르면 커서 위치에 삽입됩니다.</p>
             <div class="flex justify-end gap-2">
               <button @click="msgEdit=false" class="btn-secondary text-xs">취소</button>
               <button @click="saveMsgTemplate" class="btn-primary text-xs">저장</button>
@@ -2641,7 +2651,7 @@ createApp({
       enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', consent_privacy:false, consent_guardian_name:'' },
       esig: { drawing:false, ctx:null, hasInk:false },
       msgtplGroups: [], msgtplGroupId: null, msgtplList: [], msgSel: null, msgEdit: false, msgEditForm: { id:null, group_id:null, title:'', body:'' },
-      msgBody: '', msgVars: {}, msgStudent: null, msgStuQ: '', msgStuOpen: false,
+      msgBody: '', msgVars: {}, msgStudent: null, msgStuQ: '', msgStuOpen: false, msgCustomVars: [],
       dbView: 'list', dbList: [], dbDetail: null, dbForm: { id:null, title:'', body:'' }, dbComment: '', _dbEditor: null, _dbViewer: null,
       notiOpen: false, notiUnread: 0, notiList: [], _notiTimer: null,
       msgBox: 'inbox', msgList: [], msgCompose: false, msgForm: { recipient_id:null, body:'' }, msgUnread: 0, msgExpand: {}, msgPickerOpen: false,
@@ -2753,6 +2763,7 @@ createApp({
     leadParentNameRequired(){ return !this.me; },  // 학부모(로그아웃) 직접 작성 시에만 필수
     minOptions(){ const out=[]; for(let m=0;m<60;m+=5) out.push(String(m).padStart(2,'0')); return out; },
     devStatusList(){ return ['CONFIRMED','REVIEWING','IN_PROGRESS','DONE'].map(v=>({v,label:DEV_STATUS[v].label})); },
+    msgAutoVars(){ return MSG_AUTO_VARS; },
     msgAutoVarHint(){ return MSG_AUTO_VARS.map(v=>'{'+v+'}').join(' '); },
     msgTokens(){ const set=[]; const re=/\{([^}]+)\}/g; let m; while((m=re.exec(this.msgBody||''))){ if(!set.includes(m[1])) set.push(m[1]); } return set; },
     msgStuList(){ const q=(this.msgStuQ||'').trim().toLowerCase(); if(!q) return []; return (this.students||[]).filter(s=>((s.real_name||'')+' '+(s.enroll_no||'')+' '+(s.username||'')).toLowerCase().includes(q)).slice(0,20); },
@@ -3964,8 +3975,20 @@ createApp({
     async addMsgGroup(){ const n=prompt('그룹 이름 (예: 방학안내)'); if(!n||!n.trim()) return; try { await api('POST','/api/admin/academy/msg_group', { name:n.trim() }); this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
     async renameMsgGroup(){ const g=this.msgtplGroups.find(x=>x.id===this.msgtplGroupId); if(!g) return; const n=prompt('그룹 이름', g.name); if(!n||!n.trim()) return; try { await api('POST','/api/admin/academy/msg_group', { id:g.id, name:n.trim() }); this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
     async deleteMsgGroup(){ if(!confirm('이 그룹과 안의 템플릿을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/msg_group?id='+this.msgtplGroupId); this.msgtplGroupId=null; this.msgSel=null; this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
-    newMsgTemplate(){ this.msgEdit=true; this.msgEditForm={ id:null, group_id:this.msgtplGroupId, title:'', body:'' }; },
-    editMsgTemplate(t){ this.msgEdit=true; this.msgEditForm={ id:t.id, group_id:t.group_id, title:t.title, body:t.body }; },
+    newMsgTemplate(){ this.msgEdit=true; this.msgEditForm={ id:null, group_id:this.msgtplGroupId, title:'', body:'' }; this._syncCustomVars(); },
+    editMsgTemplate(t){ this.msgEdit=true; this.msgEditForm={ id:t.id, group_id:t.group_id, title:t.title, body:t.body }; this._syncCustomVars(); },
+    _syncCustomVars(){ const set=[]; const re=/\{([^}]+)\}/g; let m; while((m=re.exec(this.msgEditForm.body||''))){ if(!MSG_AUTO_VARS.includes(m[1]) && !set.includes(m[1])) set.push(m[1]); } this.msgCustomVars=set; },
+    async onMsgGroupSelect(v){
+      if (v==='__new__'){ const n=prompt('새 그룹 이름 (예: 방학안내)'); if(!n||!n.trim()) return; try { const d=await api('POST','/api/admin/academy/msg_group', { name:n.trim() }); await this.loadMsgtpl(); this.msgtplGroupId=this.msgtplGroupId; this.msgEditForm.group_id=d.id; this.notify('그룹이 생성되었습니다.'); } catch(e){ this.notify(e.message,false); } return; }
+      this.msgEditForm.group_id = v ? Number(v) : null;
+    },
+    insertMsgVar(name){
+      const tok='{'+name+'}'; const el=this.$refs.msgBodyEdit; const b=this.msgEditForm.body||'';
+      if(!el){ this.msgEditForm.body = b + tok; }
+      else { const s=el.selectionStart??b.length, e=el.selectionEnd??b.length; this.msgEditForm.body = b.slice(0,s)+tok+b.slice(e); this.$nextTick(()=>{ el.focus(); const p=s+tok.length; el.setSelectionRange(p,p); }); }
+      if(!MSG_AUTO_VARS.includes(name) && !this.msgCustomVars.includes(name)) this.msgCustomVars.push(name);
+    },
+    addCustomVar(){ const k=prompt('변수 이름 (중괄호 없이, 예: 금액)'); if(!k||!k.trim()) return; const key=k.trim().replace(/[{}]/g,''); this.insertMsgVar(key); },
     async saveMsgTemplate(){ const f=this.msgEditForm; if(!(f.title||'').trim()) return this.notify('제목을 입력하세요.', false); try { const d=await api('POST','/api/admin/academy/msg_template', { id:f.id, group_id:f.group_id, title:f.title, body:f.body }); this.msgEdit=false; await this.loadMsgTemplates(); const t=this.msgtplList.find(x=>x.id===d.id); if(t) this.selectMsgTemplate(t); this.notify('저장되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async deleteMsgTemplate(t){ if(!confirm('이 템플릿을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/msg_template?id='+t.id); this.msgSel=null; this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
     selectMsgTemplate(t){ this.msgSel=t; this.msgEdit=false; this.msgBody=t.body||''; this.msgStudent=null; this.msgStuQ=''; this.msgVars={}; this.syncMsgVars(); },
