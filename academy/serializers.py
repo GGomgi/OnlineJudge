@@ -339,9 +339,12 @@ class LeadSerializer(serializers.ModelSerializer):
                 edits = _je.loads(r.edit_log) if r.edit_log else []
             except (ValueError, TypeError):
                 edits = []
-            out.append({"id": r.id, "scheduled_at": r.scheduled_at.isoformat() if r.scheduled_at else None,
+            from datetime import timedelta as _td
+            sched_kst = (r.scheduled_at + _td(hours=9)).strftime("%Y-%m-%dT%H:%M") if r.scheduled_at else None
+            created_kst = (r.create_time + _td(hours=9)).strftime("%Y-%m-%dT%H:%M") if r.create_time else None
+            out.append({"id": r.id, "scheduled_at": sched_kst,
                         "note": r.note, "created_by": self._name(r.created_by),
-                        "created_at": r.create_time.isoformat() if r.create_time else None,
+                        "created_at": created_kst,
                         "is_past": bool(r.scheduled_at and r.scheduled_at < now()),
                         "edits": edits})
         return out
