@@ -361,36 +361,36 @@
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="lbl">학부모 이름</label>
+            <label class="lbl">학부모 이름 <span v-if="leadReq" class="text-rose-500">*</span></label>
             <input v-model="leadForm.parent_name" class="input" />
           </div>
           <div>
-            <label class="lbl">학부모 연락처</label>
+            <label class="lbl">학부모 연락처 <span v-if="leadReq" class="text-rose-500">*</span></label>
             <input :value="leadForm.parent_phone" @input="leadForm.parent_phone = formatPhone($event.target.value)"
                    inputmode="numeric" class="input" placeholder="010-0000-0000" />
           </div>
         </div>
         <div>
-          <label class="lbl">자녀 이름</label>
+          <label class="lbl">자녀 이름 <span v-if="leadReq" class="text-rose-500">*</span></label>
           <input v-model="leadForm.student_name" class="input" />
         </div>
         <div class="grid grid-cols-3 gap-2">
           <div>
-            <label class="lbl">학교 구분</label>
+            <label class="lbl">학교 구분 <span v-if="leadReq" class="text-rose-500">*</span></label>
             <select v-model="leadForm.school_type" class="input px-2">
               <option value="">선택</option>
               <option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
           </div>
           <div>
-            <label class="lbl">학교 이름</label>
+            <label class="lbl">학교 이름 <span v-if="leadReq" class="text-rose-500">*</span></label>
             <div class="flex items-center gap-1">
               <input v-model="leadForm.school_name" class="input px-2 min-w-0" />
               <span v-if="schoolSuffix(leadForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(leadForm.school_type) }}</span>
             </div>
           </div>
           <div>
-            <label class="lbl">학년</label>
+            <label class="lbl">학년 <span v-if="leadReq" class="text-rose-500">*</span></label>
             <div class="flex items-center gap-1">
               <input v-model="leadForm.grade" class="input px-2 min-w-0 w-12" />
               <span class="text-xs text-slate-400 whitespace-nowrap">학년</span>
@@ -398,7 +398,7 @@
           </div>
         </div>
         <div>
-          <label class="lbl">학생의 목표</label>
+          <label class="lbl">학생의 목표 <span v-if="leadReq" class="text-rose-500">*</span></label>
           <select v-model="leadForm.purpose" class="input">
             <option value="">선택 안 함</option>
             <option v-for="o in (options.counseling_purpose||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
@@ -2808,6 +2808,7 @@ createApp({
     },
     leadFixedBranchName(){ const b = this.branches.find(x => x.id === this.leadForm.branch_id); return b ? b.name : ''; },
     leadParentNameRequired(){ return !this.me; },  // 학부모(로그아웃) 직접 작성 시에만 필수
+    leadReq(){ return !this.isStaff; },  // 직원 아님(비로그인·학부모=신청자 직접) → 전 항목 필수
     minOptions(){ const out=[]; for(let m=0;m<60;m+=5) out.push(String(m).padStart(2,'0')); return out; },
     devStatusList(){ return ['CONFIRMED','REVIEWING','IN_PROGRESS','DONE'].map(v=>({v,label:DEV_STATUS[v].label})); },
     msgAutoVars(){ return MSG_AUTO_VARS; },
@@ -3790,8 +3791,18 @@ createApp({
     async submitLead(){
       try {
         const f = this.leadForm;
-        // 학생/보호자 정보는 모두 선택사항. 접수 라우팅 위해 지점만 필요.
         if (!f.branch_id) return this.notify('지점을 선택하세요.', false);
+        // 직원 작성=선택사항 / 비로그인·학부모(신청자 직접 작성)=전 항목 필수
+        if (this.leadReq){
+          if (!(f.parent_name||'').trim()) return this.notify('학부모 이름을 입력하세요.', false);
+          if (!(f.parent_phone||'').trim()) return this.notify('학부모 연락처를 입력하세요.', false);
+          if (!(f.student_name||'').trim()) return this.notify('자녀 이름을 입력하세요.', false);
+          if (!f.school_type) return this.notify('학교 구분을 선택하세요.', false);
+          if (!(f.school_name||'').trim()) return this.notify('학교 이름을 입력하세요.', false);
+          if (!String(f.grade||'').trim()) return this.notify('학년을 입력하세요.', false);
+          if (!f.purpose) return this.notify('학생의 목표를 선택하세요.', false);
+          if (this.optAllowCustom('counseling_purpose', f.purpose) && !(f.purpose_detail||'').trim()) return this.notify('학생의 목표를 직접 입력해주세요.', false);
+        }
         await api('POST','/api/academy/lead', f);
         this.notify('상담 신청이 접수되었습니다.');
         this.leadForm = { branch_id:this.savedLeadBranch(), parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };

@@ -149,7 +149,17 @@ class LeadCreateAPI(APIView):
         branch = Branch.objects.filter(id=data["branch_id"], is_active=True).first()
         if not branch:
             return self.error("Invalid branch")
-        # 학생/보호자 정보는 모두 선택. 정보 없이도 접수 가능.
+        # 직원(로그인) 작성=선택사항. 무로그인(신청자 직접 작성)=전 항목 필수.
+        is_staff = bool(getattr(request.user, "is_authenticated", False)) and _is_staff_user(request.user)
+        if not is_staff:
+            required = [("parent_name", "학부모 이름"), ("parent_phone", "학부모 연락처"),
+                        ("student_name", "자녀 이름"), ("school_type", "학교 구분"),
+                        ("school_name", "학교 이름"), ("grade", "학년"), ("purpose", "학생의 목표")]
+            for f, label in required:
+                if not (data.get(f) or "").strip():
+                    return self.error(label + "을(를) 입력해 주세요.")
+            if data.get("purpose") == "ETC" and not (data.get("purpose_detail") or "").strip():
+                return self.error("학생의 목표를 직접 입력해 주세요.")
         Lead.objects.create(
             branch=branch,
             parent_name=(data.get("parent_name") or "").strip(),
