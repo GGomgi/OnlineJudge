@@ -3095,6 +3095,27 @@ createApp({
       if (key!==this.tab && this.isDirty() && !this.confirmLeave()) return;
       if (key!==this.tab){ this.convertingLead=null; this.showLeadForm=false; this.noteText=''; }
       this.tab = key; this.flash.msg=''; this.onTab(key);
+      this._syncTabUrl(key);
+    },
+    // ── 상위 탭 URL 라우팅(History API) ──
+    _tabValid(key){ return this.tabs.some(t=>t.key===key); },
+    _syncTabUrl(key, replace){
+      try {
+        const u = new URL(location.href);
+        if (u.searchParams.get('tab') === key && !replace) return;
+        u.searchParams.set('tab', key); u.searchParams.delete('enroll');
+        const url = u.pathname + u.search + u.hash;
+        if (replace) history.replaceState({ tab:key }, '', url);
+        else history.pushState({ tab:key }, '', url);
+      } catch(e){}
+    },
+    onPopTab(){
+      if (this.enrollMode || !this.me) return;
+      const key = new URL(location.href).searchParams.get('tab');
+      if (!key || key===this.tab || !this._tabValid(key)) return;
+      if (this.isDirty() && !this.confirmLeave()){ this._syncTabUrl(this.tab, true); return; }
+      this.convertingLead=null; this.showLeadForm=false; this.noteText='';
+      this.tab = key; this.flash.msg=''; this.onTab(key);
     },
     // ── 작성 중 이탈 방지 ──
     leadFormDirty(){
@@ -3735,8 +3756,12 @@ createApp({
       await this.loadOptions();
       this.leadForm.branch_id = this.savedLeadBranch();
       if (this.me) { await this.loadMyProfile(); if (this.isStaff) await this.loadStaffProfile(); }
-      this.tab = this.me ? this.tabs[0].key : 'login';
-      this.onTab(this.tab);
+      let initial = this.me ? this.tabs[0].key : 'login';
+      const urlTab = new URL(location.href).searchParams.get('tab');
+      if (this.me && urlTab && this._tabValid(urlTab)) initial = urlTab;
+      this.tab = initial; this.onTab(initial);
+      if (this.me) this._syncTabUrl(initial, true);
+      window.addEventListener('popstate', ()=> this.onPopTab());
       if (this.me && this.isStaff) this.startNotiPoll();
     },
     async login(){
@@ -3747,7 +3772,7 @@ createApp({
         this.onboardingDismissed = false;
         if (this.isStaff) await this.loadStaffProfile();
         this.notify('로그인되었습니다.');
-        this.tab = this.tabs[0].key; this.onTab(this.tab);
+        this.tab = this.tabs[0].key; this.onTab(this.tab); this._syncTabUrl(this.tab);
         if (this.isStaff) this.startNotiPoll();
       } catch(e){ this.notify(e.message, false); }
     },
