@@ -240,21 +240,17 @@ class MarkAttendanceSerializer(serializers.Serializer):
 # ── 상담 신청(리드) → 등록 전환 (80) ──
 
 class LeadCreateSerializer(serializers.Serializer):
+    # 접수 라우팅 위해 지점만 필요. 그 외 학생/보호자 정보는 모두 선택.
     branch_id = serializers.IntegerField()
     parent_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
-    parent_phone = serializers.CharField(max_length=32)
-    student_name = serializers.CharField(max_length=64)
+    parent_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    student_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
     school_type = serializers.CharField(max_length=16, required=False, allow_blank=True)
     school_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
     grade = serializers.CharField(max_length=16, required=False, allow_blank=True)
     interest = serializers.CharField(required=False, allow_blank=True)
-    purpose = serializers.ChoiceField(choices=COUNSELING_PURPOSES)
+    purpose = serializers.ChoiceField(choices=COUNSELING_PURPOSES, required=False, allow_blank=True)
     purpose_detail = serializers.CharField(max_length=255, required=False, allow_blank=True)
-
-    def validate(self, attrs):
-        if attrs.get("purpose") == "ETC" and not (attrs.get("purpose_detail") or "").strip():
-            raise serializers.ValidationError("직접 입력 시 상담 목적 내용을 적어주세요.")
-        return attrs
 
 
 class CounselingLogSerializer(serializers.ModelSerializer):
