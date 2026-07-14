@@ -151,6 +151,23 @@
     <div v-if="resvPop.by || resvPop.created" class="mt-1 text-[11px] text-slate-400">{{ resvPop.by }}<span v-if="resvPop.created"> · {{ dt(resvPop.created) }} 작성</span></div>
   </div>
 
+  <!-- 오늘 상담 예약: 학생 정보·상담 기록 호버 -->
+  <div v-if="resvInfoPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72 pointer-events-none" :style="{ left: resvInfoPop.x+'px', top: resvInfoPop.y+'px' }">
+    <div class="font-bold text-sm">{{ resvInfoPop.rv.student_name }} <span class="text-xs font-normal text-slate-400">· 학부모 {{ resvInfoPop.rv.parent_name }}</span></div>
+    <div class="text-slate-500">{{ resvInfoPop.rv.school_name }}{{ schoolSuffix(resvInfoPop.rv.school_type) }} {{ resvInfoPop.rv.grade ? resvInfoPop.rv.grade+'학년' : '' }}</div>
+    <div class="text-slate-500">{{ resvInfoPop.rv.parent_phone || '-' }}</div>
+    <div class="mt-2 pt-2 border-t">
+      <div class="font-semibold text-slate-600 mb-1">상담 기록 {{ (resvInfoPop.rv.logs||[]).length }}</div>
+      <ul class="space-y-1 max-h-40 overflow-hidden">
+        <li v-for="(g,i) in (resvInfoPop.rv.logs||[])" :key="i">
+          <div class="text-[10px] text-slate-400">{{ channelLabel(g.channel) }} · {{ g.time }} {{ g.author }}</div>
+          <div class="whitespace-pre-wrap text-slate-600">{{ g.summary }}</div>
+        </li>
+        <li v-if="!(resvInfoPop.rv.logs||[]).length" class="text-slate-400">상담 기록 없음</li>
+      </ul>
+    </div>
+  </div>
+
   <!-- 예약 수정 이력 호버 -->
   <div v-if="resvEditPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none" :style="{ left: resvEditPop.x+'px', top: resvEditPop.y+'px' }">
     <div class="font-semibold text-amber-600">✎ 예약 수정 이력</div>
@@ -542,7 +559,7 @@
         <ul class="divide-y">
           <li v-for="rv in dashReservations" :key="rv.id" class="flex items-center gap-2 py-1.5 text-sm">
             <span class="font-mono text-amber-700 w-14 shrink-0">{{ rv.time }}</span>
-            <span class="font-medium whitespace-nowrap">{{ rv.student_name }}</span>
+            <span @click="goLeadFromResv(rv)" @mouseenter="showResvInfoPop(rv,$event)" @mouseleave="hideResvInfoPop" class="font-medium whitespace-nowrap text-indigo-600 cursor-pointer hover:underline">{{ rv.student_name }}</span>
             <span v-if="rv.edits && rv.edits.length" @mouseenter="showResvEditPop(rv,$event)" @mouseleave="hideResvEditPop" class="text-[11px] text-amber-500 cursor-help shrink-0">✎{{ rv.edits.length }}</span>
             <span class="text-xs text-slate-400 whitespace-nowrap">· 학부모 {{ rv.parent_name }}</span>
             <span v-if="showBranchCol" class="text-xs text-slate-400 whitespace-nowrap">· {{ rv.branch }}</span>
@@ -753,7 +770,7 @@
       </div>
       <div v-if="filteredLeads.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">상담 신청이 없습니다.</div>
       <div class="space-y-3">
-        <div v-for="r in pagedLeads" :key="r.id" :class="['bg-white rounded-xl shadow-sm p-4', r.is_hidden ? 'opacity-60 ring-1 ring-rose-200' : '']">
+        <div v-for="r in pagedLeads" :key="r.id" :id="'lead-'+r.id" :class="['bg-white rounded-xl shadow-sm p-4', r.is_hidden ? 'opacity-60 ring-1 ring-rose-200' : '', openLeadId===r.id ? 'ring-2 ring-indigo-300' : '']">
           <div class="flex items-start justify-between gap-3 cursor-pointer" @click="toggleLead(r)">
             <div>
               <div class="font-semibold">{{ r.student_name }}
@@ -2710,6 +2727,7 @@ createApp({
       editResvId: null, resvEdit: { date:'', ampm:'오전', hour:'', min:'00', note:'' },
       resvPop: { show:false, x:0, y:0, at:'', note:'', by:'' },
       resvEditPop: { show:false, x:0, y:0, list:[] },
+      resvInfoPop: { show:false, x:0, y:0, rv:{} },
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
       convertingLead: null, convertError: '',
@@ -4332,6 +4350,19 @@ createApp({
     },
     showResvEditPop(rv,e){ this.resvEditPop={ show:true, list:(rv.edits||[]), x:Math.min(e.clientX+12,window.innerWidth-280), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
     hideResvEditPop(){ this.resvEditPop.show=false; },
+    showResvInfoPop(rv,e){ this.resvInfoPop={ show:true, rv, x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-260) }; },
+    hideResvInfoPop(){ this.resvInfoPop.show=false; },
+    async goLeadFromResv(rv){
+      this.hideResvInfoPop();
+      this.go('leadmgr');
+      this.leadStatusSel=[]; this.leadSearch=''; this.leadSearch2='';
+      await this.loadLeads();
+      // 해당 리드가 보이는 페이지로 이동 후 펼치고 스크롤
+      const idx = this.filteredLeads.findIndex(x=>x.id===rv.lead_id);
+      if (idx>=0) this.leadPage = Math.floor(idx/Math.max(1,this.leadPageSize||20))+1;
+      this.openLeadId = rv.lead_id;
+      this.$nextTick(()=>{ const el=document.getElementById('lead-'+rv.lead_id); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); });
+    },
     nextReservation(r){ return (r.reservations||[]).find(rv => !rv.is_past) || null; },
     showResvPop(r,e){ const rv=this.nextReservation(r); if(!rv) return; this.resvPop={ show:true, at:this.dt(rv.scheduled_at), note:rv.note, by:rv.created_by||'', created:rv.created_at||'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
     hideResvPop(){ this.resvPop.show=false; },

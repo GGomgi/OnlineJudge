@@ -2801,7 +2801,8 @@ class DashboardAdminAPI(APIView):
         # 그날 상담 예약(KST 하루) — 위쪽 상담 일정 섹션용
         day_lo = _kst_to_utc(d, "00:00")
         day_hi = _kst_to_utc(d + timedelta(days=1), "00:00")
-        rq = CounselReservation.objects.select_related("lead", "lead__branch").filter(
+        rq = CounselReservation.objects.select_related("lead", "lead__branch").prefetch_related(
+            "lead__logs__author").filter(
             status="ACTIVE", scheduled_at__gte=day_lo, scheduled_at__lt=day_hi)
         if view is not None:
             rq = rq.filter(lead__branch_id__in=view)
@@ -2813,11 +2814,16 @@ class DashboardAdminAPI(APIView):
                 edits = _json.loads(rv.edit_log) if rv.edit_log else []
             except (ValueError, TypeError):
                 edits = []
+            lg = rv.lead
+            logs = [{"author": _name_of(c.author) if c.author_id else "",
+                     "channel": c.channel, "summary": c.summary, "time": str(c.create_time)[:16]}
+                    for c in lg.logs.all() if not c.is_hidden][:6]
             reservations.append({
                 "id": rv.id, "lead_id": rv.lead_id, "time": _hm_kst(rv.scheduled_at),
-                "student_name": rv.lead.student_name, "parent_name": rv.lead.parent_name,
-                "branch": (rv.lead.branch.name if rv.lead.branch_id else ""), "note": rv.note,
-                "edits": edits})
+                "student_name": lg.student_name, "parent_name": lg.parent_name,
+                "branch": (lg.branch.name if lg.branch_id else ""), "note": rv.note,
+                "school_type": lg.school_type, "school_name": lg.school_name, "grade": lg.grade,
+                "parent_phone": lg.parent_phone, "logs": logs, "edits": edits})
         WD = ["월", "화", "수", "목", "금", "토", "일"]
         return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
                              "total": len(lessons), "present": len(att), "reservations": reservations})
