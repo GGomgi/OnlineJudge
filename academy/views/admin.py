@@ -1094,23 +1094,37 @@ class LeadEditAdminAPI(APIView):
             return self.error("상담 신청이 없습니다.")
         if not can_manage_branch(request.user, lead.branch_id):
             return self.error("권한이 없습니다.")
-        fields = [("parent_name", "학부모 이름"), ("parent_phone", "학부모 연락처"),
-                  ("student_name", "자녀 이름"), ("school_type", "학교 구분"),
-                  ("school_name", "학교 이름"), ("grade", "학년"),
-                  ("purpose", "학생의 목표"), ("purpose_detail", "목표 상세"), ("interest", "문의")]
+        fields = [("parent_name", "학부모 이름", None), ("parent_phone", "학부모 연락처", None),
+                  ("student_name", "자녀 이름", None), ("school_type", "학교 구분", "school_type"),
+                  ("school_name", "학교 이름", None), ("grade", "학년", None),
+                  ("purpose", "학생의 목표", "counseling_purpose"),
+                  ("purpose_detail", "목표 상세", None), ("interest", "문의", None)]
+
+        def _disp(category, val):
+            v = (val or "").strip()
+            if not v:
+                return "(없음)"
+            if category:
+                o = OptionItem.objects.filter(category=category, value=v).first()
+                if o:
+                    return o.label
+            return v
+
         changed = []
-        for f, label in fields:
+        for f, label, cat in fields:
             if f in data:
+                oldv = getattr(lead, f)
                 newv = (data.get(f) or "").strip()
-                if getattr(lead, f) != newv:
+                if oldv != newv:
                     setattr(lead, f, newv)
-                    changed.append(label)
+                    changed.append("%s(%s▸%s)" % (label, _disp(cat, oldv), _disp(cat, newv)))
         bid = data.get("branch_id")
         if bid and bid != lead.branch_id:
             b = Branch.objects.filter(id=bid).first()
             if b and can_manage_branch(request.user, b.id):
+                oldb = lead.branch.name if lead.branch else "(없음)"
                 lead.branch = b
-                changed.append("지점")
+                changed.append("지점(%s▸%s)" % (oldb, b.name))
         if changed:
             try:
                 log = _json.loads(lead.edit_log) if lead.edit_log else []

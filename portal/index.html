@@ -783,6 +783,7 @@
             <div>
               <div class="font-semibold">{{ r.student_name }}
                 <span class="text-xs font-normal text-slate-400">· 학부모 {{ r.parent_name }}</span>
+                <button v-if="canEditBranch(r.branch && r.branch.id) && r.status!=='CONVERTED'" @click.stop="openLeadEdit(r)" class="ml-1 text-xs font-normal text-indigo-500 hover:underline">✎ 수정</button>
               </div>
               <div class="text-sm text-slate-500 mt-1">
                 {{ r.branch?.name }}<span v-if="r.school_name"> · {{ r.school_name }}{{ schoolSuffix(r.school_type) }}</span><span v-if="r.grade"> · {{ r.grade }}학년</span>
@@ -4380,6 +4381,7 @@ createApp({
       if (opening) { this.noteChannel='VISIT'; this.noteTime = this.nowParts(); this.resvForm = { date:'', ampm:'오전', hour:'', min:'00', note:'' }; }
     },
     replaceLead(updated){ const i=this.leads.findIndex(x=>x.id===updated.id); if(i>=0) this.leads.splice(i,1,updated); },
+    openLeadEdit(r){ this.openLeadId=r.id; if(this.editLeadId===r.id){ this.editLeadId=null; return; } this.startLeadEdit(r); },
     startLeadEdit(r){ if(!(this.options.school_type||[]).length) this.loadOptions(); this.editLeadId=r.id; this.leadEditForm={ parent_name:r.parent_name||'', parent_phone:r.parent_phone||'', student_name:r.student_name||'', school_type:r.school_type||'', school_name:r.school_name||'', grade:r.grade||'', purpose:r.purpose||'', purpose_detail:r.purpose_detail||'', interest:r.interest||'' }; },
     cancelLeadEdit(){ this.editLeadId=null; },
     async saveLeadEdit(r){
