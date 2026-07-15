@@ -25,7 +25,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
                       TimetableChange, StudentStatusChange, StudentCredential, StaffChangeLog, DailyAttendance,
                       AttendanceChange, LessonOccurrence, OccurrenceStatus, LessonProgress,
-                      MsgTemplateGroup, MsgTemplate)
+                      MsgTemplateGroup, MsgTemplate, FixedTemplate)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 import os as _os
 from django.conf import settings as _settings
@@ -1079,9 +1079,19 @@ class EnrollLinkAdminAPI(APIView):
         if lead.enroll_status != "SUBMITTED":
             lead.enroll_status = "SENT"
         lead.save(update_fields=["enroll_token", "enroll_token_expires", "enroll_status"])
+        path = "/portal/?enroll=" + lead.enroll_token
+        url = request.build_absolute_uri(path)
+        branch_name = lead.branch.name if lead.branch else ""
+        message = _fill_vars(_fixed_body(lead.branch_id, "enroll_link"), {
+            "지점명": branch_name, "학원명": branch_name,
+            "학생명": lead.student_name or "학생",
+            "학부모명": lead.parent_name or "학부모",
+            "링크": url,
+        })
         return self.success({"token": lead.enroll_token,
-                             "path": "/portal/?enroll=" + lead.enroll_token,
-                             "expires": str(lead.enroll_token_expires)[:16]})
+                             "path": path, "url": url,
+                             "expires": str(lead.enroll_token_expires)[:16],
+                             "message": message})
 
 
 class LeadEditAdminAPI(APIView):
@@ -2621,6 +2631,83 @@ class MsgTemplateAdminAPI(APIView):
         t.is_hidden = True
         t.save(update_fields=["is_hidden"])
         return self.success(True)
+
+
+# ── 사이트 전용 고정 문자 템플릿(용도 고정 · 지점별 내용) ──
+
+FIXED_TEMPLATE_DEFS = [
+    {
+        "key": "enroll_link",
+        "title": "등록 링크 안내",
+        "desc": "신규 등록 시 학부모에게 입회원서 작성 링크를 보낼 때 쓰는 문구.",
+        "default": (
+            "안녕하세요, {지점명}입니다.\n"
+            "{학생명} 학생의 등록을 위해 아래 입회원서를 작성해 주세요.\n\n"
+            "{링크}\n\n"
+            "작성에 어려움이 있으시면 편하게 연락 주세요. 감사합니다."
+        ),
+    },
+]
+_FIXED_DEF_MAP = {d["key"]: d for d in FIXED_TEMPLATE_DEFS}
+
+
+def _fixed_body(branch_id, key):
+    """지점별 저장된 고정 템플릿 내용. 없으면 기본 문구."""
+    ft = FixedTemplate.objects.filter(branch_id=branch_id, key=key).first()
+    if ft and ft.body:
+        return ft.body
+    d = _FIXED_DEF_MAP.get(key)
+    return d["default"] if d else ""
+
+
+def _fill_vars(body, mapping):
+    for k, v in mapping.items():
+        body = body.replace("{" + k + "}", v or "")
+    return body
+
+
+class FixedTemplateAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """지점별 고정 템플릿 목록. 열람 가능 지점 × 용도별 내용(없으면 기본)."""
+        view = viewable_branch_ids(request.user)
+        bqs = Branch.objects.all().order_by("name")
+        if view is not None:
+            bqs = bqs.filter(id__in=view)
+        out = []
+        for b in bqs:
+            can_edit = can_manage_branch(request.user, b.id)
+            tpls = []
+            for d in FIXED_TEMPLATE_DEFS:
+                ft = FixedTemplate.objects.filter(branch_id=b.id, key=d["key"]).first()
+                tpls.append({"key": d["key"], "title": d["title"], "desc": d["desc"],
+                             "body": (ft.body if (ft and ft.body) else d["default"]),
+                             "customized": bool(ft and ft.body),
+                             "updated_by": _name_of(ft.updated_by) if ft else None,
+                             "update_time": str(ft.update_time)[:16] if ft else None})
+            out.append({"branch_id": b.id, "branch_name": b.name,
+                        "can_edit": can_edit, "templates": tpls})
+        return self.success(out)
+
+    @admin_role_required
+    def put(self, request):
+        """지점 고정 템플릿 내용 수정. {branch_id, key, body}. 해당 지점 관리 권한 필요."""
+        data = request.data
+        bid = data.get("branch_id")
+        key = data.get("key")
+        if key not in _FIXED_DEF_MAP:
+            return self.error("알 수 없는 템플릿입니다.")
+        if not Branch.objects.filter(id=bid).exists():
+            return self.error("지점이 없습니다.")
+        if not can_manage_branch(request.user, bid):
+            return self.error("이 지점의 템플릿을 수정할 권한이 없습니다.")
+        ft, _ = FixedTemplate.objects.get_or_create(branch_id=bid, key=key)
+        ft.body = data.get("body") or ""
+        ft.updated_by = request.user
+        ft.save()
+        return self.success({"branch_id": bid, "key": key, "body": ft.body,
+                             "customized": bool(ft.body), "updated_by": _name_of(request.user),
+                             "update_time": str(ft.update_time)[:16]})
 
 
 # ── 개발일지(Claude Code 세션 트랜스크립트 뷰어, 본부 관리자 전용) ──

@@ -20,7 +20,8 @@ from ..views.admin import (AssignRoleAPI, StaffAdminAPI, InstructorListAPI, Staf
                            DashboardAdminAPI, AttendanceCheckAdminAPI, AttendanceNoteAdminAPI,
                            LessonStatusAdminAPI, MakeupAddAdminAPI, TimetableCalendarAPI,
                            LessonEditAdminAPI, PendingMakeupAPI, LessonAbsenceAPI,
-                           LessonProgressAdminAPI, MsgTemplateGroupAdminAPI, MsgTemplateAdminAPI)
+                           LessonProgressAdminAPI, MsgTemplateGroupAdminAPI, MsgTemplateAdminAPI,
+                           FixedTemplateAdminAPI)
 
 urlpatterns = [
     url(r"^academy/staff/?$", StaffAdminAPI.as_view(), name="academy_staff"),
@@ -79,4 +80,5 @@ urlpatterns = [
     url(r"^academy/lesson_progress/?$", LessonProgressAdminAPI.as_view(), name="academy_lesson_progress"),
     url(r"^academy/msg_group/?$", MsgTemplateGroupAdminAPI.as_view(), name="academy_msg_group"),
     url(r"^academy/msg_template/?$", MsgTemplateAdminAPI.as_view(), name="academy_msg_template"),
+    url(r"^academy/fixed_template/?$", FixedTemplateAdminAPI.as_view(), name="academy_fixed_template"),
 ]

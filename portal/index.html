@@ -932,10 +932,23 @@
                 <span v-else-if="r.enroll && r.enroll.status==='SENT'" class="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">링크 발송됨</span>
                 <button @click="genEnrollLink(r)" class="ml-auto text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-white">{{ (r.enroll && r.enroll.token) ? '링크 재발급' : '등록 링크 생성' }}</button>
               </div>
-              <div v-if="r.enroll && r.enroll.token && r.enroll.status!=='SUBMITTED'" class="mt-2 flex items-center gap-2">
-                <input :value="enrollUrl(r)" readonly class="input py-1 text-xs bg-slate-50" />
-                <button @click="copyText(enrollUrl(r))" class="text-xs px-2 py-1 rounded border border-slate-200 hover:bg-white whitespace-nowrap">복사</button>
-                <span class="text-[11px] text-slate-400 whitespace-nowrap">~{{ r.enroll.expires }}</span>
+              <div v-if="r.enroll && r.enroll.token && r.enroll.status!=='SUBMITTED'" class="mt-2 space-y-2">
+                <div class="flex items-center gap-2">
+                  <input :value="enrollUrl(r)" readonly class="input py-1 text-xs bg-slate-50" />
+                  <button @click="copyText(enrollUrl(r))" class="text-xs px-2 py-1 rounded border border-slate-200 hover:bg-white whitespace-nowrap">링크 복사</button>
+                  <span class="text-[11px] text-slate-400 whitespace-nowrap">~{{ r.enroll.expires }}</span>
+                </div>
+                <div class="bg-slate-50 rounded-lg p-2">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-[11px] text-slate-400">문자 메시지 <span class="text-slate-300">(고정 템플릿: 등록 링크 안내 · 필요 시 수정)</span></span>
+                    <button @click="r.enroll.message = buildEnrollMsg(r)" class="text-[11px] text-slate-400 hover:underline">초기화</button>
+                  </div>
+                  <textarea v-model="r.enroll.message" rows="5" class="input py-1 text-xs w-full"></textarea>
+                  <div class="flex justify-end gap-2 mt-1">
+                    <button @click="copyText(r.enroll.message)" class="text-xs px-3 py-1 rounded border border-slate-200 hover:bg-white">문자 복사</button>
+                    <button @click="sendEnrollSms(r)" class="text-xs px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">보내기</button>
+                  </div>
+                </div>
               </div>
               <div v-if="r.enroll && r.enroll.status==='SUBMITTED' && r.enroll.data" class="mt-2 text-xs bg-emerald-50 rounded-lg p-2 text-slate-600">
                 학부모 작성 완료({{ r.enroll.submitted_at }}) — 생년월일 {{ r.enroll.data.birth_date }} · 주소 {{ r.enroll.data.address || '-' }}. <b>등록 전환</b> 시 자동 채워집니다.
@@ -2156,6 +2169,30 @@
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 class="text-lg font-bold">문자 템플릿 <span class="text-sm font-normal text-slate-400">(자주 쓰는 안내문 · 변수 자동 채움)</span></h2>
       </div>
+
+      <!-- 고정 템플릿(사이트 연동 · 지점별 내용) -->
+      <div v-if="fixedTpls.length" class="bg-white rounded-xl shadow-sm p-4 mb-4 border-l-4 border-indigo-300">
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <span class="text-sm font-semibold text-indigo-700">📌 고정 템플릿</span>
+          <span class="text-xs text-slate-400">사이트 기능에 연동되는 안내 문구 · 제목(용도)은 고정, 내용은 지점별로 수정</span>
+        </div>
+        <div v-for="b in fixedTpls" :key="b.branch_id" class="border-t pt-2 mt-2">
+          <div class="text-xs font-semibold text-slate-500 mb-1">🏢 {{ b.branch_name }}<span v-if="!b.can_edit" class="ml-1 font-normal text-slate-300">(열람만)</span></div>
+          <div v-for="t in b.templates" :key="t.key" class="mb-2">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <div class="text-xs text-slate-600 font-medium">{{ t.title }} <span class="text-slate-300 font-normal">· {{ t.desc }}</span></div>
+              <span v-if="t.customized" class="text-[11px] text-slate-400">수정 {{ t.update_time }} {{ t.updated_by }}</span>
+              <span v-else class="text-[11px] text-slate-300">기본 문구 사용 중</span>
+            </div>
+            <textarea v-model="t.body" :readonly="!b.can_edit" rows="5" :class="['input py-1 text-xs w-full mt-1', b.can_edit ? '' : 'bg-slate-50 text-slate-500']"></textarea>
+            <div v-if="b.can_edit" class="flex items-center justify-end gap-2 mt-1">
+              <span class="text-[11px] text-slate-300 mr-auto">변수: {지점명} · {학생명} · {학부모명} · {링크}</span>
+              <button @click="saveFixedTpl(b,t)" class="text-xs px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">저장</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 그룹(폴더) -->
       <div class="flex items-center gap-1 flex-wrap mb-3">
         <button v-for="g in msgtplGroups" :key="g.id" @click="selectMsgGroup(g.id)" :class="['px-3 py-1.5 rounded-lg text-sm border', msgtplGroupId===g.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50']">📁 {{ g.name }}</button>
@@ -2725,6 +2762,7 @@ createApp({
       enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', consent_privacy:false, consent_guardian_name:'' },
       esig: { drawing:false, ctx:null, hasInk:false },
       msgtplGroups: [], msgtplGroupId: null, msgtplList: [], msgSel: null, msgEdit: false, msgEditForm: { id:null, group_id:null, title:'', body:'' },
+      fixedTpls: [], fixedTplMap: {}, fixedTplLoaded: false, fixedEdit: {},
       msgBody: '', msgVars: {}, msgStudent: null, msgStuQ: '', msgStuOpen: false, msgCustomVars: [],
       dbView: 'list', dbList: [], dbDetail: null, dbForm: { id:null, title:'', body:'' }, dbComment: '', _dbEditor: null, _dbViewer: null,
       notiOpen: false, notiUnread: 0, notiList: [], _notiTimer: null,
@@ -3854,9 +3892,31 @@ createApp({
       this.convertingLead = null; this.showLeadForm = false;
       if (this.isManager && this.showDeletedLeads===null) await this.loadPrefs();
       const sd = (this.isManager && this.showDeletedLeads) ? '?show_deleted=1' : '';
-      try { const d = await api('GET','/api/admin/academy/lead'+sd); this.leads = d.results || d; }
+      try {
+        const d = await api('GET','/api/admin/academy/lead'+sd); this.leads = d.results || d;
+        if (!this.fixedTplLoaded) await this.loadFixedTpls();
+        this.leads.forEach(l => { if (l.enroll && l.enroll.token && !l.enroll.message) l.enroll.message = this.buildEnrollMsg(l); });
+      }
       catch(e){ this.notify(e.message,false); }
     },
+    async loadFixedTpls(){
+      try {
+        this.fixedTpls = await api('GET','/api/admin/academy/fixed_template');
+        const m = {};
+        this.fixedTpls.forEach(b => { const t=(b.templates||[]).find(x=>x.key==='enroll_link'); if(t) m[b.branch_id]=t.body; });
+        this.fixedTplMap = m; this.fixedTplLoaded = true;
+      } catch(e){ this.fixedTplLoaded = true; }
+    },
+    buildEnrollMsg(r){
+      const bid = r.branch && r.branch.id;
+      const body = this.fixedTplMap[bid] || '안녕하세요, {지점명}입니다.\n{학생명} 학생의 등록을 위해 아래 입회원서를 작성해 주세요.\n\n{링크}\n\n감사합니다.';
+      const bn = (r.branch && r.branch.name) || '';
+      return body.replace(/{지점명}/g,bn).replace(/{학원명}/g,bn)
+                 .replace(/{학생명}/g, r.student_name||'학생')
+                 .replace(/{학부모명}/g, r.parent_name||'학부모')
+                 .replace(/{링크}/g, this.enrollUrl(r));
+    },
+    sendEnrollSms(r){ this.notify('문자 발송 기능은 준비 중입니다. 지금은 [복사] 후 문자앱에 붙여넣어 보내주세요.', false); },
     toggleLeadStatus(s){ const i=this.leadStatusSel.indexOf(s); if(i>=0) this.leadStatusSel.splice(i,1); else this.leadStatusSel.push(s); this.leadPage=1; },
     async loadPrefs(){ try { const p = await api('GET','/api/admin/academy/prefs'); this.showDeletedLeads = !!(p && p.show_deleted_leads); } catch(e){ this.showDeletedLeads=false; } },
     async toggleShowDeleted(){
@@ -4077,7 +4137,8 @@ createApp({
       }
     },
     syncMsgVars(){ const nv={ ...this.msgVars }; for(const k of this.msgTokens){ if(this.isAutoVar(k)) nv[k]=this.msgAutoValue(k, this.msgStudent); else if(nv[k]===undefined) nv[k]=''; } this.msgVars=nv; },
-    async loadMsgtpl(){ if(!this.students.length) this.loadStudents(); try { this.msgtplGroups = await api('GET','/api/admin/academy/msg_group'); if(!this.msgtplGroupId && this.msgtplGroups.length) this.msgtplGroupId=this.msgtplGroups[0].id; await this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
+    async loadMsgtpl(){ if(!this.students.length) this.loadStudents(); this.fixedTplLoaded=false; this.loadFixedTpls(); try { this.msgtplGroups = await api('GET','/api/admin/academy/msg_group'); if(!this.msgtplGroupId && this.msgtplGroups.length) this.msgtplGroupId=this.msgtplGroups[0].id; await this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
+    async saveFixedTpl(b, t){ try { const d = await api('PUT','/api/admin/academy/fixed_template', { branch_id:b.branch_id, key:t.key, body:t.body }); t.customized=d.customized; t.updated_by=d.updated_by; t.update_time=d.update_time; if(t.key==='enroll_link') this.fixedTplMap[b.branch_id]=t.body; this.notify(b.branch_name+' 고정 템플릿이 저장되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async loadMsgTemplates(){ if(!this.msgtplGroupId){ this.msgtplList=[]; return; } try { this.msgtplList = await api('GET','/api/admin/academy/msg_template?group_id='+this.msgtplGroupId); } catch(e){ this.msgtplList=[]; } },
     selectMsgGroup(id){ this.msgtplGroupId=id; this.msgSel=null; this.msgEdit=false; this.loadMsgTemplates(); },
     async addMsgGroup(){ const n=prompt('그룹 이름 (예: 방학안내)'); if(!n||!n.trim()) return; try { await api('POST','/api/admin/academy/msg_group', { name:n.trim() }); this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
@@ -4466,8 +4527,8 @@ createApp({
     enrollUrl(r){ return location.origin + (r.enroll ? r.enroll.path : ''); },
     async genEnrollLink(r){
       try { const d = await api('POST','/api/admin/academy/lead/enroll_link', { lead_id:r.id });
-        r.enroll = { ...(r.enroll||{}), status:(r.enroll&&r.enroll.status==='SUBMITTED')?'SUBMITTED':'SENT', token:d.token, path:d.path, expires:d.expires };
-        this.notify('등록 링크가 생성되었습니다. 학부모에게 전달하세요.');
+        r.enroll = { ...(r.enroll||{}), status:(r.enroll&&r.enroll.status==='SUBMITTED')?'SUBMITTED':'SENT', token:d.token, path:d.path, expires:d.expires, message:d.message };
+        this.notify('등록 링크가 생성되었습니다. 아래 문자를 복사해 학부모에게 전달하세요.');
       } catch(e){ this.notify(e.message,false); }
     },
     async copyText(t){ const ok=await this.doCopy(t); this.notify(ok ? '복사되었습니다.' : '복사 실패 — 직접 선택해 복사하세요.', ok); },

@@ -575,6 +575,21 @@ class MsgTemplate(models.Model):
         ordering = ["order", "id"]
 
 
+class FixedTemplate(models.Model):
+    """사이트 전용 고정 문자 템플릿(용도별, 지점별 내용). 제목(용도)은 코드로 고정,
+    내용만 지점 원장이 자기 지점 것을 수정(본부는 전 지점). 예: 등록 링크 안내."""
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="fixed_templates")
+    key = models.CharField(max_length=32)   # 용도 키(enroll_link 등)
+    body = models.TextField(blank=True, default="")
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_fixed_template"
+        unique_together = ("branch", "key")
+
+
 class Message(models.Model):
     """직원 간 1:1 쪽지. 보낸/받은 각 측에서 소프트삭제(상대에겐 영향 없음)."""
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
