@@ -572,6 +572,7 @@
             <span class="text-xs text-slate-400 whitespace-nowrap">· 학부모 {{ rv.parent_name }}</span>
             <span v-if="showBranchCol" class="text-xs text-slate-400 whitespace-nowrap">· {{ rv.branch }}</span>
             <span v-if="rv.note" class="text-xs text-slate-500 ml-2 truncate">{{ rv.note }}</span>
+            <button @click="editLeadFromResv(rv)" class="ml-auto shrink-0 text-xs text-indigo-500 hover:underline">✎ 수정</button>
           </li>
         </ul>
       </div>
@@ -4431,6 +4432,11 @@ createApp({
       if (idx>=0) this.leadPage = Math.floor(idx/Math.max(1,this.leadPageSize||20))+1;
       this.openLeadId = rv.lead_id;
       this.$nextTick(()=>{ const el=document.getElementById('lead-'+rv.lead_id); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); });
+    },
+    async editLeadFromResv(rv){
+      await this.goLeadFromResv(rv);
+      const lead = this.leads.find(x=>x.id===rv.lead_id);
+      if (lead) this.startLeadEdit(lead);
     },
     nextReservation(r){ return (r.reservations||[]).find(rv => !rv.is_past) || null; },
     showResvPop(r,e){ const rv=this.nextReservation(r); if(!rv) return; this.resvPop={ show:true, at:this.dt(rv.scheduled_at), note:rv.note, by:rv.created_by||'', created:rv.created_at||'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
