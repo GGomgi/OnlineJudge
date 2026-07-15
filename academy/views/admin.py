@@ -1084,6 +1084,45 @@ class EnrollLinkAdminAPI(APIView):
                              "expires": str(lead.enroll_token_expires)[:16]})
 
 
+class LeadEditAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """상담(리드) 기본 정보 수정 + 변경 이력. {lead_id, ...필드}"""
+        data = request.data
+        lead = Lead.objects.filter(id=data.get("lead_id")).first()
+        if not lead:
+            return self.error("상담 신청이 없습니다.")
+        if not can_manage_branch(request.user, lead.branch_id):
+            return self.error("권한이 없습니다.")
+        fields = [("parent_name", "학부모 이름"), ("parent_phone", "학부모 연락처"),
+                  ("student_name", "자녀 이름"), ("school_type", "학교 구분"),
+                  ("school_name", "학교 이름"), ("grade", "학년"),
+                  ("purpose", "학생의 목표"), ("purpose_detail", "목표 상세"), ("interest", "문의")]
+        changed = []
+        for f, label in fields:
+            if f in data:
+                newv = (data.get(f) or "").strip()
+                if getattr(lead, f) != newv:
+                    setattr(lead, f, newv)
+                    changed.append(label)
+        bid = data.get("branch_id")
+        if bid and bid != lead.branch_id:
+            b = Branch.objects.filter(id=bid).first()
+            if b and can_manage_branch(request.user, b.id):
+                lead.branch = b
+                changed.append("지점")
+        if changed:
+            try:
+                log = _json.loads(lead.edit_log) if lead.edit_log else []
+            except (ValueError, TypeError):
+                log = []
+            log.append({"time": str(now())[:16], "by": _name_of(request.user),
+                        "changes": ", ".join(changed)})
+            lead.edit_log = _json.dumps(log, ensure_ascii=False)
+            lead.save()
+        return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
+
+
 class CounselingNoteAdminAPI(APIView):
     @validate_serializer(AddCounselingNoteSerializer)
     @admin_role_required

@@ -281,6 +281,7 @@ class Lead(models.Model):
     enroll_status = models.CharField(max_length=16, blank=True, default="")  # ''(없음)/SENT/SUBMITTED
     enroll_data = models.TextField(blank=True, default="")  # 학부모 제출 인적사항·동의(JSON)
     enroll_submitted_at = models.DateTimeField(null=True, blank=True)
+    edit_log = models.TextField(blank=True, default="")  # 기본정보 수정 이력 JSON [{time,by,changes}]
     is_hidden = models.BooleanField(default=False)  # 소프트 삭제(숨김, 본부만 조회)
     deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
