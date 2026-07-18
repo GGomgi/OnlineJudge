@@ -2589,6 +2589,13 @@ class MsgTemplateGroupAdminAPI(APIView):
         MsgTemplate.objects.filter(group=g).update(is_hidden=True)
         return self.success(True)
 
+    @admin_role_required
+    def put(self, request):
+        """그룹 순서 재정렬. {ids:[...]} 순서대로 0,1,2…"""
+        for idx, gid in enumerate(request.data.get("ids") or []):
+            MsgTemplateGroup.objects.filter(id=gid).update(order=idx)
+        return self.success(True)
+
 
 class MsgTemplateAdminAPI(APIView):
     @admin_role_required
@@ -2661,6 +2668,13 @@ class MsgTemplateAdminAPI(APIView):
         else:
             t.is_hidden = True
         t.save(update_fields=["is_hidden"])
+        return self.success(True)
+
+    @admin_role_required
+    def put(self, request):
+        """템플릿 순서 재정렬. {ids:[...]} 순서대로 0,1,2…"""
+        for idx, tid in enumerate(request.data.get("ids") or []):
+            MsgTemplate.objects.filter(id=tid).update(order=idx)
         return self.success(True)
 
 

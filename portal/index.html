@@ -176,7 +176,7 @@
   </div>
 
   <!-- 문자 템플릿 수정 이력 호버(원장+) -->
-  <div v-if="msgEditPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72 pointer-events-none" :style="{ left: msgEditPop.x+'px', top: msgEditPop.y+'px' }">
+  <div v-if="msgEditPop.show" @mouseenter="keepMsgEditPop" @mouseleave="hideMsgEditPop" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72" :style="{ left: msgEditPop.x+'px', top: msgEditPop.y+'px' }">
     <div class="font-semibold text-amber-600 mb-1">✎ 수정 이력</div>
     <ul class="space-y-1.5 max-h-64 overflow-auto">
       <li v-for="(e,i) in msgEditPop.list" :key="i" class="border-t pt-1 first:border-t-0 first:pt-0">
@@ -2186,16 +2186,24 @@
         <h2 class="text-lg font-bold">문자 템플릿 <span class="text-sm font-normal text-slate-400">(자주 쓰는 안내문 · 변수 자동 채움)</span></h2>
       </div>
 
-      <!-- 그룹(폴더) 바: 🔒 고정 그룹 + 일반 그룹 -->
-      <div class="flex items-center gap-1 flex-wrap mb-3">
+      <!-- 그룹(폴더) 바: 🔒 고정 + 🗂 전체 + 일반 그룹(드래그 정렬) -->
+      <div class="flex items-center gap-1 flex-wrap mb-2">
         <button v-if="fixedTpls.length" @click="selectFixedGroup()" :class="['px-3 py-1.5 rounded-lg text-sm border', fixedSel ? 'bg-indigo-700 text-white border-indigo-700' : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50']">🔒 고정</button>
-        <button v-for="g in msgtplGroups" :key="g.id" @click="selectMsgGroup(g.id)" :class="['px-3 py-1.5 rounded-lg text-sm border', (!fixedSel && msgtplGroupId===g.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50']">📁 {{ g.name }}</button>
+        <button @click="selectAllGroup()" :class="['px-3 py-1.5 rounded-lg text-sm border', (!fixedSel && msgAllSel) ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50']">🗂 전체</button>
+        <button v-for="(g,gi) in msgtplGroups" :key="g.id"
+                draggable="true" @dragstart="grpDragStart(gi,$event)" @dragover.prevent @drop="grpDrop(gi)" @dragend="grpDragEnd"
+                @click="selectMsgGroup(g.id)"
+                :class="['px-3 py-1.5 rounded-lg text-sm border cursor-grab active:cursor-grabbing', (!fixedSel && !msgAllSel && msgtplGroupId===g.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50', grpDragIdx===gi ? 'opacity-40' : '']">📁 {{ g.name }}</button>
         <button @click="addMsgGroup" class="px-2 py-1.5 rounded-lg text-sm border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50">+ 그룹</button>
-        <span v-if="!fixedSel && msgtplGroupId" class="ml-2 text-xs text-slate-400">
+        <span v-if="!fixedSel && !msgAllSel && msgtplGroupId" class="ml-2 text-xs text-slate-400">
           <button @click="renameMsgGroup" class="hover:underline">이름변경</button> ·
           <button @click="deleteMsgGroup" class="text-rose-400 hover:underline">그룹삭제</button>
         </span>
-        <label v-if="!fixedSel && isManager" class="ml-auto flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
+      </div>
+      <!-- 검색 + 삭제내역 -->
+      <div v-if="!fixedSel" class="flex items-center gap-2 mb-3">
+        <input v-model="msgSearch" placeholder="🔍 제목·내용 검색" class="input py-1.5 text-sm flex-1" />
+        <label v-if="isManager" class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer whitespace-nowrap">
           <input type="checkbox" v-model="msgShowHidden" @change="loadMsgTemplates" class="w-3.5 h-3.5"> 삭제내역 보기
         </label>
       </div>
@@ -2227,18 +2235,21 @@
         <!-- 템플릿 목록 -->
         <div class="bg-white rounded-xl shadow-sm divide-y">
           <div class="px-3 py-2 flex items-center justify-between">
-            <span class="text-xs font-semibold text-slate-500">템플릿</span>
-            <button @click="newMsgTemplate" class="text-xs text-indigo-600 hover:underline">+ 새 템플릿</button>
+            <span class="text-xs font-semibold text-slate-500">템플릿 <span v-if="canReorderTpl" class="font-normal text-slate-300">(드래그로 순서 변경)</span></span>
+            <button v-if="!msgAllSel" @click="newMsgTemplate" class="text-xs text-indigo-600 hover:underline">+ 새 템플릿</button>
           </div>
-          <div v-for="t in msgtplList" :key="t.id" @click="selectMsgTemplate(t)" :class="['px-3 py-2 cursor-pointer hover:bg-slate-50', msgSel && msgSel.id===t.id ? 'bg-indigo-50' : '']">
+          <div v-for="(t,ti) in msgtplShown" :key="t.id"
+               :draggable="canReorderTpl" @dragstart="tplDragStart(ti,$event)" @dragover.prevent @drop="tplDrop(ti)" @dragend="tplDragEnd"
+               @click="selectMsgTemplate(t)" :class="['px-3 py-2 cursor-pointer hover:bg-slate-50', canReorderTpl ? 'cursor-grab active:cursor-grabbing' : '', msgSel && msgSel.id===t.id ? 'bg-indigo-50' : '', tplDragIdx===ti ? 'opacity-40' : '']">
             <div class="text-sm font-medium truncate flex items-center gap-1">
               <span :class="t.is_hidden ? 'line-through text-slate-400' : ''">{{ t.title }}</span>
+              <span v-if="msgAllSel && t.group_id" class="text-[10px] px-1 rounded bg-slate-100 text-slate-500 shrink-0">{{ grpName(t.group_id) }}</span>
               <span v-if="isManager && t.edits && t.edits.length" @click.stop @mouseenter="showMsgEditPop(t,$event)" @mouseleave="hideMsgEditPop" class="text-[11px] text-amber-500 cursor-help shrink-0">✎{{ t.edits.length }}</span>
               <span v-if="t.is_hidden" class="text-[10px] px-1 rounded bg-rose-100 text-rose-600 shrink-0">삭제됨</span>
             </div>
             <div class="text-xs text-slate-400 truncate">{{ t.body }}</div>
           </div>
-          <div v-if="msgtplList.length===0" class="px-3 py-6 text-center text-xs text-slate-400">이 그룹에 템플릿이 없습니다.</div>
+          <div v-if="msgtplShown.length===0" class="px-3 py-6 text-center text-xs text-slate-400">{{ msgSearch ? '검색 결과가 없습니다.' : (msgAllSel ? '템플릿이 없습니다.' : '이 그룹에 템플릿이 없습니다.') }}</div>
         </div>
 
         <!-- 작성/편집 -->
@@ -2789,6 +2800,7 @@ createApp({
       msgtplGroups: [], msgtplGroupId: null, msgtplList: [], msgSel: null, msgEdit: false, msgEditForm: { id:null, group_id:null, title:'', body:'' },
       fixedTpls: [], fixedTplMap: {}, fixedTplLoaded: false, fixedSel: false,
       msgShowHidden: false, msgEditPop: { show:false, x:0, y:0, list:[] },
+      msgAllSel: false, msgSearch: '', grpDragIdx: null, tplDragIdx: null,
       msgBody: '', msgVars: {}, msgStudent: null, msgStuQ: '', msgStuOpen: false, msgCustomVars: [],
       dbView: 'list', dbList: [], dbDetail: null, dbForm: { id:null, title:'', body:'' }, dbComment: '', _dbEditor: null, _dbViewer: null,
       notiOpen: false, notiUnread: 0, notiList: [], _notiTimer: null,
@@ -2889,6 +2901,12 @@ createApp({
       const r = this.myProfile && this.myProfile.role;
       return ['HQ_ADMIN','HR_ADMIN','REGIONAL_MANAGER','BRANCH_MANAGER','VICE_PRINCIPAL'].includes(r);
     },
+    msgtplShown(){
+      const q = (this.msgSearch||'').trim().toLowerCase();
+      if (!q) return this.msgtplList;
+      return this.msgtplList.filter(t => (t.title||'').toLowerCase().includes(q) || (t.body||'').toLowerCase().includes(q));
+    },
+    canReorderTpl(){ return !this.msgAllSel && !(this.msgSearch||'').trim(); },
     leadCanChooseBranch(){
       // 로그아웃(학부모)·본부(전지점)·다지점 원장만 지점 선택 가능. 그 외 직원은 관리 지점 고정.
       if (!this.me) return true;
@@ -4165,12 +4183,27 @@ createApp({
     syncMsgVars(){ const nv={ ...this.msgVars }; for(const k of this.msgTokens){ if(this.isAutoVar(k)) nv[k]=this.msgAutoValue(k, this.msgStudent); else if(nv[k]===undefined) nv[k]=''; } this.msgVars=nv; },
     async loadMsgtpl(){ if(!this.students.length) this.loadStudents(); this.fixedTplLoaded=false; this.loadFixedTpls(); try { this.msgtplGroups = await api('GET','/api/admin/academy/msg_group'); if(!this.msgtplGroupId && this.msgtplGroups.length) this.msgtplGroupId=this.msgtplGroups[0].id; await this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
     async saveFixedTpl(b, t){ try { const d = await api('PUT','/api/admin/academy/fixed_template', { branch_id:b.branch_id, key:t.key, body:t.body }); t.customized=d.customized; t.updated_by=d.updated_by; t.update_time=d.update_time; if(t.key==='enroll_link') this.fixedTplMap[b.branch_id]=t.body; this.notify(b.branch_name+' 고정 템플릿이 저장되었습니다.'); } catch(e){ this.notify(e.message,false); } },
-    async loadMsgTemplates(){ if(!this.msgtplGroupId){ this.msgtplList=[]; return; } try { const sh=(this.isManager&&this.msgShowHidden)?'&show_hidden=1':''; this.msgtplList = await api('GET','/api/admin/academy/msg_template?group_id='+this.msgtplGroupId+sh); } catch(e){ this.msgtplList=[]; } },
-    selectMsgGroup(id){ this.fixedSel=false; this.msgtplGroupId=id; this.msgSel=null; this.msgEdit=false; this.loadMsgTemplates(); },
-    selectFixedGroup(){ this.fixedSel=true; this.msgSel=null; this.msgEdit=false; if(!this.fixedTplLoaded){ this.fixedTplLoaded=false; this.loadFixedTpls(); } },
+    async loadMsgTemplates(){
+      if(!this.msgAllSel && !this.msgtplGroupId){ this.msgtplList=[]; return; }
+      const q=[]; if(!this.msgAllSel) q.push('group_id='+this.msgtplGroupId); if(this.isManager&&this.msgShowHidden) q.push('show_hidden=1');
+      try { this.msgtplList = await api('GET','/api/admin/academy/msg_template'+(q.length?('?'+q.join('&')):'')); } catch(e){ this.msgtplList=[]; }
+    },
+    selectMsgGroup(id){ this.fixedSel=false; this.msgAllSel=false; this.msgtplGroupId=id; this.msgSel=null; this.msgEdit=false; this.loadMsgTemplates(); },
+    selectAllGroup(){ this.fixedSel=false; this.msgAllSel=true; this.msgSel=null; this.msgEdit=false; this.loadMsgTemplates(); },
+    selectFixedGroup(){ this.fixedSel=true; this.msgAllSel=false; this.msgSel=null; this.msgEdit=false; if(!this.fixedTplLoaded){ this.fixedTplLoaded=false; this.loadFixedTpls(); } },
+    grpName(id){ const g=this.msgtplGroups.find(x=>x.id===id); return g?g.name:''; },
+    grpDragStart(i,e){ this.grpDragIdx=i; if(e&&e.dataTransfer){ e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',String(i));}catch(_){} } },
+    grpDragEnd(){ this.grpDragIdx=null; },
+    grpDrop(i){ if(this.grpDragIdx===null||this.grpDragIdx===i){ this.grpDragIdx=null; return; } const a=this.msgtplGroups; const [m]=a.splice(this.grpDragIdx,1); a.splice(i,0,m); this.grpDragIdx=null; this.saveGroupOrder(); },
+    async saveGroupOrder(){ try{ await api('PUT','/api/admin/academy/msg_group',{ ids:this.msgtplGroups.map(g=>g.id) }); }catch(e){ this.notify(e.message,false); } },
+    tplDragStart(i,e){ if(!this.canReorderTpl) return; this.tplDragIdx=i; if(e&&e.dataTransfer){ e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',String(i));}catch(_){} } },
+    tplDragEnd(){ this.tplDragIdx=null; },
+    tplDrop(i){ if(!this.canReorderTpl||this.tplDragIdx===null||this.tplDragIdx===i){ this.tplDragIdx=null; return; } const a=this.msgtplList; const [m]=a.splice(this.tplDragIdx,1); a.splice(i,0,m); this.tplDragIdx=null; this.saveTplOrder(); },
+    async saveTplOrder(){ try{ await api('PUT','/api/admin/academy/msg_template',{ ids:this.msgtplList.map(t=>t.id) }); }catch(e){ this.notify(e.message,false); } },
     async restoreMsgTemplate(t){ try { await api('DELETE','/api/admin/academy/msg_template?id='+t.id+'&restore=1'); this.notify('복원되었습니다.'); this.msgSel=null; this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
-    showMsgEditPop(t,e){ this.msgEditPop={ show:true, list:(t.edits||[]), x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-220) }; },
-    hideMsgEditPop(){ this.msgEditPop.show=false; },
+    showMsgEditPop(t,e){ clearTimeout(this._msgEditTimer); this.msgEditPop={ show:true, list:(t.edits||[]), x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-260) }; },
+    keepMsgEditPop(){ clearTimeout(this._msgEditTimer); },
+    hideMsgEditPop(){ clearTimeout(this._msgEditTimer); this._msgEditTimer=setTimeout(()=>{ this.msgEditPop.show=false; }, 250); },
     async addMsgGroup(){ const n=prompt('그룹 이름 (예: 방학안내)'); if(!n||!n.trim()) return; try { await api('POST','/api/admin/academy/msg_group', { name:n.trim() }); this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
     async renameMsgGroup(){ const g=this.msgtplGroups.find(x=>x.id===this.msgtplGroupId); if(!g) return; const n=prompt('그룹 이름', g.name); if(!n||!n.trim()) return; try { await api('POST','/api/admin/academy/msg_group', { id:g.id, name:n.trim() }); this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
     async deleteMsgGroup(){ if(!confirm('이 그룹과 안의 템플릿을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/msg_group?id='+this.msgtplGroupId); this.msgtplGroupId=null; this.msgSel=null; this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
