@@ -18,6 +18,13 @@
 </head>
 <body class="bg-slate-100 text-slate-800">
 <div id="app" v-cloak>
+  <!-- 토스트 알림(고정 오버레이 · 본문 안 밀림) -->
+  <transition name="toast">
+    <div v-if="flash.msg" class="fixed top-4 inset-x-0 z-[100] flex justify-center px-4 pointer-events-none">
+      <div :class="['px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium pointer-events-auto max-w-md', flash.ok ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white']" @click="flash.msg=''">{{ flash.msg }}</div>
+    </div>
+  </transition>
+
   <!-- ===== 등록 링크(무로그인 원격 작성) 전용 화면 ===== -->
   <div v-if="enrollMode" class="min-h-screen bg-slate-50">
     <header class="bg-slate-900 text-white">
@@ -320,11 +327,6 @@
   </div>
 
   <main v-if="!enrollMode" class="max-w-5xl mx-auto px-4 py-6">
-    <!-- 알림 배너 -->
-    <div v-if="flash.msg" :class="['mb-4 px-4 py-3 rounded text-sm',
-        flash.ok ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200']">
-      {{ flash.msg }}
-    </div>
 
     <!-- ============ 로그인 ============ -->
     <section v-if="tab==='login'" class="max-w-sm mx-auto bg-white rounded-xl shadow-sm p-6">
@@ -3154,7 +3156,7 @@ createApp({
     },
   },
   methods: {
-    notify(msg, ok=true){ this.flash = { msg, ok }; if (ok) setTimeout(()=>{ if(this.flash.msg===msg) this.flash.msg=''; }, 3000); },
+    notify(msg, ok=true){ this.flash = { msg, ok }; setTimeout(()=>{ if(this.flash.msg===msg) this.flash.msg=''; }, ok ? 3000 : 5000); },
     roleLabel(r){ return ROLE_LABELS[r] || r; },
     attLabel(s){ return ATT_LABELS[s] || s || '-'; },
     attClass(s){ return 'px-2 py-0.5 rounded text-xs font-medium ' + (ATT_CLASS[s] || 'bg-slate-100'); },
@@ -4812,6 +4814,8 @@ createApp({
   .lbl { @apply block text-xs text-slate-400 mb-1; }
   .btn-primary { @apply px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50; }
   .btn-secondary { @apply px-3 py-2 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300; }
+  .toast-enter-active, .toast-leave-active { transition: opacity .25s ease, transform .25s ease; }
+  .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-12px); }
 </style>
 </body>
 </html>
