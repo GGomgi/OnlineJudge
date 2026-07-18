@@ -27,6 +27,12 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       AttendanceChange, LessonOccurrence, OccurrenceStatus, LessonProgress,
                       MsgTemplateGroup, MsgTemplate, FixedTemplate)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
+
+
+def _now_kst_str():
+    """현재 시각을 KST(UTC+9) 'YYYY-MM-DD HH:MM' 문자열로 반환(이력·타임스탬프 표시용).
+    컨테이너 시계·now()는 UTC이므로 사용자 표시 시각은 반드시 +9h. 새 시각 기록 시 항상 사용."""
+    return str(now() + timedelta(hours=9))[:16]
 import os as _os
 from django.conf import settings as _settings
 from utils.shortcuts import rand_str as _rand_str
@@ -1140,7 +1146,7 @@ class LeadEditAdminAPI(APIView):
                 log = _json.loads(lead.edit_log) if lead.edit_log else []
             except (ValueError, TypeError):
                 log = []
-            log.append({"time": str(now())[:16], "by": _name_of(request.user),
+            log.append({"time": _now_kst_str(), "by": _name_of(request.user),
                         "changes": ", ".join(changed)})
             lead.edit_log = _json.dumps(log, ensure_ascii=False)
             lead.save()
@@ -1271,7 +1277,7 @@ class ReservationAdminAPI(APIView):
                 log = _json.loads(r.edit_log) if r.edit_log else []
             except (ValueError, TypeError):
                 log = []
-            log.append({"time": str(now())[:16], "by": _name_of(request.user),
+            log.append({"time": _now_kst_str(), "by": _name_of(request.user),
                         "old_at": _hm_kst(r.scheduled_at) and (str((r.scheduled_at + timedelta(hours=9)).date()) + " " + _hm_kst(r.scheduled_at)),
                         "old_note": r.note})
             r.edit_log = _json.dumps(log, ensure_ascii=False)
@@ -2644,7 +2650,7 @@ class MsgTemplateAdminAPI(APIView):
                     log = _json.loads(t.edit_log) if t.edit_log else []
                 except (ValueError, TypeError):
                     log = []
-                log.append({"time": str(now())[:16], "by": _name_of(request.user), "items": items})
+                log.append({"time": _now_kst_str(), "by": _name_of(request.user), "items": items})
                 t.edit_log = _json.dumps(log, ensure_ascii=False)
         else:
             last = MsgTemplate.objects.order_by("-order").first()

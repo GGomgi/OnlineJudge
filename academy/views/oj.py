@@ -1,5 +1,6 @@
 import os
 import json as _json
+from datetime import timedelta
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
@@ -425,7 +426,7 @@ class StaffProfileUploadAPI(APIView):
         if field in STAFF_FILE_FIELDS:
             setattr(p, field, url)
             ts = _parse_json_obj(p.file_uploaded_at)
-            ts[field] = str(now())[:16]
+            ts[field] = str(now() + timedelta(hours=9))[:16]  # KST(UTC+9) 표시
             p.file_uploaded_at = _json.dumps(ts, ensure_ascii=False)
             p.save()
         elif field == "family_cert":
