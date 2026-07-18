@@ -2191,9 +2191,9 @@
         <button v-if="fixedTpls.length" @click="selectFixedGroup()" :class="['px-3 py-1.5 rounded-lg text-sm border', fixedSel ? 'bg-indigo-700 text-white border-indigo-700' : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50']">🔒 고정</button>
         <button @click="selectAllGroup()" :class="['px-3 py-1.5 rounded-lg text-sm border', (!fixedSel && msgAllSel) ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50']">🗂 전체</button>
         <button v-for="(g,gi) in msgtplGroups" :key="g.id"
-                draggable="true" @dragstart="grpDragStart(gi,$event)" @dragover.prevent="grpDragOver=gi" @drop="grpDrop(gi)" @dragend="grpDragEnd"
+                draggable="true" @dragstart="grpDragStart(gi,$event)" @dragenter.prevent="grpDragEnter(gi)" @dragover.prevent @drop.prevent @dragend="grpDragEnd"
                 @click="selectMsgGroup(g.id)"
-                :class="['px-3 py-1.5 rounded-lg text-sm border cursor-grab active:cursor-grabbing transition-transform', (!fixedSel && !msgAllSel && msgtplGroupId===g.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50', grpDragIdx===gi ? 'opacity-40 scale-95' : '', (grpDragIdx!==null && grpDragOver===gi && grpDragOver!==grpDragIdx) ? 'shadow-[inset_4px_0_0_0_#6366f1] ml-1' : '']">📁 {{ g.name }}</button>
+                :class="['px-3 py-1.5 rounded-lg text-sm border cursor-grab active:cursor-grabbing', (!fixedSel && !msgAllSel && msgtplGroupId===g.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50', grpDragIdx===gi ? 'opacity-40 border-dashed border-indigo-400 bg-indigo-50' : '']">📁 {{ g.name }}</button>
         <button @click="addMsgGroup" class="px-2 py-1.5 rounded-lg text-sm border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50">+ 그룹</button>
         <span v-if="!fixedSel && !msgAllSel && msgtplGroupId" class="ml-2 text-xs text-slate-400">
           <button @click="renameMsgGroup" class="hover:underline">이름변경</button> ·
@@ -2239,8 +2239,8 @@
             <button v-if="!msgAllSel" @click="newMsgTemplate" class="text-xs text-indigo-600 hover:underline">+ 새 템플릿</button>
           </div>
           <div v-for="(t,ti) in msgtplShown" :key="t.id"
-               :draggable="canReorderTpl" @dragstart="tplDragStart(ti,$event)" @dragover.prevent="tplDragOver=ti" @drop="tplDrop(ti)" @dragend="tplDragEnd"
-               @click="selectMsgTemplate(t)" :class="['px-3 py-2 cursor-pointer hover:bg-slate-50', canReorderTpl ? 'cursor-grab active:cursor-grabbing' : '', msgSel && msgSel.id===t.id ? 'bg-indigo-50' : '', tplDragIdx===ti ? 'opacity-40' : '', (tplDragIdx!==null && tplDragOver===ti && tplDragOver!==tplDragIdx) ? 'shadow-[inset_0_4px_0_0_#6366f1]' : '']">
+               :draggable="canReorderTpl" @dragstart="tplDragStart(ti,$event)" @dragenter.prevent="tplDragEnter(ti)" @dragover.prevent @drop.prevent @dragend="tplDragEnd"
+               @click="selectMsgTemplate(t)" :class="['px-3 py-2 cursor-pointer hover:bg-slate-50', canReorderTpl ? 'cursor-grab active:cursor-grabbing' : '', msgSel && msgSel.id===t.id ? 'bg-indigo-50' : '', tplDragIdx===ti ? 'opacity-40 border-2 border-dashed border-indigo-400 bg-indigo-50' : '']">
             <div class="text-sm font-medium truncate flex items-center gap-1">
               <span :class="t.is_hidden ? 'line-through text-slate-400' : ''">{{ t.title }}</span>
               <span v-if="msgAllSel && t.group_id" class="text-[10px] px-1 rounded bg-slate-100 text-slate-500 shrink-0">{{ grpName(t.group_id) }}</span>
@@ -2800,7 +2800,7 @@ createApp({
       msgtplGroups: [], msgtplGroupId: null, msgtplList: [], msgSel: null, msgEdit: false, msgEditForm: { id:null, group_id:null, title:'', body:'' },
       fixedTpls: [], fixedTplMap: {}, fixedTplLoaded: false, fixedSel: false,
       msgShowHidden: false, msgEditPop: { show:false, x:0, y:0, list:[] },
-      msgAllSel: false, msgSearch: '', grpDragIdx: null, tplDragIdx: null, grpDragOver: null, tplDragOver: null,
+      msgAllSel: false, msgSearch: '', grpDragIdx: null, tplDragIdx: null, grpDragMoved: false, tplDragMoved: false,
       msgBody: '', msgVars: {}, msgStudent: null, msgStuQ: '', msgStuOpen: false, msgCustomVars: [],
       dbView: 'list', dbList: [], dbDetail: null, dbForm: { id:null, title:'', body:'' }, dbComment: '', _dbEditor: null, _dbViewer: null,
       notiOpen: false, notiUnread: 0, notiList: [], _notiTimer: null,
@@ -4192,13 +4192,13 @@ createApp({
     selectAllGroup(){ this.fixedSel=false; this.msgAllSel=true; this.msgSel=null; this.msgEdit=false; this.loadMsgTemplates(); },
     selectFixedGroup(){ this.fixedSel=true; this.msgAllSel=false; this.msgSel=null; this.msgEdit=false; if(!this.fixedTplLoaded){ this.fixedTplLoaded=false; this.loadFixedTpls(); } },
     grpName(id){ const g=this.msgtplGroups.find(x=>x.id===id); return g?g.name:''; },
-    grpDragStart(i,e){ this.grpDragIdx=i; if(e&&e.dataTransfer){ e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',String(i));}catch(_){} } },
-    grpDragEnd(){ this.grpDragIdx=null; this.grpDragOver=null; },
-    grpDrop(i){ if(this.grpDragIdx===null||this.grpDragIdx===i){ this.grpDragIdx=null; this.grpDragOver=null; return; } const a=this.msgtplGroups; const [m]=a.splice(this.grpDragIdx,1); a.splice(i,0,m); this.grpDragIdx=null; this.grpDragOver=null; this.saveGroupOrder(); },
+    grpDragStart(i,e){ this.grpDragIdx=i; this.grpDragMoved=false; if(e&&e.dataTransfer){ e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',String(i));}catch(_){} } },
+    grpDragEnter(i){ if(this.grpDragIdx===null||this.grpDragIdx===i) return; const a=this.msgtplGroups; const [m]=a.splice(this.grpDragIdx,1); a.splice(i,0,m); this.grpDragIdx=i; this.grpDragMoved=true; },
+    grpDragEnd(){ if(this.grpDragMoved) this.saveGroupOrder(); this.grpDragIdx=null; this.grpDragMoved=false; },
     async saveGroupOrder(){ try{ await api('PUT','/api/admin/academy/msg_group',{ ids:this.msgtplGroups.map(g=>g.id) }); }catch(e){ this.notify(e.message,false); } },
-    tplDragStart(i,e){ if(!this.canReorderTpl) return; this.tplDragIdx=i; if(e&&e.dataTransfer){ e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',String(i));}catch(_){} } },
-    tplDragEnd(){ this.tplDragIdx=null; this.tplDragOver=null; },
-    tplDrop(i){ if(!this.canReorderTpl||this.tplDragIdx===null||this.tplDragIdx===i){ this.tplDragIdx=null; this.tplDragOver=null; return; } const a=this.msgtplList; const [m]=a.splice(this.tplDragIdx,1); a.splice(i,0,m); this.tplDragIdx=null; this.tplDragOver=null; this.saveTplOrder(); },
+    tplDragStart(i,e){ if(!this.canReorderTpl) return; this.tplDragIdx=i; this.tplDragMoved=false; if(e&&e.dataTransfer){ e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',String(i));}catch(_){} } },
+    tplDragEnter(i){ if(!this.canReorderTpl||this.tplDragIdx===null||this.tplDragIdx===i) return; const a=this.msgtplList; const [m]=a.splice(this.tplDragIdx,1); a.splice(i,0,m); this.tplDragIdx=i; this.tplDragMoved=true; },
+    tplDragEnd(){ if(this.tplDragMoved) this.saveTplOrder(); this.tplDragIdx=null; this.tplDragMoved=false; },
     async saveTplOrder(){ try{ await api('PUT','/api/admin/academy/msg_template',{ ids:this.msgtplList.map(t=>t.id) }); }catch(e){ this.notify(e.message,false); } },
     async restoreMsgTemplate(t){ try { await api('DELETE','/api/admin/academy/msg_template?id='+t.id+'&restore=1'); this.notify('복원되었습니다.'); this.msgSel=null; this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
     showMsgEditPop(t,e){ clearTimeout(this._msgEditTimer); this.msgEditPop={ show:true, list:(t.edits||[]).slice().reverse(), x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-260) }; },
