@@ -567,6 +567,7 @@ class MsgTemplate(models.Model):
     body = models.TextField(blank=True, default="")
     order = models.PositiveSmallIntegerField(default=0)
     is_hidden = models.BooleanField(default=False)
+    edit_log = models.TextField(blank=True, default="")  # 수정 이력 JSON(원장+ 열람)
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 

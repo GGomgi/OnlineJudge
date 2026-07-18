@@ -2593,42 +2593,73 @@ class MsgTemplateGroupAdminAPI(APIView):
 class MsgTemplateAdminAPI(APIView):
     @admin_role_required
     def get(self, request):
-        """템플릿 목록. ?group_id= (없으면 전체)."""
-        qs = MsgTemplate.objects.filter(is_hidden=False)
+        """템플릿 목록. ?group_id= (없으면 전체). 원장+는 ?show_hidden=1로 삭제분·수정이력 포함."""
+        manager = _is_manager(request.user)
+        show_hidden = manager and request.GET.get("show_hidden")
+        qs = MsgTemplate.objects.all()
+        if not show_hidden:
+            qs = qs.filter(is_hidden=False)
         gid = request.GET.get("group_id")
         if gid:
             qs = qs.filter(group_id=gid)
         qs = qs.order_by("order", "id")
-        return self.success([{"id": t.id, "group_id": t.group_id, "title": t.title,
-                              "body": t.body} for t in qs])
+        out = []
+        for t in qs:
+            edits = []
+            if manager and t.edit_log:
+                try:
+                    edits = _json.loads(t.edit_log)
+                except (ValueError, TypeError):
+                    edits = []
+            out.append({"id": t.id, "group_id": t.group_id, "title": t.title,
+                        "body": t.body, "is_hidden": t.is_hidden, "edits": edits})
+        return self.success(out)
 
     @admin_role_required
     def post(self, request):
-        """템플릿 추가/수정. {id?, group_id, title, body}"""
+        """템플릿 추가/수정. {id?, group_id, title, body}. 수정 시 이력 기록(누가·언제·전→후)."""
         data = request.data
         title = (data.get("title") or "").strip()
         if not title:
             return self.error("제목을 입력하세요.")
+        new_body = data.get("body") or ""
         if data.get("id"):
             t = MsgTemplate.objects.filter(id=data.get("id")).first()
             if not t:
                 return self.error("템플릿이 없습니다.")
+            items = []
+            if t.title != title:
+                items.append({"label": "제목", "old": t.title, "new": title})
+            if t.body != new_body:
+                items.append({"label": "내용", "old": t.body, "new": new_body})
+            if items:
+                try:
+                    log = _json.loads(t.edit_log) if t.edit_log else []
+                except (ValueError, TypeError):
+                    log = []
+                log.append({"time": str(now())[:16], "by": _name_of(request.user), "items": items})
+                t.edit_log = _json.dumps(log, ensure_ascii=False)
         else:
             last = MsgTemplate.objects.order_by("-order").first()
             t = MsgTemplate(order=((last.order + 1) if last else 0))
         t.group_id = data.get("group_id") or None
         t.title = title
-        t.body = data.get("body") or ""
+        t.body = new_body
         t.save()
         return self.success({"id": t.id})
 
     @admin_role_required
     def delete(self, request):
-        """템플릿 소프트삭제."""
+        """템플릿 소프트삭제. 원장+는 ?restore=1로 복원."""
         t = MsgTemplate.objects.filter(id=request.GET.get("id")).first()
         if not t:
             return self.error("템플릿이 없습니다.")
-        t.is_hidden = True
+        if request.GET.get("restore"):
+            if not _is_manager(request.user):
+                return self.error("복원 권한이 없습니다.")
+            t.is_hidden = False
+        else:
+            t.is_hidden = True
         t.save(update_fields=["is_hidden"])
         return self.success(True)
 
