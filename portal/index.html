@@ -1004,44 +1004,44 @@
           <!-- 학생/보호자 정보 (상담 정보 prefill) -->
           <div class="space-y-3">
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">학생 · 보호자 정보</div>
-            <div class="grid grid-cols-2 gap-3">
+            <!-- 1줄: 학생 성명 · 성별 · 생년월일 -->
+            <div class="grid grid-cols-3 gap-3">
               <div>
-                <label class="lbl">학생 성명 <span class="text-rose-500">*</span> <span class="text-[10px] text-slate-400">(전화상담 시 정정 가능)</span></label>
+                <label class="lbl">학생 성명 <span class="text-rose-500">*</span></label>
                 <input v-model="convertForm.student_name" class="input" />
               </div>
               <div>
                 <label class="lbl">성별 <span class="text-rose-500">*</span></label>
-                <div class="flex gap-2 pt-1">
+                <div class="flex gap-3 pt-2">
                   <label class="flex items-center gap-1 text-sm"><input type="radio" value="M" v-model="convertForm.gender"> 남</label>
                   <label class="flex items-center gap-1 text-sm"><input type="radio" value="F" v-model="convertForm.gender"> 여</label>
                 </div>
               </div>
-            </div>
-            <div class="grid grid-cols-3 gap-3">
               <div>
                 <label class="lbl">생년월일 <span class="text-rose-500">*</span></label>
                 <input v-model="convertForm.birth_date" @change="checkBirth" type="date" min="1900-01-01" :max="todayStr" class="input" />
               </div>
+            </div>
+            <!-- 2줄: 보호자 이름 · 관계 · 연락처 · 등하원 알림 -->
+            <div class="grid grid-cols-4 gap-3">
               <div>
-                <label class="lbl">보호자 이름 <span class="text-rose-500">*</span></label>
+                <label class="lbl">보호자 이름 <span v-if="!directReg" class="text-rose-500">*</span></label>
                 <input v-model="convertForm.parent_name" class="input" placeholder="보호자 성함" />
               </div>
               <div>
-                <label class="lbl">보호자 연락처</label>
+                <label class="lbl">보호자 관계 <span class="text-rose-500">*</span></label>
+                <div class="flex items-center gap-1">
+                  <select v-model="convertForm.parent_relation" class="input px-1"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+                </div>
+                <input v-if="convertForm.parent_relation==='기타'" v-model="convertForm.parent_relation_etc" placeholder="관계 직접 입력" class="input py-1 mt-1" />
+              </div>
+              <div>
+                <label class="lbl">보호자 연락처 <span class="text-rose-500">*</span></label>
                 <input :value="convertForm.parent_phone" @input="directReg && (convertForm.parent_phone = formatPhone($event.target.value))" :readonly="!directReg" inputmode="numeric" :class="['input', directReg ? '' : 'bg-slate-50']" placeholder="010-0000-0000" />
               </div>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="lbl">보호자 관계 <span class="text-rose-500">*</span></label>
-                <div class="flex items-center gap-2">
-                  <select v-model="convertForm.parent_relation" class="input px-2 w-24 shrink-0"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
-                  <input v-if="convertForm.parent_relation==='기타'" v-model="convertForm.parent_relation_etc" placeholder="관계 직접 입력" class="input py-1 min-w-0" />
-                </div>
-              </div>
-              <div>
-                <label class="lbl">등하원 알림(알림톡) <span class="text-rose-500">*</span></label>
-                <div class="flex items-center gap-3 pt-1">
+                <label class="lbl">등하원 알림 <span class="text-rose-500">*</span></label>
+                <div class="flex items-center gap-2 pt-2">
                   <label class="flex items-center gap-1 text-sm"><input type="radio" :value="true" v-model="convertForm.notify_optin"> 수신</label>
                   <label class="flex items-center gap-1 text-sm"><input type="radio" :value="false" v-model="convertForm.notify_optin"> 미수신</label>
                 </div>
