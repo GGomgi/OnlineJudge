@@ -1034,11 +1034,9 @@
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="lbl">보호자 관계 <span class="text-rose-500">*</span></label>
-                <div class="flex items-center gap-2 pt-1 flex-wrap">
-                  <label class="flex items-center gap-1 text-sm"><input type="radio" value="어머니" v-model="convertForm.parent_relation"> 어머니</label>
-                  <label class="flex items-center gap-1 text-sm"><input type="radio" value="아버지" v-model="convertForm.parent_relation"> 아버지</label>
-                  <label class="flex items-center gap-1 text-sm"><input type="radio" value="기타" v-model="convertForm.parent_relation"> 기타</label>
-                  <input v-if="convertForm.parent_relation==='기타'" v-model="convertForm.parent_relation_etc" placeholder="관계 직접 입력" class="input py-1 w-28" />
+                <div class="flex items-center gap-2">
+                  <select v-model="convertForm.parent_relation" class="input px-2 w-24 shrink-0"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+                  <input v-if="convertForm.parent_relation==='기타'" v-model="convertForm.parent_relation_etc" placeholder="관계 직접 입력" class="input py-1 min-w-0" />
                 </div>
               </div>
               <div>
