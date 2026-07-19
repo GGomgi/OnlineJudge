@@ -1031,6 +1031,24 @@
                 <input :value="convertForm.parent_phone" @input="directReg && (convertForm.parent_phone = formatPhone($event.target.value))" :readonly="!directReg" inputmode="numeric" :class="['input', directReg ? '' : 'bg-slate-50']" placeholder="010-0000-0000" />
               </div>
             </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="lbl">보호자 관계 <span class="text-rose-500">*</span></label>
+                <div class="flex items-center gap-2 pt-1 flex-wrap">
+                  <label class="flex items-center gap-1 text-sm"><input type="radio" value="어머니" v-model="convertForm.parent_relation"> 어머니</label>
+                  <label class="flex items-center gap-1 text-sm"><input type="radio" value="아버지" v-model="convertForm.parent_relation"> 아버지</label>
+                  <label class="flex items-center gap-1 text-sm"><input type="radio" value="기타" v-model="convertForm.parent_relation"> 기타</label>
+                  <input v-if="convertForm.parent_relation==='기타'" v-model="convertForm.parent_relation_etc" placeholder="관계 직접 입력" class="input py-1 w-28" />
+                </div>
+              </div>
+              <div>
+                <label class="lbl">등하원 알림(알림톡) <span class="text-rose-500">*</span></label>
+                <div class="flex items-center gap-3 pt-1">
+                  <label class="flex items-center gap-1 text-sm"><input type="radio" :value="true" v-model="convertForm.notify_optin"> 수신</label>
+                  <label class="flex items-center gap-1 text-sm"><input type="radio" :value="false" v-model="convertForm.notify_optin"> 미수신</label>
+                </div>
+              </div>
+            </div>
             <div class="grid grid-cols-3 gap-3">
               <div><label class="lbl">학교 구분</label>
                 <select v-if="directReg" v-model="convertForm.school_type" class="input px-2"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
@@ -1045,6 +1063,19 @@
                 <input :value="convertForm.student_phone" @input="convertForm.student_phone = formatPhone($event.target.value)"
                        inputmode="numeric" class="input" placeholder="010-0000-0000" />
                 <button type="button" @click="useParentPhone" class="btn-secondary text-xs whitespace-nowrap">보호자번호와 동일</button>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="lbl">기타 보호자 휴대폰 <span class="text-[10px] text-slate-400">(선택)</span></label>
+                <input :value="convertForm.guardian2_phone" @input="convertForm.guardian2_phone = formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" />
+              </div>
+              <div>
+                <label class="lbl">기타 보호자 관계 <span class="text-[10px] text-slate-400">(선택)</span></label>
+                <div class="flex items-center gap-2">
+                  <select v-model="convertForm.guardian2_relation" class="input px-2 w-24 shrink-0"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+                  <input v-if="convertForm.guardian2_relation==='기타'" v-model="convertForm.guardian2_relation_etc" placeholder="직접 입력" class="input py-1 min-w-0" />
+                </div>
               </div>
             </div>
           </div>
@@ -2855,7 +2886,7 @@ createApp({
       convertingLead: null, convertError: '', directReg: false,
       hours12: [1,2,3,4,5,6,7,8,9,10,11,12],
       minutes: [0,5,10,15,20,25,30,35,40,45,50,55],
-      convertForm: { student_name:'', gender:'', birth_date:'', parent_name:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
+      convertForm: { student_name:'', gender:'', birth_date:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
       showParentLogin: false, parentLogin: { id:'', pw:'' },
       dragIndex: null, dragOverIndex: null,
@@ -4630,7 +4661,9 @@ createApp({
       this.convertForm = {
         student_name: r.student_name, gender:'', birth_date:'',
         parent_name: r.parent_name||'',
-        parent_phone: r.parent_phone, school_type: r.school_type||'', school_name: r.school_name||'', grade: r.grade||'',
+        parent_phone: r.parent_phone, parent_relation:'', parent_relation_etc:'', notify_optin:null,
+        guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'',
+        school_type: r.school_type||'', school_name: r.school_name||'', grade: r.grade||'',
         student_phone:'', zipcode:'', address:'', address_detail:'',
         program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date: this.todayStr, weekly_sessions:0, schedule:[], schedule_pending:false,
         login_id:'', password:'',
@@ -4660,7 +4693,9 @@ createApp({
         const def = this.savedLeadBranch() || (this.myProfile && this.myProfile.branch_id) || (opts.length===1 ? opts[0].id : null);
         this.convertForm = {
           branch_id: def, student_name:'', gender:'', birth_date:'',
-          parent_name:'', parent_phone:'', school_type:'', school_name:'', grade:'',
+          parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null,
+          guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'',
+          school_type:'', school_name:'', grade:'',
           student_phone:'', zipcode:'', address:'', address_detail:'',
           program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date: this.todayStr, weekly_sessions:0, schedule:[], schedule_pending:false,
           login_id:'', password:'', parent_login_id:'', parent_password:'',
@@ -4769,6 +4804,9 @@ createApp({
       if (!f.login_id || !f.password) return this.failConvert('아이디·비밀번호를 확인하세요.');
       if (f.password.length < 6) return this.failConvert('비밀번호는 6자 이상이어야 합니다.');
       if (!(f.parent_name||'').trim()) return this.failConvert('보호자 이름을 입력하세요.');
+      if (!f.parent_relation) return this.failConvert('보호자 관계를 선택하세요.');
+      if (f.parent_relation==='기타' && !(f.parent_relation_etc||'').trim()) return this.failConvert('보호자 관계(기타)를 직접 입력하세요.');
+      if (f.notify_optin===null || f.notify_optin===undefined) return this.failConvert('등하원 알림(알림톡) 수신 여부를 선택하세요.');
       if (!f.student_phone) return this.failConvert('학생 휴대폰을 입력하세요. (보호자번호와 동일 버튼 사용 가능)');
       if (!f.zipcode || !f.address) return this.failConvert('우편번호 검색으로 주소를 입력하세요.');
       for (let i=0;i<f.programs.length;i++){ const p=f.programs[i];
@@ -4801,6 +4839,10 @@ createApp({
       try {
         const body = {
           parent_name: f.parent_name, login_id: f.login_id, password: f.password, birth_date: f.birth_date,
+          parent_relation: f.parent_relation==='기타' ? (f.parent_relation_etc||'').trim() : f.parent_relation,
+          notify_optin: !!f.notify_optin,
+          guardian2_phone: f.guardian2_phone || '',
+          guardian2_relation: f.guardian2_relation==='기타' ? (f.guardian2_relation_etc||'').trim() : (f.guardian2_relation||''),
           gender: f.gender || '', student_phone: f.student_phone, zipcode: f.zipcode,
           address: f.address, address_detail: f.address_detail || '',
           program: f.programs[0].value, program_language: f.programs[0].value==='LANG' ? f.programs[0].language : '',

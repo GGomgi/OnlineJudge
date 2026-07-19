@@ -366,6 +366,10 @@ class StudentProfile(models.Model):
     student_phone = models.CharField(max_length=32, blank=True, default="")
     parent_name = models.CharField(max_length=64, blank=True, default="")
     parent_phone = models.CharField(max_length=32, blank=True, default="")
+    parent_relation = models.CharField(max_length=32, blank=True, default="")   # 보호자 관계(어머니/아버지/기타 직접입력)
+    notify_optin = models.BooleanField(default=False)                            # 등하원 알림톡 수신 여부
+    guardian2_phone = models.CharField(max_length=32, blank=True, default="")    # 기타 보호자 휴대폰
+    guardian2_relation = models.CharField(max_length=32, blank=True, default="") # 기타 보호자 관계
     school_type = models.CharField(max_length=16, blank=True, default="")
     school_name = models.CharField(max_length=64, blank=True, default="")
     grade = models.CharField(max_length=16, blank=True, default="")
