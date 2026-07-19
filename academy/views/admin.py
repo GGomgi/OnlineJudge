@@ -46,7 +46,7 @@ from ..serializers import (SignupRequestSerializer, SignupApproveSerializer,
                            GenerateSessionsSerializer, AttendanceRecordSerializer,
                            MarkAttendanceSerializer, _student_brief,
                            LeadSerializer, AddCounselingNoteSerializer,
-                           ConvertLeadSerializer, CloseLeadSerializer,
+                           ConvertLeadSerializer, StudentRegisterSerializer, CloseLeadSerializer,
                            OptionItemSerializer, CreateOptionSerializer,
                            UpdateOptionSerializer, ReorderOptionSerializer,
                            StudentTimetableSerializer,
@@ -1325,6 +1325,102 @@ class PrefsAdminAPI(APIView):
         return self.success(cur)
 
 
+def _create_student_from_lead(request, lead, data):
+    """리드를 활성 학생 계정으로 전환(계정+학생등록+시간표+보호자). (result, error) 반환.
+    상담 전환·직접 등록 공용."""
+    username = data["login_id"].lower()
+    if User.objects.filter(username=username).exists():
+        return None, "Login ID already exists"
+
+    # 보호자 이름(입회원 신청서에서 입력/수정) 반영 — 보호자 계정·학생 기록에 사용
+    pn = (data.get("parent_name") or "").strip()
+    if pn and pn != lead.parent_name:
+        lead.parent_name = pn
+        lead.save(update_fields=["parent_name"])
+
+    with transaction.atomic():
+        user = User.objects.create(username=username, is_disabled=False)
+        user.set_password(data["password"])
+        user.save()
+        UserProfile.objects.create(user=user, real_name=lead.student_name)
+        apply_role(user, AcademyRole.STUDENT, lead.branch)
+        StudentProfile.objects.create(
+            user=user,
+            enroll_no=gen_enroll_no(lead.branch),
+            birth_date=data.get("birth_date"),
+            gender=data.get("gender", "") or "",
+            zipcode=data.get("zipcode", "") or "",
+            address=data.get("address", "") or "",
+            address_detail=data.get("address_detail", "") or "",
+            student_phone=data.get("student_phone", "") or "",
+            parent_name=lead.parent_name,
+            parent_phone=lead.parent_phone,
+            school_type=lead.school_type,
+            school_name=lead.school_name,
+            grade=lead.grade,
+            enrollment_date=now().date(),
+            enrollment_status=EnrollmentStatus.ENROLLED,
+            program=data.get("program", "") or "",
+            program_language=data.get("program_language", "") or "",
+            program_custom=data.get("program_custom", "") or "",
+            weekly_sessions=data.get("weekly_sessions"),
+            class_schedule=data.get("class_schedule", "") or "",
+            programs=data.get("programs", "") or "",
+            lesson_start_date=data.get("lesson_start_date"),
+            schedule_pending=bool(data.get("schedule_pending")),
+            consent_privacy=bool(data.get("consent_privacy")),
+            consent_guardian_name=data.get("consent_guardian_name", "") or "",
+            consent_signature=data.get("consent_signature", "") or "",
+            consent_date=data.get("consent_date") or now().date(),
+        )
+        # 입회원 신청서의 요일/시간(class_schedule)으로 개별 시간표 자동 생성(12).
+        # '추후 안내'면 미생성. 수업 길이는 학교급·주횟수 규칙으로 자동 계산.
+        schedule_raw = data.get("class_schedule") or ""
+        try:
+            schedule = _json.loads(schedule_raw) if schedule_raw else []
+        except (ValueError, TypeError):
+            schedule = []
+        if not data.get("schedule_pending"):
+            dur = lesson_duration(lead.school_type, data.get("weekly_sessions"))
+            for row in schedule:
+                try:
+                    wd = int(row.get("day"))
+                    tm = (row.get("time") or "").strip()
+                except (AttributeError, TypeError, ValueError):
+                    continue
+                if not (0 <= wd <= 6) or not tm:
+                    continue
+                prog = (row.get("program") or "")
+                freq = row.get("frequency") or "WEEKLY"
+                subj = row.get("subject") or resolve_program_label(prog)
+                # 격주 번갈아 짝 슬롯(week_offset=1)은 시작일을 1주 밀어 반대 주차에 수업
+                af = data.get("lesson_start_date")
+                if freq == "BIWEEKLY" and row.get("week_offset") and af:
+                    try:
+                        af = (datetime.strptime(af, "%Y-%m-%d").date() + timedelta(days=7)).isoformat()
+                    except (ValueError, TypeError):
+                        pass
+                StudentTimetable.objects.create(
+                    student=user, branch=lead.branch, class_type=LessonType.PRIVATE,
+                    weekday=wd, start_time=tm, duration_minutes=dur,
+                    program=prog, subject=subj, frequency=freq,
+                    active_from=af)
+        # 학부모(보호자) 계정 생성/연결 — 자녀 기록 열람용(11 §9)
+        parent_user = get_or_create_guardian(
+            user, lead, lead.branch,
+            login_id=data.get("parent_login_id", ""),
+            password=data.get("parent_password", ""))
+        lead.status = LeadStatus.CONVERTED
+        lead.converted_user = user
+        lead.is_hidden = True  # 등록 전환 완료 시 상담 목록에서 자동 숨김
+        lead.save()
+    result = LeadSerializer(lead).data
+    if parent_user is not None:
+        result["parent_account"] = {"username": parent_user.username,
+                                    "is_new": parent_user.last_login is None}
+    return result, None
+
+
 class ConvertLeadAdminAPI(APIView):
     @validate_serializer(ConvertLeadSerializer)
     @admin_role_required
@@ -1338,97 +1434,40 @@ class ConvertLeadAdminAPI(APIView):
             return self.error("No permission for this branch")
         if lead.status == LeadStatus.CONVERTED:
             return self.error("This lead has already been converted")
+        result, err = _create_student_from_lead(request, lead, data)
+        if err:
+            return self.error(err)
+        return self.success(result)
 
-        username = data["login_id"].lower()
-        if User.objects.filter(username=username).exists():
+
+class StudentRegisterAdminAPI(APIView):
+    @validate_serializer(StudentRegisterSerializer)
+    @admin_role_required
+    def post(self, request):
+        """상담 없이 학생 직접 등록. 입력값으로 숨김 리드를 만들고 동일 전환 로직 재사용."""
+        data = request.data
+        branch = Branch.objects.filter(id=data["branch_id"]).first()
+        if not branch:
+            return self.error("지점이 없습니다.")
+        if not can_manage_branch(request.user, branch.id):
+            return self.error("이 지점에 학생을 등록할 권한이 없습니다.")
+        student_name = (data.get("student_name") or "").strip()
+        if not student_name:
+            return self.error("학생 성명을 입력하세요.")
+        if User.objects.filter(username=data["login_id"].lower()).exists():
             return self.error("Login ID already exists")
-
-        # 보호자 이름(입회원 신청서에서 입력/수정) 반영 — 보호자 계정·학생 기록에 사용
-        pn = (data.get("parent_name") or "").strip()
-        if pn and pn != lead.parent_name:
-            lead.parent_name = pn
-            lead.save(update_fields=["parent_name"])
-
-        with transaction.atomic():
-            user = User.objects.create(username=username, is_disabled=False)
-            user.set_password(data["password"])
-            user.save()
-            UserProfile.objects.create(user=user, real_name=lead.student_name)
-            apply_role(user, AcademyRole.STUDENT, lead.branch)
-            StudentProfile.objects.create(
-                user=user,
-                enroll_no=gen_enroll_no(lead.branch),
-                birth_date=data.get("birth_date"),
-                gender=data.get("gender", "") or "",
-                zipcode=data.get("zipcode", "") or "",
-                address=data.get("address", "") or "",
-                address_detail=data.get("address_detail", "") or "",
-                student_phone=data.get("student_phone", "") or "",
-                parent_name=lead.parent_name,
-                parent_phone=lead.parent_phone,
-                school_type=lead.school_type,
-                school_name=lead.school_name,
-                grade=lead.grade,
-                enrollment_date=now().date(),
-                enrollment_status=EnrollmentStatus.ENROLLED,
-                program=data.get("program", "") or "",
-                program_language=data.get("program_language", "") or "",
-                program_custom=data.get("program_custom", "") or "",
-                weekly_sessions=data.get("weekly_sessions"),
-                class_schedule=data.get("class_schedule", "") or "",
-                programs=data.get("programs", "") or "",
-                lesson_start_date=data.get("lesson_start_date"),
-                schedule_pending=bool(data.get("schedule_pending")),
-                consent_privacy=bool(data.get("consent_privacy")),
-                consent_guardian_name=data.get("consent_guardian_name", "") or "",
-                consent_signature=data.get("consent_signature", "") or "",
-                consent_date=data.get("consent_date") or now().date(),
-            )
-            # 입회원 신청서의 요일/시간(class_schedule)으로 개별 시간표 자동 생성(12).
-            # '추후 안내'면 미생성. 수업 길이는 학교급·주횟수 규칙으로 자동 계산.
-            schedule_raw = data.get("class_schedule") or ""
-            try:
-                schedule = _json.loads(schedule_raw) if schedule_raw else []
-            except (ValueError, TypeError):
-                schedule = []
-            if not data.get("schedule_pending"):
-                dur = lesson_duration(lead.school_type, data.get("weekly_sessions"))
-                for row in schedule:
-                    try:
-                        wd = int(row.get("day"))
-                        tm = (row.get("time") or "").strip()
-                    except (AttributeError, TypeError, ValueError):
-                        continue
-                    if not (0 <= wd <= 6) or not tm:
-                        continue
-                    prog = (row.get("program") or "")
-                    freq = row.get("frequency") or "WEEKLY"
-                    subj = row.get("subject") or resolve_program_label(prog)
-                    # 격주 번갈아 짝 슬롯(week_offset=1)은 시작일을 1주 밀어 반대 주차에 수업
-                    af = data.get("lesson_start_date")
-                    if freq == "BIWEEKLY" and row.get("week_offset") and af:
-                        try:
-                            af = (datetime.strptime(af, "%Y-%m-%d").date() + timedelta(days=7)).isoformat()
-                        except (ValueError, TypeError):
-                            pass
-                    StudentTimetable.objects.create(
-                        student=user, branch=lead.branch, class_type=LessonType.PRIVATE,
-                        weekday=wd, start_time=tm, duration_minutes=dur,
-                        program=prog, subject=subj, frequency=freq,
-                        active_from=af)
-            # 학부모(보호자) 계정 생성/연결 — 자녀 기록 열람용(11 §9)
-            parent_user = get_or_create_guardian(
-                user, lead, lead.branch,
-                login_id=data.get("parent_login_id", ""),
-                password=data.get("parent_password", ""))
-            lead.status = LeadStatus.CONVERTED
-            lead.converted_user = user
-            lead.is_hidden = True  # 등록 전환 완료 시 상담 목록에서 자동 숨김
-            lead.save()
-        result = LeadSerializer(lead).data
-        if parent_user is not None:
-            result["parent_account"] = {"username": parent_user.username,
-                                        "is_new": parent_user.last_login is None}
+        lead = Lead.objects.create(
+            branch=branch, student_name=student_name,
+            parent_name=(data.get("parent_name") or "").strip(),
+            parent_phone=(data.get("parent_phone") or "").strip(),
+            school_type=data.get("school_type") or "",
+            school_name=data.get("school_name") or "",
+            grade=data.get("grade") or "",
+            status=LeadStatus.NEW, is_hidden=True)
+        result, err = _create_student_from_lead(request, lead, data)
+        if err:
+            lead.delete()
+            return self.error(err)
         return self.success(result)
 
 

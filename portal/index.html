@@ -980,15 +980,26 @@
       </div>
     </section>
 
-    <!-- ============ 입회원 신청서 (등록 전환, 부모/학생 직접 작성) ============ -->
-    <section v-if="tab==='leadmgr' && convertingLead" class="max-w-2xl mx-auto">
+    <!-- ============ 입회원 신청서 (등록 전환 / 직접 등록) ============ -->
+    <section v-if="tab==='leadmgr' && (convertingLead || directReg)" class="max-w-2xl mx-auto">
       <div class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
-          <div class="font-bold tracking-wide">입회원 신청서</div>
+          <div class="font-bold tracking-wide">{{ directReg ? '학생 등록 (상담 없이)' : '입회원 신청서' }}</div>
           <button @click="closeConvert" class="text-xs text-slate-300 hover:text-white">← 목록으로</button>
         </div>
         <div class="p-5 space-y-5">
-          <p class="text-xs text-slate-400">상담 시 작성한 정보를 확인하고, 추가 정보를 작성해 주세요. 작성은 보호자/학생이 직접 진행합니다.</p>
+          <p v-if="directReg" class="text-xs text-slate-400">상담 절차 없이 학생을 바로 등록합니다. 아래 정보를 입력해 주세요.</p>
+          <p v-else class="text-xs text-slate-400">상담 시 작성한 정보를 확인하고, 추가 정보를 작성해 주세요. 작성은 보호자/학생이 직접 진행합니다.</p>
+
+          <!-- 직접 등록: 지점 선택 -->
+          <div v-if="directReg">
+            <label class="lbl">지점 <span class="text-rose-500">*</span></label>
+            <select v-if="leadCanChooseBranch" v-model="convertForm.branch_id" class="input">
+              <option :value="null" disabled>지점 선택</option>
+              <option v-for="b in leadBranchOptions" :key="b.id" :value="b.id">{{ b.name }}</option>
+            </select>
+            <input v-else :value="convertBranchName" readonly class="input bg-slate-50" />
+          </div>
 
           <!-- 학생/보호자 정보 (상담 정보 prefill) -->
           <div class="space-y-3">
@@ -1017,13 +1028,16 @@
               </div>
               <div>
                 <label class="lbl">보호자 연락처</label>
-                <input v-model="convertForm.parent_phone" class="input bg-slate-50" readonly />
+                <input :value="convertForm.parent_phone" @input="directReg && (convertForm.parent_phone = formatPhone($event.target.value))" :readonly="!directReg" inputmode="numeric" :class="['input', directReg ? '' : 'bg-slate-50']" placeholder="010-0000-0000" />
               </div>
             </div>
             <div class="grid grid-cols-3 gap-3">
-              <div><label class="lbl">학교 구분</label><input :value="schoolLabel(convertForm.school_type)||'-'" class="input bg-slate-50" readonly /></div>
-              <div><label class="lbl">학교</label><div class="flex items-center gap-1"><input :value="convertForm.school_name||'-'" class="input bg-slate-50 min-w-0" readonly /><span v-if="convertForm.school_name && schoolSuffix(convertForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(convertForm.school_type) }}</span></div></div>
-              <div><label class="lbl">학년</label><div class="flex items-center gap-1"><input :value="convertForm.grade||'-'" class="input bg-slate-50 min-w-0" readonly /><span v-if="convertForm.grade" class="text-xs text-slate-400 whitespace-nowrap">학년</span></div></div>
+              <div><label class="lbl">학교 구분</label>
+                <select v-if="directReg" v-model="convertForm.school_type" class="input px-2"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
+                <input v-else :value="schoolLabel(convertForm.school_type)||'-'" class="input bg-slate-50" readonly />
+              </div>
+              <div><label class="lbl">학교</label><div class="flex items-center gap-1"><input v-model="convertForm.school_name" :readonly="!directReg" :class="['input min-w-0', directReg ? '' : 'bg-slate-50']" :placeholder="directReg ? '학교 이름' : ''" /><span v-if="convertForm.school_name && schoolSuffix(convertForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(convertForm.school_type) }}</span></div></div>
+              <div><label class="lbl">학년</label><div class="flex items-center gap-1"><input v-model="convertForm.grade" :readonly="!directReg" inputmode="numeric" :class="['input min-w-0', directReg ? '' : 'bg-slate-50']" /><span v-if="convertForm.grade" class="text-xs text-slate-400 whitespace-nowrap">학년</span></div></div>
             </div>
             <div>
               <label class="lbl">학생 휴대폰 <span class="text-rose-500">*</span></label>
@@ -1394,6 +1408,7 @@
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 class="text-lg font-bold">학생 관리 <span class="text-sm font-normal text-slate-400">(인적사항·상담·상태·보호자 통합)</span></h2>
         <div v-if="hasAnyEdit" class="flex gap-2">
+          <button @click="openDirectRegister" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 학생 등록</button>
           <button @click="openBulk" class="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700 whitespace-nowrap">📥 엑셀 등록</button>
           <button @click="exportStudents" class="px-3 py-1.5 rounded border border-slate-300 text-slate-600 text-sm hover:bg-slate-50 whitespace-nowrap">💾 저장</button>
         </div>
@@ -2837,7 +2852,7 @@ createApp({
       editLeadId: null, leadEditForm: {}, leadEditPop: { show:false, x:0, y:0, list:[] },
       showLeadForm: false,
       programLanguages: ['Python','C','C++','Java','C#'],
-      convertingLead: null, convertError: '',
+      convertingLead: null, convertError: '', directReg: false,
       hours12: [1,2,3,4,5,6,7,8,9,10,11,12],
       minutes: [0,5,10,15,20,25,30,35,40,45,50,55],
       convertForm: { student_name:'', gender:'', birth_date:'', parent_name:'', parent_phone:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
@@ -2920,6 +2935,7 @@ createApp({
       return ids.length ? this.branches.filter(b => ids.includes(b.id)) : this.branches;
     },
     leadFixedBranchName(){ const b = this.branches.find(x => x.id === this.leadForm.branch_id); return b ? b.name : ''; },
+    convertBranchName(){ const b = this.branches.find(x => x.id === this.convertForm.branch_id); return b ? b.name : ''; },
     leadParentNameRequired(){ return !this.me; },  // 학부모(로그아웃) 직접 작성 시에만 필수
     leadReq(){ return !this.isStaff; },  // 직원 아님(비로그인·학부모=신청자 직접) → 전 항목 필수
     minOptions(){ const out=[]; for(let m=0;m<60;m+=5) out.push(String(m).padStart(2,'0')); return out; },
@@ -3207,7 +3223,7 @@ createApp({
     channelLabel(c){ return ({VISIT:'방문',CALL:'전화',MESSAGE:'문자',KAKAO:'카카오',ETC:'기타'})[c] || c || '방문'; },
     go(key){
       if (key!==this.tab && this.isDirty() && !this.confirmLeave()) return;
-      if (key!==this.tab){ this.convertingLead=null; this.showLeadForm=false; this.noteText=''; }
+      if (key!==this.tab){ this.convertingLead=null; this.directReg=false; this.showLeadForm=false; this.noteText=''; }
       this.tab = key; this.flash.msg=''; this.onTab(key);
       this._syncTabUrl(key);
     },
@@ -3249,7 +3265,7 @@ createApp({
     },
     ttDirty(){ return this.ttAll.some(s=>this.ttRowDirty(s)) || (this.showTtAdd && this.ttAddRows.length>0); },
     isDirty(){
-      if (this.convertingLead) return this.convertDirty();
+      if (this.convertingLead || this.directReg) return this.convertDirty();
       if (this.tab==='lead' || this.showLeadForm) return this.leadFormDirty();
       if (this.tab==='leadmgr') return this.noteDirty();
       if (this.tab==='staff') return this.staffFormDirty();
@@ -4636,7 +4652,25 @@ createApp({
       this.loadOptions();
       this.$nextTick(()=> this.sigInit());
     },
-    closeConvert(){ if (this.convertDirty() && !this.confirmLeave()) return; this.convertingLead = null; this.convertError = ''; },
+    openDirectRegister(){
+      this.go('leadmgr');
+      this.$nextTick(()=>{
+        this.convertingLead = null; this.directReg = true; this.convertError = '';
+        const opts = this.leadBranchOptions || [];
+        const def = this.savedLeadBranch() || (this.myProfile && this.myProfile.branch_id) || (opts.length===1 ? opts[0].id : null);
+        this.convertForm = {
+          branch_id: def, student_name:'', gender:'', birth_date:'',
+          parent_name:'', parent_phone:'', school_type:'', school_name:'', grade:'',
+          student_phone:'', zipcode:'', address:'', address_detail:'',
+          program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date: this.todayStr, weekly_sessions:0, schedule:[], schedule_pending:false,
+          login_id:'', password:'', parent_login_id:'', parent_password:'',
+          consent_privacy:false, consent_guardian_name:'',
+        };
+        if (!(this.options.school_type||[]).length) this.loadOptions();
+        this.$nextTick(()=> this.sigInit());
+      });
+    },
+    closeConvert(){ if (this.convertDirty() && !this.confirmLeave()) return; this.convertingLead = null; this.directReg = false; this.convertError = ''; },
     syncProgramCount(){
       const n = this.convertForm.program_count || 1;
       const cur = this.convertForm.programs;
@@ -4723,6 +4757,12 @@ createApp({
     async submitConvert(){
       const f = this.convertForm, r = this.convertingLead;
       this.convertError = '';
+      if (this.directReg) {
+        if (!f.branch_id) return this.failConvert('지점을 선택하세요.');
+        if (!(f.student_name||'').trim()) return this.failConvert('학생 성명을 입력하세요.');
+        if (!(f.parent_phone||'').trim()) return this.failConvert('보호자 연락처를 입력하세요.');
+        if (!f.parent_login_id) f.parent_login_id = String(f.parent_phone||'').replace(/\D/g,'');
+      }
       if (!f.birth_date) return this.failConvert('생년월일을 입력하세요. (연도 4자리)');
       { const y = parseInt((f.birth_date.split('-')[0]||''),10); if (isNaN(y)||y<1900||y>this.today.y) return this.failConvert('생년월일의 연도를 4자리로 정확히 입력하세요. (예: 2012)'); }
       if (!f.login_id) this.genLoginId();
@@ -4760,7 +4800,7 @@ createApp({
       if (!this.sig.hasInk) return this.failConvert('서명을 입력해 주세요.');
       try {
         const body = {
-          lead_id: r.id, parent_name: f.parent_name, login_id: f.login_id, password: f.password, birth_date: f.birth_date,
+          parent_name: f.parent_name, login_id: f.login_id, password: f.password, birth_date: f.birth_date,
           gender: f.gender || '', student_phone: f.student_phone, zipcode: f.zipcode,
           address: f.address, address_detail: f.address_detail || '',
           program: f.programs[0].value, program_language: f.programs[0].value==='LANG' ? f.programs[0].language : '',
@@ -4775,11 +4815,22 @@ createApp({
           consent_signature: this.$refs.sig.toDataURL('image/png'),
           consent_date: this.todayStr,
         };
-        const d = await api('POST','/api/admin/academy/lead/convert', body);
-        this.replaceLead(d); this.convertingLead = null; this.convertError = '';
-        let msg = d.student_name+' 등록 완료 (학생 @'+d.converted_username+')';
-        if (d.parent_account) msg += ' · 학부모 계정 @'+d.parent_account.username;
-        this.notify(msg);
+        if (this.directReg) {
+          Object.assign(body, { branch_id: f.branch_id, student_name: f.student_name,
+            parent_phone: f.parent_phone, school_type: f.school_type, school_name: f.school_name, grade: f.grade });
+          const d = await api('POST','/api/admin/academy/student_register', body);
+          this.directReg = false; this.convertError = '';
+          let msg = d.student_name+' 등록 완료 (학생 @'+d.converted_username+')';
+          if (d.parent_account) msg += ' · 학부모 계정 @'+d.parent_account.username;
+          this.go('students'); this.loadStudents(); this.notify(msg);
+        } else {
+          body.lead_id = r.id;
+          const d = await api('POST','/api/admin/academy/lead/convert', body);
+          this.replaceLead(d); this.convertingLead = null; this.convertError = '';
+          let msg = d.student_name+' 등록 완료 (학생 @'+d.converted_username+')';
+          if (d.parent_account) msg += ' · 학부모 계정 @'+d.parent_account.username;
+          this.notify(msg);
+        }
       } catch(e){ this.failConvert(e.message); }
     },
     async closeLead(r){

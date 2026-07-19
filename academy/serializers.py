@@ -421,6 +421,17 @@ class ConvertLeadSerializer(serializers.Serializer):
         return v
 
 
+class StudentRegisterSerializer(ConvertLeadSerializer):
+    """상담 없이 학생 직접 등록. 리드 대신 지점·학생·보호자·학교 정보를 직접 받는다."""
+    lead_id = serializers.IntegerField(required=False)  # 미사용
+    branch_id = serializers.IntegerField()
+    student_name = serializers.CharField(max_length=64)
+    parent_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    school_type = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    school_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    grade = serializers.CharField(max_length=16, required=False, allow_blank=True)
+
+
 class CloseLeadSerializer(serializers.Serializer):
     lead_id = serializers.IntegerField()
     reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
