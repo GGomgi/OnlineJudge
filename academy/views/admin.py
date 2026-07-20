@@ -1475,6 +1475,56 @@ class StudentRegisterAdminAPI(APIView):
         return self.success(result)
 
 
+class QuickRegisterAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """상담 없이 최소 정보로 '등록 대기' 리드 생성 + 부모 작성 링크 발급.
+        직원 입력값(성별·생일·관계·알림)은 enroll_data 프리필로 저장 → 부모/전환 시 자동 채움."""
+        data = request.data
+        branch = Branch.objects.filter(id=data.get("branch_id")).first()
+        if not branch:
+            return self.error("지점이 없습니다.")
+        if not can_manage_branch(request.user, branch.id):
+            return self.error("이 지점에 등록할 권한이 없습니다.")
+        sn = (data.get("student_name") or "").strip()
+        pp = (data.get("parent_phone") or "").strip()
+        if not sn:
+            return self.error("학생 성명을 입력하세요.")
+        if not data.get("gender"):
+            return self.error("성별을 선택하세요.")
+        if not data.get("birth_date"):
+            return self.error("생년월일을 입력하세요.")
+        if not pp:
+            return self.error("보호자 연락처를 입력하세요.")
+        if not data.get("parent_relation"):
+            return self.error("보호자 관계를 선택하세요.")
+        lead = Lead.objects.create(
+            branch=branch, student_name=sn,
+            parent_name=(data.get("parent_name") or "").strip(), parent_phone=pp,
+            school_type=data.get("school_type") or "", school_name=data.get("school_name") or "",
+            grade=data.get("grade") or "", status=LeadStatus.NEW)
+        seed = {
+            "student_name": sn, "gender": data.get("gender") or "",
+            "birth_date": data.get("birth_date") or "",
+            "parent_name": (data.get("parent_name") or "").strip(), "parent_phone": pp,
+            "parent_relation": data.get("parent_relation") or "", "notify_optin": bool(data.get("notify_optin")),
+            "school_type": data.get("school_type") or "", "school_name": data.get("school_name") or "",
+            "grade": data.get("grade") or "",
+        }
+        lead.enroll_data = _json.dumps(seed, ensure_ascii=False)
+        lead.enroll_token = _rand_str(24)
+        lead.enroll_token_expires = now() + timedelta(days=7)
+        lead.enroll_status = "SENT"
+        lead.save()
+        result = LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data
+        url = request.build_absolute_uri("/portal/?enroll=" + lead.enroll_token)
+        bn = branch.name
+        result["message"] = _fill_vars(_fixed_body(branch.id, "enroll_link"), {
+            "지점명": bn, "학원명": bn, "학생명": sn,
+            "학부모명": (data.get("parent_name") or "학부모"), "링크": url})
+        return self.success(result)
+
+
 class BranchAdminAPI(APIView):
     """지점 관리(본부 관리자 전용). 추가/이름수정/활성토글. 삭제는 막고 비활성만 권장."""
 

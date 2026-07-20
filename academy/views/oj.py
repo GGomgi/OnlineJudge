@@ -190,11 +190,21 @@ class EnrollAPI(APIView):
             return self.error("이미 제출되었습니다. 학원에서 확인 중입니다.")
         if lead.enroll_token_expires and lead.enroll_token_expires < now():
             return self.error("링크가 만료되었습니다. 학원에 재발급을 요청해 주세요.")
+        seed = {}
+        if lead.enroll_data:
+            try:
+                seed = _json.loads(lead.enroll_data)
+            except (ValueError, TypeError):
+                seed = {}
         return self.success({
             "branch": (lead.branch.name if lead.branch_id else ""),
             "student_name": lead.student_name, "parent_name": lead.parent_name,
             "parent_phone": lead.parent_phone, "school_type": lead.school_type,
             "school_name": lead.school_name, "grade": lead.grade,
+            # 직원이 최소 등록 시 입력한 값 프리필(성별·생일·관계·알림)
+            "gender": seed.get("gender", ""), "birth_date": seed.get("birth_date", ""),
+            "parent_relation": seed.get("parent_relation", ""),
+            "notify_optin": bool(seed.get("notify_optin", False)),
         })
 
     def post(self, request):
@@ -209,7 +219,8 @@ class EnrollAPI(APIView):
             return self.error("링크가 만료되었습니다.")
         # 학부모 작성 항목(인적사항·주소·보호자·동의). 과정·시간표·계정은 직원이 확정.
         keep = ["student_name", "birth_date", "gender", "student_phone",
-                "parent_name", "parent_phone", "school_type", "school_name", "grade",
+                "parent_name", "parent_phone", "parent_relation", "notify_optin",
+                "school_type", "school_name", "grade",
                 "zipcode", "address", "address_detail",
                 "consent_privacy", "consent_guardian_name", "consent_signature"]
         payload = {k: data.get(k) for k in keep}

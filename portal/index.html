@@ -62,6 +62,16 @@
             <div><label class="lbl">학생 휴대폰</label><input :value="enrollForm.student_phone" @input="enrollForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
             <div><label class="lbl">보호자 이름 <span class="text-rose-500">*</span></label><input v-model="enrollForm.parent_name" class="input" /></div>
             <div><label class="lbl">보호자 연락처 <span class="text-rose-500">*</span></label><input :value="enrollForm.parent_phone" @input="enrollForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
+            <div><label class="lbl">보호자 관계 <span class="text-rose-500">*</span></label>
+              <select v-model="enrollForm.parent_relation" class="input px-2"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+              <input v-if="enrollForm.parent_relation==='기타'" v-model="enrollForm.parent_relation_etc" placeholder="관계 직접 입력" class="input py-1 mt-1" />
+            </div>
+            <div><label class="lbl">등하원 알림(알림톡) <span class="text-rose-500">*</span></label>
+              <div class="flex items-center gap-3 pt-2">
+                <label class="flex items-center gap-1 text-sm"><input type="radio" :value="true" v-model="enrollForm.notify_optin"> 수신</label>
+                <label class="flex items-center gap-1 text-sm"><input type="radio" :value="false" v-model="enrollForm.notify_optin"> 미수신</label>
+              </div>
+            </div>
           </div>
           <div class="grid grid-cols-3 gap-2">
             <div><label class="lbl">학교 구분</label><select v-model="enrollForm.school_type" class="input px-2"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
@@ -988,7 +998,7 @@
           <button @click="closeConvert" class="text-xs text-slate-300 hover:text-white">← 목록으로</button>
         </div>
         <div class="p-5 space-y-5">
-          <p v-if="directReg" class="text-xs text-slate-400">상담 절차 없이 학생을 바로 등록합니다. 아래 정보를 입력해 주세요.</p>
+          <p v-if="directReg" class="text-xs text-slate-400">상담 없이 최소 정보만 입력해 등록합니다. 나머지는 학부모에게 작성 링크를 보내 받습니다.</p>
           <p v-else class="text-xs text-slate-400">상담 시 작성한 정보를 확인하고, 추가 정보를 작성해 주세요. 작성은 보호자/학생이 직접 진행합니다.</p>
 
           <!-- 직접 등록: 지점 선택 -->
@@ -1055,6 +1065,7 @@
               <div><label class="lbl">학교</label><div class="flex items-center gap-1"><input v-model="convertForm.school_name" :readonly="!directReg" :class="['input min-w-0', directReg ? '' : 'bg-slate-50']" :placeholder="directReg ? '학교 이름' : ''" /><span v-if="convertForm.school_name && schoolSuffix(convertForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(convertForm.school_type) }}</span></div></div>
               <div><label class="lbl">학년</label><div class="flex items-center gap-1"><input v-model="convertForm.grade" :readonly="!directReg" inputmode="numeric" :class="['input min-w-0', directReg ? '' : 'bg-slate-50']" /><span v-if="convertForm.grade" class="text-xs text-slate-400 whitespace-nowrap">학년</span></div></div>
             </div>
+            <template v-if="!directReg">
             <div>
               <label class="lbl">학생 휴대폰 <span class="text-rose-500">*</span></label>
               <div class="flex gap-2">
@@ -1076,8 +1087,15 @@
                 </div>
               </div>
             </div>
+            </template>
           </div>
 
+          <div v-if="directReg" class="bg-indigo-50 rounded-lg p-3 text-xs text-indigo-700">
+            직원은 위 최소 정보만 입력하면 됩니다. <b>등록</b>을 누르면 학부모에게 보낼 <b>작성 링크</b>가 생성되고,
+            나머지 정보(주소·등록 과정·동의·서명 등)는 학부모가 링크로 작성합니다.
+          </div>
+
+          <template v-if="!directReg">
           <!-- 주소 -->
           <div class="space-y-2">
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">주소 <span class="text-rose-500">*</span></div>
@@ -1248,11 +1266,14 @@
             </div>
           </div>
 
+          </template>
+
           <div ref="convertSubmit" class="pt-2 space-y-2">
             <div v-if="convertError" class="px-4 py-3 rounded bg-rose-50 text-rose-700 border border-rose-200 text-sm">{{ convertError }}</div>
             <div class="flex gap-2">
               <button @click="closeConvert" class="btn-secondary flex-1">취소</button>
-              <button @click="submitConvert" class="btn-primary flex-1">계정 생성 · 등록 완료</button>
+              <button v-if="directReg" @click="submitQuickRegister" class="btn-primary flex-1">등록 · 부모 작성 링크 생성</button>
+              <button v-else @click="submitConvert" class="btn-primary flex-1">계정 생성 · 등록 완료</button>
             </div>
           </div>
         </div>
@@ -2839,7 +2860,7 @@ createApp({
       students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
       bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false,
       enrollMode: false, enrollToken: '', enrollPrefill: null, enrollError: '', enrollDone: false,
-      enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', consent_privacy:false, consent_guardian_name:'' },
+      enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', consent_privacy:false, consent_guardian_name:'' },
       esig: { drawing:false, ctx:null, hasInk:false },
       msgtplGroups: [], msgtplGroupId: null, msgtplList: [], msgSel: null, msgEdit: false, msgEditForm: { id:null, group_id:null, title:'', body:'' },
       fixedTpls: [], fixedTplMap: {}, fixedTplLoaded: false, fixedSel: false,
@@ -3875,9 +3896,12 @@ createApp({
       try {
         const d = await api('GET','/api/academy/enroll?token='+encodeURIComponent(this.enrollToken));
         this.enrollPrefill = d;
-        this.enrollForm = { student_name:d.student_name||'', gender:'', birth_date:'', student_phone:'',
-          parent_name:d.parent_name||'', parent_phone:d.parent_phone||'', school_type:d.school_type||'',
-          school_name:d.school_name||'', grade:d.grade||'', zipcode:'', address:'', address_detail:'',
+        const rel = d.parent_relation||'';
+        this.enrollForm = { student_name:d.student_name||'', gender:d.gender||'', birth_date:d.birth_date||'', student_phone:'',
+          parent_name:d.parent_name||'', parent_phone:d.parent_phone||'',
+          parent_relation:(rel==='어머니'||rel==='아버지')?rel:(rel?'기타':''), parent_relation_etc:(rel && rel!=='어머니' && rel!=='아버지')?rel:'',
+          notify_optin:(typeof d.notify_optin==='boolean')?d.notify_optin:null,
+          school_type:d.school_type||'', school_name:d.school_name||'', grade:d.grade||'', zipcode:'', address:'', address_detail:'',
           consent_privacy:false, consent_guardian_name:d.parent_name||'' };
         this.$nextTick(()=> this.esigInit());
       } catch(e){ this.enrollError = e.message; }
@@ -3898,11 +3922,15 @@ createApp({
       if(!f.gender) return this.notify('성별을 선택하세요.', false);
       if(!f.birth_date) return this.notify('생년월일을 입력하세요.', false);
       if(!(f.parent_name||'').trim()||!(f.parent_phone||'').trim()) return this.notify('보호자 이름·연락처를 입력하세요.', false);
+      if(!f.parent_relation) return this.notify('보호자 관계를 선택하세요.', false);
+      if(f.parent_relation==='기타' && !(f.parent_relation_etc||'').trim()) return this.notify('보호자 관계(기타)를 직접 입력하세요.', false);
+      if(f.notify_optin===null||f.notify_optin===undefined) return this.notify('등하원 알림 수신 여부를 선택하세요.', false);
       if(!f.consent_privacy) return this.notify('개인정보 수집·이용에 동의해 주세요.', false);
       if(!(f.consent_guardian_name||'').trim()) return this.notify('법정대리인 성명을 입력하세요.', false);
       const sig = (this.esig.hasInk && this.$refs.enrollSig) ? this.$refs.enrollSig.toDataURL('image/png') : '';
+      const relFinal = f.parent_relation==='기타' ? (f.parent_relation_etc||'').trim() : f.parent_relation;
       try {
-        await api('POST','/api/academy/enroll', { token:this.enrollToken, ...f, consent_signature:sig });
+        await api('POST','/api/academy/enroll', { token:this.enrollToken, ...f, parent_relation:relFinal, notify_optin:!!f.notify_optin, consent_signature:sig });
         this.enrollDone=true;
       } catch(e){ this.notify(e.message,false); }
     },
@@ -4678,6 +4706,8 @@ createApp({
         f.school_name=ed.school_name||f.school_name; f.grade=ed.grade||f.grade;
         f.zipcode=ed.zipcode||''; f.address=ed.address||''; f.address_detail=ed.address_detail||'';
         f.consent_privacy=!!ed.consent_privacy; f.consent_guardian_name=ed.consent_guardian_name||'';
+        const rel=ed.parent_relation||''; f.parent_relation=(rel==='어머니'||rel==='아버지')?rel:(rel?'기타':''); f.parent_relation_etc=(rel && rel!=='어머니' && rel!=='아버지')?rel:'';
+        if (typeof ed.notify_optin==='boolean') f.notify_optin=ed.notify_optin;
         f.parent_login_id = String(f.parent_phone||'').replace(/\D/g,'');
       }
       this.loadOptions();
@@ -4700,8 +4730,33 @@ createApp({
           consent_privacy:false, consent_guardian_name:'',
         };
         if (!(this.options.school_type||[]).length) this.loadOptions();
-        this.$nextTick(()=> this.sigInit());
       });
+    },
+    async submitQuickRegister(){
+      const f = this.convertForm; this.convertError = '';
+      if (!f.branch_id) return this.failConvert('지점을 선택하세요.');
+      if (!(f.student_name||'').trim()) return this.failConvert('학생 성명을 입력하세요.');
+      if (!f.gender) return this.failConvert('성별을 선택하세요.');
+      if (!f.birth_date) return this.failConvert('생년월일을 입력하세요.');
+      { const y=parseInt((f.birth_date.split('-')[0]||''),10); if(isNaN(y)||y<1900||y>this.today.y) return this.failConvert('생년월일 연도를 4자리로 정확히 입력하세요.'); }
+      if (!(f.parent_phone||'').trim()) return this.failConvert('보호자 연락처를 입력하세요.');
+      if (!f.parent_relation) return this.failConvert('보호자 관계를 선택하세요.');
+      if (f.parent_relation==='기타' && !(f.parent_relation_etc||'').trim()) return this.failConvert('보호자 관계(기타)를 직접 입력하세요.');
+      try {
+        const body = {
+          branch_id: f.branch_id, student_name: f.student_name, gender: f.gender, birth_date: f.birth_date,
+          parent_name: f.parent_name||'', parent_phone: f.parent_phone,
+          parent_relation: f.parent_relation==='기타' ? (f.parent_relation_etc||'').trim() : f.parent_relation,
+          notify_optin: !!f.notify_optin,
+          school_type: f.school_type||'', school_name: f.school_name||'', grade: f.grade||'',
+        };
+        const d = await api('POST','/api/admin/academy/quick_register', body);
+        this.directReg = false; this.convertError = '';
+        this.go('leadmgr'); await this.loadLeads();
+        this.openLeadId = d.id;
+        this.$nextTick(()=>{ const el=document.getElementById('lead-'+d.id); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); });
+        this.notify(d.student_name+' 등록 대기 생성됨 — 학부모에게 작성 링크를 전달하세요.');
+      } catch(e){ this.failConvert(e.message); }
     },
     closeConvert(){ if (this.convertDirty() && !this.confirmLeave()) return; this.convertingLead = null; this.directReg = false; this.convertError = ''; },
     syncProgramCount(){
