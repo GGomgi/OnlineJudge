@@ -180,9 +180,11 @@ _ENROLL_LABELS = [
     ("student_name", "학생 성명"), ("birth_date", "생년월일"), ("gender", "성별"),
     ("student_phone", "학생 휴대폰"), ("parent_name", "보호자 이름"), ("parent_phone", "보호자 연락처"),
     ("parent_relation", "보호자 관계"), ("notify_optin", "등하원 알림"),
+    ("guardian2_phone", "기타 보호자 휴대폰"), ("guardian2_relation", "기타 보호자 관계"),
     ("school_type", "학교 구분"), ("school_name", "학교"), ("grade", "학년"),
     ("zipcode", "우편번호"), ("address", "주소"), ("address_detail", "상세주소"),
-    ("consent_guardian_name", "법정대리인 성명"),
+    ("consent_guardian_name", "법정대리인 성명"), ("memo", "기타(요청·알림 사항)"),
+    ("parent_password", "학부모 계정 비밀번호"),
 ]
 
 
@@ -191,6 +193,8 @@ def _enroll_disp(k, v):
         return "수신" if v else "미수신"
     if k == "gender":
         return {"M": "남", "F": "여"}.get(v, v or "")
+    if k == "parent_password":
+        return "(변경됨)" if v else "(없음)"  # 비밀번호 값 자체는 이력에 노출하지 않음
     return str(v) if v not in (None, "") else "(없음)"
 
 
@@ -199,6 +203,10 @@ def _enroll_diff(old, new):
     out = []
     for k, label in _ENROLL_LABELS:
         ov, nv = old.get(k), new.get(k)
+        if k == "parent_password":
+            if (nv or "") and nv != ov:  # 새 비밀번호를 입력했을 때만 "변경됨" 기록
+                out.append({"label": label, "old": "", "new": "(변경됨)"})
+            continue
         same = (bool(ov) == bool(nv)) if k == "notify_optin" else ((ov or "") == (nv or ""))
         if not same:
             out.append({"label": label, "old": _enroll_disp(k, ov), "new": _enroll_disp(k, nv)})
@@ -242,6 +250,10 @@ class EnrollAPI(APIView):
             "zipcode": seed.get("zipcode", ""), "address": seed.get("address", ""),
             "address_detail": seed.get("address_detail", ""),
             "consent_guardian_name": seed.get("consent_guardian_name", ""),
+            "guardian2_phone": seed.get("guardian2_phone", ""),
+            "guardian2_relation": seed.get("guardian2_relation", ""),
+            "memo": seed.get("memo", ""),
+            "has_password": bool(seed.get("parent_password")),  # 이전 제출에서 비번을 설정했는지 여부만 표시(값은 미노출)
         })
 
     def post(self, request):
@@ -257,20 +269,34 @@ class EnrollAPI(APIView):
         # 학부모 작성 항목(인적사항·주소·보호자·동의). 과정·시간표·계정은 직원이 확정.
         keep = ["student_name", "birth_date", "gender", "student_phone",
                 "parent_name", "parent_phone", "parent_relation", "notify_optin",
+                "guardian2_phone", "guardian2_relation",
                 "school_type", "school_name", "grade",
-                "zipcode", "address", "address_detail",
+                "zipcode", "address", "address_detail", "memo",
                 "consent_privacy", "consent_guardian_name", "consent_signature"]
         payload = {k: data.get(k) for k in keep}
+        already_submitted = lead.enroll_status == "SUBMITTED"
+        old = {}
+        if already_submitted and lead.enroll_data:
+            try:
+                old = _json.loads(lead.enroll_data)
+            except (ValueError, TypeError):
+                old = {}
+        # 학부모 계정 아이디는 항상 보호자 연락처로 서버가 고정(부모가 임의 지정 불가)
+        pw = (data.get("parent_password") or "").strip()
+        if pw:
+            if not (pw.isdigit() and len(pw) == 6):
+                return self.error("학부모 계정 비밀번호는 숫자 6자리로 입력해 주세요.")
+            payload["parent_password"] = pw
+        else:
+            if not already_submitted:
+                return self.error("학부모 계정 비밀번호(숫자 6자리)를 설정해 주세요.")
+            payload["parent_password"] = old.get("parent_password", "")  # 비워두면 기존 비번 유지
         if not payload.get("consent_privacy"):
             return self.error("개인정보 수집·이용에 동의해 주세요.")
         if not (payload.get("consent_guardian_name") or "").strip():
             return self.error("법정대리인 성명을 입력해 주세요.")
         # 재제출(수정)이면 변경 이력 기록 + '수정됨' 플래그(직원 확인용)
-        if lead.enroll_status == "SUBMITTED" and lead.enroll_data:
-            try:
-                old = _json.loads(lead.enroll_data)
-            except (ValueError, TypeError):
-                old = {}
+        if already_submitted:
             changes = _enroll_diff(old, payload)
             if changes:
                 try:

@@ -423,6 +423,7 @@ class ConvertLeadSerializer(serializers.Serializer):
     notify_optin = serializers.BooleanField(required=False, default=False)
     guardian2_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
     guardian2_relation = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    memo = serializers.CharField(required=False, allow_blank=True)
     # 학부모(보호자) 계정 — 자녀 기록 열람용. 미입력 시 전화번호로 자동 생성/연결(11 §9)
     parent_login_id = serializers.CharField(max_length=32, required=False, allow_blank=True)
     parent_password = serializers.CharField(max_length=128, required=False, allow_blank=True)

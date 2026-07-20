@@ -1390,6 +1390,7 @@ def _create_student_from_lead(request, lead, data):
             consent_guardian_name=data.get("consent_guardian_name", "") or "",
             consent_signature=data.get("consent_signature", "") or "",
             consent_date=data.get("consent_date") or now().date(),
+            memo=data.get("memo", "") or "",
         )
         # 입회원 신청서의 요일/시간(class_schedule)으로 개별 시간표 자동 생성(12).
         # '추후 안내'면 미생성. 수업 길이는 학교급·주횟수 규칙으로 자동 계산.
@@ -1972,12 +1973,16 @@ def _bulk_resolve_row(actor, row, branches, seen_ids):
         "zipcode": r.get("zipcode", ""), "address": r.get("address", ""),
         "address_detail": r.get("address_detail", ""), "student_phone": r.get("student_phone", ""),
         "parent_name": r.get("parent_name", ""), "parent_phone": r.get("parent_phone", ""),
+        "parent_relation": r.get("parent_relation", ""),
+        "notify_optin": (r.get("notify_optin", "") or "").strip() == "수신",
+        "guardian2_phone": r.get("guardian2_phone", ""), "guardian2_relation": r.get("guardian2_relation", ""),
         "school_type": _resolve_opt_value("school_type", r.get("school_type")),
         "school_name": r.get("school_name", ""), "grade": r.get("grade", ""),
         "programs": progs, "weekly_sessions": ws,
         "enrollment_date": _bulk_parse_date(r.get("enrollment_date")) or now().date(),
         "lesson_start_date": _bulk_parse_date(r.get("lesson_start_date")),
         "timetable": tt_items,
+        "memo": r.get("memo", ""),
     }
     res["ok"] = True
     return res, resolved
@@ -2031,11 +2036,14 @@ class BulkRegisterAPI(APIView):
                 zipcode=d["zipcode"], address=d["address"], address_detail=d["address_detail"],
                 student_phone=d["student_phone"],
                 parent_name=d["parent_name"], parent_phone=d["parent_phone"],
+                parent_relation=d.get("parent_relation", "") or "", notify_optin=bool(d.get("notify_optin")),
+                guardian2_phone=d.get("guardian2_phone", "") or "", guardian2_relation=d.get("guardian2_relation", "") or "",
                 school_type=d["school_type"], school_name=d["school_name"], grade=d["grade"],
                 enrollment_date=d["enrollment_date"], enrollment_status=EnrollmentStatus.ENROLLED,
                 program=(d["programs"][0]["value"] if d["programs"] else ""),
                 programs=_json.dumps(d["programs"], ensure_ascii=False),
-                weekly_sessions=d["weekly_sessions"], lesson_start_date=d["lesson_start_date"])
+                weekly_sessions=d["weekly_sessions"], lesson_start_date=d["lesson_start_date"],
+                memo=d.get("memo", "") or "")
             dur = lesson_duration(d["school_type"], d["weekly_sessions"])
             for it in d["timetable"]:
                 StudentTimetable.objects.create(
@@ -2059,13 +2067,26 @@ class BulkExportAPI(APIView):
             qs = qs.filter(branch_id__in=view)
         sl_label = {o.value: o.label for o in OptionItem.objects.filter(category="school_type")}
         pg_label = {o.value: o.label for o in OptionItem.objects.filter(category="program")}
+        lang_label = {o.value: o.label for o in OptionItem.objects.filter(category="program_language")}
+
+        def _prog_token(v, lang="", custom=""):
+            """StudentProfile.programs / StudentTimetable 데이터를 일괄등록 표기('과정명(언어)')로 재구성."""
+            if v == "LANG":
+                lb = lang_label.get(lang, lang)
+                return "%s(%s)" % (pg_label.get(v, v), lb) if lb else pg_label.get(v, v)
+            if v:
+                return pg_label.get(v, v)
+            return custom or ""
+
         WD = _WD
         tt_map = {}
         for s in StudentTimetable.objects.exclude(status="ENDED").values(
-                "student_id", "weekday", "start_time", "subject"):
+                "student_id", "weekday", "start_time", "subject", "program"):
+            token = _prog_token(s["program"], lang=s["subject"]) if s["program"] == "LANG" else (
+                _prog_token(s["program"]) or s["subject"] or "수업")
             tt_map.setdefault(s["student_id"], []).append(
                 "%s %s %s" % (WD[s["weekday"]] if 0 <= s["weekday"] <= 6 else "?",
-                              str(s["start_time"])[:5], s["subject"] or ""))
+                              str(s["start_time"])[:5], token))
         out = []
         for p in qs.order_by("branch_id", "user__username"):
             u, sp = p.user, getattr(p.user, "student_profile", None)
@@ -2077,8 +2098,7 @@ class BulkExportAPI(APIView):
             if sp and sp.programs:
                 try:
                     for pr in _json.loads(sp.programs):
-                        v = pr.get("value")
-                        progs.append(pg_label.get(v, v) if v else (pr.get("custom") or ""))
+                        progs.append(_prog_token(pr.get("value"), lang=pr.get("language", ""), custom=pr.get("custom", "")))
                 except (ValueError, TypeError):
                     pass
             out.append({
@@ -2088,6 +2108,9 @@ class BulkExportAPI(APIView):
                 "학교구분": sl_label.get((sp.school_type if sp else ""), ""),
                 "학교이름": (sp.school_name if sp else ""), "학년": (sp.grade if sp else ""),
                 "보호자이름": (sp.parent_name if sp else ""), "보호자연락처": (sp.parent_phone if sp else ""),
+                "보호자관계": (sp.parent_relation if sp else ""),
+                "등하원알림": ("수신" if (sp and sp.notify_optin) else "미수신"),
+                "기타보호자연락처": (sp.guardian2_phone if sp else ""), "기타보호자관계": (sp.guardian2_relation if sp else ""),
                 "학생연락처": (sp.student_phone if sp else ""), "우편번호": (sp.zipcode if sp else ""),
                 "주소": (sp.address if sp else ""), "상세주소": (sp.address_detail if sp else ""),
                 "아이디": u.username, "비밀번호": "",
@@ -2096,6 +2119,7 @@ class BulkExportAPI(APIView):
                 "시간표": ", ".join(tt_map.get(u.id, [])),
                 "등록일": (str(sp.enrollment_date) if (sp and sp.enrollment_date) else ""),
                 "수업시작일": (str(sp.lesson_start_date) if (sp and sp.lesson_start_date) else ""),
+                "기타(요청사항)": (sp.memo if sp else ""),
             })
         return self.success(out)
 
@@ -2353,6 +2377,7 @@ def _student_profile_dict(sp):
         "weekly_sessions": sp.weekly_sessions,
         "program": sp.program or "",
         "programs": sp.programs or "",
+        "memo": sp.memo or "",
     }
 
 
@@ -3162,9 +3187,22 @@ class DashboardAdminAPI(APIView):
                 "branch": (lg.branch.name if lg.branch_id else ""), "note": rv.note,
                 "school_type": lg.school_type, "school_name": lg.school_name, "grade": lg.grade,
                 "parent_phone": lg.parent_phone, "logs": logs, "edits": edits})
+        # 학부모 등록 링크 작성 완료(등록 전환 전까지 계속 표시, 날짜와 무관)
+        eq = Lead.objects.select_related("branch").filter(
+            enroll_status="SUBMITTED").exclude(status=LeadStatus.CONVERTED)
+        if view is not None:
+            eq = eq.filter(branch_id__in=view)
+        if bid:
+            eq = eq.filter(branch_id=bid)
+        enrolled = [{"id": l.id, "student_name": l.student_name, "parent_name": l.parent_name,
+                    "branch": (l.branch.name if l.branch_id else ""),
+                    "submitted_at": str(l.enroll_submitted_at + timedelta(hours=9))[:16] if l.enroll_submitted_at else "",
+                    "enroll_edited": l.enroll_edited}
+                   for l in eq.order_by("-enroll_edited", "-enroll_submitted_at")[:100]]
         WD = ["월", "화", "수", "목", "금", "토", "일"]
         return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
-                             "total": len(lessons), "present": len(att), "reservations": reservations})
+                             "total": len(lessons), "present": len(att), "reservations": reservations,
+                             "enrolled_leads": enrolled})
 
 
 def _kst_to_utc(d, hm):

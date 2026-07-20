@@ -82,6 +82,17 @@
             <div><label class="lbl">학교</label><div class="flex items-center gap-1"><input v-model="enrollForm.school_name" class="input px-2 min-w-0" /><span v-if="schoolSuffix(enrollForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(enrollForm.school_type) }}</span></div></div>
             <div><label class="lbl">학년</label><div class="flex items-center gap-1"><input v-model="enrollForm.grade" inputmode="numeric" class="input px-2 min-w-0" /><span class="text-xs text-slate-400 whitespace-nowrap">학년</span></div></div>
           </div>
+          <div class="grid grid-cols-2 gap-3 pt-1 border-t">
+            <div>
+              <label class="lbl">기타 보호자 휴대폰 <span class="text-[10px] text-slate-400">(선택)</span></label>
+              <input :value="enrollForm.guardian2_phone" @input="enrollForm.guardian2_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" />
+            </div>
+            <div>
+              <label class="lbl">기타 보호자 관계 <span class="text-[10px] text-slate-400">(선택)</span></label>
+              <select v-model="enrollForm.guardian2_relation" class="input px-2"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+              <input v-if="enrollForm.guardian2_relation==='기타'" v-model="enrollForm.guardian2_relation_etc" placeholder="관계 직접 입력" class="input py-1 mt-1" />
+            </div>
+          </div>
         </div>
         <div class="bg-white rounded-xl shadow-sm p-5 space-y-2">
           <div class="text-sm font-semibold text-slate-700 border-b pb-1">주소</div>
@@ -90,6 +101,25 @@
             <input :value="enrollForm.address" @click="openEnrollPostcode" readonly placeholder="주소 (클릭하여 검색)" class="input bg-slate-50 cursor-pointer" />
           </div>
           <input v-model="enrollForm.address_detail" placeholder="상세주소 (동/호 등)" class="input" />
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 space-y-2">
+          <div class="text-sm font-semibold text-slate-700 border-b pb-1">학부모 계정 <span class="text-xs font-normal text-slate-400">(자녀 기록 열람용)</span></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="lbl">아이디</label>
+              <input :value="enrollParentLoginId || '보호자 연락처 입력 필요'" readonly class="input bg-slate-50" />
+              <p class="text-[10px] text-slate-400 mt-0.5">보호자 연락처로 자동 설정되며 변경할 수 없습니다.</p>
+            </div>
+            <div>
+              <label class="lbl">비밀번호(숫자 6자리) <span class="text-rose-500">*</span></label>
+              <input v-model="enrollForm.parent_password" maxlength="6" inputmode="numeric" class="input" :placeholder="enrollHasPw ? '변경 시에만 입력' : '숫자 6자리'" />
+              <p v-if="enrollHasPw" class="text-[10px] text-slate-400 mt-0.5">이미 설정하셨다면 비워두면 기존 비밀번호가 유지됩니다.</p>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 space-y-2">
+          <div class="text-sm font-semibold text-slate-700 border-b pb-1">기타 <span class="text-xs font-normal text-slate-400">(요청사항·알려주실 사항)</span></div>
+          <textarea v-model="enrollForm.memo" rows="3" class="input" placeholder="학원에 요청하거나 알려주실 사항이 있으면 적어주세요. (선택)"></textarea>
         </div>
         <div class="bg-white rounded-xl shadow-sm p-5 space-y-2">
           <div class="text-sm font-semibold text-slate-700 border-b pb-1">개인정보 수집·이용 동의 <span class="text-rose-500">*</span></div>
@@ -606,6 +636,20 @@
           </li>
         </ul>
       </div>
+      <!-- 학부모 등록 링크 작성 완료(등록 전환 전까지 계속 표시) -->
+      <div v-if="dashEnrolled.length" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-emerald-300">
+        <div class="text-xs font-semibold text-emerald-600 mb-2">📝 등록 링크 작성 완료 <span class="text-slate-400 font-normal">{{ dashEnrolled.length }}건 · 등록 전환 전까지 표시</span></div>
+        <ul class="divide-y">
+          <li v-for="l in dashEnrolled" :key="l.id" class="flex items-center gap-2 py-1.5 text-sm">
+            <span class="font-medium whitespace-nowrap">{{ l.student_name }}</span>
+            <span class="text-xs text-slate-400 whitespace-nowrap">· 학부모 {{ l.parent_name }}</span>
+            <span v-if="showBranchCol" class="text-xs text-slate-400 whitespace-nowrap">· {{ l.branch }}</span>
+            <span v-if="l.enroll_edited" class="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold shrink-0">🔔 수정됨</span>
+            <span class="text-xs text-slate-400 whitespace-nowrap">{{ l.submitted_at }}</span>
+            <button @click="goConvertFromDash(l)" class="ml-auto shrink-0 px-2 py-1 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-700">등록 전환</button>
+          </li>
+        </ul>
+      </div>
       <!-- 아래: 수업표 -->
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
         <table class="w-full text-sm">
@@ -1027,7 +1071,7 @@
             <div class="grid grid-cols-3 gap-3">
               <div>
                 <label class="lbl">학생 성명 <span class="text-rose-500">*</span></label>
-                <input v-model="convertForm.student_name" class="input" />
+                <input :value="convertForm.student_name" @input="convertForm.student_name=$event.target.value; genLoginId()" class="input" />
               </div>
               <div>
                 <label class="lbl">성별 <span class="text-rose-500">*</span></label>
@@ -1095,6 +1139,10 @@
                   <input v-if="convertForm.guardian2_relation==='기타'" v-model="convertForm.guardian2_relation_etc" placeholder="직접 입력" class="input py-1 min-w-0" />
                 </div>
               </div>
+            </div>
+            <div>
+              <label class="lbl">기타 <span class="text-[10px] text-slate-400">(요청사항·알릴사항, 선택)</span></label>
+              <textarea v-model="convertForm.memo" rows="2" class="input"></textarea>
             </div>
             </template>
           </div>
@@ -2869,7 +2917,8 @@ createApp({
       students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
       bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false,
       enrollMode: false, enrollToken: '', enrollPrefill: null, enrollError: '', enrollDone: false,
-      enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', consent_privacy:false, consent_guardian_name:'' },
+      enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', memo:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
+      enrollHasPw: false,
       esig: { drawing:false, ctx:null, hasInk:false },
       msgtplGroups: [], msgtplGroupId: null, msgtplList: [], msgSel: null, msgEdit: false, msgEditForm: { id:null, group_id:null, title:'', body:'' },
       fixedTpls: [], fixedTplMap: {}, fixedTplLoaded: false, fixedSel: false,
@@ -2914,7 +2963,7 @@ createApp({
       convertingLead: null, convertError: '', directReg: false,
       hours12: [1,2,3,4,5,6,7,8,9,10,11,12],
       minutes: [0,5,10,15,20,25,30,35,40,45,50,55],
-      convertForm: { student_name:'', gender:'', birth_date:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
+      convertForm: { student_name:'', gender:'', birth_date:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', memo:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
       showParentLogin: false, parentLogin: { id:'', pw:'' },
       dragIndex: null, dragOverIndex: null,
@@ -2995,6 +3044,7 @@ createApp({
     },
     leadFixedBranchName(){ const b = this.branches.find(x => x.id === this.leadForm.branch_id); return b ? b.name : ''; },
     convertBranchName(){ const b = this.branches.find(x => x.id === this.convertForm.branch_id); return b ? b.name : ''; },
+    enrollParentLoginId(){ return String(this.enrollForm.parent_phone||'').replace(/\D/g,''); },
     leadParentNameRequired(){ return !this.me; },  // 학부모(로그아웃) 직접 작성 시에만 필수
     leadReq(){ return !this.isStaff; },  // 직원 아님(비로그인·학부모=신청자 직접) → 전 항목 필수
     minOptions(){ const out=[]; for(let m=0;m<60;m+=5) out.push(String(m).padStart(2,'0')); return out; },
@@ -3064,6 +3114,7 @@ createApp({
     dashCheckedIn(){ const ids=new Set(this.dashLessons.filter(l=>l.att.in).map(l=>l.student_id)); return ids.size; },
     dashCheckedOut(){ const ids=new Set(this.dashLessons.filter(l=>l.att.out).map(l=>l.student_id)); return ids.size; },
     dashReservations(){ const f=this.dashFilter; return (this.dashData.reservations||[]).filter(rv => !f.branch || rv.branch===f.branch); },
+    dashEnrolled(){ const f=this.dashFilter; return (this.dashData.enrolled_leads||[]).filter(l => !f.branch || l.branch===f.branch); },
     dashAllDone(){ const ls=this.dashLessons; return ls.length>0 && ls.every(l=>this.isAbsent(l) || l.att.out); },
     nowClock(){ const d=new Date(this.clockNow); const p=x=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); },
     dashIsToday(){ return this.dashDate===this.todayStr; },
@@ -3908,11 +3959,16 @@ createApp({
         const d = await api('GET','/api/academy/enroll?token='+encodeURIComponent(this.enrollToken));
         this.enrollPrefill = d;
         const rel = d.parent_relation||'';
+        const g2rel = d.guardian2_relation||'';
+        this.enrollHasPw = !!d.has_password;
         this.enrollForm = { student_name:d.student_name||'', gender:d.gender||'', birth_date:d.birth_date||'', student_phone:d.student_phone||'',
           parent_name:d.parent_name||'', parent_phone:d.parent_phone||'',
           parent_relation:(rel==='어머니'||rel==='아버지')?rel:(rel?'기타':''), parent_relation_etc:(rel && rel!=='어머니' && rel!=='아버지')?rel:'',
           notify_optin:(d.already_submitted && typeof d.notify_optin==='boolean')?d.notify_optin:null,
+          guardian2_phone:d.guardian2_phone||'', guardian2_relation:(g2rel==='어머니'||g2rel==='아버지')?g2rel:(g2rel?'기타':''),
+          guardian2_relation_etc:(g2rel && g2rel!=='어머니' && g2rel!=='아버지')?g2rel:'',
           school_type:d.school_type||'', school_name:d.school_name||'', grade:d.grade||'', zipcode:d.zipcode||'', address:d.address||'', address_detail:d.address_detail||'',
+          memo:d.memo||'', parent_password:'',
           consent_privacy:false, consent_guardian_name:d.consent_guardian_name||d.parent_name||'' };
         this.$nextTick(()=> this.esigInit());
       } catch(e){ this.enrollError = e.message; }
@@ -3935,13 +3991,17 @@ createApp({
       if(!(f.parent_name||'').trim()||!(f.parent_phone||'').trim()) return this.notify('보호자 이름·연락처를 입력하세요.', false);
       if(!f.parent_relation) return this.notify('보호자 관계를 선택하세요.', false);
       if(f.parent_relation==='기타' && !(f.parent_relation_etc||'').trim()) return this.notify('보호자 관계(기타)를 직접 입력하세요.', false);
+      if(f.guardian2_relation==='기타' && !(f.guardian2_relation_etc||'').trim()) return this.notify('기타 보호자 관계를 직접 입력하세요.', false);
       if(f.notify_optin===null||f.notify_optin===undefined) return this.notify('등하원 알림 수신 여부를 선택하세요.', false);
+      if(!this.enrollHasPw && !(f.parent_password||'').trim()) return this.notify('학부모 계정 비밀번호(숫자 6자리)를 입력하세요.', false);
+      if((f.parent_password||'').trim() && !/^\d{6}$/.test(f.parent_password.trim())) return this.notify('학부모 계정 비밀번호는 숫자 6자리로 입력하세요.', false);
       if(!f.consent_privacy) return this.notify('개인정보 수집·이용에 동의해 주세요.', false);
       if(!(f.consent_guardian_name||'').trim()) return this.notify('법정대리인 성명을 입력하세요.', false);
       const sig = (this.esig.hasInk && this.$refs.enrollSig) ? this.$refs.enrollSig.toDataURL('image/png') : '';
       const relFinal = f.parent_relation==='기타' ? (f.parent_relation_etc||'').trim() : f.parent_relation;
+      const g2relFinal = f.guardian2_relation==='기타' ? (f.guardian2_relation_etc||'').trim() : (f.guardian2_relation||'');
       try {
-        await api('POST','/api/academy/enroll', { token:this.enrollToken, ...f, parent_relation:relFinal, notify_optin:!!f.notify_optin, consent_signature:sig });
+        await api('POST','/api/academy/enroll', { token:this.enrollToken, ...f, parent_relation:relFinal, guardian2_relation:g2relFinal, notify_optin:!!f.notify_optin, consent_signature:sig });
         this.enrollDone=true;
       } catch(e){ this.notify(e.message,false); }
     },
@@ -4348,7 +4408,7 @@ createApp({
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
     // ── 엑셀 일괄등록 ──
     openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; if(!(this.options.program||[]).length||!(this.options.program_language||[]).length) this.loadOptions(); if(!this.branches.length) this.loadBranches(); if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
-    bulkColumns(){ return ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','학생연락처','우편번호','주소','상세주소','등록과정','주횟수','시간표','등록일','수업시작일']; },
+    bulkColumns(){ return ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','보호자관계','등하원알림','기타보호자연락처','기타보호자관계','학생연락처','우편번호','주소','상세주소','등록과정','주횟수','시간표','등록일','수업시작일','기타(요청사항)']; },
     downloadBulkTemplate(){
       if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
       const cols=this.bulkColumns();
@@ -4368,7 +4428,7 @@ createApp({
         [''],
         ['[기본 규칙]'],
         ['· "입력" 시트의 첫 줄(머리글)은 지우지 마세요. 둘째 줄부터 한 학생씩 입력합니다.'],
-        ['· 비워도 되는 항목: 학생연락처, 우편번호, 주소, 상세주소, 주횟수, 시간표, 등록일, 수업시작일.'],
+        ['· 비워도 되는 항목: 학생연락처, 우편번호, 주소, 상세주소, 주횟수, 시간표, 등록일, 수업시작일, 기타보호자연락처, 기타보호자관계, 기타(요청사항).'],
         ['· 아이디/비밀번호는 적지 않습니다(자동). 아이디=이름+생일MMDD(예: 김민준0309), 비번=보호자 연락처 숫자 또는 123456.'],
         [''],
         ['[형식]'],
@@ -4376,6 +4436,10 @@ createApp({
         ['· 생년월일/등록일/수업시작일: YYYY-MM-DD (예: 2014-03-09). 등록일 비우면 오늘.'],
         ['· 성별: 남 또는 여'],
         ['· 학교구분: '+schoolNames+'  /  학년: 숫자만(예: 4)'],
+        ['· 보호자관계: 어머니 / 아버지 / 직접 입력한 관계(예: 할머니)'],
+        ['· 등하원알림: 수신 또는 미수신'],
+        ['· 기타보호자연락처·기타보호자관계: 보호자가 두 명 이상일 때만 작성(선택)'],
+        ['· 기타(요청사항): 학원에 알릴 요청사항·특이사항 자유 기재(선택)'],
         [''],
         ['[등록 과정] — 여러 개면 콤마(,)로 구분'],
         ['· 사용 가능 과정 → '+progNames],
@@ -4399,19 +4463,19 @@ createApp({
       ];
       const b0=(this.myProfile&&this.myProfile.branch&&this.myProfile.branch.name)||branchNames.split(' / ')[0]||'인천청라';
       const sc=(i,d)=>(this.options.school_type&&this.options.school_type[i]?this.options.school_type[i].label:d);
-      const row=(o)=>Object.assign({'지점':b0,'학생이름':'','생년월일':'','성별':'','학교구분':'','학교이름':'','학년':'','보호자이름':'','보호자연락처':'','학생연락처':'','우편번호':'','주소':'','상세주소':'','등록과정':'','주횟수':'','시간표':'','등록일':'','수업시작일':''}, o);
+      const row=(o)=>Object.assign({'지점':b0,'학생이름':'','생년월일':'','성별':'','학교구분':'','학교이름':'','학년':'','보호자이름':'','보호자연락처':'','보호자관계':'','등하원알림':'','기타보호자연락처':'','기타보호자관계':'','학생연락처':'','우편번호':'','주소':'','상세주소':'','등록과정':'','주횟수':'','시간표':'','등록일':'','수업시작일':'','기타(요청사항)':''}, o);
       const samples=[
-        row({'학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':sc(0,'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','등록과정':P0,'주횟수':'2','시간표':'월 16:00 '+P0+', 수 16:00 '+P0,'수업시작일':this.todayStr}),
-        row({'학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':sc(1,'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','학생연락처':'010-9999-8888','등록과정':LP+'('+L1+')','주횟수':'1','시간표':'화 17:00 '+LP+'('+L1+')','수업시작일':this.todayStr}),
-        row({'학생이름':'박도윤','생년월일':'2015-06-01','성별':'남','학교구분':sc(0,'초'),'학교이름':'가현초','학년':'3','보호자이름':'박맘','보호자연락처':'010-5555-6666','등록과정':P0+', '+P1,'시간표':'월 16:00 '+P0+', 목 17:00 '+P1}),
-        row({'학생이름':'최하은','생년월일':'2010-09-15','성별':'여','학교구분':sc(2,'고'),'학교이름':'청라고','학년':'1','보호자이름':'최부','보호자연락처':'010-7777-8888','등록과정':LP+'('+L2+')','주횟수':'1','시간표':'금 19:00 '+LP+'('+L2+')','수업시작일':this.todayStr}),
-        row({'학생이름':'정우재','생년월일':'2013-01-22','성별':'남','학교구분':sc(0,'초'),'학교이름':'초은초','학년':'5','보호자이름':'정모','보호자연락처':'010-3333-4444','등록과정':'로봇코딩','주횟수':'1','시간표':'수 15:00 로봇코딩'}),
-        row({'학생이름':'한소율(시간표 추후)','생년월일':'2014-12-05','성별':'여','학교구분':sc(0,'초'),'학교이름':'청람초','학년':'4','보호자이름':'한맘','보호자연락처':'010-1212-3434','등록과정':P0}),
+        row({'학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':sc(0,'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','보호자관계':'어머니','등하원알림':'수신','등록과정':P0,'주횟수':'2','시간표':'월 16:00 '+P0+', 수 16:00 '+P0,'수업시작일':this.todayStr}),
+        row({'학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':sc(1,'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','보호자관계':'아버지','등하원알림':'수신','기타보호자연락처':'010-4444-5555','기타보호자관계':'어머니','학생연락처':'010-9999-8888','등록과정':LP+'('+L1+')','주횟수':'1','시간표':'화 17:00 '+LP+'('+L1+')','수업시작일':this.todayStr}),
+        row({'학생이름':'박도윤','생년월일':'2015-06-01','성별':'남','학교구분':sc(0,'초'),'학교이름':'가현초','학년':'3','보호자이름':'박맘','보호자연락처':'010-5555-6666','보호자관계':'어머니','등하원알림':'미수신','등록과정':P0+', '+P1,'시간표':'월 16:00 '+P0+', 목 17:00 '+P1}),
+        row({'학생이름':'최하은','생년월일':'2010-09-15','성별':'여','학교구분':sc(2,'고'),'학교이름':'청라고','학년':'1','보호자이름':'최부','보호자연락처':'010-7777-8888','보호자관계':'아버지','등하원알림':'수신','등록과정':LP+'('+L2+')','주횟수':'1','시간표':'금 19:00 '+LP+'('+L2+')','수업시작일':this.todayStr}),
+        row({'학생이름':'정우재','생년월일':'2013-01-22','성별':'남','학교구분':sc(0,'초'),'학교이름':'초은초','학년':'5','보호자이름':'정모','보호자연락처':'010-3333-4444','보호자관계':'할머니','등하원알림':'미수신','등록과정':'로봇코딩','주횟수':'1','시간표':'수 15:00 로봇코딩','기타(요청사항)':'알레르기 있음(땅콩)'}),
+        row({'학생이름':'한소율(시간표 추후)','생년월일':'2014-12-05','성별':'여','학교구분':sc(0,'초'),'학교이름':'청람초','학년':'4','보호자이름':'한맘','보호자연락처':'010-1212-3434','보호자관계':'어머니','등하원알림':'수신','등록과정':P0}),
       ];
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(guide), '설명');
       const ws=XLSX.utils.json_to_sheet(samples, { header:cols });
-      ws['!cols']=cols.map(c=>({wch: c==='시간표'?24:(c==='주소'?18:(['학생이름','보호자이름','등록과정','학교이름'].includes(c)?12:10))}));
+      ws['!cols']=cols.map(c=>({wch: c==='시간표'?24:(c==='기타(요청사항)'?20:(c==='주소'?18:(['학생이름','보호자이름','등록과정','학교이름'].includes(c)?12:10)))}));
       XLSX.utils.book_append_sheet(wb, ws, '입력');
       XLSX.writeFile(wb, '학생_일괄등록_양식.xlsx');
     },
@@ -4424,7 +4488,7 @@ createApp({
           const wb=XLSX.read(ev.target.result, { type:'array', cellDates:true });
           const sheet=wb.Sheets['입력'] || wb.Sheets[wb.SheetNames.find(n=>n!=='설명')] || wb.Sheets[wb.SheetNames[0]];
           const raw=XLSX.utils.sheet_to_json(sheet, { defval:'', raw:false });
-          const M={ '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','시간표':'timetable','등록일':'enrollment_date','수업시작일':'lesson_start_date' };
+          const M={ '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','보호자관계':'parent_relation','등하원알림':'notify_optin','기타보호자연락처':'guardian2_phone','기타보호자관계':'guardian2_relation','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','시간표':'timetable','등록일':'enrollment_date','수업시작일':'lesson_start_date','기타(요청사항)':'memo' };
           const fmtDate=v=>{ if(!v) return ''; if(v instanceof Date){ const p=x=>String(x).padStart(2,'0'); return v.getFullYear()+'-'+p(v.getMonth()+1)+'-'+p(v.getDate()); } return String(v).trim().slice(0,10); };
           this.bulkRows = raw.map(o=>{ const r={}; for(const k in M){ r[M[k]] = (o[k]!=null?String(o[k]).trim():''); } r.birth_date=fmtDate(o['생년월일']); r.lesson_start_date=fmtDate(o['수업시작일']); r.enrollment_date=fmtDate(o['등록일']); return r; })
             .filter(r=>r.student_name);
@@ -4671,6 +4735,13 @@ createApp({
       this.openLeadId = rv.lead_id;
       this.$nextTick(()=>{ const el=document.getElementById('lead-'+rv.lead_id); if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); });
     },
+    async goConvertFromDash(l){
+      this.go('leadmgr');
+      this.leadStatusSel=[]; this.leadSearch=''; this.leadSearch2='';
+      await this.loadLeads();
+      const lead = this.leads.find(x=>x.id===l.id);
+      if (lead) this.openConvert(lead);
+    },
     async editLeadFromResv(rv){
       await this.goLeadFromResv(rv);
       const lead = this.leads.find(x=>x.id===rv.lead_id);
@@ -4731,7 +4802,7 @@ createApp({
         parent_phone: r.parent_phone, parent_relation:'', parent_relation_etc:'', notify_optin:null,
         guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'',
         school_type: r.school_type||'', school_name: r.school_name||'', grade: r.grade||'',
-        student_phone:'', zipcode:'', address:'', address_detail:'',
+        student_phone:'', zipcode:'', address:'', address_detail:'', memo:'',
         program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date: this.todayStr, weekly_sessions:0, schedule:[], schedule_pending:false,
         login_id:'', password:'',
         parent_login_id: phoneDigits, parent_password:'',
@@ -4746,13 +4817,25 @@ createApp({
         f.parent_phone=ed.parent_phone||f.parent_phone; f.school_type=ed.school_type||f.school_type;
         f.school_name=ed.school_name||f.school_name; f.grade=ed.grade||f.grade;
         f.zipcode=ed.zipcode||''; f.address=ed.address||''; f.address_detail=ed.address_detail||'';
+        f.memo=ed.memo||'';
         f.consent_privacy=!!ed.consent_privacy; f.consent_guardian_name=ed.consent_guardian_name||'';
         const rel=ed.parent_relation||''; f.parent_relation=(rel==='어머니'||rel==='아버지')?rel:(rel?'기타':''); f.parent_relation_etc=(rel && rel!=='어머니' && rel!=='아버지')?rel:'';
+        const g2rel=ed.guardian2_relation||''; f.guardian2_phone=ed.guardian2_phone||''; f.guardian2_relation=(g2rel==='어머니'||g2rel==='아버지')?g2rel:(g2rel?'기타':''); f.guardian2_relation_etc=(g2rel && g2rel!=='어머니' && g2rel!=='아버지')?g2rel:'';
         if (typeof ed.notify_optin==='boolean') f.notify_optin=ed.notify_optin;
         f.parent_login_id = String(f.parent_phone||'').replace(/\D/g,'');
+        f.parent_password = ed.parent_password||'';
       }
       this.loadOptions();
-      this.$nextTick(()=> this.sigInit());
+      this.$nextTick(()=> {
+        this.sigInit();
+        if (ed && ed.consent_signature) this.sigLoadImage(ed.consent_signature);
+      });
+    },
+    sigLoadImage(dataUrl){
+      const c=this.$refs.sig; if(!c||!this.sig.ctx) return;
+      const img=new Image();
+      img.onload=()=>{ this.sig.ctx.drawImage(img,0,0,c.width,c.height); this.sig.hasInk=true; };
+      img.src=dataUrl;
     },
     openDirectRegister(){
       this.go('leadmgr');
@@ -4852,7 +4935,11 @@ createApp({
     genLoginId(){
       const name = (this.convertForm.student_name||'').replace(/\s/g,'');
       const bd = this.convertForm.birth_date;
-      if (name && bd) { const p = bd.split('-'); this.convertForm.login_id = name + p[1] + p[2]; }
+      if (name && bd) {
+        const p = bd.split('-');
+        this.convertForm.login_id = name + p[1] + p[2];
+        if (!this.convertForm.password) this.convertForm.password = p[0].slice(2) + p[1] + p[2];  // 생년월일 6자리(YYMMDD) 기본값
+      }
     },
     useParentPhone(){ this.convertForm.student_phone = this.convertForm.parent_phone; },
     openPostcode(target){
@@ -4947,6 +5034,7 @@ createApp({
           class_schedule: JSON.stringify(f.schedule_pending ? [] : this.buildClassSchedule()),
           schedule_pending: f.schedule_pending,
           parent_login_id: f.parent_login_id || '', parent_password: f.parent_password || '',
+          memo: f.memo || '',
           consent_privacy: true, consent_guardian_name: f.consent_guardian_name,
           consent_signature: this.$refs.sig.toDataURL('image/png'),
           consent_date: this.todayStr,
