@@ -1844,6 +1844,45 @@ def _resolve_opt_value(category, text):
     return ""
 
 
+def _opt_label(category, value):
+    """선택목록 value(코드) → 표시 라벨. 없으면 value 그대로."""
+    if not value:
+        return ""
+    o = OptionItem.objects.filter(category=category, value=value).first()
+    return o.label if o else value
+
+
+def _parse_program_token(tok):
+    """'프로그래밍(파이썬)'·'웹'·'개인맞춤(로봇)' → {value, language, custom, subject}.
+    괄호 또는 콜론(:)으로 세부(언어/맞춤 내용)를 지정. LANG 과정은 세부=언어."""
+    tok = (tok or "").strip()
+    if not tok:
+        return None
+    label, detail = tok, ""
+    if tok.endswith(")") and "(" in tok:
+        label = tok[:tok.index("(")].strip()
+        detail = tok[tok.index("(") + 1:-1].strip()
+    elif ":" in tok:
+        label, detail = [s.strip() for s in tok.split(":", 1)]
+    val = _resolve_opt_value("program", label)
+    out = {"value": val, "language": "", "custom": "", "subject": ""}
+    if not val:  # 등록되지 않은 과정명 → 맞춤 과정(자유 입력)
+        out["custom"] = tok
+        out["subject"] = tok
+        return out
+    prog_label = _opt_label("program", val)
+    if val == "LANG":
+        lang_val = _resolve_opt_value("program_language", detail) if detail else ""
+        out["language"] = lang_val or detail
+        out["subject"] = _opt_label("program_language", lang_val) or detail or prog_label
+    elif detail:
+        out["custom"] = detail
+        out["subject"] = detail
+    else:
+        out["subject"] = prog_label
+    return out
+
+
 def _parse_bulk_timetable(text):
     """'월 16:00 웹, 수 17:00 블록코딩' → ([{weekday,start_time,program,subject}], warnings[]).
     토큰: 요일 시각 [과정명]. 격주는 v1 미지원(등록 후 [시간표]에서)."""
@@ -1873,9 +1912,9 @@ def _parse_bulk_timetable(text):
             warns.append("시각 형식 오류: '%s' (HH:MM)" % parts[1])
             continue
         prog_text = " ".join(parts[2:]).strip()
-        prog = _resolve_opt_value("program", prog_text)
-        subj = resolve_program_label(prog) or prog_text or "수업"
-        items.append({"weekday": wd, "start_time": tm, "program": prog, "subject": subj})
+        pt = _parse_program_token(prog_text) or {"value": "", "language": "", "subject": prog_text or "수업"}
+        items.append({"weekday": wd, "start_time": tm, "program": pt.get("value", ""),
+                      "language": pt.get("language", ""), "subject": pt.get("subject") or "수업"})
     return items, warns
 
 
@@ -1924,10 +1963,9 @@ def _bulk_resolve_row(actor, row, branches, seen_ids):
         ws = len(tt_items)
     progs = []
     for tok in r.get("programs", "").replace("，", ",").split(","):
-        tok = tok.strip()
-        if tok:
-            val = _resolve_opt_value("program", tok)
-            progs.append({"value": val, "language": "", "custom": ("" if val else tok)})
+        pt = _parse_program_token(tok)
+        if pt:
+            progs.append({"value": pt["value"], "language": pt["language"], "custom": pt["custom"]})
     resolved = {
         "name": name, "branch": branch, "login_id": login_id, "password": pw,
         "birth_date": bd, "gender": {"남": "M", "여": "F", "M": "M", "F": "F"}.get(r.get("gender", ""), ""),

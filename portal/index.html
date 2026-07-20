@@ -4347,43 +4347,71 @@ createApp({
     // ── 학생 관리 ──
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
     // ── 엑셀 일괄등록 ──
-    openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
+    openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; if(!(this.options.program||[]).length||!(this.options.program_language||[]).length) this.loadOptions(); if(!this.branches.length) this.loadBranches(); if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
     bulkColumns(){ return ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','학생연락처','우편번호','주소','상세주소','등록과정','주횟수','시간표','등록일','수업시작일']; },
     downloadBulkTemplate(){
       if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
       const cols=this.bulkColumns();
       const branchNames=(this.branches||[]).map(b=>b.name).join(' / ')||'(지점명)';
-      const progNames=(this.options.program||[]).map(o=>o.label).join(' / ')||'(과정명)';
+      const progOpts=this.options.program||[], langOpts=this.options.program_language||[];
+      const progNames=progOpts.map(o=>o.label).join(' / ')||'(과정명)';
+      const langNames=langOpts.map(o=>o.label).join(' / ')||'Python / C++ / 스크래치';
       const schoolNames=(this.options.school_type||[]).map(o=>o.label).join(' / ')||'초/중/고';
+      const langProg=progOpts.find(o=>o.value==='LANG');
+      const LP=langProg?langProg.label:'프로그래밍';
+      const L1=langOpts[0]?langOpts[0].label:'Python', L2=langOpts[1]?langOpts[1].label:'C++';
+      const plainP=progOpts.filter(o=>o.value!=='LANG' && o.value!=='CUSTOM');
+      const P0=plainP[0]?plainP[0].label:'웹', P1=plainP[1]?plainP[1].label:'블록코딩';
+      const langEx=LP+'('+L1+')';
       const guide=[
         ['엑셀 일괄등록 — 작성 안내'],
         [''],
+        ['[기본 규칙]'],
         ['· "입력" 시트의 첫 줄(머리글)은 지우지 마세요. 둘째 줄부터 한 학생씩 입력합니다.'],
-        ['· 지점: 정확한 지점명으로 입력. 사용 가능: '+branchNames],
-        ['· 생년월일/수업시작일: YYYY-MM-DD 형식 (예: 2014-03-09)'],
-        ['· 성별: 남 또는 여'],
-        ['· 학교구분: '+schoolNames],
-        ['· 등록과정: 여러 개면 콤마로 구분 (예: 웹, 블록코딩). 사용 가능: '+progNames],
-        ['· 아이디는 입력하지 않습니다 — 업로드 시 [이름+생일MMDD]로 자동 생성됩니다 (예: 홍길동0309).'],
-        ['· 비밀번호도 양식에 없습니다 (기본값으로 자동 설정).'],
-        ['· 주횟수: 숫자만(비우면 시간표 항목 수로 자동).'],
-        ['· 시간표: "요일 시각 과정" 형식, 여러 개는 콤마. 예: 월 16:00 웹, 수 17:00 블록코딩'],
-        ['     (격주 번갈아 수업은 일괄등록에서 제외 — 등록 후 [시간표]에서 설정하세요.)'],
-        ['· 등록일: 비우면 오늘. YYYY-MM-DD'],
+        ['· 비워도 되는 항목: 학생연락처, 우편번호, 주소, 상세주소, 주횟수, 시간표, 등록일, 수업시작일.'],
+        ['· 아이디/비밀번호는 적지 않습니다(자동). 아이디=이름+생일MMDD(예: 김민준0309), 비번=보호자 연락처 숫자 또는 123456.'],
         [''],
-        ['※ 업로드 후 [검증]으로 오류·시간표 해석을 먼저 확인하고, [확정 등록]을 눌러야 생성됩니다.'],
-        ['※ 여러 상황 예시는 "입력" 시트의 샘플 3줄을 참고하세요(등록 전 샘플은 지우세요).'],
+        ['[형식]'],
+        ['· 지점: 정확한 지점명. 사용 가능 → '+branchNames],
+        ['· 생년월일/등록일/수업시작일: YYYY-MM-DD (예: 2014-03-09). 등록일 비우면 오늘.'],
+        ['· 성별: 남 또는 여'],
+        ['· 학교구분: '+schoolNames+'  /  학년: 숫자만(예: 4)'],
+        [''],
+        ['[등록 과정] — 여러 개면 콤마(,)로 구분'],
+        ['· 사용 가능 과정 → '+progNames],
+        ['· 프로그래밍처럼 언어가 있는 과정은 "과정명(언어)"로 언어를 지정. 예: '+langEx],
+        ['· 사용 가능 언어 → '+langNames],
+        ['· 목록에 없는 과정명은 그대로 적으면 "개인맞춤"으로 저장됩니다. 예: 로봇코딩'],
+        ['· 예)  '+P0+'   /   '+P0+', '+P1+'   /   '+LP+'('+L1+')   /   '+P0+', '+LP+'('+L2+')'],
+        [''],
+        ['[시간표] — "요일 시각 과정", 여러 개는 콤마(,)'],
+        ['· 요일: 월 화 수 목 금 토 일   /   시각: 24시간 HH:MM (예: 16:00)'],
+        ['· 과정명 표기는 위 [등록 과정]과 동일(언어도 "과정명(언어)").'],
+        ['· 예)  월 16:00 '+P0+', 수 16:00 '+P0+'      → 같은 과정 주 2회'],
+        ['· 예)  화 17:00 '+LP+'('+L1+')                → 언어 지정'],
+        ['· 예)  월 16:00 '+P0+', 목 17:00 '+P1+'   → 요일마다 다른 과정'],
+        ['· 시간표를 비우면 "추후 안내"로 등록되고, 개별 시간표는 나중에 [시간표] 메뉴에서 설정합니다.'],
+        ['· 격주 번갈아 수업은 일괄등록 미지원 → 등록 후 [시간표]에서 설정하세요.'],
+        ['· 주횟수: 숫자만. 비우면 시간표 항목 수로 자동 계산.'],
+        [''],
+        ['※ 업로드 → [검증]으로 오류·시간표 해석을 먼저 확인 → [확정 등록]을 눌러야 생성됩니다.'],
+        ['※ "입력" 시트의 샘플은 다양한 경우의 예시입니다. 등록 전에 샘플 줄은 지우세요.'],
       ];
       const b0=(this.myProfile&&this.myProfile.branch&&this.myProfile.branch.name)||branchNames.split(' / ')[0]||'인천청라';
       const sc=(i,d)=>(this.options.school_type&&this.options.school_type[i]?this.options.school_type[i].label:d);
+      const row=(o)=>Object.assign({'지점':b0,'학생이름':'','생년월일':'','성별':'','학교구분':'','학교이름':'','학년':'','보호자이름':'','보호자연락처':'','학생연락처':'','우편번호':'','주소':'','상세주소':'','등록과정':'','주횟수':'','시간표':'','등록일':'','수업시작일':''}, o);
       const samples=[
-        {'지점':b0,'학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':sc(0,'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','학생연락처':'','우편번호':'','주소':'','상세주소':'','등록과정':(this.options.program&&this.options.program[0]?this.options.program[0].label:'웹'),'주횟수':'2','시간표':'월 16:00, 수 16:00','등록일':'','수업시작일':this.todayStr},
-        {'지점':b0,'학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':sc(1,'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','학생연락처':'010-9999-8888','우편번호':'','주소':'','상세주소':'','등록과정':((this.options.program||[]).slice(0,2).map(o=>o.label).join(', ')||'웹, 블록코딩'),'주횟수':'','시간표':'화 17:00 '+(this.options.program&&this.options.program[0]?this.options.program[0].label:'웹'),'등록일':this.todayStr,'수업시작일':this.todayStr},
-        {'지점':b0,'학생이름':'박지호','생년월일':'2015-06-01','성별':'남','학교구분':sc(0,'초'),'학교이름':'가현초','학년':'3','보호자이름':'박맘','보호자연락처':'010-5555-6666','학생연락처':'','우편번호':'','주소':'','상세주소':'','등록과정':'','주횟수':'','시간표':'','등록일':'','수업시작일':''},
+        row({'학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':sc(0,'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','등록과정':P0,'주횟수':'2','시간표':'월 16:00 '+P0+', 수 16:00 '+P0,'수업시작일':this.todayStr}),
+        row({'학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':sc(1,'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','학생연락처':'010-9999-8888','등록과정':LP+'('+L1+')','주횟수':'1','시간표':'화 17:00 '+LP+'('+L1+')','수업시작일':this.todayStr}),
+        row({'학생이름':'박도윤','생년월일':'2015-06-01','성별':'남','학교구분':sc(0,'초'),'학교이름':'가현초','학년':'3','보호자이름':'박맘','보호자연락처':'010-5555-6666','등록과정':P0+', '+P1,'시간표':'월 16:00 '+P0+', 목 17:00 '+P1}),
+        row({'학생이름':'최하은','생년월일':'2010-09-15','성별':'여','학교구분':sc(2,'고'),'학교이름':'청라고','학년':'1','보호자이름':'최부','보호자연락처':'010-7777-8888','등록과정':LP+'('+L2+')','주횟수':'1','시간표':'금 19:00 '+LP+'('+L2+')','수업시작일':this.todayStr}),
+        row({'학생이름':'정우재','생년월일':'2013-01-22','성별':'남','학교구분':sc(0,'초'),'학교이름':'초은초','학년':'5','보호자이름':'정모','보호자연락처':'010-3333-4444','등록과정':'로봇코딩','주횟수':'1','시간표':'수 15:00 로봇코딩'}),
+        row({'학생이름':'한소율(시간표 추후)','생년월일':'2014-12-05','성별':'여','학교구분':sc(0,'초'),'학교이름':'청람초','학년':'4','보호자이름':'한맘','보호자연락처':'010-1212-3434','등록과정':P0}),
       ];
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(guide), '설명');
       const ws=XLSX.utils.json_to_sheet(samples, { header:cols });
+      ws['!cols']=cols.map(c=>({wch: c==='시간표'?24:(c==='주소'?18:(['학생이름','보호자이름','등록과정','학교이름'].includes(c)?12:10))}));
       XLSX.utils.book_append_sheet(wb, ws, '입력');
       XLSX.writeFile(wb, '학생_일괄등록_양식.xlsx');
     },
