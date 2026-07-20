@@ -42,10 +42,14 @@
         <div class="text-3xl mb-2">✅</div>
         <div class="font-bold mb-1">제출되었습니다</div>
         <div class="text-sm text-slate-500">학원에서 확인 후 등록을 진행합니다. 감사합니다.</div>
+        <div class="text-xs text-slate-400 mt-2">잘못 작성하셨나요? <b>7일 이내</b>에는 다시 수정할 수 있습니다.</div>
+        <button @click="enrollDone=false; loadEnroll()" class="mt-4 px-4 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm hover:bg-slate-50">✎ 수정하기</button>
       </div>
       <div v-else-if="enrollPrefill" class="space-y-4">
         <div class="bg-white rounded-xl shadow-sm p-4 text-sm text-slate-500">
           <b class="text-slate-700">{{ enrollPrefill.branch }}</b> 입회 신청서입니다. 아래 정보를 확인·작성해 주세요.
+          <span v-if="enrollPrefill.already_submitted" class="text-xs text-amber-600 block mt-1">이미 제출된 신청서입니다. 내용을 수정 후 다시 제출하면 반영됩니다.</span>
+          <span class="text-xs text-indigo-500 block mt-1">📌 이 링크는 <b>7일간</b> 유효하며, 7일 이내에는 다시 열어 <b>수정</b>할 수 있습니다.<span v-if="enrollPrefill.expires"> (~{{ enrollPrefill.expires }})</span></span>
           <span class="text-xs text-slate-400 block mt-1">과정·수업 시간표는 상담 내용대로 학원에서 배정합니다.</span>
         </div>
         <div class="bg-white rounded-xl shadow-sm p-5 space-y-3">
@@ -805,7 +809,7 @@
       </div>
       <div v-if="filteredLeads.length===0" class="text-sm text-slate-400 bg-white rounded-xl p-6">상담 신청이 없습니다.</div>
       <div class="space-y-3">
-        <div v-for="r in pagedLeads" :key="r.id" :id="'lead-'+r.id" :class="['bg-white rounded-xl shadow-sm p-4', r.is_hidden ? 'opacity-60 ring-1 ring-rose-200' : '', openLeadId===r.id ? 'ring-2 ring-indigo-300' : '']">
+        <div v-for="r in pagedLeads" :key="r.id" :id="'lead-'+r.id" :class="['bg-white rounded-xl shadow-sm p-4', r.is_hidden ? 'opacity-60 ring-1 ring-rose-200' : '', r.enroll_edited ? 'ring-2 ring-amber-400' : (openLeadId===r.id ? 'ring-2 ring-indigo-300' : '')]">
           <div class="flex items-start justify-between gap-3 cursor-pointer" @click="toggleLead(r)">
             <div>
               <div class="font-semibold">{{ r.student_name }}
@@ -821,6 +825,11 @@
             </div>
             <div class="text-right shrink-0">
               <div class="text-xs text-slate-400">{{ dt(r.create_time) }}</div>
+              <div v-if="r.enroll_edited" class="mt-1 flex items-center justify-end gap-1">
+                <span class="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold cursor-help"
+                      @click.stop @mouseenter="r.enroll_edits && r.enroll_edits.length && showEnrollEditPop(r,$event)" @mouseleave="hideMsgEditPop">🔔 학부모 수정됨</span>
+                <button v-if="canEditBranch(r.branch && r.branch.id)" @click.stop="ackEnrollEdit(r)" class="text-[11px] text-slate-500 hover:underline">확인</button>
+              </div>
               <div class="mt-2 flex items-center justify-end gap-1">
                 <span v-if="r.display_status==='상담예약중' && nextReservation(r)" class="text-[11px] text-amber-600">📅 {{ dt(nextReservation(r).scheduled_at) }}</span>
                 <span :class="['inline-block px-2 py-0.5 rounded text-xs', leadChip(r).cls, r.display_status==='상담예약중' ? 'cursor-help' : '']"
@@ -3024,6 +3033,8 @@ createApp({
       const key = this.leadSortKey, asc = this.leadSortDir==='asc';
       const val = r => key==='log' ? lastLog(r) : r.create_time;
       list.sort((a,b) => { const x=val(a), y=val(b); return (x<y?-1:x>y?1:0) * (asc?1:-1); });
+      // 학부모가 수정한(직원 미확인) 건은 최상단으로
+      list.sort((a,b) => (b.enroll_edited?1:0) - (a.enroll_edited?1:0));
       return list;
     },
     leadTotalPages(){ return Math.max(1, Math.ceil(this.filteredLeads.length / Math.max(1, this.leadPageSize||20))); },
@@ -3897,12 +3908,12 @@ createApp({
         const d = await api('GET','/api/academy/enroll?token='+encodeURIComponent(this.enrollToken));
         this.enrollPrefill = d;
         const rel = d.parent_relation||'';
-        this.enrollForm = { student_name:d.student_name||'', gender:d.gender||'', birth_date:d.birth_date||'', student_phone:'',
+        this.enrollForm = { student_name:d.student_name||'', gender:d.gender||'', birth_date:d.birth_date||'', student_phone:d.student_phone||'',
           parent_name:d.parent_name||'', parent_phone:d.parent_phone||'',
           parent_relation:(rel==='어머니'||rel==='아버지')?rel:(rel?'기타':''), parent_relation_etc:(rel && rel!=='어머니' && rel!=='아버지')?rel:'',
-          notify_optin:(typeof d.notify_optin==='boolean')?d.notify_optin:null,
-          school_type:d.school_type||'', school_name:d.school_name||'', grade:d.grade||'', zipcode:'', address:'', address_detail:'',
-          consent_privacy:false, consent_guardian_name:d.parent_name||'' };
+          notify_optin:(d.already_submitted && typeof d.notify_optin==='boolean')?d.notify_optin:null,
+          school_type:d.school_type||'', school_name:d.school_name||'', grade:d.grade||'', zipcode:d.zipcode||'', address:d.address||'', address_detail:d.address_detail||'',
+          consent_privacy:false, consent_guardian_name:d.consent_guardian_name||d.parent_name||'' };
         this.$nextTick(()=> this.esigInit());
       } catch(e){ this.enrollError = e.message; }
     },
@@ -4581,6 +4592,8 @@ createApp({
       try { const d=await api('POST','/api/admin/academy/lead/edit', { lead_id:r.id, ...this.leadEditForm }); this.replaceLead(d); this.editLeadId=null; this.notify('수정되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
+    showEnrollEditPop(r,e){ clearTimeout(this._msgEditTimer); this.msgEditPop={ show:true, list:(r.enroll_edits||[]).slice().reverse().map(x=>({time:x.time, by:'학부모', items:x.changes})), x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-260) }; },
+    async ackEnrollEdit(r){ try { const d=await api('POST','/api/admin/academy/lead/enroll_ack', { lead_id:r.id }); this.replaceLead(d); this.notify('확인 처리했습니다.'); } catch(e){ this.notify(e.message,false); } },
     showLeadEditPop(r,e){ this.leadEditPop={ show:true, list:(r.edits||[]).slice().reverse(), x:Math.min(e.clientX+12,window.innerWidth-280), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
     hideLeadEditPop(){ this.leadEditPop.show=false; },
     async addNote(r){

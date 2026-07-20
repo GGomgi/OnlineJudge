@@ -1069,6 +1069,20 @@ class LeadDeleteAdminAPI(APIView):
         return self.success({"lead_id": lead.id, "is_hidden": lead.is_hidden})
 
 
+class LeadEnrollAckAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """학부모 수정('수정됨' 표시) 확인 처리. {lead_id} → enroll_edited=False."""
+        lead = Lead.objects.filter(id=request.data.get("lead_id")).first()
+        if not lead:
+            return self.error("상담 신청이 없습니다.")
+        if not can_manage_branch(request.user, lead.branch_id):
+            return self.error("권한이 없습니다.")
+        lead.enroll_edited = False
+        lead.save(update_fields=["enroll_edited"])
+        return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
+
+
 class EnrollLinkAdminAPI(APIView):
     @admin_role_required
     def post(self, request):

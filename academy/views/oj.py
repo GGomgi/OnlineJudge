@@ -176,35 +176,72 @@ class LeadCreateAPI(APIView):
         return self.success("상담 신청이 접수되었습니다.")
 
 
+_ENROLL_LABELS = [
+    ("student_name", "학생 성명"), ("birth_date", "생년월일"), ("gender", "성별"),
+    ("student_phone", "학생 휴대폰"), ("parent_name", "보호자 이름"), ("parent_phone", "보호자 연락처"),
+    ("parent_relation", "보호자 관계"), ("notify_optin", "등하원 알림"),
+    ("school_type", "학교 구분"), ("school_name", "학교"), ("grade", "학년"),
+    ("zipcode", "우편번호"), ("address", "주소"), ("address_detail", "상세주소"),
+    ("consent_guardian_name", "법정대리인 성명"),
+]
+
+
+def _enroll_disp(k, v):
+    if k == "notify_optin":
+        return "수신" if v else "미수신"
+    if k == "gender":
+        return {"M": "남", "F": "여"}.get(v, v or "")
+    return str(v) if v not in (None, "") else "(없음)"
+
+
+def _enroll_diff(old, new):
+    """학부모 재제출 시 변경 필드 diff. [{label, old, new}]."""
+    out = []
+    for k, label in _ENROLL_LABELS:
+        ov, nv = old.get(k), new.get(k)
+        same = (bool(ov) == bool(nv)) if k == "notify_optin" else ((ov or "") == (nv or ""))
+        if not same:
+            out.append({"label": label, "old": _enroll_disp(k, ov), "new": _enroll_disp(k, nv)})
+    return out
+
+
 class EnrollAPI(APIView):
     """등록 링크(무로그인). 상담 후 학부모가 인적사항·동의를 원격 작성.
-    GET ?token= 로 프리필 조회, POST 로 제출(직원 검토 후 확정 생성)."""
+    GET ?token= 로 프리필 조회, POST 로 제출(직원 검토 후 확정 생성). 7일 내 재수정 가능."""
     def get(self, request):
         token = (request.GET.get("token") or "").strip()
         lead = Lead.objects.select_related("branch").filter(enroll_token=token).first() if token else None
         if not lead:
             return self.error("링크가 올바르지 않습니다.")
         if lead.status == "CONVERTED":
-            return self.error("이미 등록이 완료되었습니다.")
-        if lead.enroll_status == "SUBMITTED":
-            return self.error("이미 제출되었습니다. 학원에서 확인 중입니다.")
+            return self.error("이미 등록이 완료되었습니다. 수정이 필요하면 학원에 문의해 주세요.")
         if lead.enroll_token_expires and lead.enroll_token_expires < now():
-            return self.error("링크가 만료되었습니다. 학원에 재발급을 요청해 주세요.")
+            return self.error("링크가 만료되었습니다(7일 경과). 학원에 재발급을 요청해 주세요.")
         seed = {}
         if lead.enroll_data:
             try:
                 seed = _json.loads(lead.enroll_data)
             except (ValueError, TypeError):
                 seed = {}
+        submitted = lead.enroll_status == "SUBMITTED"
         return self.success({
             "branch": (lead.branch.name if lead.branch_id else ""),
-            "student_name": lead.student_name, "parent_name": lead.parent_name,
-            "parent_phone": lead.parent_phone, "school_type": lead.school_type,
-            "school_name": lead.school_name, "grade": lead.grade,
-            # 직원이 최소 등록 시 입력한 값 프리필(성별·생일·관계·알림)
+            "already_submitted": submitted,
+            "expires": str((lead.enroll_token_expires + timedelta(hours=9)))[:16] if lead.enroll_token_expires else "",
+            # 제출본이 있으면 그 값으로, 없으면 리드 기본값으로 프리필
+            "student_name": seed.get("student_name") or lead.student_name,
+            "parent_name": seed.get("parent_name") or lead.parent_name,
+            "parent_phone": seed.get("parent_phone") or lead.parent_phone,
+            "school_type": seed.get("school_type") or lead.school_type,
+            "school_name": seed.get("school_name") or lead.school_name,
+            "grade": seed.get("grade") or lead.grade,
             "gender": seed.get("gender", ""), "birth_date": seed.get("birth_date", ""),
             "parent_relation": seed.get("parent_relation", ""),
             "notify_optin": bool(seed.get("notify_optin", False)),
+            "student_phone": seed.get("student_phone", ""),
+            "zipcode": seed.get("zipcode", ""), "address": seed.get("address", ""),
+            "address_detail": seed.get("address_detail", ""),
+            "consent_guardian_name": seed.get("consent_guardian_name", ""),
         })
 
     def post(self, request):
@@ -213,10 +250,10 @@ class EnrollAPI(APIView):
         lead = Lead.objects.filter(enroll_token=token).first() if token else None
         if not lead:
             return self.error("링크가 올바르지 않습니다.")
-        if lead.status == "CONVERTED" or lead.enroll_status == "SUBMITTED":
-            return self.error("이미 처리된 신청입니다.")
+        if lead.status == "CONVERTED":
+            return self.error("이미 등록이 완료되어 수정할 수 없습니다. 학원에 문의해 주세요.")
         if lead.enroll_token_expires and lead.enroll_token_expires < now():
-            return self.error("링크가 만료되었습니다.")
+            return self.error("링크가 만료되었습니다(7일 경과).")
         # 학부모 작성 항목(인적사항·주소·보호자·동의). 과정·시간표·계정은 직원이 확정.
         keep = ["student_name", "birth_date", "gender", "student_phone",
                 "parent_name", "parent_phone", "parent_relation", "notify_optin",
@@ -228,6 +265,21 @@ class EnrollAPI(APIView):
             return self.error("개인정보 수집·이용에 동의해 주세요.")
         if not (payload.get("consent_guardian_name") or "").strip():
             return self.error("법정대리인 성명을 입력해 주세요.")
+        # 재제출(수정)이면 변경 이력 기록 + '수정됨' 플래그(직원 확인용)
+        if lead.enroll_status == "SUBMITTED" and lead.enroll_data:
+            try:
+                old = _json.loads(lead.enroll_data)
+            except (ValueError, TypeError):
+                old = {}
+            changes = _enroll_diff(old, payload)
+            if changes:
+                try:
+                    log = _json.loads(lead.enroll_edit_log) if lead.enroll_edit_log else []
+                except (ValueError, TypeError):
+                    log = []
+                log.append({"time": str(now() + timedelta(hours=9))[:16], "changes": changes})
+                lead.enroll_edit_log = _json.dumps(log, ensure_ascii=False)
+                lead.enroll_edited = True
         # 리드 기본 정보도 최신값으로 반영(직원 확정 화면 프리필용)
         for f in ("student_name", "parent_name", "parent_phone", "school_type", "school_name", "grade"):
             if payload.get(f):
@@ -235,9 +287,9 @@ class EnrollAPI(APIView):
         lead.enroll_data = _json.dumps(payload, ensure_ascii=False)
         lead.enroll_status = "SUBMITTED"
         lead.enroll_submitted_at = now()
-        lead.enroll_token_expires = now()  # 제출 즉시 만료
+        # 링크는 7일 만료 유지(재수정 가능). 즉시 만료하지 않음.
         lead.save()
-        return self.success("제출되었습니다. 학원에서 확인 후 등록을 진행합니다.")
+        return self.success("제출되었습니다. 7일 이내에는 이 링크로 다시 수정할 수 있습니다.")
 
 
 class StaffNameHintAPI(APIView):

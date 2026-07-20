@@ -293,6 +293,7 @@ class LeadSerializer(serializers.ModelSerializer):
     display_status = serializers.SerializerMethodField()
     enroll = serializers.SerializerMethodField()
     edits = serializers.SerializerMethodField()
+    enroll_edits = serializers.SerializerMethodField()
 
     class Meta:
         model = Lead
@@ -300,12 +301,23 @@ class LeadSerializer(serializers.ModelSerializer):
                   "school_type", "school_name", "grade", "interest", "contact_preference",
                   "purpose", "purpose_detail",
                   "status", "converted_username", "close_reason", "create_time", "logs",
-                  "is_hidden", "reservations", "display_status", "enroll", "edits"]
+                  "is_hidden", "reservations", "display_status", "enroll", "edits",
+                  "enroll_edited", "enroll_edits"]
 
     def get_edits(self, obj):
         import json as _je
         try:
             return _je.loads(obj.edit_log) if obj.edit_log else []
+        except (ValueError, TypeError):
+            return []
+
+    def get_enroll_edits(self, obj):
+        # 학부모 재작성(수정) 이력은 원장 이상만
+        if not self.context.get("show_hidden", False):
+            return []
+        import json as _je
+        try:
+            return _je.loads(obj.enroll_edit_log) if obj.enroll_edit_log else []
         except (ValueError, TypeError):
             return []
 
