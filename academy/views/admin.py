@@ -33,6 +33,14 @@ def _now_kst_str():
     """현재 시각을 KST(UTC+9) 'YYYY-MM-DD HH:MM' 문자열로 반환(이력·타임스탬프 표시용).
     컨테이너 시계·now()는 UTC이므로 사용자 표시 시각은 반드시 +9h. 새 시각 기록 시 항상 사용."""
     return str(now() + timedelta(hours=9))[:16]
+
+
+def _kst_dt_str(dt):
+    """저장된 UTC datetime을 KST(+9h) 'YYYY-MM-DD HH:MM' 문자열로. API 응답에 create_time/update_time 등
+    사용자 표시용 시각을 담을 때는 str(dt)[:16] 대신 반드시 이 함수를 써야 한다(그렇지 않으면 9시간 어긋남)."""
+    if not dt:
+        return ""
+    return str(dt + timedelta(hours=9))[:16]
 import os as _os
 from django.conf import settings as _settings
 from utils.shortcuts import rand_str as _rand_str
@@ -499,7 +507,7 @@ class StaffHistoryAPI(APIView):
                     an = c.actor.username
             out.append({"id": c.id, "type": TYPE.get(c.change_type, c.change_type),
                         "detail": c.detail, "reason": c.reason,
-                        "actor": an, "time": str(c.create_time)[:16]})
+                        "actor": an, "time": _kst_dt_str(c.create_time)})
         return self.success(out)
 
 
@@ -599,7 +607,7 @@ class StaffDetailAdminAPI(APIView):
                 except Exception:
                     an = h.actor.username
             hist.append({"field": h.field, "old": h.old_value, "new": h.new_value,
-                         "actor": an, "time": str(h.create_time)[:16]})
+                         "actor": an, "time": _kst_dt_str(h.create_time)})
         return self.success({"staff": _staff_brief(prof),
                              "profile": (_staff_profile_data(sp) if sp else None),
                              "documents": docs, "history": hist})
@@ -722,7 +730,7 @@ class HRNoticeAdminAPI(APIView):
         for n in qs[:100]:
             out.append({"id": n.id, "message": n.message, "kind": n.kind,
                         "branch": n.branch.name if n.branch_id else None,
-                        "create_time": str(n.create_time)[:16]})
+                        "create_time": _kst_dt_str(n.create_time)})
         return self.success(out)
 
     @admin_role_required
@@ -1181,7 +1189,7 @@ class CounselingNoteAdminAPI(APIView):
             lead=lead, author=request.user,
             channel=data.get("channel", "") or "VISIT",
             summary=data["summary"],
-            counsel_at=data.get("counsel_at"),
+            counsel_at=_parse_kst_local_dt(data.get("counsel_at")),
             next_contact_at=data.get("next_contact_at"))
         # 상태 단순화: 상담기록을 남겨도 '상담(NEW)' 유지(상담중 개념 폐지).
         return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
@@ -2354,7 +2362,7 @@ class TimetableChangeAdminAPI(APIView):
                 except Exception:
                     an = c.actor.username
             out.append({"id": c.id, "action": ACT.get(c.action, c.action), "reason": c.reason,
-                        "detail": c.detail, "actor": an, "time": str(c.create_time)[:16],
+                        "detail": c.detail, "actor": an, "time": _kst_dt_str(c.create_time),
                         "can_edit": (c.action != "EDIT") and (manager or c.actor_id == request.user.id)})
         return self.success(out)
 
@@ -2457,7 +2465,7 @@ class StudentDetailAdminAPI(APIView):
                               "phone": (pp.phone if pp else "")})
         history = [{"id": c.id, "from": c.from_status, "to": c.to_status, "reason": c.reason,
                     "effective_date": str(c.effective_date) if c.effective_date else "",
-                    "actor": _name_of(c.actor) if c.actor_id else "", "time": str(c.create_time)[:16]}
+                    "actor": _name_of(c.actor) if c.actor_id else "", "time": _kst_dt_str(c.create_time)}
                    for c in StudentStatusChange.objects.filter(student=u).select_related("actor")[:200]]
         lead = Lead.objects.filter(converted_user=u).order_by("id").first()
         lead_data = LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data if lead else None
@@ -2712,7 +2720,7 @@ class StudentCounselAdminAPI(APIView):
         CounselingLog.objects.create(
             lead=lead, author=request.user,
             channel=data.get("channel") or "VISIT",
-            summary=summary, counsel_at=data.get("counsel_at") or None)
+            summary=summary, counsel_at=_parse_kst_local_dt(data.get("counsel_at")))
         return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
 
 
@@ -2944,7 +2952,7 @@ class FixedTemplateAdminAPI(APIView):
                              "body": (ft.body if (ft and ft.body) else d["default"]),
                              "customized": bool(ft and ft.body),
                              "updated_by": _name_of(ft.updated_by) if ft else None,
-                             "update_time": str(ft.update_time)[:16] if ft else None})
+                             "update_time": _kst_dt_str(ft.update_time) if ft else None})
             out.append({"branch_id": b.id, "branch_name": b.name,
                         "can_edit": can_edit, "templates": tpls})
         return self.success(out)
@@ -2967,7 +2975,7 @@ class FixedTemplateAdminAPI(APIView):
         ft.save()
         return self.success({"branch_id": bid, "key": key, "body": ft.body,
                              "customized": bool(ft.body), "updated_by": _name_of(request.user),
-                             "update_time": str(ft.update_time)[:16]})
+                             "update_time": _kst_dt_str(ft.update_time)})
 
 
 # ── 개발일지(Claude Code 세션 트랜스크립트 뷰어, 본부 관리자 전용) ──
@@ -3216,7 +3224,7 @@ class DashboardAdminAPI(APIView):
                 edits = []
             lg = rv.lead
             logs = [{"author": _name_of(c.author) if c.author_id else "",
-                     "channel": c.channel, "summary": c.summary, "time": str(c.create_time)[:16]}
+                     "channel": c.channel, "summary": c.summary, "time": _kst_dt_str(c.create_time)}
                     for c in lg.logs.all() if not c.is_hidden][:6]
             reservations.append({
                 "id": rv.id, "lead_id": rv.lead_id, "time": _hm_kst(rv.scheduled_at),
@@ -3250,6 +3258,21 @@ def _kst_to_utc(d, hm):
     hh, mm = hm.split(":")
     naive = datetime.combine(d, _t(int(hh), int(mm))) - timedelta(hours=9)
     return _tz.make_aware(naive, _tz.utc)
+
+
+def _parse_kst_local_dt(s):
+    """프론트 composeAt()이 보내는 'YYYY-MM-DDTHH:MM'(KST 벽시계, tz 표기 없음) 문자열을
+    진짜 UTC aware datetime으로 변환. 사용자가 직접 고른 시각(상담 일시 등)을 저장할 때 항상 거쳐야
+    한다 — 그대로 저장하면 Django가 TIME_ZONE=UTC로 오인해 9시간 어긋난다."""
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        day_s, time_s = s.replace(" ", "T").split("T")[:2]
+        d = datetime.strptime(day_s, "%Y-%m-%d").date()
+        return _kst_to_utc(d, time_s[:5])
+    except (ValueError, AttributeError):
+        return None
 
 
 class AttendanceCheckAdminAPI(APIView):
@@ -3341,7 +3364,7 @@ class AttendanceNoteAdminAPI(APIView):
             for c in a.changes.select_related("actor"):
                 out.append({"detail": c.detail, "reason": c.reason,
                             "actor": _name_of(c.actor) if c.actor_id else "",
-                            "time": str(c.create_time)[:16]})
+                            "time": _kst_dt_str(c.create_time)})
         return self.success(out)
 
 
@@ -3579,7 +3602,7 @@ class LessonProgressAdminAPI(APIView):
                 return self.success(None)
             return self.success({"id": p.id, "date": str(p.date), "content": p.content,
                                  "homework": p.homework, "author": _name_of(p.author) if p.author_id else "",
-                                 "time": str(p.update_time)[:16]})
+                                 "time": _kst_dt_str(p.update_time)})
         sid = request.GET.get("student_id")
         u = User.objects.filter(id=sid).first()
         if not u:
@@ -3593,7 +3616,7 @@ class LessonProgressAdminAPI(APIView):
             out.append({"id": p.id, "date": str(p.date), "content": p.content, "homework": p.homework,
                         "subject": (p.occurrence.subject if p.occurrence_id else ""),
                         "author": _name_of(p.author) if p.author_id else "",
-                        "time": str(p.update_time)[:16]})
+                        "time": _kst_dt_str(p.update_time)})
         return self.success(out)
 
     @admin_role_required

@@ -928,11 +928,10 @@
               <ul class="space-y-1">
                 <li v-for="g in r.logs" :key="g.id" :class="['text-sm rounded px-3 py-1.5', g.is_hidden ? 'bg-rose-50' : 'bg-slate-50']">
                   <div class="flex items-center gap-1 text-xs text-slate-400">
-                    <span class="text-slate-500 font-medium">{{ g.author }}</span>
-                    <span>· {{ dt(g.create_time) }} 작성</span>
-                    <span class="ml-auto">{{ channelLabel(g.channel) }}</span>
-                    <span v-if="g.counsel_at" class="text-slate-400">· 상담 {{ dt(g.counsel_at) }}</span>
+                    <span class="text-slate-500 font-medium">{{ channelLabel(g.channel) }}</span>
+                    <span v-if="g.counsel_at">· 상담 {{ dt(g.counsel_at) }}</span>
                     <span v-if="g.is_hidden" class="text-rose-500">· 숨김됨</span>
+                    <span class="ml-auto">{{ dt(g.create_time) }} 작성 · {{ g.author }}</span>
                   </div>
                   <template v-if="editLogId===g.id">
                     <textarea v-model="editLogText" rows="2" class="input mt-1"></textarea>

@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from utils.api import serializers
 
 from .models import (AcademyRole, ACADEMY_ROLE_CHOICES, SELF_SIGNUP_ROLES,
@@ -9,6 +11,14 @@ from .models import (AcademyRole, ACADEMY_ROLE_CHOICES, SELF_SIGNUP_ROLES,
 
 ALL_ROLE_VALUES = [c[0] for c in ACADEMY_ROLE_CHOICES]
 WEEKDAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"]
+
+
+def _kst_str(dt):
+    """저장된 UTC datetime을 KST(+9h) 'YYYY-MM-DD HH:MM' 문자열로. API 응답의 모든 시각 표시는
+    반드시 이 함수를 거쳐야 한다(프론트 dt()는 timezone 변환을 하지 않으므로)."""
+    if not dt:
+        return None
+    return str(dt + timedelta(hours=9))[:16]
 
 
 class BranchSerializer(serializers.ModelSerializer):
@@ -257,17 +267,29 @@ class CounselingLogSerializer(serializers.ModelSerializer):
     author = serializers.SerializerMethodField()
     edited_by = serializers.SerializerMethodField()
     edits = serializers.SerializerMethodField()
+    counsel_at = serializers.SerializerMethodField()
+    create_time = serializers.SerializerMethodField()
+    edited_at = serializers.SerializerMethodField()
 
     class Meta:
         model = CounselingLog
         fields = ["id", "author", "channel", "summary", "counsel_at", "next_contact_at",
                   "create_time", "is_hidden", "edited_by", "edited_at", "prev_summary", "edits"]
 
+    def get_counsel_at(self, obj):
+        return _kst_str(obj.counsel_at)
+
+    def get_create_time(self, obj):
+        return _kst_str(obj.create_time)
+
+    def get_edited_at(self, obj):
+        return _kst_str(obj.edited_at)
+
     def get_edits(self, obj):
         out = []
         for e in obj.edits.all():
             out.append({"actor": self._name(e.actor) if e.actor_id else None,
-                        "old": e.old_summary, "time": str(e.create_time)[:16]})
+                        "old": e.old_summary, "time": _kst_str(e.create_time)})
         return out
 
     def _name(self, u):
@@ -294,6 +316,10 @@ class LeadSerializer(serializers.ModelSerializer):
     enroll = serializers.SerializerMethodField()
     edits = serializers.SerializerMethodField()
     enroll_edits = serializers.SerializerMethodField()
+    create_time = serializers.SerializerMethodField()
+
+    def get_create_time(self, obj):
+        return _kst_str(obj.create_time)
 
     class Meta:
         model = Lead
@@ -394,7 +420,9 @@ class AddCounselingNoteSerializer(serializers.Serializer):
     lead_id = serializers.IntegerField()
     summary = serializers.CharField()
     channel = serializers.CharField(max_length=16, required=False, allow_blank=True)
-    counsel_at = serializers.DateTimeField(required=False, allow_null=True)
+    # KST 벽시계 원문 그대로 받아 view에서 _parse_kst_local_dt로 변환(DateTimeField로 받으면
+    # USE_TZ=True + TIME_ZONE=UTC 환경에서 naive 문자열이 UTC로 오인되어 9시간 어긋난다)
+    counsel_at = serializers.CharField(required=False, allow_blank=True)
     next_contact_at = serializers.DateField(required=False, allow_null=True)
 
 

@@ -16,6 +16,15 @@ from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROL
                       HRNotice, StaffDocument, StaffProfileHistory)
 from ..models import DevRequest, DevRequestComment, Notification, Message
 
+
+def _kst_dt_str(dt):
+    """저장된 UTC datetime을 KST(+9h) 'YYYY-MM-DD HH:MM' 문자열로. API 응답에 create_time 등
+    사용자 표시용 시각을 담을 때는 str(dt)[:16] 대신 반드시 이 함수를 써야 한다(그렇지 않으면 9시간 어긋남)."""
+    if not dt:
+        return ""
+    return str(dt + timedelta(hours=9))[:16]
+
+
 TRACKED_HR_FIELDS = ["zipcode", "address", "address_detail", "phone",
                      "dependents_decided", "dependents", "emergency_contacts",
                      "sex_offense_consent"]
@@ -24,7 +33,7 @@ TRACKED_HR_FIELDS = ["zipcode", "address", "address_detail", "phone",
 def _doc_data(d):
     return {"id": d.id, "group": d.group, "title": d.title, "url": d.url,
             "doc_date": str(d.doc_date) if d.doc_date else None,
-            "uploaded_at": str(d.create_time)[:16], "order": d.order,
+            "uploaded_at": _kst_dt_str(d.create_time), "order": d.order,
             "visible_to_staff": d.visible_to_staff}
 
 
@@ -433,7 +442,7 @@ class StaffProfileAPI(APIView):
         # 본인 노출 문서(서류함) + 본인 수정 이력(항목·시각만)
         docs = StaffDocument.objects.filter(user=request.user, visible_to_staff=True)
         result["documents"] = [_doc_data(d) for d in docs]
-        result["history"] = [{"field": h.field, "time": str(h.create_time)[:16]}
+        result["history"] = [{"field": h.field, "time": _kst_dt_str(h.create_time)}
                              for h in StaffProfileHistory.objects.filter(user=request.user)[:100]]
         return self.success(result)
 
@@ -656,7 +665,7 @@ class NotificationAPI(APIView):
         qs = request.user.notifications.select_related("actor")[:50]
         items = [{"id": n.id, "kind": n.kind, "text": n.text, "actor": _u_name(n.actor),
                   "link_type": n.link_type, "link_id": n.link_id, "is_read": n.is_read,
-                  "time": str(n.create_time)[:16]} for n in qs]
+                  "time": _kst_dt_str(n.create_time)} for n in qs]
         unread = request.user.notifications.filter(is_read=False).count()
         return self.success({"unread": unread, "items": items})
 
@@ -681,11 +690,11 @@ class MessageAPI(APIView):
         if box == "sent":
             qs = Message.objects.select_related("recipient").filter(sender=me, sender_hidden=False)
             items = [{"id": m.id, "other": _u_name(m.recipient), "body": m.body,
-                      "is_read": m.is_read, "time": str(m.create_time)[:16], "mine": True} for m in qs[:200]]
+                      "is_read": m.is_read, "time": _kst_dt_str(m.create_time), "mine": True} for m in qs[:200]]
         else:
             qs = Message.objects.select_related("sender").filter(recipient=me, recipient_hidden=False)
             items = [{"id": m.id, "other": _u_name(m.sender), "body": m.body,
-                      "is_read": m.is_read, "time": str(m.create_time)[:16], "mine": False} for m in qs[:200]]
+                      "is_read": m.is_read, "time": _kst_dt_str(m.create_time), "mine": False} for m in qs[:200]]
         unread = Message.objects.filter(recipient=me, recipient_hidden=False, is_read=False).count()
         return self.success({"unread": unread, "items": items})
 
@@ -751,10 +760,10 @@ class DevRequestAPI(APIView):
                     continue
                 comments.append({"id": c.id, "author": _u_name(c.author), "author_id": c.author_id,
                                  "body": c.body, "is_hidden": c.is_hidden,
-                                 "time": str(c.create_time)[:16], "mine": c.author_id == me.id})
+                                 "time": _kst_dt_str(c.create_time), "mine": c.author_id == me.id})
             return self.success({"id": o.id, "title": o.title, "body": o.body, "status": o.status,
                                  "author": _u_name(o.author), "author_id": o.author_id,
-                                 "time": str(o.create_time)[:16], "is_hidden": o.is_hidden,
+                                 "time": _kst_dt_str(o.create_time), "is_hidden": o.is_hidden,
                                  "mine": o.author_id == me.id, "can_status": hq, "comments": comments})
         from django.db.models import Count
         qs = DevRequest.objects.select_related("author").all()
@@ -763,7 +772,7 @@ class DevRequestAPI(APIView):
         cc = dict(DevRequestComment.objects.filter(is_hidden=False).values("request_id")
                   .annotate(c=Count("id")).values_list("request_id", "c"))
         out = [{"id": o.id, "title": o.title, "status": o.status, "author": _u_name(o.author),
-                "time": str(o.create_time)[:16], "is_hidden": o.is_hidden,
+                "time": _kst_dt_str(o.create_time), "is_hidden": o.is_hidden,
                 "mine": o.author_id == me.id, "comments": cc.get(o.id, 0)} for o in qs[:300]]
         return self.success(out)
 
