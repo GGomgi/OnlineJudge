@@ -3203,7 +3203,7 @@ class DashboardAdminAPI(APIView):
         day_hi = _kst_to_utc(d + timedelta(days=1), "00:00")
         rq = CounselReservation.objects.select_related("lead", "lead__branch").prefetch_related(
             "lead__logs__author").filter(
-            status="ACTIVE", scheduled_at__gte=day_lo, scheduled_at__lt=day_hi)
+            status__in=["ACTIVE", "DONE"], scheduled_at__gte=day_lo, scheduled_at__lt=day_hi)
         if view is not None:
             rq = rq.filter(lead__branch_id__in=view)
         if bid:
@@ -3222,6 +3222,7 @@ class DashboardAdminAPI(APIView):
                 "id": rv.id, "lead_id": rv.lead_id, "time": _hm_kst(rv.scheduled_at),
                 "student_name": lg.student_name, "parent_name": lg.parent_name,
                 "branch": (lg.branch.name if lg.branch_id else ""), "note": rv.note,
+                "channel": rv.channel, "status": rv.status,
                 "school_type": lg.school_type, "school_name": lg.school_name, "grade": lg.grade,
                 "parent_phone": lg.parent_phone, "logs": logs, "edits": edits})
         # 학부모 등록 링크 작성 완료(등록 전환 전까지 계속 표시, 날짜와 무관)
