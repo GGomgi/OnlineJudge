@@ -1259,21 +1259,27 @@ class ReservationAdminAPI(APIView):
             return self.error("예약 일시를 입력하세요.")
         CounselReservation.objects.create(
             lead=lead, scheduled_at=sched, note=(data.get("note") or "").strip(),
+            channel=(data.get("channel") or "VISIT"),
             created_by=request.user)
         return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
 
     @admin_role_required
     def put(self, request):
-        """상담 예약 수정(일시·메모) + 변경 이력. {reservation_id, at 또는 date+time, note?}"""
+        """상담 예약 일정 변경(약속시간 변경) + 사유·변경 이력. {reservation_id, at 또는 date+time, note?, reason}"""
         data = request.data
         r = CounselReservation.objects.select_related("lead").filter(id=data.get("reservation_id")).first()
         if not r:
             return self.error("예약이 없습니다.")
         if not can_manage_branch(request.user, r.lead.branch_id):
             return self.error("No permission for this branch")
+        if r.status != CounselReservation.ACTIVE:
+            return self.error("이미 처리된(기록작성/취소) 예약은 변경할 수 없습니다.")
         at = (data.get("at") or "").strip()
         d = (data.get("date") or "").strip()
         t = (data.get("time") or "").strip()
+        reason = (data.get("reason") or "").strip()
+        if not reason:
+            return self.error("약속시간 변경 사유를 입력하세요.")
         try:
             if at:
                 day_s, time_s = at.replace(" ", "T").split("T")[:2]
@@ -1284,17 +1290,16 @@ class ReservationAdminAPI(APIView):
                 return self.error("예약 일시를 입력하세요.")
         except (ValueError, AttributeError):
             return self.error("예약 일시 형식이 올바르지 않습니다.")
-        # 변경 이력(이전 값 보존)
+        # 변경 이력(이전 값·사유 보존)
         new_note = (data.get("note") or "").strip()
-        if sched != r.scheduled_at or new_note != r.note:
-            try:
-                log = _json.loads(r.edit_log) if r.edit_log else []
-            except (ValueError, TypeError):
-                log = []
-            log.append({"time": _now_kst_str(), "by": _name_of(request.user),
-                        "old_at": _hm_kst(r.scheduled_at) and (str((r.scheduled_at + timedelta(hours=9)).date()) + " " + _hm_kst(r.scheduled_at)),
-                        "old_note": r.note})
-            r.edit_log = _json.dumps(log, ensure_ascii=False)
+        try:
+            log = _json.loads(r.edit_log) if r.edit_log else []
+        except (ValueError, TypeError):
+            log = []
+        log.append({"time": _now_kst_str(), "by": _name_of(request.user),
+                    "old_at": _hm_kst(r.scheduled_at) and (str((r.scheduled_at + timedelta(hours=9)).date()) + " " + _hm_kst(r.scheduled_at)),
+                    "old_note": r.note, "reason": reason})
+        r.edit_log = _json.dumps(log, ensure_ascii=False)
         r.scheduled_at = sched
         r.note = new_note
         r.save()
@@ -1302,14 +1307,46 @@ class ReservationAdminAPI(APIView):
 
     @admin_role_required
     def delete(self, request):
-        """상담 예약 취소(ACTIVE→CANCELLED)."""
+        """상담 예약 취소(ACTIVE→CANCELLED). 사유 필수. ?reservation_id=&reason="""
         r = CounselReservation.objects.select_related("lead").filter(id=request.GET.get("reservation_id")).first()
         if not r:
             return self.error("예약이 없습니다.")
         if not can_manage_branch(request.user, r.lead.branch_id):
             return self.error("No permission for this branch")
+        if r.status != CounselReservation.ACTIVE:
+            return self.error("이미 처리된 예약입니다.")
+        reason = (request.GET.get("reason") or "").strip()
+        if not reason:
+            return self.error("취소 사유를 입력하세요.")
         r.status = CounselReservation.CANCELLED
-        r.save(update_fields=["status"])
+        r.cancel_reason = reason
+        r.save(update_fields=["status", "cancel_reason"])
+        return self.success(LeadSerializer(r.lead, context={"show_hidden": _is_manager(request.user)}).data)
+
+
+class ReservationCompleteAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """예약된 상담을 실제로 진행한 뒤 상담 기록 작성(ACTIVE→DONE). {reservation_id, summary, channel?}"""
+        data = request.data
+        r = CounselReservation.objects.select_related("lead").filter(id=data.get("reservation_id")).first()
+        if not r:
+            return self.error("예약이 없습니다.")
+        if not can_manage_branch(request.user, r.lead.branch_id):
+            return self.error("No permission for this branch")
+        if r.status != CounselReservation.ACTIVE:
+            return self.error("이미 처리된 예약입니다.")
+        summary = (data.get("summary") or "").strip()
+        if not summary:
+            return self.error("상담 내용을 입력하세요.")
+        channel = (data.get("channel") or r.channel or "VISIT")
+        log = CounselingLog.objects.create(
+            lead=r.lead, author=request.user, channel=channel, summary=summary,
+            counsel_at=r.scheduled_at)
+        r.status = CounselReservation.DONE
+        r.channel = channel
+        r.completed_log = log
+        r.save(update_fields=["status", "channel", "completed_log"])
         return self.success(LeadSerializer(r.lead, context={"show_hidden": _is_manager(request.user)}).data)
 
 

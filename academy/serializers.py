@@ -348,8 +348,6 @@ class LeadSerializer(serializers.ModelSerializer):
         from django.utils.timezone import now
         out = []
         for r in obj.reservations.all():
-            if r.status != "ACTIVE":
-                continue
             import json as _je
             try:
                 edits = _je.loads(r.edit_log) if r.edit_log else []
@@ -359,7 +357,9 @@ class LeadSerializer(serializers.ModelSerializer):
             sched_kst = (r.scheduled_at + _td(hours=9)).strftime("%Y-%m-%dT%H:%M") if r.scheduled_at else None
             created_kst = (r.create_time + _td(hours=9)).strftime("%Y-%m-%dT%H:%M") if r.create_time else None
             out.append({"id": r.id, "scheduled_at": sched_kst,
-                        "note": r.note, "created_by": self._name(r.created_by),
+                        "note": r.note, "channel": r.channel, "status": r.status,
+                        "cancel_reason": r.cancel_reason, "completed_log_id": r.completed_log_id,
+                        "created_by": self._name(r.created_by),
                         "created_at": created_kst,
                         "is_past": bool(r.scheduled_at and r.scheduled_at < now()),
                         "edits": edits})

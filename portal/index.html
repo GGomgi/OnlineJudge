@@ -243,12 +243,18 @@
 
   <!-- 예약 수정 이력 호버 -->
   <div v-if="resvEditPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none" :style="{ left: resvEditPop.x+'px', top: resvEditPop.y+'px' }">
-    <div class="font-semibold text-amber-600">✎ 예약 수정 이력</div>
+    <div class="font-semibold text-amber-600">✎ 예약 변경 이력</div>
     <ul class="mt-1 space-y-1">
       <li v-for="(e,i) in resvEditPop.list" :key="i" class="text-slate-600">
-        <span class="text-slate-400">{{ e.time }} {{ e.by }}</span><br>이전: {{ e.old_at }}<span v-if="e.old_note"> · {{ e.old_note }}</span>
+        <span class="text-slate-400">{{ e.time }} {{ e.by }}</span><br>이전: {{ e.old_at }}<span v-if="e.old_note"> · {{ e.old_note }}</span><span v-if="e.reason" class="block text-amber-600">사유: {{ e.reason }}</span>
       </li>
     </ul>
+  </div>
+
+  <!-- 예약 취소 사유 호버 -->
+  <div v-if="resvCancelPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none" :style="{ left: resvCancelPop.x+'px', top: resvCancelPop.y+'px' }">
+    <div class="font-semibold text-rose-500">❌ 취소 사유</div>
+    <div class="mt-1 text-slate-600 whitespace-pre-wrap">{{ resvCancelPop.reason }}</div>
   </div>
 
   <!-- 휴원/퇴원 상태 이력 호버 팝오버 -->
@@ -966,33 +972,52 @@
             <div>
               <div class="text-xs font-semibold text-slate-500 mb-1">상담 예약</div>
               <ul class="space-y-1">
-                <li v-for="rv in (r.reservations||[])" :key="rv.id" class="rounded px-3 py-1.5" :class="rv.is_past ? 'bg-slate-50 text-slate-400' : 'bg-amber-50'">
-                  <template v-if="editResvId===rv.id">
-                    <div class="flex gap-2 items-center flex-wrap">
-                      <div class="w-32 shrink-0"><input v-model="resvEdit.date" type="date" class="input py-1" /></div>
-                      <div class="w-20 shrink-0"><select v-model="resvEdit.ampm" class="input py-1"><option>오전</option><option>오후</option></select></div>
-                      <div class="w-16 shrink-0"><select v-model="resvEdit.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in 12" :key="h" :value="h">{{ h }}시</option></select></div>
-                      <div class="w-20 shrink-0"><select v-model="resvEdit.min" class="input py-1"><option v-for="m in minOptions" :key="m" :value="m">{{ m }}분</option></select></div>
-                    </div>
-                    <textarea v-model="resvEdit.note" rows="1" placeholder="메모(선택)" class="input py-1 mt-1"></textarea>
-                    <div class="flex justify-end gap-2 mt-1"><button @click="editResvId=null" class="text-[11px] text-slate-400 hover:underline">취소</button><button @click="saveResvEdit(r,rv)" class="text-[11px] text-indigo-600 hover:underline">저장</button></div>
-                  </template>
-                  <div v-else class="flex items-center gap-2 text-sm">
-                    <span class="font-medium">{{ dt(rv.scheduled_at) }}</span>
-                    <span class="text-[11px]" :class="rv.is_past ? 'text-slate-400' : 'text-amber-600'">{{ rv.is_past ? '지난 예약' : '예약' }}</span>
+                <li v-for="rv in (r.reservations||[])" :key="rv.id" class="rounded px-3 py-1.5"
+                    :class="rv.status==='CANCELLED' ? 'bg-rose-50/60 text-slate-400' : (rv.status==='DONE' ? 'bg-emerald-50/60' : (rv.is_past ? 'bg-slate-50 text-slate-400' : 'bg-amber-50'))">
+                  <div class="flex items-center gap-2 text-sm flex-wrap">
+                    <span :class="rv.status==='CANCELLED' ? 'line-through' : 'font-medium'">{{ dt(rv.scheduled_at) }}</span>
+                    <span class="text-[11px] px-1 rounded bg-white/60 text-slate-500">{{ channelLabel(rv.channel) }}</span>
+                    <span v-if="rv.status==='DONE'" class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">✅ 상담 완료</span>
+                    <span v-else-if="rv.status==='CANCELLED'" @mouseenter="showResvCancelPop(rv,$event)" @mouseleave="hideResvCancelPop" class="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 font-semibold cursor-help">❌ 취소됨</span>
+                    <span v-else class="text-[11px]" :class="rv.is_past ? 'text-slate-400' : 'text-amber-600'">{{ rv.is_past ? '지난 예약' : '예약' }}</span>
                     <span v-if="rv.edits && rv.edits.length" @mouseenter="showResvEditPop(rv,$event)" @mouseleave="hideResvEditPop" class="text-[11px] text-amber-500 cursor-help">✎{{ rv.edits.length }}</span>
                     <span v-if="rv.note" class="text-xs text-slate-500">· {{ rv.note }}</span>
                     <span class="ml-auto text-[11px] text-slate-400">{{ rv.created_by }}</span>
-                    <template v-if="canEditBranch(r.branch && r.branch.id)">
-                      <button @click="startResvEdit(rv)" class="text-[11px] text-indigo-500 hover:underline">수정</button>
-                      <button @click="cancelReservation(r,rv)" class="text-[11px] text-rose-400 hover:underline">취소</button>
+                    <template v-if="rv.status==='ACTIVE' && canEditBranch(r.branch && r.branch.id)">
+                      <button @click="openResvLog(rv)" class="text-[11px] text-emerald-600 hover:underline">기록작성</button>
+                      <button @click="openResvReschedule(rv)" class="text-[11px] text-indigo-500 hover:underline">변경</button>
+                      <button @click="openResvCancel(rv)" class="text-[11px] text-rose-400 hover:underline">취소</button>
                     </template>
+                  </div>
+                  <!-- 기록작성 -->
+                  <div v-if="resvActionId===rv.id && resvActionMode==='log'" class="mt-2 space-y-2">
+                    <div class="w-24"><select v-model="resvLogForm.channel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
+                    <textarea v-model="resvLogForm.summary" rows="3" placeholder="상담 내용 입력" class="input py-1"></textarea>
+                    <div class="flex justify-end gap-2"><button @click="closeResvAction" class="text-[11px] text-slate-400 hover:underline">취소</button><button @click="submitResvLog(r,rv)" class="text-[11px] text-emerald-600 hover:underline font-semibold">기록 저장</button></div>
+                  </div>
+                  <!-- 약속시간 변경 -->
+                  <div v-if="resvActionId===rv.id && resvActionMode==='reschedule'" class="mt-2 space-y-2">
+                    <div class="flex gap-2 items-center flex-wrap">
+                      <div class="w-32 shrink-0"><input v-model="resvRescheduleForm.date" type="date" class="input py-1" /></div>
+                      <div class="w-20 shrink-0"><select v-model="resvRescheduleForm.ampm" class="input py-1"><option>오전</option><option>오후</option></select></div>
+                      <div class="w-16 shrink-0"><select v-model="resvRescheduleForm.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in 12" :key="h" :value="h">{{ h }}시</option></select></div>
+                      <div class="w-20 shrink-0"><select v-model="resvRescheduleForm.min" class="input py-1"><option v-for="m in minOptions" :key="m" :value="m">{{ m }}분</option></select></div>
+                    </div>
+                    <input v-model="resvRescheduleForm.reason" placeholder="변경 사유 (필수)" class="input py-1" />
+                    <textarea v-model="resvRescheduleForm.note" rows="1" placeholder="메모(선택)" class="input py-1"></textarea>
+                    <div class="flex justify-end gap-2"><button @click="closeResvAction" class="text-[11px] text-slate-400 hover:underline">취소</button><button @click="submitResvReschedule(r,rv)" class="text-[11px] text-indigo-600 hover:underline font-semibold">변경 저장</button></div>
+                  </div>
+                  <!-- 취소 -->
+                  <div v-if="resvActionId===rv.id && resvActionMode==='cancel'" class="mt-2 space-y-2">
+                    <input v-model="resvCancelForm.reason" placeholder="취소 사유 (필수)" class="input py-1" />
+                    <div class="flex justify-end gap-2"><button @click="closeResvAction" class="text-[11px] text-slate-400 hover:underline">닫기</button><button @click="submitResvCancel(r,rv)" class="text-[11px] text-rose-500 hover:underline font-semibold">예약 취소 확정</button></div>
                   </div>
                 </li>
                 <li v-if="!(r.reservations||[]).length" class="text-xs text-slate-400">예약 없음</li>
               </ul>
               <div v-if="canEditBranch(r.branch && r.branch.id)" class="mt-2 space-y-2">
                 <div class="flex gap-2 items-center flex-wrap">
+                  <div class="w-20 shrink-0"><select v-model="resvForm.channel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
                   <div class="w-32 shrink-0"><input v-model="resvForm.date" type="date" class="input py-1" /></div>
                   <div class="w-20 shrink-0"><select v-model="resvForm.ampm" class="input py-1"><option>오전</option><option>오후</option></select></div>
                   <div class="w-16 shrink-0"><select v-model="resvForm.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in 12" :key="h" :value="h">{{ h }}시</option></select></div>
@@ -1797,14 +1822,14 @@
               <div class="border-t pt-3">
                 <div class="text-xs font-semibold text-slate-500 mb-1">상담 예약</div>
                 <ul class="space-y-1">
-                  <li v-for="rv in (stuDetail.lead ? (stuDetail.lead.reservations||[]) : [])" :key="rv.id" class="flex items-center gap-2 text-sm rounded px-3 py-1.5" :class="rv.is_past ? 'bg-slate-50 text-slate-400' : 'bg-amber-50'">
+                  <li v-for="rv in (stuDetail.lead ? (stuDetail.lead.reservations||[]).filter(x=>x.status==='ACTIVE') : [])" :key="rv.id" class="flex items-center gap-2 text-sm rounded px-3 py-1.5" :class="rv.is_past ? 'bg-slate-50 text-slate-400' : 'bg-amber-50'">
                     <span class="font-medium">{{ dt(rv.scheduled_at) }}</span>
                     <span class="text-[11px]" :class="rv.is_past ? 'text-slate-400' : 'text-amber-600'">{{ rv.is_past ? '지난 예약' : '예약' }}</span>
                     <span v-if="rv.note" class="text-xs text-slate-500">· {{ rv.note }}</span>
                     <span class="ml-auto text-[11px] text-slate-400">{{ rv.created_by }}</span>
                     <button v-if="stuCanEdit" @click="cancelStuReservation(rv)" class="text-[11px] text-rose-400 hover:underline">취소</button>
                   </li>
-                  <li v-if="!stuDetail.lead || !(stuDetail.lead.reservations||[]).length" class="text-xs text-slate-400">예약 없음</li>
+                  <li v-if="!stuDetail.lead || !(stuDetail.lead.reservations||[]).filter(x=>x.status==='ACTIVE').length" class="text-xs text-slate-400">예약 없음</li>
                 </ul>
                 <div v-if="stuCanEdit" class="mt-2 space-y-2">
                   <div class="flex gap-2 items-center flex-wrap">
@@ -2952,10 +2977,14 @@ createApp({
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadStatusSel: [], leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteTime: { date:'', ampm:'오전', hour:'', min:'00' }, showDeletedLeads: null, editLogId: null, editLogText: '',
-      resvForm: { date:'', ampm:'오전', hour:'', min:'00', note:'' },
-      editResvId: null, resvEdit: { date:'', ampm:'오전', hour:'', min:'00', note:'' },
+      resvForm: { date:'', ampm:'오전', hour:'', min:'00', note:'', channel:'VISIT' },
+      resvActionId: null, resvActionMode: '',
+      resvLogForm: { channel:'VISIT', summary:'' },
+      resvRescheduleForm: { date:'', ampm:'오전', hour:'', min:'00', note:'', reason:'' },
+      resvCancelForm: { reason:'' },
       resvPop: { show:false, x:0, y:0, at:'', note:'', by:'' },
       resvEditPop: { show:false, x:0, y:0, list:[] },
+      resvCancelPop: { show:false, x:0, y:0, reason:'' },
       resvInfoPop: { show:false, x:0, y:0, rv:{} },
       editLeadId: null, leadEditForm: {}, leadEditPop: { show:false, x:0, y:0, list:[] },
       showLeadForm: false,
@@ -4536,7 +4565,7 @@ createApp({
     async addStuCred(){ const n=this.stuCredNew; if(!((n.site||'').trim()||(n.login_id||'').trim()||(n.password||'').trim())) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, site:n.site, login_id:n.login_id, password:n.password }); this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds(); this.notify('추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async deleteStuCred(c){ if(!confirm('이 사이트 계정을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/student_credential?id='+c.id); this.loadStuCreds(); this.notify('삭제되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async addStuReservation(){ const f=this.stuResvForm; const at=this.composeAt(f); if(!at) return this.notify('예약 날짜와 시(시각)를 선택하세요.', false); try { const lead=await api('POST','/api/admin/academy/lead/reservation', { student_id:this.stuDetail.id, at, note:f.note }); this.stuDetail.lead=lead; this.stuDetail.lead_id=lead.id; this.stuResvForm={ date:'', ampm:'오전', hour:'', min:'00', note:'' }; this.notify('상담 예약이 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
-    async cancelStuReservation(rv){ if(!confirm('이 예약을 취소할까요?')) return; try { const lead=await api('DELETE','/api/admin/academy/lead/reservation?reservation_id='+rv.id); this.stuDetail.lead=lead; this.notify('예약이 취소되었습니다.'); } catch(e){ this.notify(e.message,false); } },
+    async cancelStuReservation(rv){ const reason=(prompt('취소 사유를 입력하세요.')||'').trim(); if(!reason) return; try { const lead=await api('DELETE','/api/admin/academy/lead/reservation?reservation_id='+rv.id+'&reason='+encodeURIComponent(reason)); this.stuDetail.lead=lead; this.notify('예약이 취소되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     siblingCount(s){ const k=(s.parent_phone||'').replace(/\D/g,''); return k ? (this.siblingGroups[k]||[]).length : 1; },
     showSiblings(s, e){
       clearTimeout(this._sibTimer);
@@ -4703,25 +4732,39 @@ createApp({
       const at = this.composeAt(f);
       if (!at) return this.notify('예약 날짜와 시(시각)를 선택하세요.', false);
       try {
-        const d = await api('POST','/api/admin/academy/lead/reservation', { lead_id:r.id, at, note:f.note });
-        this.replaceLead(d); this.resvForm={ date:'', ampm:'오전', hour:'', min:'00', note:'' }; this.notify('상담 예약이 추가되었습니다.');
+        const d = await api('POST','/api/admin/academy/lead/reservation', { lead_id:r.id, at, note:f.note, channel:f.channel });
+        this.replaceLead(d); this.resvForm={ date:'', ampm:'오전', hour:'', min:'00', note:'', channel:'VISIT' }; this.notify('상담 예약이 추가되었습니다.');
       } catch(e){ this.notify(e.message,false); }
     },
-    async cancelReservation(r, rv){
-      if (!confirm('이 예약을 취소할까요?')) return;
-      try { const d = await api('DELETE','/api/admin/academy/lead/reservation?reservation_id='+rv.id); this.replaceLead(d); this.notify('예약이 취소되었습니다.'); }
+    _resvParts(iso){ const d=new Date(iso); const p=x=>String(x).padStart(2,'0'); let h=d.getHours(); const ampm=h<12?'오전':'오후'; let hh=h%12; if(hh===0)hh=12; return { date:this.localDate(d), ampm, hour:hh, min:p(Math.floor(d.getMinutes()/5)*5) }; },
+    closeResvAction(){ this.resvActionId=null; this.resvActionMode=''; },
+    openResvLog(rv){ this.resvActionId=rv.id; this.resvActionMode='log'; this.resvLogForm={ channel: rv.channel||'VISIT', summary:'' }; },
+    async submitResvLog(r, rv){
+      if (!(this.resvLogForm.summary||'').trim()) return this.notify('상담 내용을 입력하세요.', false);
+      try { const d = await api('POST','/api/admin/academy/lead/reservation/complete', { reservation_id:rv.id, channel:this.resvLogForm.channel, summary:this.resvLogForm.summary });
+        this.replaceLead(d); this.closeResvAction(); this.notify('상담 기록이 저장되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
-    _resvParts(iso){ const d=new Date(iso); const p=x=>String(x).padStart(2,'0'); let h=d.getHours(); const ampm=h<12?'오전':'오후'; let hh=h%12; if(hh===0)hh=12; return { date:this.localDate(d), ampm, hour:hh, min:p(Math.floor(d.getMinutes()/5)*5) }; },
-    startResvEdit(rv){ this.editResvId=rv.id; this.resvEdit={ ...this._resvParts(rv.scheduled_at), note:rv.note||'' }; },
-    async saveResvEdit(r, rv){
-      const at=this.composeAt(this.resvEdit); if(!at) return this.notify('예약 날짜와 시(시각)를 선택하세요.', false);
-      try { const d = await api('PUT','/api/admin/academy/lead/reservation', { reservation_id:rv.id, at, note:this.resvEdit.note });
-        this.replaceLead(d); this.editResvId=null; this.notify('예약이 수정되었습니다.'); }
+    openResvReschedule(rv){ this.resvActionId=rv.id; this.resvActionMode='reschedule'; this.resvRescheduleForm={ ...this._resvParts(rv.scheduled_at), note:rv.note||'', reason:'' }; },
+    async submitResvReschedule(r, rv){
+      const f=this.resvRescheduleForm;
+      if (!(f.reason||'').trim()) return this.notify('약속시간 변경 사유를 입력하세요.', false);
+      const at=this.composeAt(f); if(!at) return this.notify('예약 날짜와 시(시각)를 선택하세요.', false);
+      try { const d = await api('PUT','/api/admin/academy/lead/reservation', { reservation_id:rv.id, at, note:f.note, reason:f.reason });
+        this.replaceLead(d); this.closeResvAction(); this.notify('약속시간이 변경되었습니다.'); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    openResvCancel(rv){ this.resvActionId=rv.id; this.resvActionMode='cancel'; this.resvCancelForm={ reason:'' }; },
+    async submitResvCancel(r, rv){
+      if (!(this.resvCancelForm.reason||'').trim()) return this.notify('취소 사유를 입력하세요.', false);
+      try { const d = await api('DELETE','/api/admin/academy/lead/reservation?reservation_id='+rv.id+'&reason='+encodeURIComponent(this.resvCancelForm.reason));
+        this.replaceLead(d); this.closeResvAction(); this.notify('예약이 취소되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
     showResvEditPop(rv,e){ this.resvEditPop={ show:true, list:(rv.edits||[]).slice().reverse(), x:Math.min(e.clientX+12,window.innerWidth-280), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
     hideResvEditPop(){ this.resvEditPop.show=false; },
+    showResvCancelPop(rv,e){ this.resvCancelPop={ show:true, reason: rv.cancel_reason || '(사유 없음)', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-100) }; },
+    hideResvCancelPop(){ this.resvCancelPop.show=false; },
     showResvInfoPop(rv,e){ this.resvInfoPop={ show:true, rv, x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-260) }; },
     hideResvInfoPop(){ this.resvInfoPop.show=false; },
     async goLeadFromResv(rv){
@@ -4746,9 +4789,9 @@ createApp({
       await this.goLeadFromResv(rv);
       const lead = this.leads.find(x=>x.id===rv.lead_id);
       const resv = lead && (lead.reservations||[]).find(x=>x.id===rv.id);
-      if (resv) this.startResvEdit(resv);
+      if (resv) this.openResvReschedule(resv);
     },
-    nextReservation(r){ return (r.reservations||[]).find(rv => !rv.is_past) || null; },
+    nextReservation(r){ return (r.reservations||[]).find(rv => rv.status==='ACTIVE' && !rv.is_past) || null; },
     showResvPop(r,e){ const rv=this.nextReservation(r); if(!rv) return; this.resvPop={ show:true, at:this.dt(rv.scheduled_at), note:rv.note, by:rv.created_by||'', created:rv.created_at||'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
     hideResvPop(){ this.resvPop.show=false; },
     leadChip(r){ return ({

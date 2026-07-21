@@ -332,16 +332,22 @@ class CounselingLogEdit(models.Model):
 
 class CounselReservation(models.Model):
     """상담 예약(여러 건). 등록 후에도 계속 받을 수 있으며, 미래 예약이 있으면
-    화면에서 '상담예약중'으로 자동 표시(예약 일시가 지나면 다시 '상담')."""
+    화면에서 '상담예약중'으로 자동 표시(예약 일시가 지나면 다시 '상담').
+    상담 후에는 기록작성(→DONE, 상담기록 연결)/변경(사유 기록)/취소(사유 기록) 중 하나로 처리한다."""
     ACTIVE = "ACTIVE"
     CANCELLED = "CANCELLED"
+    DONE = "DONE"
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="reservations")
     scheduled_at = models.DateTimeField()
     note = models.CharField(max_length=255, blank=True, default="")
-    status = models.CharField(max_length=16, default=ACTIVE)  # ACTIVE / CANCELLED
+    channel = models.CharField(max_length=16, blank=True, default="VISIT")  # 방문/전화/기타(CounselingLog와 동일 체계)
+    status = models.CharField(max_length=16, default=ACTIVE)  # ACTIVE / CANCELLED / DONE
+    cancel_reason = models.CharField(max_length=255, blank=True, default="")
+    completed_log = models.ForeignKey(CounselingLog, null=True, blank=True,
+                                      on_delete=models.SET_NULL, related_name="+")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
-    edit_log = models.TextField(blank=True, default="")  # 수정 이력 JSON [{time,by,old_at,old_note}]
+    edit_log = models.TextField(blank=True, default="")  # 수정 이력 JSON [{time,by,old_at,old_note,reason}]
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:
