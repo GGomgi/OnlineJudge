@@ -208,7 +208,7 @@
     <div class="text-slate-500">{{ resvInfoPop.rv.school_name }}{{ schoolSuffix(resvInfoPop.rv.school_type) }} {{ resvInfoPop.rv.grade ? resvInfoPop.rv.grade+'학년' : '' }}</div>
     <div class="text-slate-500">{{ resvInfoPop.rv.parent_phone || '-' }}</div>
     <div class="mt-2 pt-2 border-t">
-      <div class="font-semibold text-slate-600 mb-1">상담 기록 {{ (resvInfoPop.rv.logs||[]).length }}</div>
+      <div class="font-semibold text-slate-600 mb-1">상담 기록 {{ (resvInfoPop.rv.logs||[]).length }}개</div>
       <ul class="space-y-1 max-h-48 overflow-y-auto pr-1">
         <li v-for="(g,i) in (resvInfoPop.rv.logs||[])" :key="i">
           <div class="flex items-center gap-1 text-[10px] text-slate-400">
