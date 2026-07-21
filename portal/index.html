@@ -203,15 +203,18 @@
   </div>
 
   <!-- 오늘 상담 예약: 학생 정보·상담 기록 호버 -->
-  <div v-if="resvInfoPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72 pointer-events-none" :style="{ left: resvInfoPop.x+'px', top: resvInfoPop.y+'px' }">
+  <div v-if="resvInfoPop.show" @mouseenter="keepResvInfoPop" @mouseleave="hideResvInfoPop" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72" :style="{ left: resvInfoPop.x+'px', top: resvInfoPop.y+'px' }">
     <div class="font-bold text-sm">{{ resvInfoPop.rv.student_name }} <span class="text-xs font-normal text-slate-400">· 학부모 {{ resvInfoPop.rv.parent_name }}</span></div>
     <div class="text-slate-500">{{ resvInfoPop.rv.school_name }}{{ schoolSuffix(resvInfoPop.rv.school_type) }} {{ resvInfoPop.rv.grade ? resvInfoPop.rv.grade+'학년' : '' }}</div>
     <div class="text-slate-500">{{ resvInfoPop.rv.parent_phone || '-' }}</div>
     <div class="mt-2 pt-2 border-t">
       <div class="font-semibold text-slate-600 mb-1">상담 기록 {{ (resvInfoPop.rv.logs||[]).length }}</div>
-      <ul class="space-y-1 max-h-40 overflow-hidden">
+      <ul class="space-y-1 max-h-48 overflow-y-auto pr-1">
         <li v-for="(g,i) in (resvInfoPop.rv.logs||[])" :key="i">
-          <div class="text-[10px] text-slate-400">{{ channelLabel(g.channel) }} · {{ g.time }} {{ g.author }}</div>
+          <div class="flex items-center gap-1 text-[10px] text-slate-400">
+            <span>{{ channelLabel(g.channel) }} · {{ g.time }}</span>
+            <span class="ml-auto">{{ g.author }}</span>
+          </div>
           <div class="whitespace-pre-wrap text-slate-600">{{ g.summary }}</div>
         </li>
         <li v-if="!(resvInfoPop.rv.logs||[]).length" class="text-slate-400">상담 기록 없음</li>
@@ -4772,8 +4775,9 @@ createApp({
     hideResvEditPop(){ this.resvEditPop.show=false; },
     showResvCancelPop(rv,e){ this.resvCancelPop={ show:true, reason: rv.cancel_reason || '(사유 없음)', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-100) }; },
     hideResvCancelPop(){ this.resvCancelPop.show=false; },
-    showResvInfoPop(rv,e){ this.resvInfoPop={ show:true, rv, x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-260) }; },
-    hideResvInfoPop(){ this.resvInfoPop.show=false; },
+    showResvInfoPop(rv,e){ clearTimeout(this._resvInfoTimer); this.resvInfoPop={ show:true, rv, x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-260) }; },
+    keepResvInfoPop(){ clearTimeout(this._resvInfoTimer); },
+    hideResvInfoPop(){ clearTimeout(this._resvInfoTimer); this._resvInfoTimer=setTimeout(()=>{ this.resvInfoPop.show=false; }, 150); },
     async goLeadFromResv(rv){
       this.hideResvInfoPop();
       this.go('leadmgr');

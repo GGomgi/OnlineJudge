@@ -3224,7 +3224,8 @@ class DashboardAdminAPI(APIView):
                 edits = []
             lg = rv.lead
             logs = [{"author": _name_of(c.author) if c.author_id else "",
-                     "channel": c.channel, "summary": c.summary, "time": _kst_dt_str(c.create_time)}
+                     "channel": c.channel, "summary": c.summary,
+                     "time": _kst_dt_str(c.counsel_at or c.create_time)}
                     for c in lg.logs.all() if not c.is_hidden][:6]
             reservations.append({
                 "id": rv.id, "lead_id": rv.lead_id, "time": _hm_kst(rv.scheduled_at),
