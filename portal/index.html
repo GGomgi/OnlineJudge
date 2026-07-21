@@ -4713,7 +4713,7 @@ createApp({
     toggleLead(r){
       const opening = this.openLeadId!==r.id;
       this.openLeadId = opening ? r.id : null; this.noteText=''; this.editLogId=null;
-      if (opening) { this.noteChannel='VISIT'; this.noteTime = this.nowParts(); this.resvForm = { date:'', ampm:'오전', hour:'', min:'00', note:'' }; }
+      if (opening) { this.noteChannel='VISIT'; this.noteTime = this.nowParts(); this.resvForm = { date:'', ampm:'오전', hour:'', min:'00', note:'', channel:'VISIT' }; }
     },
     replaceLead(updated){ const i=this.leads.findIndex(x=>x.id===updated.id); if(i>=0) this.leads.splice(i,1,updated); },
     openLeadEdit(r){ this.openLeadId=r.id; if(this.editLeadId===r.id){ this.editLeadId=null; return; } this.startLeadEdit(r); },
