@@ -1167,10 +1167,8 @@
               </div>
               <div>
                 <label class="lbl">기타 보호자 관계 <span class="text-[10px] text-slate-400">(선택)</span></label>
-                <div class="flex items-center gap-2">
-                  <select v-model="convertForm.guardian2_relation" class="input px-2 w-24 shrink-0"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
-                  <input v-if="convertForm.guardian2_relation==='기타'" v-model="convertForm.guardian2_relation_etc" placeholder="직접 입력" class="input py-1 min-w-0" />
-                </div>
+                <select v-model="convertForm.guardian2_relation" class="input px-2"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+                <input v-if="convertForm.guardian2_relation==='기타'" v-model="convertForm.guardian2_relation_etc" placeholder="관계 직접 입력" class="input py-1 mt-1" />
               </div>
             </div>
             <div>
