@@ -3503,7 +3503,7 @@ class TimetableCalendarAPI(APIView):
                               "occ_id": (ov["id"] if ov else None),
                               "progress": (prog_by_occ.get(ov["id"]) if ov else None)})
             # 보강(makeup) 인스턴스도 포함
-            mk = LessonOccurrence.objects.select_related("student").filter(date=cur, is_makeup=True)
+            mk = LessonOccurrence.objects.select_related("student", "instructor").filter(date=cur, is_makeup=True)
             if sid:
                 mk = mk.filter(student_id=sid)
             if view is not None:
@@ -3514,6 +3514,8 @@ class TimetableCalendarAPI(APIView):
                 items.append({"timetable_id": None, "start_time": str(o.start_time)[:5],
                               "subject": (o.subject or "보강"), "makeup": True,
                               "student_id": o.student_id, "student_name": _name_of(o.student),
+                              "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
+                              "instructor_id": o.instructor_id,
                               "status": o.status, "occ_id": o.id,
                               "progress": prog_by_occ.get(o.id)})
             if items:

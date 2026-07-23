@@ -1438,6 +1438,15 @@
           </label>
         </div>
 
+        <!-- 강사 색상 범례(강사 2명 이상 선택 시) -->
+        <div v-if="(ttFilter.instructor_ids||[]).length>1" class="flex flex-wrap items-center gap-2 mb-2 text-[11px]">
+          <span class="text-slate-400">강사 색상</span>
+          <span v-for="id in ttFilter.instructor_ids" :key="id" class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-50">
+            <span :class="['w-2.5 h-2.5 rounded-full shrink-0', (instrColor(id)||{}).dot]"></span>
+            {{ id==='__none__' ? '미배정' : ((ttInstructors.find(t=>String(t.user_id)===id)||{}).real_name || (ttInstructors.find(t=>String(t.user_id)===id)||{}).staff_no || id) }}
+          </span>
+        </div>
+
         <!-- 주간: 시간(30분)×요일 격자 -->
         <div v-if="ttView==='week'" class="overflow-x-auto">
           <table class="w-full border-collapse text-xs">
@@ -1455,7 +1464,7 @@
                     <div v-if="ttSlotItems(d.date,sl.mins).length" class="text-[10px] font-bold text-indigo-600 mb-0.5">👥 {{ ttSlotItems(d.date,sl.mins).length }}명</div>
                     <div class="flex flex-wrap gap-0.5">
                       <span v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
-                           :class="['px-1.5 py-0.5 rounded leading-tight cursor-default text-[10px] whitespace-nowrap', calItemCls(it)]">{{ it.student_name }}<template v-if="it.makeup">·보강</template></span>
+                           :class="['px-1.5 py-0.5 rounded leading-tight cursor-default text-[10px] whitespace-nowrap', calItemCls(it)]"><span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }} <span class="opacity-70">{{ it.subject }}</span><template v-if="it.makeup">·보강</template></span>
                     </div>
                   </template>
                   <template v-else>
@@ -3095,6 +3104,16 @@ createApp({
       hours12: [1,2,3,4,5,6,7,8,9,10,11,12],
       minutes: [0,5,10,15,20,25,30,35,40,45,50,55],
       durationOptions: [40,60,90,120,150,180],
+      instrPalette: [
+        {bg:'bg-blue-100', text:'text-blue-700', dot:'bg-blue-500'},
+        {bg:'bg-emerald-100', text:'text-emerald-700', dot:'bg-emerald-500'},
+        {bg:'bg-amber-100', text:'text-amber-700', dot:'bg-amber-500'},
+        {bg:'bg-pink-100', text:'text-pink-700', dot:'bg-pink-500'},
+        {bg:'bg-violet-100', text:'text-violet-700', dot:'bg-violet-500'},
+        {bg:'bg-cyan-100', text:'text-cyan-700', dot:'bg-cyan-500'},
+        {bg:'bg-orange-100', text:'text-orange-700', dot:'bg-orange-500'},
+        {bg:'bg-lime-100', text:'text-lime-700', dot:'bg-lime-500'},
+      ],
       convertForm: { student_name:'', gender:'', birth_date:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', memo:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
       showParentLogin: false, parentLogin: { id:'', pw:'' },
@@ -3740,7 +3759,18 @@ createApp({
     },
     truncate(s,n){ s=s||''; return s.length>n ? s.slice(0,n)+'...' : s; },
     showCalResv(rv,date,e){ this.resvPop={ show:true, at:(date+' '+rv.time+' · '+(rv.student_name||'')), note:rv.note, by:'', created:'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
+    instrColor(instructorId){
+      const ids = this.ttFilter.instructor_ids || [];
+      const key = instructorId ? String(instructorId) : '__none__';
+      const idx = ids.indexOf(key);
+      if (idx < 0) return null;
+      return this.instrPalette[idx % this.instrPalette.length];
+    },
     calItemCls(it){
+      if ((this.ttFilter.instructor_ids||[]).length > 1) {
+        const c = this.instrColor(it.instructor_id);
+        if (c) return c.bg + ' ' + c.text + ' hover:brightness-95' + (it.status==='ABSENT' ? ' line-through opacity-60' : '');
+      }
       if (it.status==='ABSENT') return 'bg-rose-100 text-rose-500 line-through';
       if (it.makeup) return 'bg-blue-50 text-blue-700 hover:bg-blue-100';
       return 'bg-slate-50 text-slate-600 hover:bg-indigo-50';
