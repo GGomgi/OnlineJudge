@@ -104,7 +104,7 @@ def get_or_create_guardian(student, lead, branch, login_id="", password=""):
             while User.objects.filter(username=username).exists():
                 i += 1
                 username = "%s%d" % (base, i)
-        pw = (password or "").strip() or (norm or username)
+        pw = (password or "").strip() or (norm[-4:] if norm else username)  # 기본 비번: 연락처 뒤 4자리
         parent_user = User.objects.create(username=username, is_disabled=False)
         parent_user.set_password(pw)
         parent_user.save()
