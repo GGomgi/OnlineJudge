@@ -1691,24 +1691,28 @@
             <div v-if="!stuCanEdit" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-500 text-xs">👁 열람 전용 — 이 지점은 수정 권한이 없습니다.</div>
             <!-- 인적사항 -->
             <div v-if="stuTab==='info'" class="space-y-2">
+              <div class="flex items-center justify-end">
+                <button v-if="stuCanEdit && !stuEditMode" @click="stuEditMode=true" class="text-xs px-2 py-1 rounded border border-slate-200 text-indigo-600 hover:bg-indigo-50">✎ 수정</button>
+                <span v-if="stuEditMode" class="text-xs text-amber-600 font-medium">수정 중 — 아래 항목을 고친 뒤 [수정완료]를 눌러주세요.</span>
+              </div>
               <div class="grid grid-cols-2 gap-2">
                 <div><label class="lbl">원번</label><input :value="stuForm.enroll_no || '-'" class="input bg-slate-50" readonly /></div>
-                <div><label class="lbl">이름 <span v-if="stuFieldDirty('real_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.real_name" :class="stuCls('real_name')" /></div>
-                <div><label class="lbl">생년월일 <span v-if="stuFieldDirty('birth_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.birth_date" type="date" :class="stuCls('birth_date')" /></div>
-                <div><label class="lbl">성별 <span v-if="stuFieldDirty('gender')" class="text-amber-600">✏️</span></label><select v-model="stuForm.gender" :class="stuCls('gender')"><option value="">-</option><option value="M">남</option><option value="F">여</option></select></div>
-                <div><label class="lbl">학생 연락처 <span v-if="stuFieldDirty('student_phone')" class="text-amber-600">✏️</span></label><input :value="stuForm.student_phone" @input="stuForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" :class="stuCls('student_phone')" placeholder="010-0000-0000" /></div>
-                <div><label class="lbl">학교 구분 <span v-if="stuFieldDirty('school_type')" class="text-amber-600">✏️</span></label><select v-model="stuForm.school_type" :class="stuCls('school_type','px-2')"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+                <div><label class="lbl">이름 <span v-if="stuFieldDirty('real_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.real_name" :readonly="!stuEditMode" :class="stuCls('real_name')" /></div>
+                <div><label class="lbl">생년월일 <span v-if="stuFieldDirty('birth_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.birth_date" type="date" :readonly="!stuEditMode" :class="stuCls('birth_date')" /></div>
+                <div><label class="lbl">성별 <span v-if="stuFieldDirty('gender')" class="text-amber-600">✏️</span></label><select v-model="stuForm.gender" :disabled="!stuEditMode" :class="stuCls('gender')"><option value="">-</option><option value="M">남</option><option value="F">여</option></select></div>
+                <div><label class="lbl">학생 연락처 <span v-if="stuFieldDirty('student_phone')" class="text-amber-600">✏️</span></label><input :value="stuForm.student_phone" @input="stuForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" :readonly="!stuEditMode" :class="stuCls('student_phone')" placeholder="010-0000-0000" /></div>
+                <div><label class="lbl">학교 구분 <span v-if="stuFieldDirty('school_type')" class="text-amber-600">✏️</span></label><select v-model="stuForm.school_type" :disabled="!stuEditMode" :class="stuCls('school_type','px-2')"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
                 <div><label class="lbl">학교 이름 <span v-if="stuFieldDirty('school_name')" class="text-amber-600">✏️</span></label>
-                  <div class="flex items-center gap-1"><input v-model="stuForm.school_name" :class="stuCls('school_name','min-w-0')" /><span v-if="schoolSuffix(stuForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(stuForm.school_type) }}</span></div>
+                  <div class="flex items-center gap-1"><input v-model="stuForm.school_name" :readonly="!stuEditMode" :class="stuCls('school_name','min-w-0')" /><span v-if="schoolSuffix(stuForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(stuForm.school_type) }}</span></div>
                 </div>
                 <div><label class="lbl">학년 <span v-if="stuFieldDirty('grade')" class="text-amber-600">✏️</span></label>
-                  <div class="flex items-center gap-1"><input v-model="stuForm.grade" :class="stuCls('grade','min-w-0')" /><span class="text-xs text-slate-400 whitespace-nowrap">학년</span></div>
+                  <div class="flex items-center gap-1"><input v-model="stuForm.grade" :readonly="!stuEditMode" :class="stuCls('grade','min-w-0')" /><span class="text-xs text-slate-400 whitespace-nowrap">학년</span></div>
                 </div>
-                <div><label class="lbl">등록일 <span v-if="stuFieldDirty('enrollment_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.enrollment_date" type="date" :class="stuCls('enrollment_date')" /></div>
-                <div><label class="lbl">수업 시작일 <span v-if="stuFieldDirty('lesson_start_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.lesson_start_date" type="date" :class="stuCls('lesson_start_date')" /></div>
+                <div><label class="lbl">등록일 <span v-if="stuFieldDirty('enrollment_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.enrollment_date" type="date" :readonly="!stuEditMode" :class="stuCls('enrollment_date')" /></div>
+                <div><label class="lbl">수업 시작일 <span v-if="stuFieldDirty('lesson_start_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.lesson_start_date" type="date" :readonly="!stuEditMode" :class="stuCls('lesson_start_date')" /></div>
                 <div>
                   <label class="lbl">주 교육 회수 <span v-if="stuFieldDirty('weekly_sessions')" class="text-amber-600">✏️</span></label>
-                  <input v-model.number="stuForm.weekly_sessions" type="number" min="0" :class="stuCls('weekly_sessions')" />
+                  <input v-model.number="stuForm.weekly_sessions" type="number" min="0" :readonly="!stuEditMode" :class="stuCls('weekly_sessions')" />
                 </div>
               </div>
               <!-- 과목 · 시간표 (개별 시간표와 동일 편집) -->
@@ -1738,10 +1742,10 @@
               <div class="border-t pt-2">
                 <div class="text-xs font-semibold text-slate-500 mb-1">주소</div>
                 <div class="flex gap-2 mb-1">
-                  <input :value="stuForm.zipcode" @click="stuCanEdit && openPostcode('stu')" readonly placeholder="우편번호" class="input w-28 bg-slate-50 cursor-pointer" />
-                  <input :value="stuForm.address" @click="stuCanEdit && openPostcode('stu')" readonly placeholder="주소 (클릭하여 검색)" class="input bg-slate-50 cursor-pointer" />
+                  <input :value="stuForm.zipcode" @click="stuEditMode && openPostcode('stu')" readonly placeholder="우편번호" :class="['input w-28 bg-slate-50', stuEditMode ? 'cursor-pointer' : '']" />
+                  <input :value="stuForm.address" @click="stuEditMode && openPostcode('stu')" readonly placeholder="주소 (클릭하여 검색)" :class="['input bg-slate-50', stuEditMode ? 'cursor-pointer' : '']" />
                 </div>
-                <input v-model="stuForm.address_detail" placeholder="상세주소 (동/호 등)" :class="stuCls('address_detail')" />
+                <input v-model="stuForm.address_detail" placeholder="상세주소 (동/호 등)" :readonly="!stuEditMode" :class="stuCls('address_detail')" />
               </div>
               <!-- 등록 과정 -->
               <div class="border-t pt-2">
@@ -1750,10 +1754,6 @@
                   <span v-for="(p,pi) in stuPrograms" :key="pi" class="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">{{ composedProgramLabel(p) }}</span>
                 </div>
                 <div v-else class="text-xs text-slate-400">등록 과정 정보 없음</div>
-              </div>
-              <div v-if="stuCanEdit && stuFormDirty" class="flex justify-end gap-2">
-                <button @click="revertStudent" class="btn-secondary text-sm">취소</button>
-                <button @click="saveStudent" class="btn-primary text-sm">수정</button>
               </div>
 
               <!-- 보호자 (구 보호자 탭 통합) -->
@@ -1798,22 +1798,22 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                   <div><label class="lbl">보호자 관계 <span v-if="stuFieldDirty('parent_relation')" class="text-amber-600">✏️</span></label>
-                    <select v-model="stuForm.parent_relation" :class="stuCls('parent_relation','px-2')"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+                    <select v-model="stuForm.parent_relation" :disabled="!stuEditMode" :class="stuCls('parent_relation','px-2')"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
                   </div>
                   <div></div>
                   <div><label class="lbl">기타 보호자 휴대폰 <span v-if="stuFieldDirty('guardian2_phone')" class="text-amber-600">✏️</span></label>
-                    <input :value="stuForm.guardian2_phone" @input="stuForm.guardian2_phone=formatPhone($event.target.value)" inputmode="numeric" :class="stuCls('guardian2_phone')" placeholder="010-0000-0000" />
+                    <input :value="stuForm.guardian2_phone" @input="stuForm.guardian2_phone=formatPhone($event.target.value)" inputmode="numeric" :readonly="!stuEditMode" :class="stuCls('guardian2_phone')" placeholder="010-0000-0000" />
                   </div>
                   <div><label class="lbl">기타 보호자 관계 <span v-if="stuFieldDirty('guardian2_relation')" class="text-amber-600">✏️</span></label>
-                    <select v-model="stuForm.guardian2_relation" :class="stuCls('guardian2_relation','px-2')"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+                    <select v-model="stuForm.guardian2_relation" :disabled="!stuEditMode" :class="stuCls('guardian2_relation','px-2')"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
                   </div>
                 </div>
                 <div class="mt-2"><label class="lbl">요청사항 · 알릴사항 <span v-if="stuFieldDirty('memo')" class="text-amber-600">✏️</span></label>
-                  <textarea v-model="stuForm.memo" rows="2" :class="stuCls('memo')" placeholder="요청사항·알릴사항 없음"></textarea>
+                  <textarea v-model="stuForm.memo" rows="2" :readonly="!stuEditMode" :class="stuCls('memo')" placeholder="요청사항·알릴사항 없음"></textarea>
                 </div>
-                <div v-if="stuCanEdit && stuFormDirty" class="flex justify-end gap-2 mt-2">
-                  <button @click="revertStudent" class="btn-secondary text-sm">취소</button>
-                  <button @click="saveStudent" class="btn-primary text-sm">수정</button>
+                <div v-if="stuEditMode" class="flex justify-end gap-2 mt-2">
+                  <button @click="cancelStuEdit" class="btn-secondary text-sm">취소</button>
+                  <button @click="finishStuEdit" class="btn-primary text-sm">수정완료</button>
                 </div>
               </div>
             </div>
@@ -3009,7 +3009,7 @@ createApp({
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'progress',l:'진도'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
       stuProgress: [], stuProgForm: { date:'', content:'', homework:'' },
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
-      stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '',
+      stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
       stuResvForm: { date:'', ampm:'오전', hour:'', min:'00', note:'' },
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
@@ -4639,6 +4639,7 @@ createApp({
         this.stuDetail = d; this.stuTab='info';
         this.stuForm = { ...(d.profile||{}), real_name: d.real_name };
         this.stuFormOrig = JSON.parse(JSON.stringify(this.stuForm));
+        this.stuEditMode = false;
         this.buildStuTimetables(d);
         if (!this.ttInstructors.length) this.loadTtInstructors();
         if (!(this.options.program||[]).length) this.loadOptions();
@@ -4671,7 +4672,7 @@ createApp({
     },
     closeStudent(){ this.stuDetail=null; },
     stuFieldDirty(k){ return String(this.stuForm[k]??'') !== String(this.stuFormOrig[k]??''); },
-    stuCls(k, extra){ return 'input ' + (extra||'') + (this.stuFieldDirty(k) ? ' bg-amber-50 ring-1 ring-amber-300 text-amber-800 font-semibold' : ''); },
+    stuCls(k, extra){ return 'input ' + (extra||'') + (this.stuFieldDirty(k) ? ' bg-amber-50 ring-1 ring-amber-300 text-amber-800 font-semibold' : (!this.stuEditMode ? ' bg-slate-50 text-slate-500' : '')); },
     revertStudent(){ this.stuForm = JSON.parse(JSON.stringify(this.stuFormOrig)); },
     async refreshStuDetail(){ if (!this.stuDetail) return; try { this.stuDetail = await api('GET','/api/admin/academy/student_detail/info?student_id='+this.stuDetail.id); } catch(e){} },
     async saveStudent(){
@@ -4679,6 +4680,11 @@ createApp({
         await api('PUT','/api/admin/academy/student_detail/info', { student_id:this.stuDetail.id, ...this.stuForm });
         this.notify('수정되었습니다.'); this.stuFormOrig = JSON.parse(JSON.stringify(this.stuForm)); await this.refreshStuDetail(); this.loadStudents();
       } catch(e){ this.notify(e.message,false); }
+    },
+    cancelStuEdit(){ this.revertStudent(); this.stuEditMode=false; },
+    async finishStuEdit(){
+      if (this.stuFormDirty) await this.saveStudent();
+      this.stuEditMode = false;
     },
     async addStuNote(){
       if (!this.stuNoteText.trim()) return;
