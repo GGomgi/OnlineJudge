@@ -1271,9 +1271,12 @@
                   </div>
                   <div class="grid items-center gap-1 mt-1" style="grid-template-columns: 2rem 1fr 1fr auto;">
                     <span></span>
-                    <select v-model.number="row.duration" class="input px-1" title="수업시간">
-                      <option v-for="m in durationOptions" :key="m" :value="m">{{ m }}분</option>
-                    </select>
+                    <div class="flex items-center gap-1">
+                      <span class="text-[10px] text-slate-400 whitespace-nowrap">수업시간</span>
+                      <select v-model.number="row.duration" class="input px-1" title="수업시간">
+                        <option v-for="m in durationOptions" :key="m" :value="m">{{ m }}분</option>
+                      </select>
+                    </div>
                     <div class="flex items-center gap-1">
                       <span class="text-[10px] text-slate-400 whitespace-nowrap">담당</span>
                       <select v-model.number="row.instructor_id" class="input px-1" title="담당 선생님">
