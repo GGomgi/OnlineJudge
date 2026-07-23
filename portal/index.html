@@ -1133,7 +1133,7 @@
               </div>
               <div>
                 <label class="lbl">보호자 연락처 <span class="text-rose-500">*</span></label>
-                <input :value="convertForm.parent_phone" @input="directReg && (convertForm.parent_phone = formatPhone($event.target.value))" :readonly="!directReg" inputmode="numeric" :class="['input', directReg ? '' : 'bg-slate-50']" placeholder="010-0000-0000" />
+                <input :value="convertForm.parent_phone" @input="convertForm.parent_phone = formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" />
               </div>
               <div>
                 <label class="lbl">등하원 알림 <span class="text-rose-500">*</span></label>
@@ -1145,11 +1145,10 @@
             </div>
             <div class="grid grid-cols-3 gap-3">
               <div><label class="lbl">학교 구분</label>
-                <select v-if="directReg" v-model="convertForm.school_type" class="input px-2"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
-                <input v-else :value="schoolLabel(convertForm.school_type)||'-'" class="input bg-slate-50" readonly />
+                <select v-model="convertForm.school_type" class="input px-2"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
               </div>
-              <div><label class="lbl">학교</label><div class="flex items-center gap-1"><input v-model="convertForm.school_name" :readonly="!directReg" :class="['input min-w-0', directReg ? '' : 'bg-slate-50']" :placeholder="directReg ? '학교 이름' : ''" /><span v-if="convertForm.school_name && schoolSuffix(convertForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(convertForm.school_type) }}</span></div></div>
-              <div><label class="lbl">학년</label><div class="flex items-center gap-1"><input v-model="convertForm.grade" :readonly="!directReg" inputmode="numeric" :class="['input min-w-0', directReg ? '' : 'bg-slate-50']" /><span v-if="convertForm.grade" class="text-xs text-slate-400 whitespace-nowrap">학년</span></div></div>
+              <div><label class="lbl">학교</label><div class="flex items-center gap-1"><input v-model="convertForm.school_name" class="input min-w-0" placeholder="학교 이름" /><span v-if="convertForm.school_name && schoolSuffix(convertForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(convertForm.school_type) }}</span></div></div>
+              <div><label class="lbl">학년</label><div class="flex items-center gap-1"><input v-model="convertForm.grade" inputmode="numeric" class="input min-w-0" /><span v-if="convertForm.grade" class="text-xs text-slate-400 whitespace-nowrap">학년</span></div></div>
             </div>
             <template v-if="!directReg">
             <div>
@@ -1248,7 +1247,7 @@
               <div v-if="convertForm.weekly_sessions > 0" class="space-y-2">
                 <label class="lbl">회차별 과정 · 요일 · 시간 <span class="text-rose-500">*</span></label>
                 <div v-for="(row,i) in convertForm.schedule" :key="i">
-                  <div class="grid items-center gap-1" style="grid-template-columns: 2rem 1.4fr 0.9fr 0.9fr 0.9fr 0.9fr auto;">
+                  <div class="grid items-center gap-1" style="grid-template-columns: 2rem 1.4fr 0.9fr 0.9fr 0.9fr 0.9fr;">
                     <span class="text-xs text-slate-400">{{ i+1 }}회</span>
                     <select v-model.number="row.programIdx" class="input px-1" title="과정">
                       <option v-for="(p,pi) in convertForm.programs" :key="pi" :value="pi">{{ composedProgramLabel(p) }}</option>
@@ -1268,6 +1267,16 @@
                     <select v-model.number="row.min" class="input px-1">
                       <option :value="null" disabled>분</option>
                       <option v-for="m in minutes" :key="m" :value="m">{{ String(m).padStart(2,'0') }}분</option>
+                    </select>
+                  </div>
+                  <div class="grid items-center gap-1 mt-1" style="grid-template-columns: 2rem 1fr 1fr auto;">
+                    <span></span>
+                    <select v-model.number="row.duration" class="input px-1" title="수업시간">
+                      <option v-for="m in durationOptions" :key="m" :value="m">{{ m }}분</option>
+                    </select>
+                    <select v-model.number="row.instructor_id" class="input px-1" title="담당 선생님">
+                      <option :value="null">미배정</option>
+                      <option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option>
                     </select>
                     <label class="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap" title="격주(2주에 1회 번갈아)">
                       <input type="checkbox" v-model="row.biweekly" @change="onBiweeklyToggle(row)" class="w-3.5 h-3.5" />격주
@@ -2999,6 +3008,7 @@ createApp({
       convertingLead: null, convertError: '', directReg: false,
       hours12: [1,2,3,4,5,6,7,8,9,10,11,12],
       minutes: [0,5,10,15,20,25,30,35,40,45,50,55],
+      durationOptions: [40,60,90,120,150,180],
       convertForm: { student_name:'', gender:'', birth_date:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', memo:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
       showParentLogin: false, parentLogin: { id:'', pw:'' },
@@ -4949,10 +4959,11 @@ createApp({
       return this.optLabel('program', p.value);
     },
     syncSchedule(){
+      if (!this.ttInstructors.length) this.loadTtInstructors();
       const n = this.convertForm.weekly_sessions || 0;
       const cur = this.convertForm.schedule;
       const next = [];
-      for (let i=0; i<n; i++) next.push(cur[i] || { programIdx:0, day:-1, ampm:'PM', hour:null, min:null, biweekly:false, altProgramIdx:0 });
+      for (let i=0; i<n; i++) next.push(cur[i] || { programIdx:0, day:-1, ampm:'PM', hour:null, min:null, biweekly:false, altProgramIdx:0, duration:this.lessonDurationMin, instructor_id:null });
       this.convertForm.schedule = next;
     },
     onBiweeklyToggle(row){
@@ -4966,13 +4977,15 @@ createApp({
       f.schedule.forEach(s=>{
         const time = this.to24(s.ampm, s.hour, s.min);
         const p = f.programs[s.programIdx] || f.programs[0];
+        const duration = s.duration || this.lessonDurationMin;
+        const instructor_id = s.instructor_id || null;
         if (s.biweekly){
           // 격주: 같은 요일·시간으로 두 슬롯(반대 주차로 번갈아)
-          out.push({ day:s.day, time, program:(p?p.value:''), subject:this.composedProgramLabel(p), frequency:'BIWEEKLY', week_offset:0 });
+          out.push({ day:s.day, time, program:(p?p.value:''), subject:this.composedProgramLabel(p), frequency:'BIWEEKLY', week_offset:0, duration, instructor_id });
           const ap = f.programs[s.altProgramIdx] || p;
-          out.push({ day:s.day, time, program:(ap?ap.value:''), subject:this.composedProgramLabel(ap), frequency:'BIWEEKLY', week_offset:1 });
+          out.push({ day:s.day, time, program:(ap?ap.value:''), subject:this.composedProgramLabel(ap), frequency:'BIWEEKLY', week_offset:1, duration, instructor_id });
         } else {
-          out.push({ day:s.day, time, program:(p?p.value:''), subject:this.composedProgramLabel(p), frequency:'WEEKLY', week_offset:0 });
+          out.push({ day:s.day, time, program:(p?p.value:''), subject:this.composedProgramLabel(p), frequency:'WEEKLY', week_offset:0, duration, instructor_id });
         }
       });
       return out;

@@ -1445,7 +1445,7 @@ def _create_student_from_lead(request, lead, data):
         except (ValueError, TypeError):
             schedule = []
         if not data.get("schedule_pending"):
-            dur = lesson_duration(lead.school_type, data.get("weekly_sessions"))
+            default_dur = lesson_duration(lead.school_type, data.get("weekly_sessions"))
             for row in schedule:
                 try:
                     wd = int(row.get("day"))
@@ -1457,6 +1457,12 @@ def _create_student_from_lead(request, lead, data):
                 prog = (row.get("program") or "")
                 freq = row.get("frequency") or "WEEKLY"
                 subj = row.get("subject") or resolve_program_label(prog)
+                # 회차별로 수업시간(초등 예외 등)·담당 선생님을 직접 지정할 수 있음. 미지정 시 자동 계산값.
+                try:
+                    dur = int(row.get("duration")) or default_dur
+                except (TypeError, ValueError):
+                    dur = default_dur
+                instructor_id = row.get("instructor_id") or None
                 # 격주 번갈아 짝 슬롯(week_offset=1)은 시작일을 1주 밀어 반대 주차에 수업
                 af = data.get("lesson_start_date")
                 if freq == "BIWEEKLY" and row.get("week_offset") and af:
@@ -1466,7 +1472,7 @@ def _create_student_from_lead(request, lead, data):
                         pass
                 StudentTimetable.objects.create(
                     student=user, branch=lead.branch, class_type=LessonType.PRIVATE,
-                    weekday=wd, start_time=tm, duration_minutes=dur,
+                    weekday=wd, start_time=tm, duration_minutes=dur, instructor_id=instructor_id,
                     program=prog, subject=subj, frequency=freq,
                     active_from=af)
         # 학부모(보호자) 계정 생성/연결 — 자녀 기록 열람용(11 §9)
