@@ -1274,10 +1274,13 @@
                     <select v-model.number="row.duration" class="input px-1" title="수업시간">
                       <option v-for="m in durationOptions" :key="m" :value="m">{{ m }}분</option>
                     </select>
-                    <select v-model.number="row.instructor_id" class="input px-1" title="담당 선생님">
-                      <option :value="null">미배정</option>
-                      <option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option>
-                    </select>
+                    <div class="flex items-center gap-1">
+                      <span class="text-[10px] text-slate-400 whitespace-nowrap">담당</span>
+                      <select v-model.number="row.instructor_id" class="input px-1" title="담당 선생님">
+                        <option :value="null">미배정</option>
+                        <option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option>
+                      </select>
+                    </div>
                     <label class="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap" title="격주(2주에 1회 번갈아)">
                       <input type="checkbox" v-model="row.biweekly" @change="onBiweeklyToggle(row)" class="w-3.5 h-3.5" />격주
                     </label>
