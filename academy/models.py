@@ -395,6 +395,7 @@ class StudentProfile(models.Model):
     # 기존 학원 스케줄 미정 → 교육 일정 추후 안내(요일/시간 미입력, 개별 시간표 미생성)
     schedule_pending = models.BooleanField(default=False)
     memo = models.TextField(blank=True, default="")
+    edit_log = models.TextField(blank=True, default="")  # 인적사항 수정 이력 JSON [{time,by,items:[{label,old,new}]}]
     # 개인정보 수집·이용·제공 동의(법정대리인 동의서)
     consent_privacy = models.BooleanField(default=False)
     consent_guardian_name = models.CharField(max_length=64, blank=True, default="")

@@ -1790,6 +1790,32 @@
                   <p class="text-[11px] text-slate-400">검색에서 고르면 <b>연결</b>, 직접 작성하면 새 계정 <b>생성</b>됩니다.</p>
                 </div>
               </div>
+
+              <!-- 보호자 관계 · 기타 보호자 · 요청사항 -->
+              <div class="border-t pt-2">
+                <div class="text-xs font-semibold text-slate-500 mb-1">보호자 관계 · 기타 보호자
+                  <span v-if="stuDetail.profile_edits && stuDetail.profile_edits.length" class="font-normal text-amber-500 cursor-help" @mouseenter="showStuEditPop($event)" @mouseleave="hideMsgEditPop">· ✎{{ stuDetail.profile_edits.length }}회 수정</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div><label class="lbl">보호자 관계 <span v-if="stuFieldDirty('parent_relation')" class="text-amber-600">✏️</span></label>
+                    <select v-model="stuForm.parent_relation" :class="stuCls('parent_relation','px-2')"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+                  </div>
+                  <div></div>
+                  <div><label class="lbl">기타 보호자 휴대폰 <span v-if="stuFieldDirty('guardian2_phone')" class="text-amber-600">✏️</span></label>
+                    <input :value="stuForm.guardian2_phone" @input="stuForm.guardian2_phone=formatPhone($event.target.value)" inputmode="numeric" :class="stuCls('guardian2_phone')" placeholder="010-0000-0000" />
+                  </div>
+                  <div><label class="lbl">기타 보호자 관계 <span v-if="stuFieldDirty('guardian2_relation')" class="text-amber-600">✏️</span></label>
+                    <select v-model="stuForm.guardian2_relation" :class="stuCls('guardian2_relation','px-2')"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+                  </div>
+                </div>
+                <div class="mt-2"><label class="lbl">요청사항 · 알릴사항 <span v-if="stuFieldDirty('memo')" class="text-amber-600">✏️</span></label>
+                  <textarea v-model="stuForm.memo" rows="2" :class="stuCls('memo')" placeholder="요청사항·알릴사항 없음"></textarea>
+                </div>
+                <div v-if="stuCanEdit && stuFormDirty" class="flex justify-end gap-2 mt-2">
+                  <button @click="revertStudent" class="btn-secondary text-sm">취소</button>
+                  <button @click="saveStudent" class="btn-primary text-sm">수정</button>
+                </div>
+              </div>
             </div>
 
             <!-- 상담 타임라인 -->
@@ -1806,11 +1832,14 @@
                 <div class="flex justify-end"><button @click="addStuNote" class="btn-secondary text-sm">기록 추가</button></div>
               </div>
               <ul class="space-y-1">
-                <li v-for="g in (stuDetail.lead ? stuDetail.lead.logs : [])" :key="g.id" :class="['text-sm rounded px-3 py-1.5', g.is_hidden ? 'bg-rose-50' : 'bg-slate-50']">
+                <li v-for="g in (stuDetail.lead ? stuDetail.lead.logs : [])" :key="g.id" :class="['text-sm rounded px-3 py-1.5', g.is_initial ? 'bg-indigo-50/60' : (g.is_hidden ? 'bg-rose-50' : 'bg-slate-50')]">
                   <div class="flex items-center gap-1 text-xs text-slate-400">
-                    <span>{{ channelLabel(g.channel) }}</span>
-                    <span v-if="g.counsel_at">· 상담 {{ dt(g.counsel_at) }}</span>
-                    <span v-if="g.is_hidden" class="text-rose-500">· 삭제됨</span>
+                    <span v-if="g.is_initial" class="text-indigo-500 font-semibold">📝 최초 상담 신청</span>
+                    <template v-else>
+                      <span>{{ channelLabel(g.channel) }}</span>
+                      <span v-if="g.counsel_at">· 상담 {{ dt(g.counsel_at) }}</span>
+                      <span v-if="g.is_hidden" class="text-rose-500">· 삭제됨</span>
+                    </template>
                     <span class="ml-auto">{{ dt(g.create_time) }} {{ g.author }}</span>
                   </div>
                   <template v-if="stuEditLogId===g.id">
@@ -1829,7 +1858,7 @@
                         <span class="whitespace-pre-wrap text-slate-600 flex-1">{{ e.old }}</span>
                       </div>
                     </div>
-                    <div v-if="stuCanEdit" class="flex justify-end gap-2 text-[11px]">
+                    <div v-if="stuCanEdit && !g.is_initial" class="flex justify-end gap-2 text-[11px]">
                       <button v-if="!g.is_hidden" @click="startStuEditLog(g)" class="text-indigo-500 hover:underline">수정</button>
                       <button v-if="!g.is_hidden" @click="deleteStuLog(g)" class="text-rose-400 hover:underline">삭제</button>
                       <button v-else @click="restoreStuLog(g)" class="text-indigo-500 hover:underline">복원</button>
@@ -3185,7 +3214,7 @@ createApp({
     stuCanEdit(){ return this.stuDetail ? this.canEditBranch(this.stuDetail.branch_id) : false; },
     stuPrograms(){ try { const a = JSON.parse(this.stuForm.programs||'[]'); return Array.isArray(a) ? a : []; } catch(e){ return []; } },
     stuFormDirty(){
-      const ks = ['real_name','birth_date','gender','student_phone','school_type','school_name','grade','weekly_sessions','lesson_start_date','enrollment_date','parent_name','parent_phone','zipcode','address','address_detail'];
+      const ks = ['real_name','birth_date','gender','student_phone','school_type','school_name','grade','weekly_sessions','lesson_start_date','enrollment_date','parent_name','parent_phone','parent_relation','guardian2_phone','guardian2_relation','memo','zipcode','address','address_detail'];
       return ks.some(k => this.stuFieldDirty(k));
     },
     showBranchCol(){
@@ -4399,6 +4428,7 @@ createApp({
     async saveTplOrder(){ try{ await api('PUT','/api/admin/academy/msg_template',{ ids:this.msgtplList.map(t=>t.id) }); }catch(e){ this.notify(e.message,false); } },
     async restoreMsgTemplate(t){ try { await api('DELETE','/api/admin/academy/msg_template?id='+t.id+'&restore=1'); this.notify('복원되었습니다.'); this.msgSel=null; this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
     showMsgEditPop(t,e){ clearTimeout(this._msgEditTimer); this.msgEditPop={ show:true, list:(t.edits||[]).slice().reverse(), x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-260) }; },
+    showStuEditPop(e){ clearTimeout(this._msgEditTimer); this.msgEditPop={ show:true, list:((this.stuDetail&&this.stuDetail.profile_edits)||[]).slice().reverse(), x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-260) }; },
     keepMsgEditPop(){ clearTimeout(this._msgEditTimer); },
     hideMsgEditPop(){ clearTimeout(this._msgEditTimer); this._msgEditTimer=setTimeout(()=>{ this.msgEditPop.show=false; }, 250); },
     async addMsgGroup(){ const n=prompt('그룹 이름 (예: 방학안내)'); if(!n||!n.trim()) return; try { await api('POST','/api/admin/academy/msg_group', { name:n.trim() }); this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },

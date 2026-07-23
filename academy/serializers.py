@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+from django.db.models import F
+
 from utils.api import serializers
 
 from .models import (AcademyRole, ACADEMY_ROLE_CHOICES, SELF_SIGNUP_ROLES,
@@ -409,11 +411,30 @@ class LeadSerializer(serializers.ModelSerializer):
 
     def get_logs(self, obj):
         # 원장 이상은 숨김 상담기록도 표시(삭제됨), 그 외는 숨김 제외
+        # 정렬: 작성일이 아니라 실제 상담한 날짜(counsel_at) 내림차순(없으면 작성일로 대체)
         show_hidden = self.context.get("show_hidden", False)
-        logs = list(obj.logs.all())
+        logs = list(obj.logs.order_by(F("counsel_at").desc(nulls_last=True), "-create_time"))
         if not show_hidden:
             logs = [l for l in logs if not l.is_hidden]
-        return CounselingLogSerializer(logs, many=True).data
+        out = CounselingLogSerializer(logs, many=True).data
+        # 최초 상담 신청 시 작성한 문의·목표 내용을 타임라인 맨 아래(가장 오래된 항목)에 표시
+        bits = []
+        if obj.interest:
+            bits.append("문의: " + obj.interest)
+        if obj.purpose:
+            opt = OptionItem.objects.filter(category="counseling_purpose", value=obj.purpose).first()
+            purpose_label = (obj.purpose_detail if (opt and opt.allow_custom and obj.purpose_detail)
+                             else (opt.label if opt else obj.purpose))
+            bits.append("학생의 목표: " + purpose_label)
+        if bits:
+            out.append({
+                "id": "initial", "author": None, "channel": "",
+                "summary": "\n".join(bits), "counsel_at": None, "next_contact_at": None,
+                "create_time": _kst_str(obj.create_time), "is_hidden": False,
+                "edited_by": None, "edited_at": None, "prev_summary": "", "edits": [],
+                "is_initial": True,
+            })
+        return out
 
 
 class AddCounselingNoteSerializer(serializers.Serializer):

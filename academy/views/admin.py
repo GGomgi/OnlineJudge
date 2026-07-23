@@ -2477,6 +2477,10 @@ class StudentDetailAdminAPI(APIView):
         lead_data = LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data if lead else None
         pdict = _student_profile_dict(sp)
         pdict["real_name"] = _name_of(u)
+        try:
+            profile_edits = _json.loads(sp.edit_log) if (sp and sp.edit_log) else []
+        except (ValueError, TypeError):
+            profile_edits = []
         # 개별 시간표(종료 제외)
         timetables = []
         for s in StudentTimetable.objects.select_related("instructor", "branch").filter(
@@ -2492,14 +2496,14 @@ class StudentDetailAdminAPI(APIView):
             "branch": (prof.branch.name if prof and prof.branch_id else ""),
             "branch_id": prof.branch_id if prof else None,
             "enrollment_status": sp.enrollment_status if sp else EnrollmentStatus.ENROLLED,
-            "profile": pdict, "guardians": guardians, "status_history": history,
+            "profile": pdict, "profile_edits": profile_edits, "guardians": guardians, "status_history": history,
             "timetables": timetables,
             "lead": lead_data, "lead_id": lead.id if lead else None,
         })
 
     @admin_role_required
     def put(self, request):
-        """학생 인적사항 수정."""
+        """학생 인적사항 수정 + 변경 이력(누가·언제·무엇을 전▸후) 기록."""
         data = request.data
         u = User.objects.filter(id=data.get("student_id")).first()
         if not u:
@@ -2513,15 +2517,56 @@ class StudentDetailAdminAPI(APIView):
             up, _ = UserProfile.objects.get_or_create(user=u)
             up.real_name = rn
             up.save(update_fields=["real_name"])
-        for f in ("gender", "zipcode", "address", "address_detail", "student_phone",
-                  "parent_name", "parent_phone", "school_type", "school_name", "grade", "program"):
+
+        FIELDS = [
+            ("gender", "성별", None), ("zipcode", "우편번호", None),
+            ("address", "주소", None), ("address_detail", "상세주소", None),
+            ("student_phone", "학생 연락처", None),
+            ("parent_name", "보호자 이름", None), ("parent_phone", "보호자 연락처", None),
+            ("parent_relation", "보호자 관계", None),
+            ("school_type", "학교 구분", "school_type"), ("school_name", "학교 이름", None),
+            ("grade", "학년", None), ("program", "등록 과정(단일)", None),
+            ("guardian2_phone", "기타 보호자 휴대폰", None), ("guardian2_relation", "기타 보호자 관계", None),
+            ("memo", "요청사항·알릴사항", None),
+        ]
+
+        def _disp(f, cat, v):
+            v = (v or "").strip() if isinstance(v, str) else v
+            if f == "gender":
+                return {"M": "남", "F": "여"}.get(v, v or "(없음)") or "(없음)"
+            if cat:
+                return _opt_label(cat, v) if v else "(없음)"
+            return v if v not in (None, "") else "(없음)"
+
+        changed = []
+        for f, label, cat in FIELDS:
             if f in data:
-                setattr(sp, f, data.get(f) or "")
-        for df in ("birth_date", "lesson_start_date", "enrollment_date"):
+                newv = (data.get(f) or "").strip()
+                oldv = getattr(sp, f) or ""
+                if oldv != newv:
+                    changed.append({"label": label, "old": _disp(f, cat, oldv), "new": _disp(f, cat, newv)})
+                setattr(sp, f, newv)
+        for df, label in (("birth_date", "생년월일"), ("lesson_start_date", "수업 시작일"), ("enrollment_date", "등록일")):
             if df in data:
-                setattr(sp, df, data.get(df) or None)
+                newv = data.get(df) or None
+                oldv = getattr(sp, df)
+                oldv_s, newv_s = (str(oldv) if oldv else "(없음)"), (str(newv) if newv else "(없음)")
+                if oldv_s != newv_s:
+                    changed.append({"label": label, "old": oldv_s, "new": newv_s})
+                setattr(sp, df, newv)
         if "weekly_sessions" in data:
-            sp.weekly_sessions = data.get("weekly_sessions") or None
+            newv = data.get("weekly_sessions") or None
+            oldv = sp.weekly_sessions
+            if oldv != newv:
+                changed.append({"label": "주 교육 회수", "old": str(oldv) if oldv else "(없음)", "new": str(newv) if newv else "(없음)"})
+            sp.weekly_sessions = newv
+        if changed:
+            try:
+                log = _json.loads(sp.edit_log) if sp.edit_log else []
+            except (ValueError, TypeError):
+                log = []
+            log.append({"time": _now_kst_str(), "by": _name_of(request.user), "items": changed})
+            sp.edit_log = _json.dumps(log, ensure_ascii=False)
         sp.save()
         return self.success("ok")
 
