@@ -1904,6 +1904,9 @@ def _opt_label(category, value):
     return o.label if o else value
 
 
+_LANG_ABBR = {"Python": "Py", "Java": "Ja"}  # 시간표 표시는 짧게(C/C++/C#는 이미 짧음)
+
+
 def _parse_program_token(tok):
     """'프로그래밍(파이썬)'·'웹'·'개인맞춤(로봇)' → {value, language, custom, subject}.
     괄호 또는 콜론(:)으로 세부(언어/맞춤 내용)를 지정. LANG 과정은 세부=언어."""
@@ -1926,7 +1929,8 @@ def _parse_program_token(tok):
     if val == "LANG":
         lang_val = _resolve_opt_value("program_language", detail) if detail else ""
         out["language"] = lang_val or detail
-        out["subject"] = _opt_label("program_language", lang_val) or detail or prog_label
+        lang_label = _opt_label("program_language", lang_val) or detail or prog_label
+        out["subject"] = _LANG_ABBR.get(lang_label, lang_label)
     elif detail:
         out["custom"] = detail
         out["subject"] = detail
@@ -2279,7 +2283,10 @@ class StudentTimetableAdminAPI(APIView):
                 setattr(slot, f, data[f])
         if "program" in data:
             slot.program = data["program"] or ""
-            slot.subject = resolve_program_label(slot.program)
+            # subject를 명시적으로 함께 보냈으면 그 값을 존중(언어 과정 등 자동 라벨로는 표현 못하는 값 보존).
+            # 없을 때만 프로그램 라벨로 자동 채움.
+            if not (data.get("subject") or "").strip():
+                slot.subject = resolve_program_label(slot.program)
         if "instructor_id" in data:
             slot.instructor = User.objects.filter(id=data["instructor_id"]).first() if data["instructor_id"] else None
         slot.save()

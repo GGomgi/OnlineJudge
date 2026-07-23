@@ -1462,16 +1462,16 @@
                 <td v-for="(d,i) in ttWeekDates" :key="i" :class="['border border-slate-100 align-top p-0.5', d.isToday ? 'bg-indigo-50/30' : '', ttSlotLayout==='horizontal' ? 'min-w-[160px]' : 'min-w-[110px]']">
                   <template v-if="ttSlotLayout==='horizontal'">
                     <div v-if="ttSlotItems(d.date,sl.mins).length" class="text-[10px] font-bold text-indigo-600 mb-0.5">👥 {{ ttSlotItems(d.date,sl.mins).length }}명</div>
-                    <div class="flex flex-wrap gap-0.5">
+                    <div class="flex flex-nowrap gap-1">
                       <span v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
-                           :class="['px-1.5 py-0.5 rounded leading-tight cursor-default text-[10px] whitespace-nowrap', calItemCls(it)]"><span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }} <span class="opacity-70">{{ it.subject }}</span><template v-if="it.makeup">·보강</template></span>
+                           :class="['px-1.5 py-0.5 rounded leading-tight cursor-default text-[10px] whitespace-nowrap shrink-0', calItemCls(it)]"><span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }} <span class="opacity-70">{{ ttSubjectShort(it.subject) }}</span><template v-if="it.makeup">·보강</template></span>
                     </div>
                   </template>
                   <template v-else>
                     <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
                          :class="['mb-0.5 px-1.5 py-1 rounded leading-tight cursor-default', calItemCls(it)]">
                       <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}
-                      <span class="block text-[10px] opacity-70">{{ it.subject }}<template v-if="it.makeup"> · 보강</template></span>
+                      <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}<template v-if="it.makeup"> · 보강</template></span>
                     </div>
                   </template>
                   <div v-for="(rv,k) in ttSlotResv(d.date,sl.mins)" :key="'r'+k" @mouseenter="showCalResv(rv,d.date,$event)" @mouseleave="hideResvPop" class="mb-0.5 px-1.5 py-1 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
@@ -1529,7 +1529,10 @@
               <td class="px-2 py-2"><select v-model.number="r.weekday" class="input py-1 w-16 px-2"><option v-for="(d,di) in days" :key="di" :value="di">{{ d }}</option></select></td>
               <td class="px-2 py-2"><input v-model="r.start_time" type="time" class="input py-1 w-28" /></td>
               <td class="px-2 py-2"><select v-model.number="r.duration_minutes" class="input py-1 w-24 px-2"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
-              <td class="px-2 py-2"><select v-model="r.program" class="input py-1 w-32 px-2"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></td>
+              <td class="px-2 py-2"><div class="flex items-center gap-1">
+                <select v-model="r.program" class="input py-1 w-24 px-2"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
+                <select v-if="r.program==='LANG'" v-model="r.language" class="input py-1 w-16 px-1"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select>
+              </div></td>
               <td class="px-2 py-2"><div class="flex items-center gap-1"><select v-model.number="r.instructor_id" :class="['input py-1 w-28 px-2', !r.instructor_id ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!r.instructor_id" class="text-rose-500 font-bold">!</span></div></td>
               <td class="px-2 py-2"><select v-model="r.frequency" class="input py-1 w-20 px-2"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-2 py-2 text-right whitespace-nowrap">
@@ -1598,7 +1601,10 @@
               <td class="px-3 py-2"><select v-model.number="s.weekday" :disabled="s.status==='ENDED'" :class="ttCls(s,'weekday','py-1 w-16 px-2')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
               <td class="px-3 py-2"><input v-model="s.start_time" :disabled="s.status==='ENDED'" type="time" :class="ttCls(s,'start_time','py-1 w-28')" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" :disabled="s.status==='ENDED'" :class="ttCls(s,'duration_minutes','py-1 w-24 px-2')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
-              <td class="px-3 py-2"><select v-model="s.program" :disabled="s.status==='ENDED'" :class="ttCls(s,'program','py-1 w-32 px-2')"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></td>
+              <td class="px-3 py-2"><div class="flex items-center gap-1">
+                <select v-model="s.program" :disabled="s.status==='ENDED'" :class="ttCls(s,'program','py-1 w-24 px-2')"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
+                <select v-if="s.program==='LANG'" v-model="s.language" :disabled="s.status==='ENDED'" :class="ttCls(s,'language','py-1 w-16 px-1')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select>
+              </div></td>
               <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" :disabled="s.status==='ENDED'" :class="[ttCls(s,'instr','py-1 w-28 px-2'), (!s._instructor_id && s.status!=='ENDED') ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id && s.status!=='ENDED'" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
               <td class="px-3 py-2"><select v-model="s.frequency" :disabled="s.status==='ENDED'" :class="ttCls(s,'frequency','py-1 w-20 px-2')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
@@ -1784,7 +1790,8 @@
                       <div class="w-12 shrink-0"><select v-model.number="s.weekday" :class="ttCls(s,'weekday','py-1 !pl-1 !pr-0')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
                       <div class="w-28 shrink-0"><input v-model="s.start_time" type="time" :class="ttCls(s,'start_time','py-1 !pl-1 !pr-0')" /></div>
                       <div class="w-16 shrink-0"><select v-model.number="s.duration_minutes" :class="ttCls(s,'duration_minutes','py-1 !pl-1 !pr-0')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></div>
-                      <div class="w-32 shrink-0"><select v-model="s.program" :class="ttCls(s,'program','py-1 !pl-1 !pr-0')"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+                      <div class="w-24 shrink-0"><select v-model="s.program" :class="ttCls(s,'program','py-1 !pl-1 !pr-0')"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+                      <div v-if="s.program==='LANG'" class="w-14 shrink-0"><select v-model="s.language" :class="ttCls(s,'language','py-1 !pl-1 !pr-0')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select></div>
                       <div class="w-20 shrink-0"><select v-model.number="s._instructor_id" :class="[ttCls(s,'instr','py-1 !pl-1 !pr-0'), !s._instructor_id ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
                       <div class="w-14 shrink-0"><select v-model="s.frequency" :class="ttCls(s,'frequency','py-1 !pl-1 !pr-0')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></div>
                       <span v-if="s.status==='PAUSED'" class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 shrink-0">휴원중지</span>
@@ -3413,9 +3420,9 @@ createApp({
         if(day) day.items.forEach(it=>{ const mm=toM(it.start_time); if(mm<lo)lo=mm; if(mm>hi)hi=mm; });
         (this.ttCalResv[d.date]||[]).forEach(rv=>{ const mm=toM(rv.time); if(mm<lo)lo=mm; if(mm>hi)hi=mm; }); });
       if (lo>hi) return [];
-      lo=Math.floor(lo/30)*30; hi=Math.floor(hi/30)*30;
+      lo=Math.floor(lo/20)*20; hi=Math.floor(hi/20)*20;
       const p=x=>String(x).padStart(2,'0'); const out=[];
-      for(let m=lo;m<=hi;m+=30) out.push({ mins:m, half:(m%60!==0), label:p(Math.floor(m/60))+':'+p(m%60) });
+      for(let m=lo;m<=hi;m+=20) out.push({ mins:m, half:(m%60!==0), label:p(Math.floor(m/60))+':'+p(m%60) });
       return out;
     },
     ttCalTitle(){
@@ -3535,7 +3542,8 @@ createApp({
     ttRowDirty(s){
       const o = s && s._orig; if (!o) return false;
       return s.weekday!==o.weekday || s.start_time!==o.start_time || s.duration_minutes!==o.duration_minutes
-        || (s.program||'')!==(o.program||'') || (s._instructor_id||null)!==(o.instr||null) || s.frequency!==o.frequency;
+        || (s.program||'')!==(o.program||'') || (s._instructor_id||null)!==(o.instr||null) || s.frequency!==o.frequency
+        || (s.language||'')!==(o.language||'');
     },
     ttDirty(){ return this.ttAll.some(s=>this.ttRowDirty(s)) || (this.showTtAdd && this.ttAddRows.length>0); },
     isDirty(){
@@ -3704,9 +3712,10 @@ createApp({
       try {
         const d = await api('GET','/api/admin/academy/student_timetable' + (this.ttShowEnded ? '?show_ended=1' : ''));
         this.ttAll = (d.results || d).map(s=>{
-          const row = { ...s, start_time: this.hm(s.start_time), _instructor_id: s.instructor ? s.instructor.id : null };
+          const row = { ...s, start_time: this.hm(s.start_time), _instructor_id: s.instructor ? s.instructor.id : null,
+                        language: (s.program==='LANG') ? this.parseRowLanguage(s.subject) : '' };
           row._orig = { weekday: row.weekday, start_time: row.start_time, duration_minutes: row.duration_minutes,
-                        program: row.program||'', instr: row._instructor_id||null, frequency: row.frequency };
+                        program: row.program||'', instr: row._instructor_id||null, frequency: row.frequency, language: row.language };
           return row;
         });
       }
@@ -3752,10 +3761,10 @@ createApp({
     ttCalToday(){ this.ttCalAnchor=this.todayStr; this.ttCalMonth=this.todayStr.slice(0,7); this.loadTtCal(); },
     ttSlotItems(date,mins){
       const day=this.ttCalDays[date]; if(!day) return [];
-      return day.items.filter(it=>{ const [h,m]=it.start_time.split(':').map(Number); const v=h*60+m; return v>=mins && v<mins+30; });
+      return day.items.filter(it=>{ const [h,m]=it.start_time.split(':').map(Number); const v=h*60+m; return v>=mins && v<mins+20; });
     },
     ttSlotResv(date,mins){
-      return (this.ttCalResv[date]||[]).filter(rv=>{ const [h,m]=rv.time.split(':').map(Number); const v=h*60+m; return v>=mins && v<mins+30; });
+      return (this.ttCalResv[date]||[]).filter(rv=>{ const [h,m]=rv.time.split(':').map(Number); const v=h*60+m; return v>=mins && v<mins+20; });
     },
     truncate(s,n){ s=s||''; return s.length>n ? s.slice(0,n)+'...' : s; },
     showCalResv(rv,date,e){ this.resvPop={ show:true, at:(date+' '+rv.time+' · '+(rv.student_name||'')), note:rv.note, by:'', created:'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
@@ -3798,19 +3807,19 @@ createApp({
       this.ttStudents = this.studentModalList.filter(u=>this.studentModalSel.includes(u.id));
       // 학생별 개별 시간표 행 구성(기존 입력은 유지)
       const prev = {}; this.ttAddRows.forEach(r=>{ prev[r.student.id]=r; });
-      this.ttAddRows = this.ttStudents.map(s=> prev[s.id] || ({ student:s, weekday:0, start_time:'', duration_minutes:60, program:'', instructor_id:null, frequency:'WEEKLY' }));
+      this.ttAddRows = this.ttStudents.map(s=> prev[s.id] || ({ student:s, weekday:0, start_time:'', duration_minutes:60, program:'', language:'', instructor_id:null, frequency:'WEEKLY' }));
       this.showStudentModal = false;
     },
     removeTtStudent(u){ this.ttStudents = this.ttStudents.filter(x=>x.id!==u.id); this.ttAddRows = this.ttAddRows.filter(r=>r.student.id!==u.id); },
     removeAddRow(i){ const id=this.ttAddRows[i].student.id; this.ttAddRows.splice(i,1); this.ttStudents=this.ttStudents.filter(x=>x.id!==id); },
-    copyFromAbove(i){ if (i<=0) return; const a=this.ttAddRows[i-1], r=this.ttAddRows[i]; r.weekday=a.weekday; r.start_time=a.start_time; r.duration_minutes=a.duration_minutes; r.program=a.program; r.instructor_id=a.instructor_id; r.frequency=a.frequency; },
+    copyFromAbove(i){ if (i<=0) return; const a=this.ttAddRows[i-1], r=this.ttAddRows[i]; r.weekday=a.weekday; r.start_time=a.start_time; r.duration_minutes=a.duration_minutes; r.program=a.program; r.language=a.language; r.instructor_id=a.instructor_id; r.frequency=a.frequency; },
     async addAllTt(){
       if (this.ttAddRows.length===0) return this.notify('학생을 선택하세요. (여러 명 동시 가능)', false);
       if (this.ttAddRows.some(r=>!r.start_time)) return this.notify('모든 학생의 시작 시각을 입력하세요.', false);
       let ok=0, fail=0, lastErr='';
       for (const r of this.ttAddRows){
         try {
-          const body = { student_id:r.student.id, weekday:r.weekday, start_time:r.start_time, duration_minutes:r.duration_minutes, program:r.program, frequency:r.frequency };
+          const body = { student_id:r.student.id, weekday:r.weekday, start_time:r.start_time, duration_minutes:r.duration_minutes, program:r.program, subject:this.rowSubject(r), frequency:r.frequency };
           if (r.instructor_id) body.instructor_id = r.instructor_id;
           await api('POST','/api/admin/academy/student_timetable', body); ok++;
         } catch(e){ fail++; lastErr = e.message; }
@@ -3885,7 +3894,7 @@ createApp({
       const reason = window.prompt('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침');
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
       try {
-        await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, frequency:s.frequency, reason });
+        await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, subject:this.rowSubject(s), frequency:s.frequency, reason });
         this.notify('저장되었습니다.'); this.loadAllTt();
       } catch(e){ this.notify(e.message,false); }
     },
@@ -4761,9 +4770,10 @@ createApp({
     buildStuTimetables(d){
       const sref = { id:d.id, real_name:d.real_name, username:d.username };
       this.stuTimetables = (d.timetables||[]).map(t=>{
-        const row = { ...t, _instructor_id: t.instructor ? t.instructor.id : null, student: sref };
+        const language = (t.program==='LANG') ? this.parseRowLanguage(t.subject) : '';
+        const row = { ...t, _instructor_id: t.instructor ? t.instructor.id : null, student: sref, language };
         row._orig = { weekday:t.weekday, start_time:t.start_time, duration_minutes:t.duration_minutes,
-          program:t.program||'', instr:(t.instructor?t.instructor.id:null), frequency:t.frequency };
+          program:t.program||'', instr:(t.instructor?t.instructor.id:null), frequency:t.frequency, language };
         return row;
       });
     },
@@ -4771,7 +4781,7 @@ createApp({
       const reason = window.prompt('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침');
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
       try {
-        await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, frequency:s.frequency, reason });
+        await api('PUT','/api/admin/academy/student_timetable', { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, subject:this.rowSubject(s), frequency:s.frequency, reason });
         this.notify('수정되었습니다.');
         await this.refreshStuDetail(); this.buildStuTimetables(this.stuDetail); this.loadStudents();
       } catch(e){ this.notify(e.message,false); }
@@ -5107,6 +5117,37 @@ createApp({
       if (p.value==='LANG' && p.language) return this.optLabel('program','LANG')+'('+p.language+')';
       return this.optLabel('program', p.value);
     },
+    // 시간표(달력·목록)에 짧게 표시할 과목명. 언어 과정은 '프로그래밍언어' 없이 언어만(Python→Py, Java→Ja, 나머지는 그대로)
+    langAbbr(lang){ return ({Python:'Py', Java:'Ja'})[lang] || lang; },
+    programSubjectShort(p){
+      if (!p || !p.value) return '수업';
+      if (this.optAllowCustom('program', p.value)) return p.custom || this.optLabel('program', p.value);
+      if (p.value==='LANG' && p.language) return this.langAbbr(p.language);
+      return this.optLabel('program', p.value);
+    },
+    // 시간표 행(개별 시간표·수업추가)의 program+language로부터 저장할 subject 계산
+    rowSubject(row){
+      if (!row || !row.program) return '';
+      if (this.optAllowCustom('program', row.program)) return this.optLabel('program', row.program);
+      if (row.program==='LANG') return row.language ? this.langAbbr(row.language) : this.optLabel('program','LANG');
+      return this.optLabel('program', row.program);
+    },
+    // 기존에 저장된 subject 문자열에서 언어를 역추정(드롭다운 초기 선택용)
+    parseRowLanguage(subject){
+      if (!subject) return '';
+      const rev = {Py:'Python', Ja:'Java'};
+      if (rev[subject]) return rev[subject];
+      const opts = this.options.program_language || [];
+      const hit = opts.find(o => o.value===subject || o.label===subject || this.langAbbr(o.value)===subject);
+      return hit ? hit.value : '';
+    },
+    // 시간표 표시용: 과거에 저장된 '프로그래밍언어(Python)' 형식이나 언어 전체이름을 짧게 축약
+    ttSubjectShort(s){
+      if (!s) return s;
+      const m = s.match(/^프로그래밍언어\((.+)\)$/);
+      const lang = m ? m[1] : (['Python','Java','C','C++','C#'].includes(s) ? s : null);
+      return lang ? this.langAbbr(lang) : s;
+    },
     syncSchedule(){
       if (!this.ttInstructors.length) this.loadTtInstructors();
       const n = this.convertForm.weekly_sessions || 0;
@@ -5130,11 +5171,11 @@ createApp({
         const instructor_id = s.instructor_id || null;
         if (s.biweekly){
           // 격주: 같은 요일·시간으로 두 슬롯(반대 주차로 번갈아)
-          out.push({ day:s.day, time, program:(p?p.value:''), subject:this.composedProgramLabel(p), frequency:'BIWEEKLY', week_offset:0, duration, instructor_id });
+          out.push({ day:s.day, time, program:(p?p.value:''), subject:this.programSubjectShort(p), frequency:'BIWEEKLY', week_offset:0, duration, instructor_id });
           const ap = f.programs[s.altProgramIdx] || p;
-          out.push({ day:s.day, time, program:(ap?ap.value:''), subject:this.composedProgramLabel(ap), frequency:'BIWEEKLY', week_offset:1, duration, instructor_id });
+          out.push({ day:s.day, time, program:(ap?ap.value:''), subject:this.programSubjectShort(ap), frequency:'BIWEEKLY', week_offset:1, duration, instructor_id });
         } else {
-          out.push({ day:s.day, time, program:(p?p.value:''), subject:this.composedProgramLabel(p), frequency:'WEEKLY', week_offset:0, duration, instructor_id });
+          out.push({ day:s.day, time, program:(p?p.value:''), subject:this.programSubjectShort(p), frequency:'WEEKLY', week_offset:0, duration, instructor_id });
         }
       });
       return out;
