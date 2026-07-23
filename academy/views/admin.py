@@ -1,7 +1,7 @@
 from datetime import timedelta, datetime, date as date_cls
 
 from django.utils.timezone import now
-from django.db.models import Count
+from django.db.models import Count, Q
 
 
 def _to_date(v):
@@ -3452,11 +3452,19 @@ class TimetableCalendarAPI(APIView):
         prog = request.GET.get("program")
         if prog:
             slots = slots.filter(program=prog)
+        # 강사 다중 선택: instructor_ids=1,2,__none__ (기존 단일 instructor_id도 계속 지원)
+        instr_ids = [v for v in (request.GET.get("instructor_ids") or "").split(",") if v]
         instr = request.GET.get("instructor_id")
-        if instr == "__none__":
-            slots = slots.filter(instructor__isnull=True)
-        elif instr:
-            slots = slots.filter(instructor_id=instr)
+        if instr:
+            instr_ids = [instr]
+        if instr_ids:
+            q = Q()
+            real_ids = [v for v in instr_ids if v != "__none__"]
+            if real_ids:
+                q |= Q(instructor_id__in=real_ids)
+            if "__none__" in instr_ids:
+                q |= Q(instructor__isnull=True)
+            slots = slots.filter(q)
         slots = list(slots)
         # 기간 내 인스턴스 오버레이(결석/취소 상태·occ_id)
         occ_q = LessonOccurrence.objects.filter(date__gte=d0, date__lte=d1, source_timetable__isnull=False)

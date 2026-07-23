@@ -1409,8 +1409,33 @@
             <button @click="ttCalToday" class="ml-1 px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">오늘</button>
           </div>
           <div><label class="lbl">과정</label><select v-model="ttFilter.program" @change="loadTtCal" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
-          <div><label class="lbl">강사</label><select v-model="ttFilter.instructor_id" @change="loadTtCal" class="input w-28"><option value="">전체</option><option value="__none__">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
-          <span class="text-xs text-slate-400 ml-auto self-center">수업에 마우스를 올리면 최근 진도를 봅니다(개별 진도 관리 연결 예정)</span>
+          <div class="relative">
+            <label class="lbl">강사</label>
+            <button type="button" @click="ttInstrDropdown=!ttInstrDropdown" class="input w-36 text-left flex items-center justify-between">
+              <span class="truncate">{{ ttInstrFilterLabel }}</span><span class="text-slate-400 shrink-0">▾</span>
+            </button>
+            <div v-if="ttInstrDropdown" class="fixed inset-0 z-10" @click="ttInstrDropdown=false"></div>
+            <div v-if="ttInstrDropdown" class="absolute z-20 mt-1 w-52 bg-white rounded-lg shadow-lg border p-2 max-h-64 overflow-y-auto">
+              <label class="flex items-center gap-2 text-xs py-1 cursor-pointer border-b pb-1.5 mb-1">
+                <input type="checkbox" :checked="!(ttFilter.instructor_ids||[]).length" @change="ttInstrSelectAll" class="w-3.5 h-3.5" /> 전체
+              </label>
+              <label class="flex items-center gap-2 text-xs py-1 cursor-pointer">
+                <input type="checkbox" :checked="(ttFilter.instructor_ids||[]).includes('__none__')" @change="toggleTtInstr('__none__')" class="w-3.5 h-3.5" /> 미배정
+              </label>
+              <label v-for="t in ttInstructors" :key="t.user_id" class="flex items-center gap-2 text-xs py-1 cursor-pointer">
+                <input type="checkbox" :checked="(ttFilter.instructor_ids||[]).includes(String(t.user_id))" @change="toggleTtInstr(String(t.user_id))" class="w-3.5 h-3.5" /> {{ t.real_name || t.staff_no }}
+              </label>
+            </div>
+          </div>
+          <span v-if="ttView==='week'" class="text-xs text-slate-400 self-center">수업에 마우스를 올리면 최근 진도를 봅니다</span>
+          <label v-if="ttView==='week'" class="flex items-center gap-2 text-xs cursor-pointer select-none ml-auto self-center">
+            <span :class="ttSlotLayout==='vertical' ? 'text-indigo-600 font-semibold' : 'text-slate-400'">세로</span>
+            <button type="button" @click="ttSlotLayout = ttSlotLayout==='vertical' ? 'horizontal' : 'vertical'"
+                    :class="['w-10 h-5 rounded-full relative transition-colors shrink-0', ttSlotLayout==='horizontal' ? 'bg-indigo-600' : 'bg-slate-300']">
+              <span :class="['absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all', ttSlotLayout==='horizontal' ? 'left-5' : 'left-0.5']"></span>
+            </button>
+            <span :class="ttSlotLayout==='horizontal' ? 'text-indigo-600 font-semibold' : 'text-slate-400'">가로</span>
+          </label>
         </div>
 
         <!-- 주간: 시간(30분)×요일 격자 -->
@@ -1425,12 +1450,21 @@
             <tbody>
               <tr v-for="sl in ttWeekSlots" :key="sl.mins">
                 <td class="border border-slate-100 bg-slate-50 text-center text-[11px] align-top py-1" :class="sl.half ? 'text-slate-300' : 'text-slate-400'">{{ sl.label }}</td>
-                <td v-for="(d,i) in ttWeekDates" :key="i" class="border border-slate-100 align-top p-0.5 min-w-[110px]" :class="d.isToday ? 'bg-indigo-50/30' : ''">
-                  <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
-                       :class="['mb-0.5 px-1.5 py-1 rounded leading-tight cursor-default', calItemCls(it)]">
-                    <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}
-                    <span class="block text-[10px] opacity-70">{{ it.subject }}<template v-if="it.makeup"> · 보강</template></span>
-                  </div>
+                <td v-for="(d,i) in ttWeekDates" :key="i" :class="['border border-slate-100 align-top p-0.5', d.isToday ? 'bg-indigo-50/30' : '', ttSlotLayout==='horizontal' ? 'min-w-[160px]' : 'min-w-[110px]']">
+                  <template v-if="ttSlotLayout==='horizontal'">
+                    <div v-if="ttSlotItems(d.date,sl.mins).length" class="text-[10px] font-bold text-indigo-600 mb-0.5">👥 {{ ttSlotItems(d.date,sl.mins).length }}명</div>
+                    <div class="flex flex-wrap gap-0.5">
+                      <span v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
+                           :class="['px-1.5 py-0.5 rounded leading-tight cursor-default text-[10px] whitespace-nowrap', calItemCls(it)]">{{ it.student_name }}<template v-if="it.makeup">·보강</template></span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
+                         :class="['mb-0.5 px-1.5 py-1 rounded leading-tight cursor-default', calItemCls(it)]">
+                      <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}
+                      <span class="block text-[10px] opacity-70">{{ it.subject }}<template v-if="it.makeup"> · 보강</template></span>
+                    </div>
+                  </template>
                   <div v-for="(rv,k) in ttSlotResv(d.date,sl.mins)" :key="'r'+k" @mouseenter="showCalResv(rv,d.date,$event)" @mouseleave="hideResvPop" class="mb-0.5 px-1.5 py-1 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
                     <span class="font-semibold">📅 {{ rv.time }}</span> {{ rv.student_name }}
                     <span v-if="rv.note" class="block text-[10px] opacity-70">{{ truncate(rv.note,10) }}</span>
@@ -1508,7 +1542,24 @@
         <div><label class="lbl">요일</label><select v-model="ttFilter.weekday" class="input w-20"><option value="">전체</option><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
         <div><label class="lbl">시작 이상</label><input v-model="ttFilter.from" @change="onFilterFrom" type="time" class="input w-28" /></div>
         <div><label class="lbl">종료 이하</label><input v-model="ttFilter.to" type="time" class="input w-28" /></div>
-        <div><label class="lbl">강사</label><select v-model="ttFilter.instructor_id" class="input w-28"><option value="">전체</option><option value="__none__">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
+        <div class="relative">
+          <label class="lbl">강사</label>
+          <button type="button" @click="ttInstrDropdown=!ttInstrDropdown" class="input w-32 text-left flex items-center justify-between">
+            <span class="truncate">{{ ttInstrFilterLabel }}</span><span class="text-slate-400 shrink-0">▾</span>
+          </button>
+          <div v-if="ttInstrDropdown" class="fixed inset-0 z-10" @click="ttInstrDropdown=false"></div>
+          <div v-if="ttInstrDropdown" class="absolute z-20 mt-1 w-52 bg-white rounded-lg shadow-lg border p-2 max-h-64 overflow-y-auto">
+            <label class="flex items-center gap-2 text-xs py-1 cursor-pointer border-b pb-1.5 mb-1">
+              <input type="checkbox" :checked="!(ttFilter.instructor_ids||[]).length" @change="ttInstrSelectAll" class="w-3.5 h-3.5" /> 전체
+            </label>
+            <label class="flex items-center gap-2 text-xs py-1 cursor-pointer">
+              <input type="checkbox" :checked="(ttFilter.instructor_ids||[]).includes('__none__')" @change="toggleTtInstr('__none__')" class="w-3.5 h-3.5" /> 미배정
+            </label>
+            <label v-for="t in ttInstructors" :key="t.user_id" class="flex items-center gap-2 text-xs py-1 cursor-pointer">
+              <input type="checkbox" :checked="(ttFilter.instructor_ids||[]).includes(String(t.user_id))" @change="toggleTtInstr(String(t.user_id))" class="w-3.5 h-3.5" /> {{ t.real_name || t.staff_no }}
+            </label>
+          </div>
+        </div>
         <div><label class="lbl">과정</label><select v-model="ttFilter.program" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
         <button @click="resetTtFilter" class="btn-secondary text-xs">초기화</button>
         <label class="flex items-center gap-1 text-xs text-slate-500 self-center whitespace-nowrap"><input type="checkbox" v-model="ttShowEnded" @change="loadAllTt" class="w-4 h-4"> 삭제(종료) 보기</label>
@@ -3075,7 +3126,8 @@ createApp({
       optCategory: 'program', optList: [], optNewForm: { value:'', label:'', allow_custom:false },
       durations: [60, 90, 120],
       ttStudent: null, ttSearch: '', ttResults: [], ttAll: [], ttInstructors: [], showTtAdd: false,
-      ttFilter: { name:'', weekday:'', from:'', to:'', instructor_id:'', program:'' },
+      ttFilter: { name:'', weekday:'', from:'', to:'', instructor_ids:null, program:'' },
+      ttInstrDropdown: false, ttSlotLayout: 'vertical',
       ttView: 'week', ttCalDays: {}, ttCalResv: {}, ttCalAnchor: '', ttCalMonth: '',
       calPop: { show:false, x:0, y:0, date:'', it:{} },
       ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' },
@@ -3283,13 +3335,22 @@ createApp({
       }
       return list;
     },
+    ttInstrFilterLabel(){
+      const ids = this.ttFilter.instructor_ids || [];
+      if (!ids.length) return '전체';
+      const nameOf = id => { if (id==='__none__') return '미배정'; const t=this.ttInstructors.find(x=>String(x.user_id)===id); return t ? (t.real_name||t.staff_no) : id; };
+      const names = ids.map(nameOf);
+      return names.length<=2 ? names.join(', ') : (names[0]+' 외 '+(names.length-1)+'명');
+    },
     filteredTt(){
       const f = this.ttFilter;
       let list = this.ttAll.filter(s=>{
         if (f.name){ const n=((s.student.real_name||'')+' '+s.student.username).toLowerCase(); if(!n.includes(f.name.toLowerCase())) return false; }
         if (f.weekday!=='' && s.weekday!==Number(f.weekday)) return false;
-        if (f.instructor_id==='__none__'){ if (s.instructor) return false; }
-        else if (f.instructor_id!=='' && (!s.instructor || s.instructor.id!==Number(f.instructor_id))) return false;
+        if ((f.instructor_ids||[]).length){
+          const sid = s.instructor ? String(s.instructor.id) : '__none__';
+          if (!f.instructor_ids.includes(sid)) return false;
+        }
         if (f.program && s.program!==f.program) return false;
         // 시작 이상 ~ 종료 이하: 수업(시작~종료)이 [from, to] 구간과 겹치면 포함
         if (f.from || f.to){
@@ -3479,7 +3540,14 @@ createApp({
       else if (key==='msgtpl') this.loadMsgtpl();
       else if (key==='messages'){ this.msgBox='inbox'; this.loadMessages(); }
       else if (key==='dashboard') this.loadDashboard();
-      else if (key==='indtt'){ this.loadTtInstructors(); this.loadAllTt(); this.loadStudents(); this.switchTtView(this.ttView); }
+      else if (key==='indtt'){
+        this.loadTtInstructors(); this.loadAllTt(); this.loadStudents();
+        if (this.ttFilter.instructor_ids===null){
+          const r = this.myProfile && this.myProfile.role;
+          this.ttFilter.instructor_ids = (r==='INSTRUCTOR' && this.me) ? [String(this.me.user.id)] : [];
+        }
+        this.switchTtView(this.ttView);
+      }
       else if (key==='students'){ this.loadStudents(); this.loadOptions(); }
       else if (key==='children') this.loadChildren();
       else if (key==='hr'){ this.loadStaffProfile().then(()=> this.$nextTick(()=> this.hrSigInit())); }
@@ -3625,7 +3693,7 @@ createApp({
       }
       catch(e){ this.notify(e.message,false); }
     },
-    resetTtFilter(){ this.ttFilter = { name:'', weekday:'', from:'', to:'', instructor_id:'', program:'' }; },
+    resetTtFilter(){ this.ttFilter = { name:'', weekday:'', from:'', to:'', instructor_ids:[], program:'' }; },
     switchTtView(v){
       this.ttView=v;
       if (v!=='list'){
@@ -3634,13 +3702,21 @@ createApp({
         this.loadTtCal();
       }
     },
+    toggleTtInstr(id){
+      const arr = (this.ttFilter.instructor_ids || []).slice();
+      const i = arr.indexOf(id);
+      if (i>=0) arr.splice(i,1); else arr.push(id);
+      this.ttFilter.instructor_ids = arr;
+      if (this.ttView!=='list') this.loadTtCal();
+    },
+    ttInstrSelectAll(){ this.ttFilter.instructor_ids = []; if (this.ttView!=='list') this.loadTtCal(); },
     async loadTtCal(){
       const f=this.ttFilter;
       let qs='';
       if (this.ttView==='month'){ qs='month='+this.ttCalMonth; }
       else { const w=this.ttWeekDates; if(!w.length){ this.ttCalDays={}; this.ttCalResv={}; return; } qs='from='+w[0].date+'&to='+w[6].date; }
       if (f.program) qs+='&program='+encodeURIComponent(f.program);
-      if (f.instructor_id) qs+='&instructor_id='+encodeURIComponent(f.instructor_id);
+      if ((f.instructor_ids||[]).length) qs+='&instructor_ids='+encodeURIComponent(f.instructor_ids.join(','));
       try { const d=await api('GET','/api/admin/academy/timetable_calendar?'+qs); this.ttCalDays=d.days||{}; this.ttCalResv=d.reservations||{}; }
       catch(e){ this.ttCalDays={}; this.ttCalResv={}; this.notify(e.message,false); }
     },
