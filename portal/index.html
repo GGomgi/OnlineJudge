@@ -1634,8 +1634,8 @@
       </div>
 
       <!-- 엑셀 일괄등록 모달 -->
-      <div v-if="bulkOpen" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="bulkOpen=false">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4">
+      <div v-if="bulkOpen" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-4" @click.self="bulkOpen=false">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-[97vw] mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b">
             <div class="font-bold">엑셀 일괄등록</div>
             <button @click="bulkOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
@@ -1643,13 +1643,44 @@
           <div class="p-5 space-y-3">
             <ol class="text-xs text-slate-500 list-decimal pl-4 space-y-0.5">
               <li><b>양식 다운로드</b>(또는 <b>기존 데이터 내보내기</b>)로 엑셀을 받아 ‘설명’ 시트를 보고 ‘입력’ 시트를 채웁니다.</li>
-              <li>채운 파일을 올린 뒤 <b>검증</b>으로 오류·시간표 해석을 먼저 확인합니다(이때는 생성 안 됨).</li>
+              <li>채운 파일을 올리면 아래 표에 전체 데이터가 나타납니다. <b>변환</b>으로 날짜·학교구분·학교이름·학년·전화번호 표기를 자동으로 정리합니다(바뀐 값은 색으로 표시, 표에서 직접 수정도 가능).</li>
+              <li><b>검증</b>으로 오류·시간표 해석을 확인합니다(이때는 생성 안 됨). 오류 행은 결과의 <b>✎ 수정</b>으로 바로 위 표의 해당 행으로 이동합니다.</li>
               <li>문제없으면 <b>확정 등록</b>으로 정상 행만 생성합니다.</li>
             </ol>
             <div class="flex flex-wrap gap-2 items-center">
               <button @click="downloadBulkTemplate" class="btn-secondary text-sm">⬇ 양식 다운로드</button>
               <input ref="bulkFile" type="file" accept=".xlsx,.xls,.csv" @change="onBulkFile" class="text-xs" />
+              <button v-if="bulkRows.length" @click="convertBulkRows" class="btn-secondary text-sm">🔄 변환</button>
+              <button v-if="bulkRows.length" @click="downloadBulkReview" class="btn-secondary text-sm">⬇ 검토 데이터 다운로드</button>
+              <span v-if="bulkConverted" class="text-xs text-emerald-600">✓ 변환됨 — 노란 칸이 바뀐 값입니다.</span>
             </div>
+
+            <!-- 전체 데이터 검토·편집 표 -->
+            <div v-if="bulkRows.length" class="border rounded-lg overflow-auto max-h-[50vh]">
+              <table class="text-[11px] border-collapse">
+                <thead class="bg-slate-50 text-slate-500 sticky top-0 z-10">
+                  <tr>
+                    <th class="px-1 py-1 text-left w-8 bg-slate-50">#</th>
+                    <th v-for="c in bulkColumnDefs()" :key="c.field" class="px-1 py-1 text-left whitespace-nowrap bg-slate-50">{{ c.label }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row,idx) in bulkRows" :key="idx" :id="'bulk-row-'+idx" :class="bulkRowError(idx) ? 'bg-rose-50' : ''">
+                    <td class="px-1 py-1 text-slate-400 align-top">
+                      {{ idx+1 }}
+                      <div v-if="bulkRowError(idx)" class="text-rose-500 text-[10px] leading-tight" style="max-width:90px">⚠ {{ bulkRowError(idx).error }}</div>
+                    </td>
+                    <td v-for="c in bulkColumnDefs()" :key="c.field" class="px-1 py-1 align-top">
+                      <input v-model="row[c.field]"
+                        :class="['input py-0.5 px-1 text-[11px] w-24', (c.auto && row._changed && row._changed[c.field]) ? 'bg-amber-50 border-amber-300 font-medium' : '', (c.field==='grade' && row._gradeWarn) ? 'ring-1 ring-rose-400' : '']" />
+                      <div v-if="c.auto && row._changed && row._changed[c.field]" class="text-[10px] text-amber-600 whitespace-nowrap">이전: {{ row._orig[c.field] || '(없음)' }}</div>
+                      <div v-if="c.field==='grade' && row._gradeWarn" class="text-[10px] text-rose-500 whitespace-nowrap">학년 범위 확인</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
             <!-- 검증/결과 표 -->
             <div v-if="bulkValidated" class="border rounded-lg overflow-hidden">
               <div class="bg-slate-50 px-3 py-1.5 text-xs flex items-center gap-3">
@@ -1661,7 +1692,7 @@
               </div>
               <div class="max-h-72 overflow-auto">
                 <table class="w-full text-[11px]">
-                  <thead class="bg-slate-50 text-slate-400"><tr><th class="px-2 py-1 text-left w-8">행</th><th class="px-2 py-1 text-left w-14">상태</th><th class="px-2 py-1 text-left">학생</th><th class="px-2 py-1 text-left">아이디</th><th class="px-2 py-1 text-left">시간표/메시지</th></tr></thead>
+                  <thead class="bg-slate-50 text-slate-400"><tr><th class="px-2 py-1 text-left w-8">행</th><th class="px-2 py-1 text-left w-14">상태</th><th class="px-2 py-1 text-left">학생</th><th class="px-2 py-1 text-left">아이디</th><th class="px-2 py-1 text-left">시간표/메시지</th><th class="px-2 py-1 text-left w-14"></th></tr></thead>
                   <tbody>
                     <tr v-for="x in bulkValidated.results" :key="x.row" class="border-t align-top">
                       <td class="px-2 py-1 text-slate-400">{{ x.row }}</td>
@@ -1674,6 +1705,9 @@
                           <span class="text-slate-500">{{ (x.timetable_preview||[]).join(', ') || '시간표 없음' }}</span>
                           <span v-for="(w,wi) in (x.warnings||[])" :key="wi" class="block text-amber-600">⚠ {{ w }}</span>
                         </template>
+                      </td>
+                      <td class="px-2 py-1">
+                        <button v-if="!x.ok" @click="focusBulkRow(x.row-1)" class="text-indigo-600 hover:underline whitespace-nowrap">✎ 수정</button>
                       </td>
                     </tr>
                   </tbody>
@@ -3057,7 +3091,7 @@ createApp({
       myClasses: [], myInd: [], myAtt: [],
       docPreview: { show:false, url:'', x:0, y:0 },
       students: [], stuSearch: '', stuSearch2: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
-      bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false,
+      bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false, bulkConverted: false,
       enrollMode: false, enrollToken: '', enrollPrefill: null, enrollError: '', enrollDone: false,
       enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', memo:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       enrollHasPw: false,
@@ -4605,8 +4639,100 @@ createApp({
     // ── 학생 관리 ──
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
     // ── 엑셀 일괄등록 ──
-    openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; if(!(this.options.program||[]).length||!(this.options.program_language||[]).length) this.loadOptions(); if(!this.branches.length) this.loadBranches(); if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
+    openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; this.bulkConverted=false; if(!(this.options.program||[]).length||!(this.options.program_language||[]).length) this.loadOptions(); if(!this.branches.length) this.loadBranches(); if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
     bulkColumns(){ return ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','보호자관계','등하원알림','기타보호자연락처','기타보호자관계','학생연락처','우편번호','주소','상세주소','등록과정','주횟수','시간표','등록일','수업시작일','기타(요청사항)']; },
+    bulkFieldMap(){ return { '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','보호자관계':'parent_relation','등하원알림':'notify_optin','기타보호자연락처':'guardian2_phone','기타보호자관계':'guardian2_relation','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','시간표':'timetable','등록일':'enrollment_date','수업시작일':'lesson_start_date','기타(요청사항)':'memo' }; },
+    bulkColumnDefs(){
+      const M = this.bulkFieldMap(); const autoSet = new Set(this.bulkAutoFields());
+      return this.bulkColumns().map(label => ({ label, field: M[label], auto: autoSet.has(M[label]) }));
+    },
+    // ── 일괄등록 자동 변환(날짜·학교구분·학교이름·학년·전화번호 표기 통일) ──
+    bulkAutoFields(){ return ['birth_date','school_type','school_name','grade','parent_phone','guardian2_phone','student_phone','lesson_start_date']; },
+    normBirthDateStr(s){
+      s = String(s||'').trim();
+      if (!s) return '';
+      const m = s.match(/^(\d{2,4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/);
+      if (!m) return s; // 패턴이 안 맞으면 원본 유지(수동 확인 필요)
+      let [, y, mo, d] = m;
+      if (y.length===2){ const yy=parseInt(y,10); const curYY=this.today.y%100; y = String(yy <= curYY+5 ? 2000+yy : 1900+yy); }
+      mo = mo.padStart(2,'0'); d = d.padStart(2,'0');
+      const dt = new Date(Number(y), Number(mo)-1, Number(d));
+      if (dt.getFullYear()!=Number(y) || (dt.getMonth()+1)!=Number(mo) || dt.getDate()!=Number(d)) return s; // 실재하지 않는 날짜
+      return y+'-'+mo+'-'+d;
+    },
+    normSchoolTypeStr(s){
+      s = String(s||'').trim();
+      if (!s) return '';
+      const opts = this.options.school_type || [];
+      let hit = opts.find(o=>o.value===s || o.label===s);
+      if (hit) return hit.label;
+      // '중학교'처럼 라벨(중등)과 문자열이 겹치지 않는 흔한 표기를 키워드로 우선 매칭
+      const KEY = [[/초등/,'초등'],[/중학|중등/,'중등'],[/고등/,'고등'],[/대학/,'대학교'],[/국제/,'국제학교']];
+      for (const [re,k] of KEY){ if (re.test(s)){ const h=opts.find(o=>o.label===k); if (h) return h.label; } }
+      const stem = l => l.replace(/학교$/,'');
+      hit = opts.find(o=>{ const st=stem(o.label); return st && (s.includes(st) || st.includes(s)); });
+      return hit ? hit.label : s;
+    },
+    normSchoolNameStr(s){
+      s = String(s||'').trim();
+      if (!s) return '';
+      const suf = ['초등학교','중학교','고등학교','대학교','국제학교','초등','중등','고등','국제','초','중','고','대'];
+      for (const x of suf){ if (s.length>x.length && s.endsWith(x)) return s.slice(0, -x.length).trim(); }
+      return s;
+    },
+    normGradeStr(s){
+      const d = String(s||'').replace(/[^0-9]/g,'');
+      return d ? String(parseInt(d,10)) : '';
+    },
+    gradeRangeOk(schoolTypeLabel, grade){
+      if (!grade) return true;
+      const g = parseInt(grade,10); if (isNaN(g)) return false;
+      const R = {'초등':[1,6], '중등':[1,3], '고등':[1,3], '대학교':[1,5], '국제학교':[1,12]};
+      const r = R[schoolTypeLabel];
+      return !r || (g>=r[0] && g<=r[1]);
+    },
+    convertBulkRows(){
+      const FIELDS = this.bulkAutoFields();
+      let changedCount = 0;
+      this.bulkRows.forEach(row=>{
+        row.school_type = this.normSchoolTypeStr(row.school_type);
+        row.school_name = this.normSchoolNameStr(row.school_name);
+        row.grade = this.normGradeStr(row.grade);
+        row.birth_date = this.normBirthDateStr(row.birth_date);
+        row.lesson_start_date = this.normBirthDateStr(row.lesson_start_date);
+        row.parent_phone = row.parent_phone ? this.formatPhone(row.parent_phone) : '';
+        row.guardian2_phone = row.guardian2_phone ? this.formatPhone(row.guardian2_phone) : '';
+        row.student_phone = row.student_phone ? this.formatPhone(row.student_phone) : '';
+        row._changed = row._changed || {};
+        FIELDS.forEach(f=>{ const ch = String(row._orig[f]||'') !== String(row[f]||''); if (ch) changedCount++; row._changed[f] = ch; });
+        row._gradeWarn = !this.gradeRangeOk(row.school_type, row.grade);
+      });
+      this.bulkConverted = true;
+      this.bulkValidated = null;
+      this.notify(changedCount+'개 값이 자동 변환되었습니다. 표에서 확인·수정 후 [검증]을 눌러주세요.');
+    },
+    bulkRowError(idx){
+      if (!this.bulkValidated || !this.bulkValidated.results) return null;
+      return this.bulkValidated.results.find(x=>x.row===idx+1 && !x.ok) || null;
+    },
+    focusBulkRow(idx){
+      this.$nextTick(()=>{
+        const el = document.getElementById('bulk-row-'+idx);
+        if (!el) return;
+        el.scrollIntoView({ behavior:'smooth', block:'center' });
+        el.classList.add('ring-2','ring-rose-400');
+        setTimeout(()=>el.classList.remove('ring-2','ring-rose-400'), 2000);
+      });
+    },
+    downloadBulkReview(){
+      if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
+      const M = this.bulkFieldMap(); const inv = {}; for (const k in M) inv[M[k]] = k;
+      const rows = this.bulkRows.map(r=>{ const o={}; for (const f in inv) o[inv[f]] = r[f]||''; return o; });
+      const header = this.bulkColumns();
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows, { header }), '입력');
+      XLSX.writeFile(wb, '학생_일괄등록_검토_'+this.todayStr+'.xlsx');
+    },
     downloadBulkTemplate(){
       if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
       const cols=this.bulkColumns();
@@ -4633,6 +4759,8 @@ createApp({
         ['[형식]'],
         ['· 지점: 정확한 지점명. 사용 가능 → '+branchNames],
         ['· 생년월일/등록일/수업시작일: YYYY-MM-DD (예: 2014-03-09). 등록일 비우면 오늘.'],
+        ['· 생년월일·학교구분·학교이름·학년·전화번호(보호자/기타보호자/학생)는 업로드 후 [변환] 버튼으로 표기를 자동 정리합니다'],
+        ['   (2014.6.6·14-6-6 등도 인식, 학교이름 접미사 자동 제거, 전화번호 010-0000-0000 형식 통일). 완벽하지 않으면 표에서 직접 수정하세요.'],
         ['· 성별: 남 또는 여'],
         ['· 학교구분: '+schoolNames+'  /  학년: 숫자만(예: 4)'],
         ['· 보호자관계: 어머니 / 아버지 / 직접 입력한 관계(예: 할머니)'],
@@ -4693,18 +4821,22 @@ createApp({
           const wb=XLSX.read(ev.target.result, { type:'array', cellDates:true });
           const sheet=wb.Sheets['입력'] || wb.Sheets[wb.SheetNames.find(n=>n!=='설명')] || wb.Sheets[wb.SheetNames[0]];
           const raw=XLSX.utils.sheet_to_json(sheet, { defval:'', raw:true });
-          const M={ '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','보호자관계':'parent_relation','등하원알림':'notify_optin','기타보호자연락처':'guardian2_phone','기타보호자관계':'guardian2_relation','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','시간표':'timetable','등록일':'enrollment_date','수업시작일':'lesson_start_date','기타(요청사항)':'memo' };
+          const M=this.bulkFieldMap();
           // 헤더의 ' *'(필수 표시)·앞뒤 공백은 무시하고 매칭
           const normKey=k=>String(k||'').replace(/\s*\*\s*$/,'').trim();
           const fmtDate=v=>{ if(!v) return ''; if(v instanceof Date){ const p=x=>String(x).padStart(2,'0'); return v.getFullYear()+'-'+p(v.getMonth()+1)+'-'+p(v.getDate()); } return String(v).trim().slice(0,10); };
+          const FIELDS = this.bulkAutoFields();
           this.bulkRows = raw.map(o=>{
             const no={}; for(const k in o){ no[normKey(k)] = o[k]; }
             const r={}; for(const k in M){ r[M[k]] = (no[k]!=null?String(no[k]).trim():''); }
             r.birth_date=fmtDate(no['생년월일']); r.lesson_start_date=fmtDate(no['수업시작일']); r.enrollment_date=fmtDate(no['등록일']);
+            r._orig = {}; FIELDS.forEach(f=>{ r._orig[f]=r[f]; });
+            r._changed = {};
             return r;
           }).filter(r=>r.student_name);
+          this.bulkConverted = false;
           this.bulkValidated=null;
-          this.notify(this.bulkRows.length+'행을 읽었습니다. [검증]을 눌러 확인하세요.');
+          this.notify(this.bulkRows.length+'행을 읽었습니다. [변환]으로 형식을 자동 정리한 뒤 [검증]을 눌러주세요.');
         } catch(err){ this.notify('파일을 읽지 못했습니다: '+err.message, false); }
       };
       reader.readAsArrayBuffer(file);
