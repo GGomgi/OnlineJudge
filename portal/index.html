@@ -4626,7 +4626,8 @@ createApp({
         [''],
         ['[기본 규칙]'],
         ['· "입력" 시트의 첫 줄(머리글)은 지우지 마세요. 둘째 줄부터 한 학생씩 입력합니다.'],
-        ['· 비워도 되는 항목: 학생연락처, 우편번호, 주소, 상세주소, 주횟수, 시간표, 등록일, 수업시작일, 기타보호자연락처, 기타보호자관계, 기타(요청사항).'],
+        ['· 필수 입력(머리글에 * 표시): 지점, 학생이름, 생년월일. 이 3개가 없으면 등록되지 않습니다.'],
+        ['· 그 외 나머지 항목은 전부 선택(비워도 됨) — 학생연락처, 우편번호, 주소, 상세주소, 주횟수, 시간표, 등록일, 수업시작일, 기타보호자연락처, 기타보호자관계, 기타(요청사항) 포함.'],
         ['· 아이디/비밀번호는 적지 않습니다(자동). 아이디=이름+생일MMDD(예: 김민준0309), 비번=보호자 연락처 숫자 또는 123456.'],
         [''],
         ['[형식]'],
@@ -4674,6 +4675,12 @@ createApp({
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(guide), '설명');
       const ws=XLSX.utils.json_to_sheet(samples, { header:cols });
       ws['!cols']=cols.map(c=>({wch: c==='시간표'?24:(c==='기타(요청사항)'?20:(c==='주소'?18:(['학생이름','보호자이름','등록과정','학교이름'].includes(c)?12:10)))}));
+      // 필수 컬럼 헤더에 * 표시(가져오기는 * 유무 상관없이 인식하므로 표시만 붙임)
+      ['지점','학생이름','생년월일'].forEach(name=>{
+        const ci = cols.indexOf(name); if (ci<0) return;
+        const addr = XLSX.utils.encode_cell({ r:0, c:ci });
+        if (ws[addr]) ws[addr].v = name + ' *';
+      });
       XLSX.utils.book_append_sheet(wb, ws, '입력');
       XLSX.writeFile(wb, '학생_일괄등록_양식.xlsx');
     },
@@ -4685,11 +4692,17 @@ createApp({
         try {
           const wb=XLSX.read(ev.target.result, { type:'array', cellDates:true });
           const sheet=wb.Sheets['입력'] || wb.Sheets[wb.SheetNames.find(n=>n!=='설명')] || wb.Sheets[wb.SheetNames[0]];
-          const raw=XLSX.utils.sheet_to_json(sheet, { defval:'', raw:false });
+          const raw=XLSX.utils.sheet_to_json(sheet, { defval:'', raw:true });
           const M={ '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','보호자관계':'parent_relation','등하원알림':'notify_optin','기타보호자연락처':'guardian2_phone','기타보호자관계':'guardian2_relation','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','시간표':'timetable','등록일':'enrollment_date','수업시작일':'lesson_start_date','기타(요청사항)':'memo' };
+          // 헤더의 ' *'(필수 표시)·앞뒤 공백은 무시하고 매칭
+          const normKey=k=>String(k||'').replace(/\s*\*\s*$/,'').trim();
           const fmtDate=v=>{ if(!v) return ''; if(v instanceof Date){ const p=x=>String(x).padStart(2,'0'); return v.getFullYear()+'-'+p(v.getMonth()+1)+'-'+p(v.getDate()); } return String(v).trim().slice(0,10); };
-          this.bulkRows = raw.map(o=>{ const r={}; for(const k in M){ r[M[k]] = (o[k]!=null?String(o[k]).trim():''); } r.birth_date=fmtDate(o['생년월일']); r.lesson_start_date=fmtDate(o['수업시작일']); r.enrollment_date=fmtDate(o['등록일']); return r; })
-            .filter(r=>r.student_name);
+          this.bulkRows = raw.map(o=>{
+            const no={}; for(const k in o){ no[normKey(k)] = o[k]; }
+            const r={}; for(const k in M){ r[M[k]] = (no[k]!=null?String(no[k]).trim():''); }
+            r.birth_date=fmtDate(no['생년월일']); r.lesson_start_date=fmtDate(no['수업시작일']); r.enrollment_date=fmtDate(no['등록일']);
+            return r;
+          }).filter(r=>r.student_name);
           this.bulkValidated=null;
           this.notify(this.bulkRows.length+'행을 읽었습니다. [검증]을 눌러 확인하세요.');
         } catch(err){ this.notify('파일을 읽지 못했습니다: '+err.message, false); }
