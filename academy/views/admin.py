@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta, datetime, date as date_cls
 
 from django.utils.timezone import now
@@ -1940,8 +1941,8 @@ def _parse_program_token(tok):
 
 
 def _parse_bulk_timetable(text):
-    """'월 16:00 웹, 수 17:00 블록코딩' → ([{weekday,start_time,program,subject}], warnings[]).
-    토큰: 요일 시각 [과정명]. 격주는 v1 미지원(등록 후 [시간표]에서)."""
+    """'월 16:00 웹, 수 17:00 블록코딩 [60분 김민준]' → ([{weekday,start_time,program,subject,duration,instructor_name}], warnings[]).
+    토큰: 요일 시각 [과정명] [대괄호: NN분·담당선생님 이름, 둘 다 선택]. 격주는 v1 미지원(등록 후 [시간표]에서)."""
     from datetime import time as _t
     items, warns = [], []
     text = (text or "").replace("，", ",").strip()
@@ -1967,10 +1968,23 @@ def _parse_bulk_timetable(text):
         except (ValueError, AttributeError):
             warns.append("시각 형식 오류: '%s' (HH:MM)" % parts[1])
             continue
-        prog_text = " ".join(parts[2:]).strip()
+        rest = " ".join(parts[2:]).strip()
+        duration, instructor_name = None, ""
+        bm = re.search(r"\[([^\]]*)\]\s*$", rest)
+        if bm:
+            bracket = bm.group(1).strip()
+            rest = rest[:bm.start()].strip()
+            dm = re.search(r"(\d+)\s*분", bracket)
+            if dm:
+                duration = int(dm.group(1))
+                bracket = (bracket[:dm.start()] + bracket[dm.end():]).strip()
+            if bracket:
+                instructor_name = bracket.strip()
+        prog_text = rest
         pt = _parse_program_token(prog_text) or {"value": "", "language": "", "subject": prog_text or "수업"}
         items.append({"weekday": wd, "start_time": tm, "program": pt.get("value", ""),
-                      "language": pt.get("language", ""), "subject": pt.get("subject") or "수업"})
+                      "language": pt.get("language", ""), "subject": pt.get("subject") or "수업",
+                      "duration": duration, "instructor_name": instructor_name})
     return items, warns
 
 
@@ -2013,8 +2027,28 @@ def _bulk_resolve_row(actor, row, branches, seen_ids):
     except ValueError:
         ws = None
     tt_items, tt_warns = _parse_bulk_timetable(r.get("timetable"))
+    # 시간표에 담당 선생님 이름이 있으면 해당 지점 교직원에서 매칭(못 찾으면 경고, 미배정으로 진행)
+    staff_by_name = {}
+    for p in AcademyProfile.objects.filter(role__in=STAFF_ROLES, branch=branch).select_related("user", "user__userprofile"):
+        staff_by_name[_name_of(p.user)] = p.user_id
+        staff_by_name[p.user.username] = p.user_id
+    for it in tt_items:
+        nm = it.get("instructor_name")
+        if nm:
+            iid = staff_by_name.get(nm)
+            if iid:
+                it["instructor_id"] = iid
+            else:
+                it["instructor_id"] = None
+                tt_warns.append("담당 선생님을 찾을 수 없음(미배정으로 진행): '%s'" % nm)
+        else:
+            it["instructor_id"] = None
     res["warnings"] = tt_warns
-    res["timetable_preview"] = ["%s %s %s" % (_WD[it["weekday"]], it["start_time"], it["subject"]) for it in tt_items]
+    res["timetable_preview"] = [
+        "%s %s %s%s%s" % (_WD[it["weekday"]], it["start_time"], it["subject"],
+                          ("(%d분)" % it["duration"]) if it.get("duration") else "",
+                          ("·%s" % it["instructor_name"]) if it.get("instructor_name") else "")
+        for it in tt_items]
     if ws is None and tt_items:
         ws = len(tt_items)
     progs = []
@@ -2099,11 +2133,13 @@ class BulkRegisterAPI(APIView):
                 programs=_json.dumps(d["programs"], ensure_ascii=False),
                 weekly_sessions=d["weekly_sessions"], lesson_start_date=d["lesson_start_date"],
                 memo=d.get("memo", "") or "")
-            dur = lesson_duration(d["school_type"], d["weekly_sessions"])
+            default_dur = lesson_duration(d["school_type"], d["weekly_sessions"])
             for it in d["timetable"]:
                 StudentTimetable.objects.create(
                     student=user, branch=d["branch"], class_type=LessonType.PRIVATE,
-                    weekday=it["weekday"], start_time=it["start_time"], duration_minutes=dur,
+                    weekday=it["weekday"], start_time=it["start_time"],
+                    duration_minutes=it.get("duration") or default_dur,
+                    instructor_id=it.get("instructor_id"),
                     program=it["program"], subject=it["subject"], frequency="WEEKLY",
                     active_from=d["lesson_start_date"])
 
