@@ -1940,51 +1940,47 @@ def _parse_program_token(tok):
     return out
 
 
-def _parse_bulk_timetable(text):
-    """'월 16:00 웹, 수 17:00 블록코딩 [60분 김민준]' → ([{weekday,start_time,program,subject,duration,instructor_name}], warnings[]).
-    토큰: 요일 시각 [과정명] [대괄호: NN분·담당선생님 이름, 둘 다 선택]. 격주는 v1 미지원(등록 후 [시간표]에서)."""
+BULK_TT_SLOTS = 4  # 일괄등록 양식에 회차별 컬럼(요일/시각/과정/수업시간/선생님)을 몇 회차까지 둘지
+
+
+def _bulk_build_timetable_from_cols(r):
+    """'N회차 요일/시각/과정/수업시간/선생님' 컬럼(최대 BULK_TT_SLOTS)에서 시간표 항목을 구성.
+    항목 형식은 {weekday,start_time,program,subject,duration,instructor_name}. 비어있는 회차는 건너뜀."""
     from datetime import time as _t
     items, warns = [], []
-    text = (text or "").replace("，", ",").strip()
-    if not text:
-        return items, warns
-    for tok in text.split(","):
-        tok = tok.strip()
-        if not tok:
+    for i in range(1, BULK_TT_SLOTS + 1):
+        wd_s = (r.get("tt%d_weekday" % i) or "").strip()
+        tm_s = (r.get("tt%d_time" % i) or "").strip()
+        prog_s = (r.get("tt%d_program" % i) or "").strip()
+        dur_s = (r.get("tt%d_duration" % i) or "").strip()
+        instr_s = (r.get("tt%d_instructor" % i) or "").strip()
+        if not (wd_s or tm_s or prog_s or dur_s or instr_s):
+            continue  # 이 회차는 전부 비어있음 → 사용 안 함
+        if not wd_s or not tm_s:
+            warns.append("%d회차: 요일·시각을 모두 입력하세요." % i)
             continue
-        parts = tok.split()
-        if len(parts) < 2:
-            warns.append("시간표 형식 오류: '%s' (요일 시각 [과정])" % tok)
-            continue
-        wd = _WD.index(parts[0]) if parts[0] in _WD else -1
+        wd = _WD.index(wd_s) if wd_s in _WD else -1
         if wd < 0:
-            warns.append("요일 인식 불가: '%s'" % parts[0])
+            warns.append("%d회차 요일 인식 불가: '%s'" % (i, wd_s))
             continue
-        tm = parts[1].strip()
         try:
-            hh, mm = tm.split(":")
+            hh, mm = tm_s.split(":")
             _t(int(hh), int(mm))
             tm = "%02d:%02d" % (int(hh), int(mm))
         except (ValueError, AttributeError):
-            warns.append("시각 형식 오류: '%s' (HH:MM)" % parts[1])
+            warns.append("%d회차 시각 형식 오류: '%s' (HH:MM)" % (i, tm_s))
             continue
-        rest = " ".join(parts[2:]).strip()
-        duration, instructor_name = None, ""
-        bm = re.search(r"\[([^\]]*)\]\s*$", rest)
-        if bm:
-            bracket = bm.group(1).strip()
-            rest = rest[:bm.start()].strip()
-            dm = re.search(r"(\d+)\s*분", bracket)
-            if dm:
-                duration = int(dm.group(1))
-                bracket = (bracket[:dm.start()] + bracket[dm.end():]).strip()
-            if bracket:
-                instructor_name = bracket.strip()
-        prog_text = rest
-        pt = _parse_program_token(prog_text) or {"value": "", "language": "", "subject": prog_text or "수업"}
+        pt = _parse_program_token(prog_s) or {"value": "", "language": "", "subject": prog_s or "수업"}
+        duration = None
+        if dur_s:
+            m = re.match(r"(\d+)", dur_s)
+            if m:
+                duration = int(m.group(1))
+            else:
+                warns.append("%d회차 수업시간 형식 오류(숫자만): '%s'" % (i, dur_s))
         items.append({"weekday": wd, "start_time": tm, "program": pt.get("value", ""),
                       "language": pt.get("language", ""), "subject": pt.get("subject") or "수업",
-                      "duration": duration, "instructor_name": instructor_name})
+                      "duration": duration, "instructor_name": instr_s})
     return items, warns
 
 
@@ -2026,7 +2022,7 @@ def _bulk_resolve_row(actor, row, branches, seen_ids):
         ws = int(float(ws)) if ws else None
     except ValueError:
         ws = None
-    tt_items, tt_warns = _parse_bulk_timetable(r.get("timetable"))
+    tt_items, tt_warns = _bulk_build_timetable_from_cols(r)
     # 시간표에 담당 선생님 이름이 있으면 해당 지점 교직원에서 매칭(못 찾으면 경고, 미배정으로 진행)
     staff_by_name = {}
     for p in AcademyProfile.objects.filter(role__in=STAFF_ROLES, branch=branch).select_related("user", "user__userprofile"):
