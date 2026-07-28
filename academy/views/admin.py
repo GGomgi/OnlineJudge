@@ -1887,12 +1887,17 @@ def _bulk_parse_date(s):
 
 
 def _resolve_opt_value(category, text):
-    """선택목록 라벨 또는 값(코드)을 value(코드)로 해석. 매칭 없으면 ''."""
+    """선택목록 라벨 또는 값(코드)을 value(코드)로 해석. 매칭 없으면 ''.
+    정확히 일치하는 항목이 없으면 라벨 포함관계(예: '프로그래밍'↔'프로그래밍언어')로 한 번 더 시도."""
     t = (text or "").strip()
     if not t:
         return ""
-    for o in OptionItem.objects.filter(category=category):
+    items = list(OptionItem.objects.filter(category=category))
+    for o in items:
         if t == o.value or t == o.label:
+            return o.value
+    for o in items:
+        if t in o.label or o.label in t:
             return o.value
     return ""
 
