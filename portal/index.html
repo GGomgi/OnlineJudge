@@ -1672,7 +1672,7 @@
                     </td>
                     <td v-for="c in bulkColumnDefs()" :key="c.field" class="px-1 py-1 align-top">
                       <input v-model="row[c.field]"
-                        :class="['input py-0.5 px-1 text-[11px] w-24', (c.auto && row._changed && row._changed[c.field]) ? 'bg-amber-50 border-amber-300 font-medium' : '', (c.field==='grade' && row._gradeWarn) ? 'ring-1 ring-rose-400' : '']" />
+                        :class="['input py-0.5 px-1 text-[11px]', bulkColWidth(c.field), (c.auto && row._changed && row._changed[c.field]) ? 'bg-amber-50 border-amber-300 font-medium' : '', (c.field==='grade' && row._gradeWarn) ? 'ring-1 ring-rose-400' : '']" />
                       <div v-if="c.auto && row._changed && row._changed[c.field]" class="text-[10px] text-amber-600 whitespace-nowrap">이전: {{ row._orig[c.field] || '(없음)' }}</div>
                       <div v-if="c.field==='grade' && row._gradeWarn" class="text-[10px] text-rose-500 whitespace-nowrap">학년 범위 확인</div>
                     </td>
@@ -4659,6 +4659,17 @@ createApp({
       const M = this.bulkFieldMap(); const autoSet = new Set(this.bulkAutoFields());
       return this.bulkColumns().map(label => ({ label, field: M[label], auto: autoSet.has(M[label]) }));
     },
+    bulkColWidth(field){
+      if (/^tt\d+_(weekday|time|duration)$/.test(field)) return 'w-14';
+      if (['gender','grade','weekly_sessions','zipcode'].includes(field)) return 'w-14';
+      if (['parent_relation','guardian2_relation','notify_optin'].includes(field)) return 'w-16';
+      if (['parent_phone','guardian2_phone','student_phone'].includes(field)) return 'w-32';
+      if (['address','memo'].includes(field)) return 'w-56';
+      if (['branch','address_detail'].includes(field)) return 'w-24';
+      if (['student_name','parent_name','school_name'].includes(field)) return 'w-24';
+      if (/^tt\d+_(program|instructor)$/.test(field) || field==='programs') return 'w-24';
+      return 'w-20';
+    },
     // ── 일괄등록 자동 변환(날짜·학교구분·학교이름·학년·전화번호 표기 통일) ──
     bulkAutoFields(){ return ['birth_date','school_type','school_name','grade','parent_phone','guardian2_phone','student_phone','lesson_start_date']; },
     normBirthDateStr(s){
@@ -4848,10 +4859,11 @@ createApp({
           // 헤더의 ' *'(필수 표시)·앞뒤 공백은 무시하고 매칭
           const normKey=k=>String(k||'').replace(/\s*\*\s*$/,'').trim();
           const fmtDate=v=>{ if(!v) return ''; if(v instanceof Date){ const p=x=>String(x).padStart(2,'0'); return v.getFullYear()+'-'+p(v.getMonth()+1)+'-'+p(v.getDate()); } return String(v).trim().slice(0,10); };
+          const fmtTime=v=>{ if(v==null||v==='') return ''; if(v instanceof Date){ const p=x=>String(x).padStart(2,'0'); return p(v.getHours())+':'+p(v.getMinutes()); } return String(v).trim(); };
           const FIELDS = this.bulkAutoFields();
           this.bulkRows = raw.map(o=>{
             const no={}; for(const k in o){ no[normKey(k)] = o[k]; }
-            const r={}; for(const k in M){ r[M[k]] = (no[k]!=null?String(no[k]).trim():''); }
+            const r={}; for(const k in M){ r[M[k]] = (M[k].endsWith('_time') && no[k] instanceof Date) ? fmtTime(no[k]) : (no[k]!=null?String(no[k]).trim():''); }
             r.birth_date=fmtDate(no['생년월일']); r.lesson_start_date=fmtDate(no['수업시작일']); r.enrollment_date=fmtDate(no['등록일']);
             r._orig = {}; FIELDS.forEach(f=>{ r._orig[f]=r[f]; });
             r._changed = {};
