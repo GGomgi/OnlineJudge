@@ -1418,7 +1418,7 @@
             <div v-if="ttInstrDropdown" class="fixed inset-0 z-10" @click="ttInstrDropdown=false"></div>
             <div v-if="ttInstrDropdown" class="absolute z-20 mt-1 w-52 bg-white rounded-lg shadow-lg border p-2 max-h-64 overflow-y-auto">
               <label class="flex items-center gap-2 text-xs py-1 cursor-pointer border-b pb-1.5 mb-1">
-                <input type="checkbox" :checked="!(ttFilter.instructor_ids||[]).length" @change="ttInstrSelectAll" class="w-3.5 h-3.5" /> 전체
+                <input type="checkbox" :checked="ttAllInstrSelected()" @change="ttInstrSelectAll" class="w-3.5 h-3.5" /> 전체
               </label>
               <label class="flex items-center gap-2 text-xs py-1 cursor-pointer">
                 <input type="checkbox" :checked="(ttFilter.instructor_ids||[]).includes('__none__')" @change="toggleTtInstr('__none__')" class="w-3.5 h-3.5" /> 미배정
@@ -1582,7 +1582,7 @@
           <div v-if="ttInstrDropdown" class="fixed inset-0 z-10" @click="ttInstrDropdown=false"></div>
           <div v-if="ttInstrDropdown" class="absolute z-20 mt-1 w-52 bg-white rounded-lg shadow-lg border p-2 max-h-64 overflow-y-auto">
             <label class="flex items-center gap-2 text-xs py-1 cursor-pointer border-b pb-1.5 mb-1">
-              <input type="checkbox" :checked="!(ttFilter.instructor_ids||[]).length" @change="ttInstrSelectAll" class="w-3.5 h-3.5" /> 전체
+              <input type="checkbox" :checked="ttAllInstrSelected()" @change="ttInstrSelectAll" class="w-3.5 h-3.5" /> 전체
             </label>
             <label class="flex items-center gap-2 text-xs py-1 cursor-pointer">
               <input type="checkbox" :checked="(ttFilter.instructor_ids||[]).includes('__none__')" @change="toggleTtInstr('__none__')" class="w-3.5 h-3.5" /> 미배정
@@ -3798,7 +3798,15 @@ createApp({
       this.ttFilter.instructor_ids = arr;
       if (this.ttView!=='list') this.loadTtCal();
     },
-    ttInstrSelectAll(){ this.ttFilter.instructor_ids = []; if (this.ttView!=='list') this.loadTtCal(); },
+    ttInstrSelectAll(){
+      this.ttFilter.instructor_ids = ['__none__', ...this.ttInstructors.map(t=>String(t.user_id))];
+      if (this.ttView!=='list') this.loadTtCal();
+    },
+    ttAllInstrSelected(){
+      const ids = this.ttFilter.instructor_ids || [];
+      if (!ids.length) return true;
+      return ids.includes('__none__') && this.ttInstructors.every(t=>ids.includes(String(t.user_id)));
+    },
     async loadTtCal(){
       const f=this.ttFilter;
       let qs='';
