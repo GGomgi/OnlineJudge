@@ -15,6 +15,7 @@ from ..models import (AcademyProfile, AcademyRole, Branch, SignupRequest, Course
 from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROLES,
                       HRNotice, StaffDocument, StaffProfileHistory)
 from ..models import DevRequest, DevRequestComment, Notification, Message
+from ..models import StudentProfile, DailyAttendance, EnrollmentStatus
 
 
 def _kst_dt_str(dt):
@@ -23,6 +24,31 @@ def _kst_dt_str(dt):
     if not dt:
         return ""
     return str(dt + timedelta(hours=9))[:16]
+
+
+def _hm_kst(dt):
+    """저장된 UTC datetime을 KST(+9) HH:MM 문자열로."""
+    if not dt:
+        return ""
+    return (dt + timedelta(hours=9)).strftime("%H:%M")
+
+
+def _kst_today():
+    return (now() + timedelta(hours=9)).date()
+
+
+def _norm_phone(v):
+    """전화번호에서 숫자만 추출."""
+    return "".join(ch for ch in (v or "") if ch.isdigit())
+
+
+def _name_of(u):
+    if not u:
+        return None
+    try:
+        return u.userprofile.real_name or u.username
+    except Exception:
+        return u.username
 
 
 TRACKED_HR_FIELDS = ["zipcode", "address", "address_detail", "phone",
@@ -861,3 +887,58 @@ class DevCommentAPI(APIView):
         c.is_hidden = True
         c.save(update_fields=["is_hidden"])
         return self.success(True)
+
+
+class KioskLookupAPI(APIView):
+    """무로그인 출결 키오스크(학원 입구 태블릿): 보호자 연락처 뒤 4자리로 학생 조회.
+    GET ?b=지점id&t=키오스크토큰&last4=1234"""
+    def get(self, request):
+        branch = Branch.objects.filter(id=request.GET.get("b")).first()
+        token = (request.GET.get("t") or "").strip()
+        if not branch or not branch.kiosk_token or branch.kiosk_token != token:
+            return self.error("잘못된 접근입니다.")
+        last4 = "".join(ch for ch in (request.GET.get("last4") or "") if ch.isdigit())
+        if len(last4) != 4:
+            return self.error("전화번호 뒤 4자리를 입력하세요.")
+        matches = []
+        sps = StudentProfile.objects.filter(enrollment_status=EnrollmentStatus.ENROLLED)\
+            .select_related("user", "user__userprofile")
+        for sp in sps:
+            ap = getattr(sp.user, "academy_profile", None)
+            if not ap or ap.branch_id != branch.id:
+                continue
+            phones = [sp.parent_phone, sp.guardian2_phone]
+            if any(_norm_phone(p)[-4:] == last4 for p in phones if p):
+                school = " ".join(x for x in [sp.school_name, (sp.grade + "학년" if sp.grade else "")] if x)
+                matches.append({"student_id": sp.user_id, "name": _name_of(sp.user), "school": school})
+        return self.success({"matches": matches})
+
+
+class KioskCheckAPI(APIView):
+    """무로그인 출결 키오스크: 학생 선택 시 등원/하원 자동 판별 처리.
+    POST {b:지점id, t:키오스크토큰, student_id}"""
+    def post(self, request):
+        data = request.data
+        branch = Branch.objects.filter(id=data.get("b")).first()
+        token = (data.get("t") or "").strip()
+        if not branch or not branch.kiosk_token or branch.kiosk_token != token:
+            return self.error("잘못된 접근입니다.")
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생을 찾을 수 없습니다.")
+        ap = getattr(u, "academy_profile", None)
+        if not ap or ap.branch_id != branch.id:
+            return self.error("잘못된 접근입니다.")
+        d = _kst_today()
+        a, _created = DailyAttendance.objects.get_or_create(student=u, date=d, defaults={"branch": branch})
+        name = _name_of(u)
+        if not a.check_in_at:
+            a.check_in_at = now()
+            a.save(update_fields=["check_in_at"])
+            return self.success({"action": "in", "name": name, "time": _hm_kst(a.check_in_at)})
+        if not a.check_out_at:
+            a.check_out_at = now()
+            a.save(update_fields=["check_out_at"])
+            return self.success({"action": "out", "name": name, "time": _hm_kst(a.check_out_at)})
+        return self.success({"action": "done", "name": name,
+                             "in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)})

@@ -7,6 +7,7 @@ class Branch(models.Model):
     code = models.CharField(max_length=16, unique=True)
     name = models.CharField(max_length=64)
     is_active = models.BooleanField(default=True)
+    kiosk_token = models.CharField(max_length=32, blank=True, default="")  # 출결 키오스크 접속 토큰(무로그인)
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:

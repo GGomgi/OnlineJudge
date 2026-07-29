@@ -1,4 +1,5 @@
 import re
+import secrets
 from datetime import timedelta, datetime, date as date_cls
 
 from django.utils.timezone import now
@@ -3466,6 +3467,39 @@ class AttendanceNoteAdminAPI(APIView):
                             "actor": _name_of(c.actor) if c.actor_id else "",
                             "time": _kst_dt_str(c.create_time)})
         return self.success(out)
+
+
+def _ensure_kiosk_token(branch):
+    """지점별 출결 키오스크 접속 토큰(무로그인). 없으면 새로 발급."""
+    if not branch.kiosk_token:
+        branch.kiosk_token = secrets.token_urlsafe(18)[:32]
+        branch.save(update_fields=["kiosk_token"])
+    return branch.kiosk_token
+
+
+class KioskUrlAdminAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """출결 키오스크 화면 URL 조회(없으면 토큰 자동 발급). branch_id="""
+        branch = Branch.objects.filter(id=request.GET.get("branch_id")).first()
+        if not branch:
+            return self.error("지점을 찾을 수 없습니다.")
+        if not can_view_branch(request.user, branch.id):
+            return self.error("권한이 없습니다.")
+        token = _ensure_kiosk_token(branch)
+        return self.success({"url": "/portal/kiosk.html?b=%d&t=%s" % (branch.id, token)})
+
+    @admin_role_required
+    def post(self, request):
+        """출결 키오스크 토큰 재발급(유출 등 사유로 링크 무효화). {branch_id}"""
+        branch = Branch.objects.filter(id=request.data.get("branch_id")).first()
+        if not branch:
+            return self.error("지점을 찾을 수 없습니다.")
+        if not can_manage_branch(request.user, branch.id):
+            return self.error("권한이 없습니다.")
+        branch.kiosk_token = secrets.token_urlsafe(18)[:32]
+        branch.save(update_fields=["kiosk_token"])
+        return self.success({"url": "/portal/kiosk.html?b=%d&t=%s" % (branch.id, branch.kiosk_token)})
 
 
 class TimetableCalendarAPI(APIView):

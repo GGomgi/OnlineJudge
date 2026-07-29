@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>출결 키오스크</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+  html, body { height: 100%; overscroll-behavior: none; }
+  body { user-select: none; }
+</style>
+</head>
+<body class="bg-slate-900 text-white h-screen w-screen overflow-hidden">
+<div id="app" class="h-full w-full flex flex-col items-center justify-center p-6"></div>
+
+<script>
+const { createApp } = Vue;
+
+function getParam(k){
+  return new URLSearchParams(location.search).get(k) || '';
+}
+
+async function kioskApi(method, path, body){
+  const opts = { method, headers: {} };
+  if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const res = await fetch(path, opts);
+  let json;
+  try { json = await res.json(); } catch (e) { throw new Error('서버 응답 오류'); }
+  if (json.error) {
+    const d = json.data;
+    throw new Error(typeof d === 'string' ? d : (json.error || '오류'));
+  }
+  return json.data;
+}
+
+createApp({
+  data(){
+    return {
+      b: getParam('b'), t: getParam('t'),
+      clock: '', digits: '',
+      stage: 'keypad',       // keypad | matches | result | error
+      matches: [], resultMsg: '', resultSub: '', busy: false,
+    };
+  },
+  computed: {
+    dots(){ const arr=['','','','']; for(let i=0;i<this.digits.length;i++) arr[i]='●'; return arr; },
+  },
+  methods: {
+    tickClock(){
+      const d = new Date();
+      const p = x => String(x).padStart(2,'0');
+      const WD = ['일','월','화','수','목','금','토'];
+      this.clock = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+'  ('+WD[d.getDay()]+')';
+    },
+    press(n){
+      if (this.stage !== 'keypad' || this.busy) return;
+      if (this.digits.length >= 4) return;
+      this.digits += String(n);
+      if (this.digits.length === 4) this.lookup();
+    },
+    backspace(){ if (this.stage==='keypad') this.digits = this.digits.slice(0,-1); },
+    async lookup(){
+      this.busy = true;
+      try {
+        const d = await kioskApi('GET', '/api/academy/kiosk_lookup?b='+encodeURIComponent(this.b)+'&t='+encodeURIComponent(this.t)+'&last4='+this.digits);
+        if (!d.matches || !d.matches.length){
+          this.resultMsg = '일치하는 학생이 없습니다.';
+          this.resultSub = '번호를 다시 확인해주세요.';
+          this.stage = 'error';
+          setTimeout(()=>this.reset(), 2200);
+        } else if (d.matches.length === 1){
+          this.matches = d.matches;
+          this.confirm(d.matches[0]);
+        } else {
+          this.matches = d.matches;
+          this.stage = 'matches';
+        }
+      } catch(e){
+        this.resultMsg = '오류가 발생했습니다.';
+        this.resultSub = e.message || '';
+        this.stage = 'error';
+        setTimeout(()=>this.reset(), 2500);
+      } finally { this.busy = false; }
+    },
+    async confirm(m){
+      this.busy = true;
+      try {
+        const d = await kioskApi('POST', '/api/academy/kiosk_check', { b:this.b, t:this.t, student_id:m.student_id });
+        if (d.action === 'in'){ this.resultMsg = d.name+'님 등원 완료'; this.resultSub = d.time; }
+        else if (d.action === 'out'){ this.resultMsg = d.name+'님 하원 완료'; this.resultSub = d.time; }
+        else { this.resultMsg = d.name+'님은 오늘 등원·하원이 모두 처리되었습니다.'; this.resultSub = '등원 '+(d.in||'-')+' · 하원 '+(d.out||'-'); }
+        this.stage = 'result';
+        setTimeout(()=>this.reset(), 2600);
+      } catch(e){
+        this.resultMsg = '처리 중 오류가 발생했습니다.';
+        this.resultSub = e.message || '';
+        this.stage = 'error';
+        setTimeout(()=>this.reset(), 2500);
+      } finally { this.busy = false; }
+    },
+    reset(){ this.digits=''; this.matches=[]; this.resultMsg=''; this.resultSub=''; this.stage='keypad'; },
+  },
+  mounted(){
+    this.tickClock();
+    setInterval(this.tickClock, 1000);
+    if (!this.b || !this.t){
+      this.resultMsg = '잘못된 접속입니다.';
+      this.resultSub = '관리자에게 링크를 다시 요청하세요.';
+      this.stage = 'error';
+    }
+  },
+  template: `
+    <div class="text-center w-full max-w-md">
+      <div class="text-sm text-slate-400 mb-1">두잉창의코딩 · 출결</div>
+      <div class="font-mono text-3xl font-bold mb-8 tracking-wider">{{ clock }}</div>
+
+      <template v-if="stage==='keypad'">
+        <div class="text-base text-slate-300 mb-3">보호자 연락처 뒤 4자리를 입력하세요</div>
+        <div class="flex justify-center gap-3 mb-8">
+          <div v-for="(d,i) in dots" :key="i" class="w-12 h-14 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-2xl">{{ d }}</div>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <button v-for="n in [1,2,3,4,5,6,7,8,9]" :key="n" @click="press(n)"
+                  class="h-16 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-2xl font-semibold">{{ n }}</button>
+          <button @click="reset" class="h-16 rounded-xl bg-slate-800 hover:bg-slate-700 text-lg text-slate-300">전체지움</button>
+          <button @click="press(0)" class="h-16 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-2xl font-semibold">0</button>
+          <button @click="backspace" class="h-16 rounded-xl bg-slate-800 hover:bg-slate-700 text-lg text-slate-300">◀ 지우기</button>
+        </div>
+      </template>
+
+      <template v-else-if="stage==='matches'">
+        <div class="text-base text-slate-300 mb-4">본인 이름을 선택하세요</div>
+        <div class="flex flex-col gap-3">
+          <button v-for="m in matches" :key="m.student_id" @click="confirm(m)"
+                  class="h-16 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xl font-semibold flex flex-col items-center justify-center">
+            <span>{{ m.name }}</span>
+            <span class="text-xs font-normal text-indigo-200">{{ m.school }}</span>
+          </button>
+          <button @click="reset" class="mt-2 text-sm text-slate-400">취소</button>
+        </div>
+      </template>
+
+      <template v-else-if="stage==='result'">
+        <div class="text-4xl mb-4">✅</div>
+        <div class="text-2xl font-bold mb-2">{{ resultMsg }}</div>
+        <div class="text-lg text-slate-300">{{ resultSub }}</div>
+      </template>
+
+      <template v-else-if="stage==='error'">
+        <div class="text-4xl mb-4">⚠️</div>
+        <div class="text-2xl font-bold mb-2">{{ resultMsg }}</div>
+        <div class="text-lg text-slate-300">{{ resultSub }}</div>
+      </template>
+    </div>
+  `,
+}).mount('#app');
+</script>
+</body>
+</html>
