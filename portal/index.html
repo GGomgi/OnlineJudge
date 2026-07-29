@@ -1488,14 +1488,14 @@
               <div class="relative" :style="{height: ttHzHeight()+'px'}">
                 <div v-for="a in ttHzAxis()" :key="'g'+a.mins" class="absolute left-0 right-0 border-t border-slate-50" :style="{top: ttHzTop(a.mins)+'px'}"></div>
                 <div v-for="(L,j) in ttHzDayLayout(d.date).items" :key="j" @mouseenter="showCalPop(L.it,d.date,$event)" @mouseleave="hideCalPop"
-                     :class="['absolute rounded px-1 py-0.5 leading-tight cursor-default overflow-hidden text-[10px]', calItemCls(L.it)]"
+                     :class="['absolute rounded px-1 py-0.5 leading-tight cursor-default overflow-hidden text-[10px] border border-slate-300/70 shadow-sm', calItemCls(L.it)]"
                      :style="{ top: ttHzTop(L.start)+'px', height: Math.max((L.end-L.start)*ttHzPxPerMin()-2,16)+'px',
                                left: (L.lane*100/ttHzDayLayout(d.date).lanes)+'%', width: 'calc('+(100/ttHzDayLayout(d.date).lanes)+'% - 2px)' }">
                   <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}</div>
                   <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}<template v-if="L.it.makeup"> · 보강</template></div>
                 </div>
                 <div v-for="(rv,k) in (ttCalResv[d.date]||[])" :key="'r'+k" @mouseenter="showCalResv(rv,d.date,$event)" @mouseleave="hideResvPop"
-                     class="absolute rounded px-1 py-0.5 leading-tight bg-amber-50 text-amber-700 cursor-help overflow-hidden text-[10px]"
+                     class="absolute rounded px-1 py-0.5 leading-tight bg-amber-50 text-amber-700 border border-amber-200 shadow-sm cursor-help overflow-hidden text-[10px]"
                      :style="{ top: ttHzResvTop(rv)+'px', height: '28px', left:0, right:0 }">
                   <div class="font-semibold truncate">📅 {{ rv.time }} {{ rv.student_name }}</div>
                 </div>
