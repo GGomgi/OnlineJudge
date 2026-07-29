@@ -1388,7 +1388,8 @@
       <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
         <!-- 보기 전환 -->
         <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
-          <button @click="switchTtView('week')" :class="['px-3 py-1.5', ttView==='week' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">주간</button>
+          <button @click="switchTtView('day')" :class="['px-3 py-1.5', ttView==='day' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">일간</button>
+          <button @click="switchTtView('week')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='week' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">주간</button>
           <button @click="switchTtView('month')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='month' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">월간</button>
           <button @click="switchTtView('list')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='list' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">목록</button>
         </div>
@@ -1427,8 +1428,8 @@
               </label>
             </div>
           </div>
-          <span v-if="ttView==='week'" class="text-xs text-slate-400 self-center">수업에 마우스를 올리면 최근 진도를 봅니다</span>
-          <label v-if="ttView==='week'" class="flex items-center gap-2 text-xs cursor-pointer select-none ml-auto self-center">
+          <span v-if="ttView==='week' || ttView==='day'" class="text-xs text-slate-400 self-center">수업에 마우스를 올리면 최근 진도를 봅니다</span>
+          <label v-if="ttView==='week' || ttView==='day'" class="flex items-center gap-2 text-xs cursor-pointer select-none ml-auto self-center">
             <span :class="ttSlotLayout==='vertical' ? 'text-indigo-600 font-semibold' : 'text-slate-400'">세로</span>
             <button type="button" @click="ttSlotLayout = ttSlotLayout==='vertical' ? 'horizontal' : 'vertical'"
                     :class="['w-10 h-5 rounded-full relative transition-colors shrink-0', ttSlotLayout==='horizontal' ? 'bg-indigo-600' : 'bg-slate-300']">
@@ -1448,7 +1449,7 @@
         </div>
 
         <!-- 주간(세로): 시간(20분)×요일 격자, 동시간 학생은 박스가 위아래로 쌓임 -->
-        <div v-if="ttView==='week' && ttSlotLayout==='vertical'" class="overflow-x-auto">
+        <div v-if="(ttView==='week' || ttView==='day') && ttSlotLayout==='vertical'" class="overflow-x-auto">
           <table class="w-full border-collapse text-xs">
             <thead>
               <tr>
@@ -1471,14 +1472,14 @@
                   </div>
                 </td>
               </tr>
-              <tr v-if="ttWeekSlots.length===0"><td :colspan="8" class="text-center text-xs text-slate-400 py-6">이 주에 수업이 없습니다.</td></tr>
+              <tr v-if="ttWeekSlots.length===0"><td :colspan="ttWeekDates.length+1" class="text-center text-xs text-slate-400 py-6">수업이 없습니다.</td></tr>
             </tbody>
           </table>
         </div>
 
         <!-- 주간(가로): 요일마다 겹치는 학생끼리 옆으로 나뉘고, 박스 세로 크기가 수업시간(60/90/120분 등)에 비례 -->
-        <div v-else-if="ttView==='week' && ttSlotLayout==='horizontal'" class="overflow-x-auto">
-          <div v-if="ttWeekSlots.length===0" class="text-center text-xs text-slate-400 py-6">이 주에 수업이 없습니다.</div>
+        <div v-else-if="(ttView==='week' || ttView==='day') && ttSlotLayout==='horizontal'" class="overflow-x-auto">
+          <div v-if="ttWeekSlots.length===0" class="text-center text-xs text-slate-400 py-6">수업이 없습니다.</div>
           <div v-else class="flex items-start" style="width:max-content">
             <div class="w-14 shrink-0 sticky left-0 z-10 border-r border-slate-100 bg-slate-50" :style="{height: ttHzHeight()+'px'}">
               <div v-for="a in ttHzAxis()" :key="a.mins" class="absolute left-0 right-0 -translate-y-1/2 text-center text-[10px] text-slate-400" :style="{top: ttHzTop(a.mins)+'px'}">{{ a.label }}</div>
@@ -3459,8 +3460,14 @@ createApp({
     ttWeekDates(){
       if (!this.ttCalAnchor) return [];
       const [y,m,d]=this.ttCalAnchor.split('-').map(Number);
+      const WD=['월','화','수','목','금','토','일']; const p=x=>String(x).padStart(2,'0');
+      if (this.ttView==='day'){
+        const dt=new Date(y,m-1,d);
+        const ds=dt.getFullYear()+'-'+p(dt.getMonth()+1)+'-'+p(dt.getDate());
+        return [{ date:ds, label:WD[(dt.getDay()+6)%7]+' '+(dt.getMonth()+1)+'/'+dt.getDate(), isToday:ds===this.todayStr }];
+      }
       const base=new Date(y,m-1,d); base.setDate(base.getDate()-((base.getDay()+6)%7)); // 월요일
-      const WD=['월','화','수','목','금','토','일']; const p=x=>String(x).padStart(2,'0'); const out=[];
+      const out=[];
       for(let i=0;i<7;i++){ const dt=new Date(base); dt.setDate(base.getDate()+i);
         const ds=dt.getFullYear()+'-'+p(dt.getMonth()+1)+'-'+p(dt.getDate());
         out.push({ date:ds, label:WD[i]+' '+(dt.getMonth()+1)+'/'+dt.getDate(), isToday:ds===this.todayStr }); }
@@ -3481,7 +3488,8 @@ createApp({
     ttCalTitle(){
       if (this.ttView==='month') return this.ttCalMonth;
       const w=this.ttWeekDates; if(!w.length) return '';
-      return w[0].date+' ~ '+w[6].date.slice(5);
+      if (this.ttView==='day') return w[0].date+' ('+w[0].label.slice(0,1)+')';
+      return w[0].date+' ~ '+w[w.length-1].date.slice(5);
     },
     ttMonthCells(){
       if (!this.ttCalMonth) return [];
@@ -3795,7 +3803,7 @@ createApp({
       const f=this.ttFilter;
       let qs='';
       if (this.ttView==='month'){ qs='month='+this.ttCalMonth; }
-      else { const w=this.ttWeekDates; if(!w.length){ this.ttCalDays={}; this.ttCalResv={}; return; } qs='from='+w[0].date+'&to='+w[6].date; }
+      else { const w=this.ttWeekDates; if(!w.length){ this.ttCalDays={}; this.ttCalResv={}; return; } qs='from='+w[0].date+'&to='+w[w.length-1].date; }
       if (f.program) qs+='&program='+encodeURIComponent(f.program);
       if ((f.instructor_ids||[]).length) qs+='&instructor_ids='+encodeURIComponent(f.instructor_ids.join(','));
       try { const d=await api('GET','/api/admin/academy/timetable_calendar?'+qs); this.ttCalDays=d.days||{}; this.ttCalResv=d.reservations||{}; }
@@ -3806,7 +3814,8 @@ createApp({
         const [y,m]=this.ttCalMonth.split('-').map(Number); const d=new Date(y,m-1+n,1);
         this.ttCalMonth=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
       } else {
-        const [y,m,dd]=this.ttCalAnchor.split('-').map(Number); const d=new Date(y,m-1,dd+n*7);
+        const step = this.ttView==='day' ? n : n*7;
+        const [y,m,dd]=this.ttCalAnchor.split('-').map(Number); const d=new Date(y,m-1,dd+step);
         const p=x=>String(x).padStart(2,'0'); this.ttCalAnchor=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
       }
       this.loadTtCal();
