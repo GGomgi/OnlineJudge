@@ -85,7 +85,7 @@ def lesson_duration(school_type, weekly):
     return 120 if weekly <= 1 else 90
 
 
-def get_or_create_guardian(student, parent_name, parent_phone, branch, login_id="", password=""):
+def get_or_create_guardian(student, parent_name, parent_phone, branch, login_id="", password="", relation=""):
     """학생의 학부모(보호자) 계정을 전화번호로 찾거나 생성하고 자녀로 연결한다(11 §9).
     동일 전화번호의 학부모가 이미 있으면(형제 등록 등) 그 계정에 연결만 한다."""
     norm = _norm_phone(parent_phone)
@@ -114,7 +114,7 @@ def get_or_create_guardian(student, parent_name, parent_phone, branch, login_id=
         profile.phone = norm
         profile.save(update_fields=["phone"])
     GuardianStudent.objects.get_or_create(parent=parent_user, student=student,
-                                          defaults={"relation": "학부모"})
+                                          defaults={"relation": (relation or "").strip() or "학부모"})
     return parent_user
 from ..services import (apply_role, staff_scope, can_manage_branch, can_view_branch,
                         managed_branch_ids, viewable_branch_ids,
@@ -1480,7 +1480,8 @@ def _create_student_from_lead(request, lead, data):
         parent_user = get_or_create_guardian(
             user, lead.parent_name, lead.parent_phone, lead.branch,
             login_id=data.get("parent_login_id", ""),
-            password=data.get("parent_password", ""))
+            password=data.get("parent_password", ""),
+            relation=data.get("parent_relation", ""))
         lead.status = LeadStatus.CONVERTED
         lead.converted_user = user
         lead.is_hidden = True  # 등록 전환 완료 시 상담 목록에서 자동 숨김
@@ -2144,7 +2145,8 @@ class BulkRegisterAPI(APIView):
                     program=it["program"], subject=it["subject"], frequency="WEEKLY",
                     active_from=d["lesson_start_date"])
             # 학부모(보호자) 계정 생성/연결 — 전환(개별 등록) 흐름과 동일하게 처리(11 §9)
-            get_or_create_guardian(user, d["parent_name"], d["parent_phone"], d["branch"])
+            get_or_create_guardian(user, d["parent_name"], d["parent_phone"], d["branch"],
+                                   relation=d.get("parent_relation", ""))
 
 
 class BulkExportAPI(APIView):
