@@ -3536,6 +3536,7 @@ class TimetableCalendarAPI(APIView):
                     continue
                 ov = overlay.get((s.id, str(cur)))
                 items.append({"timetable_id": s.id, "start_time": str(s.start_time)[:5],
+                              "duration_minutes": s.duration_minutes,
                               "subject": s.subject or resolve_program_label(s.program) or "미지정",
                               "weekday": s.weekday, "program": s.program,
                               "student_id": s.student_id, "student_name": _name_of(s.student),
@@ -3556,6 +3557,7 @@ class TimetableCalendarAPI(APIView):
                 mk = mk.filter(branch_id=bid)
             for o in mk:
                 items.append({"timetable_id": None, "start_time": str(o.start_time)[:5],
+                              "duration_minutes": o.duration_minutes,
                               "subject": (o.subject or "보강"), "makeup": True,
                               "student_id": o.student_id, "student_name": _name_of(o.student),
                               "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
