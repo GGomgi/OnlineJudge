@@ -1479,11 +1479,11 @@
         <!-- 주간(가로): 요일마다 겹치는 학생끼리 옆으로 나뉘고, 박스 세로 크기가 수업시간(60/90/120분 등)에 비례 -->
         <div v-else-if="ttView==='week' && ttSlotLayout==='horizontal'" class="overflow-x-auto">
           <div v-if="ttWeekSlots.length===0" class="text-center text-xs text-slate-400 py-6">이 주에 수업이 없습니다.</div>
-          <div v-else class="flex" style="min-width:900px">
-            <div class="w-14 shrink-0 relative border-r border-slate-100 bg-slate-50" :style="{height: ttHzHeight()+'px'}">
+          <div v-else class="flex items-start" style="width:max-content">
+            <div class="w-14 shrink-0 sticky left-0 z-10 border-r border-slate-100 bg-slate-50" :style="{height: ttHzHeight()+'px'}">
               <div v-for="a in ttHzAxis()" :key="a.mins" class="absolute left-0 right-0 -translate-y-1/2 text-center text-[10px] text-slate-400" :style="{top: ttHzTop(a.mins)+'px'}">{{ a.label }}</div>
             </div>
-            <div v-for="(d,i) in ttWeekDates" :key="i" class="flex-1 min-w-[140px] border-r border-slate-100 last:border-r-0" :class="d.isToday ? 'bg-indigo-50/30' : ''">
+            <div v-for="(d,i) in ttWeekDates" :key="i" class="shrink-0 border-r border-slate-100 last:border-r-0" :class="d.isToday ? 'bg-indigo-50/30' : ''" :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px'}">
               <div class="text-center text-[11px] font-medium py-1 border-b border-slate-100" :class="d.isToday ? 'text-indigo-600' : 'text-slate-500'">{{ d.label }}</div>
               <div class="relative" :style="{height: ttHzHeight()+'px'}">
                 <div v-for="a in ttHzAxis()" :key="'g'+a.mins" class="absolute left-0 right-0 border-t border-slate-50" :style="{top: ttHzTop(a.mins)+'px'}"></div>
