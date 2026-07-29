@@ -1912,16 +1912,12 @@
                 </div>
               </div>
 
-              <!-- 보호자 관계 · 기타 보호자 · 요청사항 -->
+              <!-- 기타 보호자 · 요청사항 -->
               <div class="border-t pt-2">
-                <div class="text-xs font-semibold text-slate-500 mb-1">보호자 관계 · 기타 보호자
+                <div class="text-xs font-semibold text-slate-500 mb-1">기타 보호자
                   <span v-if="stuDetail.profile_edits && stuDetail.profile_edits.length" class="font-normal text-amber-500 cursor-help" @mouseenter="showStuEditPop($event)" @mouseleave="hideMsgEditPop">· ✎{{ stuDetail.profile_edits.length }}회 수정</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
-                  <div><label class="lbl">보호자 관계 <span v-if="stuFieldDirty('parent_relation')" class="text-amber-600">✏️</span></label>
-                    <input v-model="stuForm.parent_relation" list="guardianRelationList" :readonly="!stuEditMode" :class="stuCls('parent_relation')" placeholder="예: 어머니, 할머니" />
-                  </div>
-                  <div></div>
                   <div><label class="lbl">기타 보호자 휴대폰 <span v-if="stuFieldDirty('guardian2_phone')" class="text-amber-600">✏️</span></label>
                     <input :value="stuForm.guardian2_phone" @input="stuForm.guardian2_phone=formatPhone($event.target.value)" inputmode="numeric" :readonly="!stuEditMode" :class="stuCls('guardian2_phone')" placeholder="010-0000-0000" />
                   </div>
