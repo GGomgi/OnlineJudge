@@ -85,10 +85,10 @@ def lesson_duration(school_type, weekly):
     return 120 if weekly <= 1 else 90
 
 
-def get_or_create_guardian(student, lead, branch, login_id="", password=""):
+def get_or_create_guardian(student, parent_name, parent_phone, branch, login_id="", password=""):
     """학생의 학부모(보호자) 계정을 전화번호로 찾거나 생성하고 자녀로 연결한다(11 §9).
     동일 전화번호의 학부모가 이미 있으면(형제 등록 등) 그 계정에 연결만 한다."""
-    norm = _norm_phone(lead.parent_phone)
+    norm = _norm_phone(parent_phone)
     parent_user = None
     if norm:
         prof = AcademyProfile.objects.select_related("user").filter(
@@ -109,7 +109,7 @@ def get_or_create_guardian(student, lead, branch, login_id="", password=""):
         parent_user = User.objects.create(username=username, is_disabled=False)
         parent_user.set_password(pw)
         parent_user.save()
-        UserProfile.objects.create(user=parent_user, real_name=lead.parent_name or "학부모")
+        UserProfile.objects.create(user=parent_user, real_name=parent_name or "학부모")
         profile = apply_role(parent_user, AcademyRole.PARENT, branch)
         profile.phone = norm
         profile.save(update_fields=["phone"])
@@ -1478,7 +1478,7 @@ def _create_student_from_lead(request, lead, data):
                     active_from=af)
         # 학부모(보호자) 계정 생성/연결 — 자녀 기록 열람용(11 §9)
         parent_user = get_or_create_guardian(
-            user, lead, lead.branch,
+            user, lead.parent_name, lead.parent_phone, lead.branch,
             login_id=data.get("parent_login_id", ""),
             password=data.get("parent_password", ""))
         lead.status = LeadStatus.CONVERTED
@@ -2143,6 +2143,8 @@ class BulkRegisterAPI(APIView):
                     instructor_id=it.get("instructor_id"),
                     program=it["program"], subject=it["subject"], frequency="WEEKLY",
                     active_from=d["lesson_start_date"])
+            # 학부모(보호자) 계정 생성/연결 — 전환(개별 등록) 흐름과 동일하게 처리(11 §9)
+            get_or_create_guardian(user, d["parent_name"], d["parent_phone"], d["branch"])
 
 
 class BulkExportAPI(APIView):
