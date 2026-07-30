@@ -4000,6 +4000,84 @@ class StudentLessonCandidatesAPI(APIView):
         return self.success({"from": str(d0), "to": str(d1), "rows": rows})
 
 
+class StudentAttendanceHistoryAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """학생 상세의 출결기록 탭. 수업시작일(없으면 등록일)~오늘 기본, fwd_months로
+        오늘 이후 범위를 늘릴 수 있음(결석 예정·시간표 변경 등 미리 안내받은 내용 확인용).
+        최신순(날짜 내림차순)으로 반환 — 프론트에서 월 단위로 묶어 표시."""
+        u = User.objects.filter(id=request.GET.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        sp = getattr(u, "student_profile", None)
+        today = (now() + timedelta(hours=9)).date()
+        d0 = (sp.lesson_start_date if sp else None) or (sp.enrollment_date if sp else None) or today
+        try:
+            fwd_months = max(0, min(24, int(request.GET.get("fwd_months") or 0)))
+        except (TypeError, ValueError):
+            fwd_months = 0
+        d1 = today + timedelta(days=30 * fwd_months)
+        if d1 < d0:
+            d1 = d0
+        # 학생 시간표 패턴 기준으로만 인스턴스를 만든다(지점 전체 스캔 없이 이 학생만 — 기간이
+        # 길 수 있어 ensure_occurrences(지점 전체 스캔)를 그대로 쓰면 비용이 큼).
+        tts = list(StudentTimetable.objects.filter(student_id=u.id, status="ACTIVE"))
+        if tts:
+            existing = set(LessonOccurrence.objects.filter(
+                student_id=u.id, date__gte=d0, date__lte=d1, source_timetable__isnull=False
+            ).values_list("source_timetable_id", "date"))
+            creates = []
+            cur = d0
+            while cur <= d1:
+                wd = cur.weekday()
+                for s in tts:
+                    if s.weekday != wd:
+                        continue
+                    if s.frequency == "BIWEEKLY" and s.active_from and ((cur - s.active_from).days // 7) % 2 != 0:
+                        continue
+                    if (s.id, cur) in existing:
+                        continue
+                    creates.append(LessonOccurrence(
+                        student_id=s.student_id, branch_id=s.branch_id, source_timetable_id=s.id,
+                        date=cur, start_time=s.start_time, duration_minutes=s.duration_minutes,
+                        program=s.program, subject=s.subject or resolve_program_label(s.program) or "미지정",
+                        instructor_id=s.instructor_id))
+                cur += timedelta(days=1)
+            if creates:
+                LessonOccurrence.objects.bulk_create(creates, ignore_conflicts=True)
+        occ = list(LessonOccurrence.objects.filter(student_id=u.id, date__gte=d0, date__lte=d1)
+                   .exclude(status=OccurrenceStatus.CANCELLED)
+                   .select_related("makeup_for").order_by("-date", "-start_time"))
+        att_map = {a.date: a for a in DailyAttendance.objects.filter(student_id=u.id, date__gte=d0, date__lte=d1)}
+        occ_ids = [o.id for o in occ]
+        makeup_of = {m.makeup_for_id: m for m in
+                    LessonOccurrence.objects.filter(is_makeup=True, makeup_for_id__in=occ_ids)}
+        prog_by_occ = {p["occurrence_id"]: {"content": p["content"], "homework": p["homework"]}
+                      for p in LessonProgress.objects.filter(
+                          occurrence_id__in=occ_ids, is_hidden=False).values("occurrence_id", "content", "homework")}
+        rows = []
+        for o in occ:
+            a = att_map.get(o.date)
+            row = {"occ_id": o.id, "date": str(o.date), "start_time": str(o.start_time)[:5],
+                  "subject": o.subject or resolve_program_label(o.program) or "미지정",
+                  "status": o.status, "is_makeup": o.is_makeup, "lesson_note": o.note,
+                  "att": {"in": _hm_kst(a.check_in_at) if a else "", "out": _hm_kst(a.check_out_at) if a else "",
+                          "note_tag": a.note_tag if a else "", "note": a.note if a else ""},
+                  "progress": prog_by_occ.get(o.id), "linked": None}
+            if o.status == OccurrenceStatus.ABSENT:
+                mk = makeup_of.get(o.id)
+                if mk:
+                    row["linked"] = {"kind": "makeup", "date": str(mk.date), "start_time": str(mk.start_time)[:5]}
+            elif o.is_makeup and o.makeup_for_id and o.makeup_for:
+                t = o.makeup_for
+                row["linked"] = {"kind": "absence", "date": str(t.date), "start_time": str(t.start_time)[:5]}
+            rows.append(row)
+        return self.success({"from": str(d0), "to": str(d1), "fwd_months": fwd_months, "rows": rows})
+
+
 class AdhocMakeupLinkAPI(APIView):
     @admin_role_required
     def post(self, request):

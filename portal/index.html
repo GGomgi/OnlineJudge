@@ -1917,7 +1917,7 @@
           </div>
           <!-- 서브탭 -->
           <div class="flex gap-1 px-5 pt-3 border-b text-sm">
-            <button v-for="st in stuTabs" :key="st.k" @click="stuTab=st.k"
+            <button v-for="st in stuTabs" :key="st.k" @click="selectStuTab(st.k)"
               :class="['px-3 py-2 border-b-2 -mb-px', stuTab===st.k ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500']">{{ st.l }}</button>
           </div>
           <div class="p-5 space-y-3">
@@ -2174,6 +2174,48 @@
                 </li>
                 <li v-if="stuProgress.length===0" class="text-xs text-slate-400">진도 기록이 없습니다.</li>
               </ul>
+            </div>
+
+            <!-- 출결기록 -->
+            <div v-if="stuTab==='attend'" class="space-y-3">
+              <div class="flex items-center gap-2 text-xs flex-wrap">
+                <span class="text-slate-400">조회 범위: <b class="text-slate-600">{{ stuAttHist.from }} ~ {{ stuAttHist.to }}</b> <span class="text-slate-300">(수업시작일 ~ 오늘 기본)</span></span>
+                <button @click="loadStuAttHist(stuAttHist.fwdMonths+1)" class="ml-auto px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">+1개월(이후 예정 보기)</button>
+                <button v-if="stuAttHist.fwdMonths>0" @click="loadStuAttHist(0)" class="px-2 py-1 rounded border border-slate-200 text-slate-400 hover:bg-slate-50">초기화</button>
+              </div>
+              <div v-if="stuAttHist.rows.length===0" class="text-xs text-slate-400 py-4 text-center">출결 기록이 없습니다.</div>
+              <div v-for="g in stuAttHistByMonth" :key="g.ym" class="border rounded-lg overflow-hidden">
+                <div class="bg-slate-50 px-3 py-1.5 text-xs flex items-center gap-2">
+                  <span class="font-semibold text-slate-600">{{ g.label }}</span>
+                  <span v-if="g.absent" class="text-rose-500">결석 {{ g.absent }}</span>
+                  <span v-if="g.late" class="text-amber-600">지각 {{ g.late }}</span>
+                  <span v-if="g.makeup" class="text-blue-600">보강 {{ g.makeup }}</span>
+                  <span class="ml-auto text-slate-400">{{ g.rows.length }}건</span>
+                </div>
+                <table class="w-full text-xs">
+                  <thead class="text-slate-400"><tr>
+                    <th class="px-2 py-1 text-left w-16">날짜</th>
+                    <th class="px-2 py-1 text-left">과목</th>
+                    <th class="px-2 py-1 text-left w-12">등원</th>
+                    <th class="px-2 py-1 text-left w-12">하원</th>
+                    <th class="px-2 py-1 text-left w-14">상태</th>
+                    <th class="px-2 py-1 text-left">비고</th>
+                  </tr></thead>
+                  <tbody>
+                    <tr v-for="row in g.rows" :key="row.occ_id" @click="openStuAttRow(row)" class="border-t hover:bg-indigo-50/50 cursor-pointer">
+                      <td class="px-2 py-1 whitespace-nowrap">{{ row.date.slice(5) }}({{ wdOf(row.date) }})</td>
+                      <td class="px-2 py-1">{{ row.subject }}</td>
+                      <td class="px-2 py-1">{{ row.att.in || '-' }}</td>
+                      <td class="px-2 py-1">{{ row.att.out || '-' }}</td>
+                      <td class="px-2 py-1"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
+                      <td class="px-2 py-1 text-slate-500">
+                        <span v-if="stuAttLinkedText(row)" class="text-indigo-500 whitespace-nowrap">({{ stuAttLinkedText(row) }})</span>
+                        {{ row.lesson_note || row.att.note || '' }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <!-- 아이디 관리 -->
@@ -3236,7 +3278,8 @@ createApp({
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
       statusPop: { show:false, x:0, y:0, name:'', list:[] },
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
-      stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'progress',l:'진도'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
+      stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'progress',l:'진도'},{k:'attend',l:'출결기록'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
+      stuAttHist: { rows:[], from:'', to:'', fwdMonths:0 },
       stuProgress: [], stuProgForm: { date:'', content:'', homework:'' },
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
@@ -3437,6 +3480,21 @@ createApp({
       const q=(this.mkSearch.query||'').trim().toLowerCase(); if(!q) return [];
       return (this.students||[]).filter(s=>s.enrollment_status==='ENROLLED' &&
         ((s.real_name||'').toLowerCase().includes(q) || (s.username||'').toLowerCase().includes(q))).slice(0,30);
+    },
+    stuAttHistByMonth(){
+      const groups = [];
+      const map = {};
+      for (const row of this.stuAttHist.rows){
+        const ym = row.date.slice(0,7);
+        if (!map[ym]){ map[ym] = { ym, label: ym.slice(0,4)+'년 '+parseInt(ym.slice(5),10)+'월', rows:[], absent:0, late:0, makeup:0 }; groups.push(map[ym]); }
+        const g = map[ym];
+        g.rows.push(row);
+        const st = this.stuAttStatusInfo(row);
+        if (st.label==='결석') g.absent++;
+        else if (st.label==='지각') g.late++;
+        else if (st.label==='보강') g.makeup++;
+      }
+      return groups;
     },
     dashSubjects(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.subject))]; },
     dashInstructors(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.instructor))]; },
@@ -4626,7 +4684,8 @@ createApp({
           await api('POST','/api/admin/academy/lesson_progress', { occ_id:l.occ_id, content:this.attForm.progContent, homework:this.attForm.progHomework });
         }
         this.notify('저장되었습니다.'); this.attModal=null;
-        if (l.date) this.loadTtCal(); else await this.loadDashboard();
+        if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths);
+        else if (l.date) this.loadTtCal(); else await this.loadDashboard();
         if (tag==='ABSENT' && !wasAbsent){ this.absentPrompt = { occ_id:l.occ_id, student_id:l.student_id, student_name:l.student_name, subject:l.subject, start_time:l.start_time }; }
       } catch(e){ this.notify(e.message,false); }
     },
@@ -5207,6 +5266,32 @@ createApp({
     async addStuProgress(){ const f=this.stuProgForm; if(!(f.content||'').trim() && !(f.homework||'').trim()) return this.notify('수업 내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/lesson_progress', { student_id:this.stuDetail.id, date:f.date||this.todayStr, content:f.content, homework:f.homework }); this.stuProgForm={ date:'', content:'', homework:'' }; this.loadStuProgress(); this.notify('진도가 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async deleteStuProgress(p){ if(!confirm('이 진도 기록을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/lesson_progress?id='+p.id); this.loadStuProgress(); } catch(e){ this.notify(e.message,false); } },
     async loadStuCreds(){ if(!this.stuDetail) return; try { const d = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); this.stuCreds = d.map(c=>({ ...c, _orig:{ site:c.site, login_id:c.login_id, password:c.password } })); } catch(e){ this.stuCreds=[]; } },
+    selectStuTab(k){ this.stuTab=k; if (k==='attend' && !this.stuAttHist.rows.length) this.loadStuAttHist(0); },
+    async loadStuAttHist(fwdMonths){
+      if (!this.stuDetail) return;
+      try {
+        const d = await api('GET','/api/admin/academy/student_attendance_history?student_id='+this.stuDetail.id+'&fwd_months='+fwdMonths);
+        this.stuAttHist = { rows:d.rows, from:d.from, to:d.to, fwdMonths:d.fwd_months };
+      } catch(e){ this.notify(e.message,false); }
+    },
+    stuAttStatusInfo(row){
+      if (row.status==='ABSENT') return { label:'결석', cls:'bg-rose-100 text-rose-600' };
+      if (row.is_makeup) return { label:'보강', cls:'bg-blue-100 text-blue-700' };
+      if (row.att.in && row.att.out) return { label:'완료', cls:'bg-cyan-100 text-cyan-700' };
+      if (row.att.in && this.hmMin(row.att.in) > this.hmMin(row.start_time)) return { label:'지각', cls:'bg-amber-100 text-amber-700' };
+      if (row.att.in) return { label:'수업중', cls:'bg-emerald-100 text-emerald-700' };
+      return { label:'등원전', cls:'bg-slate-100 text-slate-500' };
+    },
+    stuAttLinkedText(row){
+      if (!row.linked) return '';
+      const wd = this.wdOf(row.linked.date);
+      return (row.linked.kind==='makeup' ? '보강:' : '결석:') + row.linked.date.slice(5)+'('+wd+') '+row.linked.start_time;
+    },
+    openStuAttRow(row){
+      this.openAtt({ occ_id:row.occ_id, student_id:this.stuDetail.id, student_name:(this.stuDetail.real_name||this.stuDetail.username),
+        start_time:row.start_time, subject:row.subject, status:row.status,
+        att: row.att, lesson_note: row.lesson_note||'', progress: row.progress||null, date: row.date });
+    },
     credFieldDirty(c, f){ return c._orig && c[f] !== c._orig[f]; },
     credDirty(c){ return ['site','login_id','password'].some(f=>this.credFieldDirty(c,f)); },
     async saveStuCred(c){ try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, id:c.id, site:c.site, login_id:c.login_id, password:c.password }); c._orig={ site:c.site, login_id:c.login_id, password:c.password }; this.notify('수정되었습니다.'); } catch(e){ this.notify(e.message,false); } },
@@ -5243,6 +5328,7 @@ createApp({
         this.gdForm = { parent_name:'', parent_phone:'', relation:'', password:'' };
         this.stuCreds=[]; this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds();
         this.stuProgress=[]; this.stuProgForm={ date:'', content:'', homework:'' }; this.loadStuProgress();
+        this.stuAttHist={ rows:[], from:'', to:'', fwdMonths:0 };
         this.stuResvForm={ date:'', ampm:'오전', hour:'', min:'00', note:'' };
       } catch(e){ this.notify(e.message,false); }
     },
