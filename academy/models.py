@@ -18,6 +18,31 @@ class Branch(models.Model):
         return f"{self.code} {self.name}"
 
 
+class KioskDeviceStatus(object):
+    PENDING = "PENDING"    # 승인 대기(기기가 처음 접속해서 등록 요청)
+    APPROVED = "APPROVED"  # 승인됨(사용 가능)
+    REVOKED = "REVOKED"    # 승인 취소/삭제
+
+
+class KioskDevice(models.Model):
+    """출결 키오스크 신뢰 기기(브라우저) 등록. 지점 토큰만으로는 아무 기기나 접속 가능해서,
+    승인된 기기(브라우저)에서만 실제 조회/체크가 되도록 하는 추가 잠금."""
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="kiosk_devices")
+    device_id = models.CharField(max_length=64)  # 클라이언트(브라우저 localStorage)가 생성한 무작위 식별자
+    label = models.CharField(max_length=64, blank=True, default="")
+    user_agent = models.CharField(max_length=255, blank=True, default="")
+    status = models.CharField(max_length=16, default=KioskDeviceStatus.PENDING)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        db_table = "academy_kiosk_device"
+        unique_together = ("branch", "device_id")
+        ordering = ["-requested_at"]
+
+
 class AcademyRole(object):
     HQ_ADMIN = "HQ_ADMIN"
     HR_ADMIN = "HR_ADMIN"

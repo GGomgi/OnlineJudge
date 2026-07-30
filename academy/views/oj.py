@@ -16,6 +16,7 @@ from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROL
                       HRNotice, StaffDocument, StaffProfileHistory)
 from ..models import DevRequest, DevRequestComment, Notification, Message
 from ..models import StudentProfile, DailyAttendance, EnrollmentStatus, LessonOccurrence, OccurrenceStatus
+from ..models import KioskDevice, KioskDeviceStatus
 from .admin import ensure_occurrences, _adhoc_lesson_rows
 
 
@@ -890,6 +891,38 @@ class DevCommentAPI(APIView):
         return self.success(True)
 
 
+def _kiosk_device_error(branch, device_id):
+    """승인된 기기(브라우저)인지 확인. 문제 없으면 None, 아니면 에러 메시지."""
+    device_id = (device_id or "").strip()
+    if not device_id:
+        return "기기 등록이 필요합니다."
+    d = KioskDevice.objects.filter(branch=branch, device_id=device_id).first()
+    if not d or d.status == KioskDeviceStatus.PENDING:
+        return "관리자 승인 대기 중입니다."
+    if d.status == KioskDeviceStatus.REVOKED:
+        return "이 기기는 사용이 취소되었습니다. 관리자에게 문의하세요."
+    return None
+
+
+class KioskDeviceRequestAPI(CSRFExemptAPIView):
+    """무로그인 출결 키오스크: 새 기기(브라우저) 등록 요청/상태 확인. 요청할 때마다 최신 상태를
+    돌려주므로 키오스크 화면에서 주기적으로 이 API를 폴링해 승인 여부를 확인한다.
+    POST {b:지점id, t:키오스크토큰, device_id, user_agent?}"""
+    def post(self, request):
+        data = request.data
+        branch = Branch.objects.filter(id=data.get("b")).first()
+        token = (data.get("t") or "").strip()
+        if not branch or not branch.kiosk_token or branch.kiosk_token != token:
+            return self.error("잘못된 접근입니다.")
+        device_id = (data.get("device_id") or "").strip()
+        if not device_id:
+            return self.error("기기 식별자가 없습니다.")
+        d, _created = KioskDevice.objects.get_or_create(
+            branch=branch, device_id=device_id,
+            defaults={"user_agent": (data.get("user_agent") or "")[:255]})
+        return self.success({"status": d.status})
+
+
 class KioskBoardAPI(APIView):
     """무로그인 출결 키오스크 좌측 현황판: 오늘 지점 수업 시각·학생·등원/하원만(민감정보 제외).
     GET ?b=지점id&t=키오스크토큰"""
@@ -898,6 +931,9 @@ class KioskBoardAPI(APIView):
         token = (request.GET.get("t") or "").strip()
         if not branch or not branch.kiosk_token or branch.kiosk_token != token:
             return self.error("잘못된 접근입니다.")
+        dev_err = _kiosk_device_error(branch, request.GET.get("device_id"))
+        if dev_err:
+            return self.error(dev_err)
         d = _kst_today()
         ensure_occurrences(d, [branch.id])
         occ = LessonOccurrence.objects.select_related("student", "student__userprofile").filter(
@@ -925,6 +961,9 @@ class KioskLookupAPI(APIView):
         token = (request.GET.get("t") or "").strip()
         if not branch or not branch.kiosk_token or branch.kiosk_token != token:
             return self.error("잘못된 접근입니다.")
+        dev_err = _kiosk_device_error(branch, request.GET.get("device_id"))
+        if dev_err:
+            return self.error(dev_err)
         last4 = "".join(ch for ch in (request.GET.get("last4") or "") if ch.isdigit())
         if len(last4) != 4:
             return self.error("전화번호 뒤 4자리를 입력하세요.")
@@ -951,6 +990,9 @@ class KioskCheckAPI(CSRFExemptAPIView):
         token = (data.get("t") or "").strip()
         if not branch or not branch.kiosk_token or branch.kiosk_token != token:
             return self.error("잘못된 접근입니다.")
+        dev_err = _kiosk_device_error(branch, data.get("device_id"))
+        if dev_err:
+            return self.error(dev_err)
         u = User.objects.filter(id=data.get("student_id")).first()
         if not u:
             return self.error("학생을 찾을 수 없습니다.")

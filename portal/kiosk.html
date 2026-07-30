@@ -43,6 +43,7 @@ createApp({
       matches: [], resultMsg: '', resultSub: '', busy: false,
       board: [], nowMin: 0,
       isFullscreen: false,
+      deviceId: '', deviceStatus: 'checking',  // checking | PENDING | APPROVED | REVOKED | badlink
     };
   },
   computed: {
@@ -75,8 +76,19 @@ createApp({
       return this.board.length;
     },
     async loadBoard(){
-      try { const d = await kioskApi('GET', '/api/academy/kiosk_board?b='+encodeURIComponent(this.b)+'&t='+encodeURIComponent(this.t)); this.board = d.rows||[]; }
+      try { const d = await kioskApi('GET', '/api/academy/kiosk_board?b='+encodeURIComponent(this.b)+'&t='+encodeURIComponent(this.t)+'&device_id='+encodeURIComponent(this.deviceId)); this.board = d.rows||[]; }
       catch(e){ /* 조용히 실패(우측 키패드 동작에는 영향 없음) */ }
+    },
+    async requestDevice(){
+      const wasApproved = this.deviceStatus === 'APPROVED';
+      try {
+        const d = await kioskApi('POST', '/api/academy/kiosk_device_request', { b:this.b, t:this.t, device_id:this.deviceId, user_agent:navigator.userAgent });
+        this.deviceStatus = d.status;
+        if (!wasApproved && this.deviceStatus === 'APPROVED'){
+          this.loadBoard();
+          if (!this._boardInterval) this._boardInterval = setInterval(this.loadBoard, 25000);
+        }
+      } catch(e){ this.deviceStatus = 'badlink'; this.resultSub = e.message || ''; }
     },
     press(n){
       if (this.stage !== 'keypad' || this.busy) return;
@@ -88,7 +100,7 @@ createApp({
     async lookup(){
       this.busy = true;
       try {
-        const d = await kioskApi('GET', '/api/academy/kiosk_lookup?b='+encodeURIComponent(this.b)+'&t='+encodeURIComponent(this.t)+'&last4='+this.digits);
+        const d = await kioskApi('GET', '/api/academy/kiosk_lookup?b='+encodeURIComponent(this.b)+'&t='+encodeURIComponent(this.t)+'&device_id='+encodeURIComponent(this.deviceId)+'&last4='+this.digits);
         if (!d.matches || !d.matches.length){
           this.resultMsg = '일치하는 학생이 없습니다.';
           this.resultSub = '번호를 다시 확인해주세요.';
@@ -111,7 +123,7 @@ createApp({
     async confirm(m){
       this.busy = true;
       try {
-        const d = await kioskApi('POST', '/api/academy/kiosk_check', { b:this.b, t:this.t, student_id:m.student_id });
+        const d = await kioskApi('POST', '/api/academy/kiosk_check', { b:this.b, t:this.t, device_id:this.deviceId, student_id:m.student_id });
         if (d.action === 'in'){ this.resultMsg = d.name+'님 등원 완료'; this.resultSub = d.time; }
         else if (d.action === 'out'){ this.resultMsg = d.name+'님 하원 완료'; this.resultSub = d.time; }
         else { this.resultMsg = d.name+'님은 오늘 등원·하원이 모두 처리되었습니다.'; this.resultSub = '등원 '+(d.in||'-')+' · 하원 '+(d.out||'-'); }
@@ -131,23 +143,56 @@ createApp({
       else { document.exitFullscreen && document.exitFullscreen(); }
     },
   },
-  mounted(){
+  async mounted(){
     this.tickClock();
     setInterval(this.tickClock, 1000);
     document.addEventListener('fullscreenchange', ()=>{ this.isFullscreen = !!document.fullscreenElement; });
     if (!this.b || !this.t){
-      this.resultMsg = '잘못된 접속입니다.';
+      this.deviceStatus = 'badlink';
       this.resultSub = '관리자에게 링크를 다시 요청하세요.';
-      this.stage = 'error';
       return;
     }
-    this.loadBoard();
-    setInterval(this.loadBoard, 25000);
+    // 이 브라우저(기기)의 식별자 — 최초 1회 생성해 localStorage에 저장, 이후 계속 재사용
+    this.deviceId = localStorage.getItem('kiosk_device_id') || '';
+    if (!this.deviceId){
+      this.deviceId = (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(16).slice(2)));
+      localStorage.setItem('kiosk_device_id', this.deviceId);
+    }
+    await this.requestDevice();
+    setInterval(()=>{ if (this.deviceStatus!=='APPROVED') this.requestDevice(); }, 5000);
   },
   template: `
     <button @click="toggleFullscreen" class="fixed top-2 right-2 z-50 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">
       {{ isFullscreen ? '⤢ 전체화면 해제' : '⛶ 전체화면' }}
     </button>
+
+    <!-- 기기 미승인: 대기/거절 화면(승인되면 자동으로 아래 본 화면으로 전환) -->
+    <div v-if="deviceStatus!=='APPROVED'" class="w-full h-full flex items-center justify-center p-6">
+      <div class="text-center max-w-md">
+        <template v-if="deviceStatus==='checking'">
+          <div class="text-lg text-slate-400">확인 중...</div>
+        </template>
+        <template v-else-if="deviceStatus==='PENDING'">
+          <div class="text-5xl mb-4">🔒</div>
+          <div class="text-2xl font-bold mb-2">관리자 승인 대기 중</div>
+          <p class="text-slate-400 leading-relaxed">이 태블릿(브라우저)은 아직 등록되지 않았습니다.<br>
+            학원 포털의 "오늘 운영 → 기기 등록"에서 이 기기를 승인해주세요.<br>승인되면 자동으로 화면이 전환됩니다.</p>
+          <div class="mt-6 text-xs text-slate-600 font-mono">기기 ID: {{ deviceId.slice(0,8) }}</div>
+        </template>
+        <template v-else-if="deviceStatus==='REVOKED'">
+          <div class="text-5xl mb-4">⛔</div>
+          <div class="text-2xl font-bold mb-2">사용이 취소된 기기입니다</div>
+          <p class="text-slate-400">관리자에게 문의해 다시 등록해주세요.</p>
+        </template>
+        <template v-else>
+          <div class="text-5xl mb-4">⚠️</div>
+          <div class="text-2xl font-bold mb-2">잘못된 접속입니다</div>
+          <p class="text-slate-400">{{ resultSub || '관리자에게 링크를 다시 요청하세요.' }}</p>
+        </template>
+      </div>
+    </div>
+
+    <template v-else>
     <!-- 왼쪽: 오늘 출결 현황판 -->
     <div class="w-[58%] h-full overflow-y-auto border-r border-slate-700 p-5">
       <div class="text-sm text-slate-400 mb-3">📋 오늘 출결 현황</div>
@@ -229,6 +274,7 @@ createApp({
         </template>
       </div>
     </div>
+    </template>
   `,
 }).mount('#app');
 </script>

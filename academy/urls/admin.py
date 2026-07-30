@@ -21,7 +21,7 @@ from ..views.admin import (AssignRoleAPI, StaffAdminAPI, InstructorListAPI, Staf
                            LessonStatusAdminAPI, MakeupAddAdminAPI, TimetableCalendarAPI,
                            LessonEditAdminAPI, PendingMakeupAPI, LessonAbsenceAPI,
                            LessonProgressAdminAPI, MsgTemplateGroupAdminAPI, MsgTemplateAdminAPI,
-                           FixedTemplateAdminAPI, KioskUrlAdminAPI,
+                           FixedTemplateAdminAPI, KioskUrlAdminAPI, KioskDeviceListAPI, KioskDeviceActionAPI,
                            StudentLessonCandidatesAPI, AdhocMakeupLinkAPI, EnsureOccurrenceAdminAPI,
                            StudentAttendanceHistoryAPI)
 
@@ -78,6 +78,8 @@ urlpatterns = [
     url(r"^academy/attendance_check/?$", AttendanceCheckAdminAPI.as_view(), name="academy_attendance_check"),
     url(r"^academy/attendance_note/?$", AttendanceNoteAdminAPI.as_view(), name="academy_attendance_note"),
     url(r"^academy/kiosk_url/?$", KioskUrlAdminAPI.as_view(), name="academy_kiosk_url"),
+    url(r"^academy/kiosk_devices/?$", KioskDeviceListAPI.as_view(), name="academy_kiosk_devices"),
+    url(r"^academy/kiosk_device_action/?$", KioskDeviceActionAPI.as_view(), name="academy_kiosk_device_action"),
     url(r"^academy/lesson_status/?$", LessonStatusAdminAPI.as_view(), name="academy_lesson_status"),
     url(r"^academy/makeup_add/?$", MakeupAddAdminAPI.as_view(), name="academy_makeup_add"),
     url(r"^academy/timetable_calendar/?$", TimetableCalendarAPI.as_view(), name="academy_timetable_calendar"),

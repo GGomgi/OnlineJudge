@@ -27,7 +27,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
                       TimetableChange, StudentStatusChange, StudentCredential, StaffChangeLog, DailyAttendance,
                       AttendanceChange, LessonOccurrence, OccurrenceStatus, LessonProgress,
-                      MsgTemplateGroup, MsgTemplate, FixedTemplate)
+                      MsgTemplateGroup, MsgTemplate, FixedTemplate, KioskDevice, KioskDeviceStatus)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 
 
@@ -2398,6 +2398,16 @@ def _is_manager(user):
     return role in MANAGER_ROLES or user.is_super_admin()
 
 
+DIRECTOR_UP_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.REGIONAL_MANAGER, AcademyRole.BRANCH_MANAGER}
+
+
+def _is_director_up(user):
+    """원장(BRANCH_MANAGER) 이상(지부장·본부관리자)만 — 출결 키오스크 기기 등록 관리용.
+    부원장(VICE_PRINCIPAL)·인사관리자 등은 제외."""
+    _, _, role = staff_scope(user)
+    return role in DIRECTOR_UP_ROLES or user.is_super_admin()
+
+
 class TimetableChangeAdminAPI(APIView):
     @admin_role_required
     def get(self, request):
@@ -3542,6 +3552,51 @@ class KioskUrlAdminAPI(APIView):
         branch.kiosk_token = secrets.token_urlsafe(18)[:32]
         branch.save(update_fields=["kiosk_token"])
         return self.success({"url": "/portal/kiosk.html?b=%d&t=%s" % (branch.id, branch.kiosk_token)})
+
+
+class KioskDeviceListAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """출결 키오스크 기기(브라우저) 목록. 원장 이상만. branch_id="""
+        branch = Branch.objects.filter(id=request.GET.get("branch_id")).first()
+        if not branch:
+            return self.error("지점을 찾을 수 없습니다.")
+        if not _is_director_up(request.user):
+            return self.error("원장 이상만 관리할 수 있습니다.")
+        rows = [{"id": d.id, "device_id": d.device_id[:8], "label": d.label, "user_agent": d.user_agent,
+                "status": d.status, "requested_at": _kst_dt_str(d.requested_at),
+                "approved_at": _kst_dt_str(d.approved_at) if d.approved_at else "",
+                "approved_by": _name_of(d.approved_by) if d.approved_by_id else ""}
+                for d in KioskDevice.objects.filter(branch=branch).select_related("approved_by")]
+        return self.success(rows)
+
+
+class KioskDeviceActionAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """기기 승인/삭제(취소)/이름변경. 원장 이상만. {id, action:'approve'|'revoke'|'label', label?}"""
+        d = KioskDevice.objects.filter(id=request.data.get("id")).first()
+        if not d:
+            return self.error("기기를 찾을 수 없습니다.")
+        if not _is_director_up(request.user):
+            return self.error("원장 이상만 관리할 수 있습니다.")
+        action = request.data.get("action")
+        if action == "approve":
+            d.status = KioskDeviceStatus.APPROVED
+            d.approved_at = now()
+            d.approved_by = request.user
+            if request.data.get("label"):
+                d.label = (request.data.get("label") or "").strip()
+            d.save()
+        elif action == "revoke":
+            d.status = KioskDeviceStatus.REVOKED
+            d.save(update_fields=["status"])
+        elif action == "label":
+            d.label = (request.data.get("label") or "").strip()
+            d.save(update_fields=["label"])
+        else:
+            return self.error("action 값이 올바르지 않습니다.")
+        return self.success({"status": d.status, "label": d.label})
 
 
 class TimetableCalendarAPI(APIView):
