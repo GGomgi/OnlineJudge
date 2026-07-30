@@ -287,7 +287,7 @@
 
   <!-- 대시보드 학생 호버 팝오버 -->
   <div v-if="dashPop.show" @mouseenter="keepDashPop" @mouseleave="hideDashPop" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
-    <div class="font-bold text-sm mb-1">{{ dashPop.l.student_name }}</div>
+    <div class="font-bold text-sm mb-1 text-indigo-600 cursor-pointer hover:underline" @click="goStudentAttendFromDashPop">{{ dashPop.l.student_name }} →</div>
     <div class="text-slate-500">{{ dashPop.l.school_name }}{{ schoolSuffix(dashPop.l.school_type) }} {{ dashPop.l.grade ? dashPop.l.grade+'학년' : '' }}</div>
     <div class="mt-1.5 flex items-center gap-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span> <call-btn :phone="dashPop.l.parent_phone"></call-btn></div>
     <div class="mt-1.5 flex items-center gap-1">학생: <call-btn :phone="dashPop.l.student_phone"></call-btn> <span class="text-slate-600">{{ dashPop.l.student_phone || '-' }}</span></div>
@@ -2349,7 +2349,7 @@
                 <table class="w-full text-xs" style="table-layout:fixed">
                   <colgroup>
                     <col style="width:5%"><col style="width:12%"><col style="width:12%"><col style="width:9%">
-                    <col style="width:13%"><col style="width:7%"><col style="width:16%"><col>
+                    <col style="width:10%"><col style="width:10%"><col style="width:16%"><col>
                   </colgroup>
                   <thead class="text-slate-400"><tr>
                     <th class="px-2 py-1"></th>
@@ -5001,6 +5001,13 @@ const app = createApp({
     showDashPop(l,e){ clearTimeout(this._dashPopTimer); this.dashPop={ show:true, l, x:Math.min(e.clientX+8,window.innerWidth-280), y:Math.min(e.clientY+8,window.innerHeight-180) }; },
     keepDashPop(){ clearTimeout(this._dashPopTimer); },
     hideDashPop(){ clearTimeout(this._dashPopTimer); this._dashPopTimer=setTimeout(()=>{ this.dashPop.show=false; }, 250); },
+    async goStudentAttendFromDashPop(){
+      const l = this.dashPop.l; if (!l || !l.student_id) return;
+      this.dashPop.show=false; clearTimeout(this._dashPopTimer);
+      this.go('students');
+      await this.openStudent({ id:l.student_id });
+      this.selectStuTab('attend');
+    },
     async setAbsent(l){
       const note = window.prompt('결석 사유 (선택)') ?? '';
       try { await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'ABSENT', note }); this.notify('결석 처리되었습니다.'); this.loadDashboard(); }
