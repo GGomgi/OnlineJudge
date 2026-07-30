@@ -5711,6 +5711,8 @@ createApp({
   mounted(){
     this.boot();
     setInterval(()=>{ this.clockNow = Date.now(); }, 1000);  // 실시간 시계/경과시간
+    // 오늘 운영 탭이 오늘 날짜를 보고 있을 때, 키오스크 등 다른 화면에서의 등원/하원 변경을 반영
+    setInterval(()=>{ if (this.tab==='dashboard' && this.dashIsToday && !this.attModal) this.loadDashboard(); }, 15000);
     // 브라우저 이탈(새로고침·뒤로가기·앞으로가기·창 닫기) 시 작성 중 내용 있으면 경고
     window.addEventListener('beforeunload', (e)=>{
       if (this.isDirty()){ e.preventDefault(); e.returnValue=''; return ''; }
