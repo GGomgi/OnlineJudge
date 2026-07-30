@@ -712,7 +712,7 @@
                   <span v-if="l.time_changed" @mouseenter="showTcPop(l,$event)" @mouseleave="hideTcPop" class="text-amber-600 font-bold cursor-help">{{ l.start_time }}</span>
                   <span v-else>{{ l.start_time }}</span>
                 </td>
-                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : ''" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
+                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
                 <td class="px-3 py-2 text-slate-500">{{ l.subject }}<span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help" title="">📝</span></td>
                 <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
                 <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
@@ -5158,6 +5158,14 @@ const app = createApp({
       const mins = Math.max(0, end - start);
       const dur = l.duration_minutes||60;
       return { mins, dur, over: mins > dur, done: !!l.att.out };
+    },
+    needsCallHighlight(l){
+      // 수업시각 10분 초과 미등원인데 비고도 아직 안 남겨진 경우 — 연락 필요 표시
+      if (!this.dashIsToday) return false;
+      if (this.isAbsent(l) || this.isLeave(l)) return false;
+      if (l.att.in) return false;
+      if (l.att.note_tag || l.att.note) return false;
+      return (this.nowMin - this.hmMin(l.start_time)) > 10;
     },
     attStatusTag(l){
       // 미등원/지각 (오늘, 미하원 기준)
