@@ -71,6 +71,11 @@ createApp({
       if (!row.att.in && this.hmMin(row.start_time) < this.nowMin) return { label:'미등원', cls:'text-rose-300' };
       return null;
     },
+    nameCls(row){
+      if (row.status==='ABSENT') return 'line-through';
+      if (!row.att.in && this.hmMin(row.start_time) < this.nowMin) return 'text-red-500';
+      return '';
+    },
     nowLineIndex(){
       for (let i=0;i<this.board.length;i++){ if (this.hmMin(this.board[i].start_time) > this.nowMin) return i; }
       return this.board.length;
@@ -214,7 +219,7 @@ createApp({
             </tr>
             <tr class="border-b border-slate-800">
               <td class="py-1.5 pr-2 font-mono text-slate-300">{{ r.start_time }}</td>
-              <td class="py-1.5 pr-2 font-medium">{{ r.student_name }}<span v-if="r.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">수업외</span></td>
+              <td class="py-1.5 pr-2 font-medium" :class="nameCls(r)">{{ r.student_name }}<span v-if="r.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">수업외</span></td>
               <td class="py-1.5 pr-2" :class="r.att.in ? 'text-emerald-400' : 'text-slate-600'">{{ r.att.in || '-' }}</td>
               <td class="py-1.5 pr-2" :class="r.att.out ? 'text-indigo-400' : 'text-slate-600'">{{ r.att.out || '-' }}</td>
               <td class="py-1.5 pr-2 text-xs" :class="(statusInfo(r)||{}).cls || 'text-slate-700'">{{ statusInfo(r) ? statusInfo(r).label : '' }}</td>
