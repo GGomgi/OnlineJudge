@@ -3443,10 +3443,12 @@ class AttendanceNoteAdminAPI(APIView):
         a.note = (data.get("note") or "").strip()
         a.save()
         if (old_tag, old_note) != (a.note_tag, a.note):
-            AttendanceChange.objects.create(
-                attendance=a, actor=request.user,
-                detail="비고 변경: [%s] %s" % (a.note_tag or "-", a.note or ""),
-                reason="")
+            old_label = _opt_label("attendance_note", old_tag) if old_tag else "없음"
+            new_label = _opt_label("attendance_note", a.note_tag) if a.note_tag else "없음"
+            detail = "비고 %s → %s" % (old_label, new_label)
+            if a.note:
+                detail += " (%s)" % a.note
+            AttendanceChange.objects.create(attendance=a, actor=request.user, detail=detail, reason="")
         return self.success({"note_tag": a.note_tag, "note": a.note})
 
     @admin_role_required

@@ -827,7 +827,6 @@
                 <button @click="attShiftLesson(10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">+10분</button>
               </div>
             </div>
-            <div><label class="lbl">시각 변경 사유 <span class="text-slate-400">(시각 변경 시)</span></label><input v-model="attForm.reason" placeholder="예: 학부모 사전연락 - 1시간 일찍" class="input py-1" /></div>
             <div class="border-t pt-2">
               <label class="lbl">비고 표시</label>
               <div class="flex flex-wrap gap-1 mb-2">
@@ -3162,7 +3161,7 @@ createApp({
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
-      attModal: null, attForm: { lessonTime:'', reason:'', note_tag:'', note:'', progContent:'', progHomework:'' }, attNoteTags: [], attHist: [],
+      attModal: null, attForm: { lessonTime:'', note_tag:'', note:'', progContent:'', progHomework:'' }, attNoteTags: [], attHist: [],
       notePop: { show:false, x:0, y:0, tag:'', note:'', tagStyle:{} },
       tcPop: { show:false, x:0, y:0, orig:'', now:'', reason:'' },
       progPop: { show:false, x:0, y:0, content:'', homework:'' },
@@ -4495,7 +4494,7 @@ createApp({
     async openAtt(l){
       this.attModal = l;
       const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.att.note_tag||'');
-      this.attForm = { lessonTime:l.start_time||'', reason:'', note_tag:tag0, note:(l.note||l.att.note||''),
+      this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, note:(l.note||l.att.note||''),
                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0, progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+this.dashDate); } catch(e){ this.attHist=[]; }
@@ -4511,7 +4510,7 @@ createApp({
       const l=this.attModal;
       try {
         if (this.attForm.lessonTime && this.attForm.lessonTime !== this._attOrig.lessonTime){
-          await api('POST','/api/admin/academy/lesson_edit', { occ_id:l.occ_id, start_time:this.attForm.lessonTime, reason:this.attForm.reason });
+          await api('POST','/api/admin/academy/lesson_edit', { occ_id:l.occ_id, start_time:this.attForm.lessonTime, reason:this.attForm.note });
         }
         const tag=this.attForm.note_tag, wasAbsent=l.status==='ABSENT';
         if (tag==='ABSENT'){

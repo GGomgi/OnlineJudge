@@ -12,7 +12,7 @@
 </style>
 </head>
 <body class="bg-slate-900 text-white h-screen w-screen overflow-hidden">
-<div id="app" class="h-full w-full flex flex-col items-center justify-center p-6"></div>
+<div id="app" class="h-full w-full flex overflow-hidden"></div>
 
 <script>
 const { createApp } = Vue;
@@ -41,6 +41,7 @@ createApp({
       clock: '', digits: '',
       stage: 'keypad',       // keypad | matches | result | error
       matches: [], resultMsg: '', resultSub: '', busy: false,
+      board: [], nowMin: 0,
     };
   },
   computed: {
@@ -52,6 +53,19 @@ createApp({
       const p = x => String(x).padStart(2,'0');
       const WD = ['일','월','화','수','목','금','토'];
       this.clock = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+'  ('+WD[d.getDay()]+')';
+      this.nowMin = d.getHours()*60 + d.getMinutes();
+    },
+    hmMin(hm){ if (!hm) return 0; const [h,m] = hm.split(':').map(Number); return h*60+m; },
+    elapsed(row){
+      if (!row.att.in) return '';
+      const start = this.hmMin(row.att.in);
+      const end = row.att.out ? this.hmMin(row.att.out) : this.nowMin;
+      const mins = Math.max(0, end-start);
+      return mins+'분 / '+(row.duration_minutes||60)+'분';
+    },
+    async loadBoard(){
+      try { const d = await kioskApi('GET', '/api/academy/kiosk_board?b='+encodeURIComponent(this.b)+'&t='+encodeURIComponent(this.t)); this.board = d.rows||[]; }
+      catch(e){ /* 조용히 실패(우측 키패드 동작에는 영향 없음) */ }
     },
     press(n){
       if (this.stage !== 'keypad' || this.busy) return;
@@ -91,6 +105,7 @@ createApp({
         else if (d.action === 'out'){ this.resultMsg = d.name+'님 하원 완료'; this.resultSub = d.time; }
         else { this.resultMsg = d.name+'님은 오늘 등원·하원이 모두 처리되었습니다.'; this.resultSub = '등원 '+(d.in||'-')+' · 하원 '+(d.out||'-'); }
         this.stage = 'result';
+        this.loadBoard();
         setTimeout(()=>this.reset(), 2600);
       } catch(e){
         this.resultMsg = '처리 중 오류가 발생했습니다.';
@@ -108,50 +123,82 @@ createApp({
       this.resultMsg = '잘못된 접속입니다.';
       this.resultSub = '관리자에게 링크를 다시 요청하세요.';
       this.stage = 'error';
+      return;
     }
+    this.loadBoard();
+    setInterval(this.loadBoard, 25000);
   },
   template: `
-    <div class="text-center w-full max-w-md">
-      <div class="text-sm text-slate-400 mb-1">두잉창의코딩 · 출결</div>
-      <div class="font-mono text-3xl font-bold mb-8 tracking-wider">{{ clock }}</div>
+    <!-- 왼쪽: 오늘 출결 현황판 -->
+    <div class="w-[58%] h-full overflow-y-auto border-r border-slate-700 p-5">
+      <div class="text-sm text-slate-400 mb-3">📋 오늘 출결 현황</div>
+      <table class="w-full text-sm">
+        <thead class="sticky top-0 bg-slate-900">
+          <tr class="text-slate-400 text-left border-b border-slate-700">
+            <th class="py-1.5 pr-2 font-normal">시각</th>
+            <th class="py-1.5 pr-2 font-normal">학생</th>
+            <th class="py-1.5 pr-2 font-normal">등원</th>
+            <th class="py-1.5 pr-2 font-normal">하원</th>
+            <th class="py-1.5 pr-2 font-normal text-right">경과</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(r,i) in board" :key="i" class="border-b border-slate-800">
+            <td class="py-1.5 pr-2 font-mono text-slate-300">{{ r.start_time }}</td>
+            <td class="py-1.5 pr-2 font-medium">{{ r.student_name }}</td>
+            <td class="py-1.5 pr-2" :class="r.att.in ? 'text-emerald-400' : 'text-slate-600'">{{ r.att.in || '-' }}</td>
+            <td class="py-1.5 pr-2" :class="r.att.out ? 'text-indigo-400' : 'text-slate-600'">{{ r.att.out || '-' }}</td>
+            <td class="py-1.5 pr-2 text-right text-slate-400 text-xs">{{ elapsed(r) }}</td>
+          </tr>
+          <tr v-if="board.length===0"><td colspan="5" class="py-8 text-center text-slate-500">오늘 수업이 없습니다.</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-      <template v-if="stage==='keypad'">
-        <div class="text-base text-slate-300 mb-3">보호자 연락처 뒤 4자리를 입력하세요</div>
-        <div class="flex justify-center gap-3 mb-8">
-          <div v-for="(d,i) in dots" :key="i" class="w-12 h-14 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-2xl">{{ d }}</div>
-        </div>
-        <div class="grid grid-cols-3 gap-3">
-          <button v-for="n in [1,2,3,4,5,6,7,8,9]" :key="n" @click="press(n)"
-                  class="h-16 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-2xl font-semibold">{{ n }}</button>
-          <button @click="reset" class="h-16 rounded-xl bg-slate-800 hover:bg-slate-700 text-lg text-slate-300">전체지움</button>
-          <button @click="press(0)" class="h-16 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-2xl font-semibold">0</button>
-          <button @click="backspace" class="h-16 rounded-xl bg-slate-800 hover:bg-slate-700 text-lg text-slate-300">◀ 지우기</button>
-        </div>
-      </template>
+    <!-- 오른쪽: 시계 + 키패드 -->
+    <div class="w-[42%] h-full flex flex-col items-center justify-center p-6">
+      <div class="text-center w-full max-w-xs">
+        <div class="text-sm text-slate-400 mb-1">두잉창의코딩 · 출결</div>
+        <div class="font-mono text-2xl font-bold mb-6 tracking-wider">{{ clock }}</div>
 
-      <template v-else-if="stage==='matches'">
-        <div class="text-base text-slate-300 mb-4">본인 이름을 선택하세요</div>
-        <div class="flex flex-col gap-3">
-          <button v-for="m in matches" :key="m.student_id" @click="confirm(m)"
-                  class="h-16 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xl font-semibold flex flex-col items-center justify-center">
-            <span>{{ m.name }}</span>
-            <span class="text-xs font-normal text-indigo-200">{{ m.school }}</span>
-          </button>
-          <button @click="reset" class="mt-2 text-sm text-slate-400">취소</button>
-        </div>
-      </template>
+        <template v-if="stage==='keypad'">
+          <div class="text-sm text-slate-300 mb-3">보호자 연락처 뒤 4자리를 입력하세요</div>
+          <div class="flex justify-center gap-2.5 mb-6">
+            <div v-for="(d,i) in dots" :key="i" class="w-10 h-12 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-xl">{{ d }}</div>
+          </div>
+          <div class="grid grid-cols-3 gap-2.5">
+            <button v-for="n in [1,2,3,4,5,6,7,8,9]" :key="n" @click="press(n)"
+                    class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-xl font-semibold">{{ n }}</button>
+            <button @click="reset" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm text-slate-300">전체지움</button>
+            <button @click="press(0)" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-xl font-semibold">0</button>
+            <button @click="backspace" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm text-slate-300">◀ 지우기</button>
+          </div>
+        </template>
 
-      <template v-else-if="stage==='result'">
-        <div class="text-4xl mb-4">✅</div>
-        <div class="text-2xl font-bold mb-2">{{ resultMsg }}</div>
-        <div class="text-lg text-slate-300">{{ resultSub }}</div>
-      </template>
+        <template v-else-if="stage==='matches'">
+          <div class="text-sm text-slate-300 mb-4">본인 이름을 선택하세요</div>
+          <div class="flex flex-col gap-2.5">
+            <button v-for="m in matches" :key="m.student_id" @click="confirm(m)"
+                    class="h-14 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-lg font-semibold flex flex-col items-center justify-center">
+              <span>{{ m.name }}</span>
+              <span class="text-xs font-normal text-indigo-200">{{ m.school }}</span>
+            </button>
+            <button @click="reset" class="mt-2 text-sm text-slate-400">취소</button>
+          </div>
+        </template>
 
-      <template v-else-if="stage==='error'">
-        <div class="text-4xl mb-4">⚠️</div>
-        <div class="text-2xl font-bold mb-2">{{ resultMsg }}</div>
-        <div class="text-lg text-slate-300">{{ resultSub }}</div>
-      </template>
+        <template v-else-if="stage==='result'">
+          <div class="text-4xl mb-4">✅</div>
+          <div class="text-xl font-bold mb-2">{{ resultMsg }}</div>
+          <div class="text-base text-slate-300">{{ resultSub }}</div>
+        </template>
+
+        <template v-else-if="stage==='error'">
+          <div class="text-4xl mb-4">⚠️</div>
+          <div class="text-xl font-bold mb-2">{{ resultMsg }}</div>
+          <div class="text-base text-slate-300">{{ resultSub }}</div>
+        </template>
+      </div>
     </div>
   `,
 }).mount('#app');

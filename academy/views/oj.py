@@ -15,7 +15,8 @@ from ..models import (AcademyProfile, AcademyRole, Branch, SignupRequest, Course
 from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROLES,
                       HRNotice, StaffDocument, StaffProfileHistory)
 from ..models import DevRequest, DevRequestComment, Notification, Message
-from ..models import StudentProfile, DailyAttendance, EnrollmentStatus
+from ..models import StudentProfile, DailyAttendance, EnrollmentStatus, LessonOccurrence, OccurrenceStatus
+from .admin import ensure_occurrences
 
 
 def _kst_dt_str(dt):
@@ -887,6 +888,28 @@ class DevCommentAPI(APIView):
         c.is_hidden = True
         c.save(update_fields=["is_hidden"])
         return self.success(True)
+
+
+class KioskBoardAPI(APIView):
+    """무로그인 출결 키오스크 좌측 현황판: 오늘 지점 수업 시각·학생·등원/하원만(민감정보 제외).
+    GET ?b=지점id&t=키오스크토큰"""
+    def get(self, request):
+        branch = Branch.objects.filter(id=request.GET.get("b")).first()
+        token = (request.GET.get("t") or "").strip()
+        if not branch or not branch.kiosk_token or branch.kiosk_token != token:
+            return self.error("잘못된 접근입니다.")
+        d = _kst_today()
+        ensure_occurrences(d, [branch.id])
+        occ = LessonOccurrence.objects.select_related("student", "student__userprofile").filter(
+            date=d, branch_id=branch.id).exclude(status=OccurrenceStatus.CANCELLED).order_by("start_time")
+        sids = [o.student_id for o in occ]
+        att = {}
+        for a in DailyAttendance.objects.filter(date=d, student_id__in=sids):
+            att[a.student_id] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)}
+        rows = [{"start_time": str(o.start_time)[:5], "student_name": _name_of(o.student),
+                "duration_minutes": o.duration_minutes,
+                "att": att.get(o.student_id, {"in": "", "out": ""})} for o in occ]
+        return self.success({"rows": rows})
 
 
 class KioskLookupAPI(APIView):
