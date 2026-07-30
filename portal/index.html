@@ -1613,10 +1613,10 @@
                 <td v-for="(d,i) in ttWeekDates" :key="i" :class="['border border-slate-100 align-top p-0.5 min-w-[110px]', d.isToday ? 'bg-indigo-50/30' : '']">
                   <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @click="openCalAtt(it, d.date)" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
                        :class="['mb-0.5 px-1.5 py-1 rounded leading-tight cursor-pointer', calItemCls(it)]">
-                    <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}
-                    <span v-if="calBadge(it)" class="ml-1 text-[9px] px-1 rounded" :style="calBadge(it).style">{{ calBadge(it).label }}</span>
-                    <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}<template v-if="it.makeup"> · 보강</template></span>
-                    <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">등원 {{ it.att.in||'-' }} · 하원 {{ it.att.out||'-' }}</span>
+                    <span class="block"><span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}</span>
+                    <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}<template v-if="it.makeup"> · 보강</template><span v-if="calBadge(it)" class="ml-1 px-1 rounded" :style="calBadge(it).style">{{ calBadge(it).label }}</span></span>
+                    <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">등원: {{ it.att.in||'-' }}</span>
+                    <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">하원: {{ it.att.out||'-' }}</span>
                   </div>
                   <div v-for="(rv,k) in ttSlotResv(d.date,sl.mins)" :key="'r'+k" @mouseenter="showCalResv(rv,d.date,$event)" @mouseleave="hideResvPop" class="mb-0.5 px-1.5 py-1 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
                     <span class="font-semibold">📅 {{ rv.time }}</span> {{ rv.student_name }}
@@ -1654,7 +1654,8 @@
                                left: (L.lane*100/ttHzDayLayout(d.date).lanes)+'%', width: 'calc('+(100/ttHzDayLayout(d.date).lanes)+'% - 2px)' }">
                   <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}</div>
                   <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}<template v-if="L.it.makeup"> · 보강</template><template v-if="calBadge(L.it)"> · {{ calBadge(L.it).label }}</template></div>
-                  <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">등원{{ L.it.att.in||'-' }}·하원{{ L.it.att.out||'-' }}</div>
+                  <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">등원: {{ L.it.att.in||'-' }}</div>
+                  <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">하원: {{ L.it.att.out||'-' }}</div>
                 </div>
                 <div v-for="(rv,k) in (ttCalResv[d.date]||[])" :key="'r'+k" @mouseenter="showCalResv(rv,d.date,$event)" @mouseleave="hideResvPop"
                      class="absolute rounded px-1 py-0.5 leading-tight bg-amber-50 text-amber-700 border border-amber-200 shadow-sm cursor-help overflow-hidden text-[10px]"
