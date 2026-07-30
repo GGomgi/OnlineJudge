@@ -42,6 +42,7 @@ createApp({
       stage: 'keypad',       // keypad | matches | result | error
       matches: [], resultMsg: '', resultSub: '', busy: false,
       board: [], nowMin: 0,
+      isFullscreen: false,
     };
   },
   computed: {
@@ -125,10 +126,15 @@ createApp({
       } finally { this.busy = false; }
     },
     reset(){ this.digits=''; this.matches=[]; this.resultMsg=''; this.resultSub=''; this.stage='keypad'; },
+    toggleFullscreen(){
+      if (!document.fullscreenElement){ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
+      else { document.exitFullscreen && document.exitFullscreen(); }
+    },
   },
   mounted(){
     this.tickClock();
     setInterval(this.tickClock, 1000);
+    document.addEventListener('fullscreenchange', ()=>{ this.isFullscreen = !!document.fullscreenElement; });
     if (!this.b || !this.t){
       this.resultMsg = '잘못된 접속입니다.';
       this.resultSub = '관리자에게 링크를 다시 요청하세요.';
@@ -139,6 +145,9 @@ createApp({
     setInterval(this.loadBoard, 25000);
   },
   template: `
+    <button @click="toggleFullscreen" class="fixed top-2 right-2 z-50 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">
+      {{ isFullscreen ? '⤢ 전체화면 해제' : '⛶ 전체화면' }}
+    </button>
     <!-- 왼쪽: 오늘 출결 현황판 -->
     <div class="w-[58%] h-full overflow-y-auto border-r border-slate-700 p-5">
       <div class="text-sm text-slate-400 mb-3">📋 오늘 출결 현황</div>
