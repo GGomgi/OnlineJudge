@@ -1525,21 +1525,74 @@
     </section>
 
     <!-- ============ 관리자: 개별 시간표 ============ -->
-    <section v-if="tab==='indtt'">
+    <section v-if="tab==='indtt' || tab==='makeup'">
       <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
         <!-- 보기 전환 -->
         <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
           <button @click="switchTtView('day')" :class="['px-3 py-1.5', ttView==='day' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">일간</button>
           <button @click="switchTtView('week')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='week' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">주간</button>
           <button @click="switchTtView('month')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='month' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">월간</button>
-          <button @click="switchTtView('list')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='list' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">목록</button>
+          <button v-if="tab==='indtt'" @click="switchTtView('list')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='list' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">목록</button>
         </div>
-        <button v-if="hasAnyEdit" @click="openTtAdd" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">
+        <button v-if="tab==='indtt' && hasAnyEdit" @click="openTtAdd" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">
           + 수업 추가
           <span :class="['ml-1 px-1.5 py-0.5 rounded text-[11px]', ttUnassignedCount>0 ? 'bg-rose-500' : 'bg-indigo-500']">{{ ttUnassignedCount>0 ? '미등록 '+ttUnassignedCount+'명!' : '미등록 없음' }}</span>
         </button>
       </div>
-      <p class="text-xs text-slate-400 mb-3">전체 학생의 개별 수업을 필터로 조회·관리합니다. 입회원 신청서의 요일/시간은 등록 시 자동 생성됩니다.</p>
+      <p v-if="tab==='indtt'" class="text-xs text-slate-400 mb-3">전체 학생의 개별 수업을 필터로 조회·관리합니다. 입회원 신청서의 요일/시간은 등록 시 자동 생성됩니다.</p>
+      <p v-else class="text-xs text-slate-400 mb-3">결석 후 아직 보강 일정이 잡히지 않은 학생을 모아 안내·일정 조율하고, 아래 캘린더에서 이미 잡힌 보강을 확인합니다.</p>
+
+      <!-- ===== 보강 관리: 날짜미정 목록 ===== -->
+      <div v-if="tab==='makeup'" class="bg-white rounded-xl shadow-sm p-3 mb-4">
+        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <h3 class="font-semibold text-sm">날짜미정 보강 <span class="text-xs font-normal text-slate-400">{{ mkgList.length }}건</span></h3>
+          <div class="flex items-center gap-2">
+            <select v-model="mkgBranchId" @change="loadMkgPending" class="input py-1 text-xs w-32">
+              <option value="">지점 전체</option>
+              <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+            </select>
+            <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+              <button @click="mkgGroupBy='flat'" :class="['px-2 py-1', mkgGroupBy==='flat' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">건별</button>
+              <button @click="mkgGroupBy='student'" :class="['px-2 py-1 border-l border-slate-200', mkgGroupBy==='student' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">학생별</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 건별 -->
+        <ul v-if="mkgGroupBy==='flat'" class="space-y-1 max-h-96 overflow-y-auto">
+          <li v-for="p in mkgList" :key="p.occ_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-2">
+            <span class="font-medium">{{ p.student_name }}</span>
+            <call-btn :phone="p.parent_phone || p.student_phone"/>
+            <span class="text-xs text-slate-400">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
+            <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 shrink-0">D+{{ mkgDaysAgo(p.date) }}</span>
+            <span class="ml-auto flex gap-2 shrink-0">
+              <button @click="openMakeupFor(p)" class="text-xs text-indigo-600 hover:underline">일정잡기</button>
+              <button @click="mkgSetNoMakeup(p)" class="text-xs text-slate-400 hover:underline">보강안함</button>
+            </span>
+          </li>
+          <li v-if="!mkgLoading && mkgList.length===0" class="text-center text-xs text-slate-400 py-6">날짜미정 보강이 없습니다.</li>
+        </ul>
+
+        <!-- 학생별 -->
+        <ul v-else class="space-y-1 max-h-96 overflow-y-auto">
+          <li v-for="g in mkgGrouped()" :key="g.student_id" class="bg-slate-50 rounded px-3 py-2">
+            <div class="flex items-center gap-2 text-sm mb-1">
+              <span class="font-medium">{{ g.student_name }}</span>
+              <call-btn :phone="g.parent_phone || g.student_phone"/>
+              <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-600">{{ g.items.length }}건</span>
+            </div>
+            <div v-for="p in g.items" :key="p.occ_id" class="flex items-center gap-2 text-xs text-slate-500 pl-1 py-0.5">
+              <span>{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
+              <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 shrink-0">D+{{ mkgDaysAgo(p.date) }}</span>
+              <span class="ml-auto flex gap-2 shrink-0">
+                <button @click="openMakeupFor(p)" class="text-indigo-600 hover:underline">일정잡기</button>
+                <button @click="mkgSetNoMakeup(p)" class="text-slate-400 hover:underline">보강안함</button>
+              </span>
+            </div>
+          </li>
+          <li v-if="!mkgLoading && mkgGrouped().length===0" class="text-center text-xs text-slate-400 py-6">날짜미정 보강이 없습니다.</li>
+        </ul>
+      </div>
 
       <!-- ===== 달력(주간/월간) ===== -->
       <div v-if="ttView!=='list'" class="bg-white rounded-xl shadow-sm p-3 mb-4">
@@ -3382,6 +3435,7 @@ const app = createApp({
       tcPop: { show:false, x:0, y:0, orig:'', now:'', reason:'' },
       progPop: { show:false, x:0, y:0, content:'', homework:'' },
       dashFilter: { q:'', subject:'', instructor:'', branch:'' }, dashPop: { show:false, x:0, y:0, l:{att:{}} },
+      mkgList: [], mkgGroupBy: 'flat', mkgBranchId: '', mkgLoading: false,
       dashShowDone: true,
       kioskDevicesOpen: false, kioskDevices: [], kioskDeviceBranchId: null,
       makeupOpen: false, mkMode: 'pending', mkStep: 'pick', mkPending: [],
@@ -3850,7 +3904,7 @@ const app = createApp({
     tabs(){
       if (!this.me) return [ {key:'login',label:'로그인'}, {key:'lead',label:'상담 신청'} ];
       if (this.isStaff){
-        const t = [ {key:'dashboard',label:'오늘 운영'}, {key:'leadmgr',label:'신규 상담·등록'}, {key:'students',label:'학생 관리'}, {key:'indtt',label:'시간표'}, {key:'classes',label:'그룹·특강'} ];
+        const t = [ {key:'dashboard',label:'오늘 운영'}, {key:'leadmgr',label:'신규 상담·등록'}, {key:'students',label:'학생 관리'}, {key:'indtt',label:'시간표'}, {key:'makeup',label:'보강 관리'}, {key:'classes',label:'그룹·특강'} ];
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
         t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ❗' : '')});
         if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
@@ -3943,6 +3997,14 @@ const app = createApp({
           this.ttFilter.instructor_ids = (r==='INSTRUCTOR' && this.me) ? [String(this.me.user.id)] : [];
         }
         this.switchTtView(this.ttView);
+      }
+      else if (key==='makeup'){
+        if (!this.branches.length) this.loadBranches();
+        this.loadTtInstructors();
+        if (this.ttFilter.instructor_ids===null) this.ttFilter.instructor_ids=[];
+        if (this.ttView==='list') this.ttView='week';
+        this.switchTtView(this.ttView);
+        this.loadMkgPending();
       }
       else if (key==='students'){ this.loadStudents(); this.loadOptions(); }
       else if (key==='children') this.loadChildren();
@@ -4122,7 +4184,18 @@ const app = createApp({
       else { const w=this.ttWeekDates; if(!w.length){ this.ttCalDays={}; this.ttCalResv={}; return; } qs='from='+w[0].date+'&to='+w[w.length-1].date; }
       if (f.program) qs+='&program='+encodeURIComponent(f.program);
       if ((f.instructor_ids||[]).length) qs+='&instructor_ids='+encodeURIComponent(f.instructor_ids.join(','));
-      try { const d=await api('GET','/api/admin/academy/timetable_calendar?'+qs); this.ttCalDays=d.days||{}; this.ttCalResv=d.reservations||{}; }
+      if (this.tab==='makeup' && this.mkgBranchId) qs+='&branch_id='+encodeURIComponent(this.mkgBranchId);
+      try {
+        const d=await api('GET','/api/admin/academy/timetable_calendar?'+qs);
+        let days=d.days||{};
+        if (this.tab==='makeup'){
+          days={}; Object.keys(d.days||{}).forEach(k=>{
+            const items=(d.days[k].items||[]).filter(it=>it.makeup);
+            if (items.length) days[k]={ count: items.length, items };
+          });
+        }
+        this.ttCalDays=days; this.ttCalResv=(this.tab==='makeup') ? {} : (d.reservations||{});
+      }
       catch(e){ this.ttCalDays={}; this.ttCalResv={}; this.notify(e.message,false); }
     },
     ttCalShift(n){
@@ -4880,6 +4953,35 @@ const app = createApp({
       this.mkSearch={ query:'', student:null, candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' };
       if (!this.students.length) this.loadStudents();
       try { this.mkPending = await api('GET','/api/admin/academy/pending_makeup') || []; } catch(e){ this.mkPending=[]; }
+    },
+    // 보강 관리 탭: 날짜미정 보강(결석) 목록
+    async loadMkgPending(){
+      this.mkgLoading=true;
+      let qs = this.mkgBranchId ? ('?branch_id='+encodeURIComponent(this.mkgBranchId)) : '';
+      try { this.mkgList = await api('GET','/api/admin/academy/pending_makeup'+qs) || []; }
+      catch(e){ this.mkgList=[]; this.notify(e.message,false); }
+      finally { this.mkgLoading=false; }
+    },
+    mkgDaysAgo(dateStr){
+      const [y,m,d]=dateStr.split('-').map(Number);
+      const diff = Math.floor((new Date(this.todayStr+'T00:00:00') - new Date(y,m-1,d)) / 86400000);
+      return diff;
+    },
+    mkgGrouped(){
+      const m = new Map();
+      this.mkgList.forEach(p=>{
+        if (!m.has(p.student_id)) m.set(p.student_id, { student_id:p.student_id, student_name:p.student_name,
+          parent_phone:p.parent_phone, student_phone:p.student_phone, branch:p.branch, items:[] });
+        m.get(p.student_id).items.push(p);
+      });
+      return [...m.values()].sort((a,b)=> a.items[0].date.localeCompare(b.items[0].date));
+    },
+    async mkgSetNoMakeup(p){
+      if (!confirm(p.student_name+' · '+p.date+' 결석을 보강 안 함으로 처리할까요?')) return;
+      try {
+        await api('POST','/api/admin/academy/lesson_status', { occ_id:p.occ_id, status:'ABSENT', no_makeup:true });
+        this.notify('보강 안 함으로 처리되었습니다.'); this.loadMkgPending();
+      } catch(e){ this.notify(e.message,false); }
     },
     // 학생 상세(출결기록)에서 바로 "보강 추가": 학생 검색 단계를 건너뛰고 이 학생의 후보 목록으로 진입
     openMakeupForThisStudent(){

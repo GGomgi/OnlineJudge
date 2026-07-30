@@ -3817,21 +3817,28 @@ class LessonAbsenceAPI(APIView):
 class PendingMakeupAPI(APIView):
     @admin_role_required
     def get(self, request):
-        """보강 필요 리스트: 결석(ABSENT)인데 보강 미배정·보강 안 함 아닌 수업."""
+        """보강 필요 리스트: 결석(ABSENT)인데 보강 미배정·보강 안 함 아닌 수업.
+        branch_id 주면 해당 지점만. 오래된 결석부터(날짜 오름차순)."""
         view = viewable_branch_ids(request.user)
-        qs = LessonOccurrence.objects.select_related("student", "branch").filter(
+        qs = LessonOccurrence.objects.select_related("student", "student__student_profile", "branch").filter(
             status=OccurrenceStatus.ABSENT, is_makeup=False, no_makeup=False)
         if view is not None:
             qs = qs.filter(branch_id__in=view)
+        bid = request.GET.get("branch_id")
+        if bid:
+            qs = qs.filter(branch_id=bid)
         made = set(LessonOccurrence.objects.filter(is_makeup=True, makeup_for__isnull=False)
                    .values_list("makeup_for_id", flat=True))
         out = []
-        for o in qs.order_by("-date", "start_time")[:300]:
+        for o in qs.order_by("date", "start_time")[:300]:
             if o.id in made:
                 continue
+            prof = getattr(o.student, "student_profile", None)
             out.append({"occ_id": o.id, "student_id": o.student_id, "student_name": _name_of(o.student),
                         "date": str(o.date), "start_time": str(o.start_time)[:5],
-                        "subject": o.subject or "미지정", "branch": (o.branch.name if o.branch_id else "")})
+                        "subject": o.subject or "미지정", "branch": (o.branch.name if o.branch_id else ""),
+                        "parent_phone": (prof.parent_phone if prof else ""),
+                        "student_phone": (prof.student_phone if prof else "")})
         return self.success(out)
 
 
