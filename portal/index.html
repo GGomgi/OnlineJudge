@@ -2332,7 +2332,6 @@
                   <button @click="stuAttBulkForm.note_tag=''; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', !stuAttBulkForm.note_tag ? 'border-slate-400' : 'border-slate-200 text-slate-400']">없음</button>
                   <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && !stuAttBulkForm.no_makeup) ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석</button>
                   <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=true" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && stuAttBulkForm.no_makeup) ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석(보강X)</button>
-                  <button @click="stuAttBulkForm.note_tag='LEAVE'; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', stuAttBulkForm.note_tag==='LEAVE' ? 'border-purple-400 bg-purple-50 text-purple-600' : 'border-slate-200 text-slate-400']">임시휴원</button>
                   <button v-for="t in attNoteTags" :key="t.value" @click="stuAttBulkForm.note_tag=t.value; stuAttBulkForm.no_makeup=false" class="px-2 py-1 rounded text-xs border" :style="stuAttBulkForm.note_tag===t.value ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
                 </div>
                 <input v-model="stuAttBulkForm.note" placeholder="사유(예: 가족여행으로 일정 결석 / 다른 학원 특강으로 이 기간 시간 변동)" class="input py-1" />
@@ -4894,8 +4893,8 @@ const app = createApp({
     attTagStyle(v){ const t=this.attNoteTags.find(x=>x.value===v); const c=(t&&t.color)||LEGACY_TAG_COLORS[v]||'#64748b'; return { backgroundColor:c+'22', color:c }; },
     async openAtt(l){
       this.attModal = l;
-      const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.att.note_tag||'');
-      this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, note:(l.status==='ABSENT' ? (l.lesson_note||'') : (l.att.note||'')),
+      const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.status==='LEAVE' ? 'TEMP_LEAVE' : (l.att.note_tag||''));
+      this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, note:((l.status==='ABSENT'||l.status==='LEAVE') ? (l.lesson_note||'') : (l.att.note||'')),
                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0, progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+(l.date||this.dashDate)); } catch(e){ this.attHist=[]; }
@@ -4913,13 +4912,16 @@ const app = createApp({
         if (this.attForm.lessonTime && this.attForm.lessonTime !== this._attOrig.lessonTime){
           await api('POST','/api/admin/academy/lesson_edit', { occ_id:l.occ_id, start_time:this.attForm.lessonTime, reason:this.attForm.note });
         }
-        const tag=this.attForm.note_tag, wasAbsent=l.status==='ABSENT';
+        const tag=this.attForm.note_tag, wasAbsent=l.status==='ABSENT', wasLeave=l.status==='LEAVE';
         const attDate = l.date || this.dashDate;
         if (tag==='ABSENT'){
           await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'ABSENT', note:this.attForm.note });
           await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:attDate, note_tag:'', note:'' });
+        } else if (tag==='TEMP_LEAVE'){
+          await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'LEAVE', note:this.attForm.note });
+          await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:attDate, note_tag:'', note:'' });
         } else {
-          if (wasAbsent) await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'SCHEDULED', note:'' });
+          if (wasAbsent || wasLeave) await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'SCHEDULED', note:'' });
           await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:attDate, note_tag:tag, note:this.attForm.note });
         }
         // 진도(변경 시 저장)
@@ -5637,7 +5639,7 @@ const app = createApp({
           if (tag==='ABSENT'){
             await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'ABSENT', note, no_makeup:noMakeup });
             await api('POST','/api/admin/academy/attendance_note', { student_id:this.stuDetail.id, date:row.date, note_tag:'', note:'' });
-          } else if (tag==='LEAVE'){
+          } else if (tag==='TEMP_LEAVE'){
             await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'LEAVE', note });
             await api('POST','/api/admin/academy/attendance_note', { student_id:this.stuDetail.id, date:row.date, note_tag:'', note:'' });
           } else {
