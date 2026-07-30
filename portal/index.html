@@ -1532,14 +1532,13 @@
       <!-- ===== 보강 관리: 날짜미정 목록 ===== -->
       <div v-if="tab==='makeup'" class="bg-white rounded-xl shadow-sm p-3 mb-4">
         <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <h3 class="font-semibold text-sm">날짜미정 보강 <span class="text-xs font-normal text-slate-400">{{ mkgList.length }}건(오래된 날짜순 정렬)</span></h3>
-          <div class="flex items-center gap-2">
-            <span v-if="!isDirectorUp" class="text-xs text-slate-400 px-1">{{ (myProfile && myProfile.branch && myProfile.branch.name) || '' }}</span>
-            <select v-else v-model="mkgBranchId" @change="loadMkgPending" class="input py-1 text-xs w-32">
+          <h3 class="font-semibold text-sm shrink-0">날짜미정 보강 <span class="text-xs font-normal text-slate-400">{{ mkgList.length }}건(오래된 날짜순 정렬)</span></h3>
+          <div class="flex items-center gap-2 shrink-0">
+            <select v-if="mkgCanPickBranch" v-model="mkgBranchId" @change="loadMkgPending" class="input py-1 text-xs w-32 shrink-0">
               <option value="">지점 전체</option>
-              <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+              <option v-for="b in mkgBranchOptions()" :key="b.id" :value="b.id">{{ b.name }}</option>
             </select>
-            <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs whitespace-nowrap">
+            <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs whitespace-nowrap shrink-0">
               <button @click="mkgGroupBy='student'" :class="['px-3 py-1 whitespace-nowrap', mkgGroupBy==='student' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">학생별</button>
               <button @click="mkgGroupBy='flat'" :class="['px-3 py-1 border-l border-slate-200 whitespace-nowrap', mkgGroupBy==='flat' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">건별</button>
             </div>
@@ -3536,6 +3535,11 @@ const app = createApp({
       const r = this.myProfile && this.myProfile.role;
       return ['HQ_ADMIN','REGIONAL_MANAGER','BRANCH_MANAGER'].includes(r);
     },
+    mkgCanPickBranch(){
+      // 보강관리 지점 선택 노출: 본부(전지점) 또는 실제로 2개 이상 지점을 운영/열람하는 경우만.
+      if (this.me && this.me.user.admin_type === 'Super Admin') return true;
+      return !!(this.myProfile && (this.myProfile.viewable_branches||[]).length > 1);
+    },
     isManager(){
       // 원장(지점장) 이상 — 삭제 항목 보기/복원 권한 (부원장·지부장 포함)
       if (this.me && this.me.user.admin_type === 'Super Admin') return true;
@@ -4002,7 +4006,7 @@ const app = createApp({
         if (!this.branches.length) this.loadBranches();
         this.loadTtInstructors();
         if (this.ttFilter.instructor_ids===null) this.ttFilter.instructor_ids=[];
-        if (!this.isDirectorUp && !this.mkgBranchId){
+        if (!this.mkgCanPickBranch && !this.mkgBranchId){
           const b = this.myProfile && this.myProfile.branch;
           if (b) this.mkgBranchId = b.id;
         }
@@ -4973,6 +4977,10 @@ const app = createApp({
     },
     mkgDaysCls(dateStr){
       return this.mkgDaysAgo(dateStr) >= 0 ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600';
+    },
+    mkgBranchOptions(){
+      if (this.me && this.me.user.admin_type === 'Super Admin') return this.branches;
+      return (this.myProfile && this.myProfile.viewable_branches) || [];
     },
     mkgGrouped(){
       const m = new Map();
