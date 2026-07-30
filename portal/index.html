@@ -856,7 +856,7 @@
           </div>
           <div class="p-5 space-y-3">
             <p class="text-xs text-slate-400">이 학생의 수업 중 어느 수업의 보강으로 연결할지 선택하세요. 아직 결석 처리 전인(예정) 수업을 고르면 이 연결과 함께 자동으로 결석 처리됩니다.</p>
-            <div v-if="adhocLinkModal.candidates.length===0" class="text-xs text-slate-400 py-4 text-center">연결할 수업이 없습니다(최근 2주 ~ 앞으로 2개월 내 수업 없음).</div>
+            <div v-if="adhocLinkModal.candidates.length===0" class="text-xs text-slate-400 py-4 text-center">연결할 수업이 없습니다(최근 {{ adhocLinkModal.backMonths }}개월 ~ 앞으로 2개월 내 수업 없음).</div>
             <ul class="space-y-1 max-h-64 overflow-y-auto">
               <li v-for="c in adhocLinkModal.candidates" :key="c.occ_id" @click="adhocLinkModal.selected=c.occ_id"
                   :class="['px-3 py-2 rounded-lg border cursor-pointer text-sm flex items-center justify-between', adhocLinkModal.selected===c.occ_id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50']">
@@ -864,6 +864,7 @@
                 <span :class="['text-[10px] px-1.5 py-0.5 rounded shrink-0 ml-2', c.status==='ABSENT' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500']">{{ c.status==='ABSENT' ? '결석' : '예정' }}</span>
               </li>
             </ul>
+            <button v-if="adhocLinkModal.backMonths<12" @click="loadAdhocCandidates(adhocLinkModal.backMonths+1)" class="text-xs text-indigo-500 hover:underline">+ 이전 1개월 더보기(현재 {{ adhocLinkModal.backMonths }}개월 전까지)</button>
             <div><label class="lbl">사유</label><input v-model="adhocLinkModal.note" placeholder="예: 학부모 요청으로 미리 옴" class="input py-1" /></div>
             <div class="flex justify-end"><button :disabled="!adhocLinkModal.selected" @click="submitAdhocLink" class="btn-primary text-sm disabled:opacity-40">보강으로 연결</button></div>
           </div>
@@ -4655,8 +4656,13 @@ createApp({
       this._doAttCheck(p.l, p.kind, { clear:true, reason });
     },
     async openAdhocLink(l){
-      this.adhocLinkModal = { l, candidates:[], selected:null, note:'' };
-      try { this.adhocLinkModal.candidates = await api('GET','/api/admin/academy/student_lesson_candidates?student_id='+l.student_id); }
+      this.adhocLinkModal = { l, candidates:[], selected:null, note:'', backMonths:1 };
+      this.loadAdhocCandidates(1);
+    },
+    async loadAdhocCandidates(backMonths){
+      const m = this.adhocLinkModal; if (!m) return;
+      m.backMonths = backMonths;
+      try { m.candidates = await api('GET','/api/admin/academy/student_lesson_candidates?student_id='+m.l.student_id+'&back_months='+backMonths); }
       catch(e){ this.notify(e.message,false); }
     },
     async submitAdhocLink(){

@@ -3909,17 +3909,22 @@ class StudentLessonCandidatesAPI(APIView):
     @admin_role_required
     def get(self, request):
         """'수업외 등원'을 특정 정규수업의 보강으로 연결할 대상 후보(그 학생의 수업, 오늘 기준
-        -14일~+60일, 취소·보강 제외). 이미 결석인 것과 앞으로 예정된 것 모두 보여주고,
-        예정된 걸 고르면 그 자리에서 결석으로 전환한다(AdhocMakeupLinkAPI)."""
+        -30*back_months일~+60일, 취소·보강 제외). back_months(기본 1)로 과거 범위를 더
+        넓힐 수 있음(모달의 '이전 1개월 더보기'). 이미 결석인 것과 앞으로 예정된 것 모두
+        보여주고, 예정된 걸 고르면 그 자리에서 결석으로 전환한다(AdhocMakeupLinkAPI)."""
         u = User.objects.filter(id=request.GET.get("student_id")).first()
         if not u:
             return self.error("학생이 없습니다.")
         prof = getattr(u, "academy_profile", None)
         if prof and not can_manage_branch(request.user, prof.branch_id):
             return self.error("권한이 없습니다.")
+        try:
+            back_months = max(1, min(12, int(request.GET.get("back_months") or 1)))
+        except (TypeError, ValueError):
+            back_months = 1
         d = (now() + timedelta(hours=9)).date()
         occ = LessonOccurrence.objects.filter(
-            student_id=u.id, date__gte=d - timedelta(days=14), date__lte=d + timedelta(days=60),
+            student_id=u.id, date__gte=d - timedelta(days=30 * back_months), date__lte=d + timedelta(days=60),
             is_makeup=False).exclude(status=OccurrenceStatus.CANCELLED).order_by("date", "start_time")
         rows = [{"occ_id": o.id, "date": str(o.date), "start_time": str(o.start_time)[:5],
                 "subject": o.subject or resolve_program_label(o.program) or "미지정",
