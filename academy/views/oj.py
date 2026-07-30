@@ -6,7 +6,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils.timezone import now
 
-from utils.api import APIView, validate_serializer
+from utils.api import APIView, validate_serializer, CSRFExemptAPIView
 from utils.shortcuts import rand_str
 
 from account.models import User, UserProfile
@@ -914,7 +914,7 @@ class KioskLookupAPI(APIView):
         return self.success({"matches": matches})
 
 
-class KioskCheckAPI(APIView):
+class KioskCheckAPI(CSRFExemptAPIView):
     """무로그인 출결 키오스크: 학생 선택 시 등원/하원 자동 판별 처리.
     POST {b:지점id, t:키오스크토큰, student_id}"""
     def post(self, request):

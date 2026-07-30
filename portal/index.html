@@ -623,13 +623,29 @@
       <!-- 등원/하원 이미 체크됨 → 시간변경/취소 선택 팝업 -->
       <div v-if="attEditPop.show" class="fixed inset-0 z-40 flex items-center justify-center bg-black/20" @click.self="attEditPop.show=false">
         <div class="bg-white rounded-xl shadow-lg p-4 w-72">
-          <div class="text-sm font-semibold mb-1">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} {{ attEditPop.cur }}</div>
-          <div class="text-xs text-slate-400 mb-3">이미 체크된 기록입니다. 무엇을 하시겠어요?</div>
-          <div class="flex flex-col gap-2">
-            <button @click="attPopChangeTime" class="btn-secondary text-sm">🕐 시간 변경</button>
-            <button @click="attPopCancel" class="btn-secondary text-sm text-rose-500">✕ {{ attEditPop.kind==='in'?'등원':'하원' }} 취소</button>
-            <button @click="attEditPop.show=false" class="text-xs text-slate-400 mt-1">닫기</button>
-          </div>
+          <template v-if="attEditPop.mode==='choose'">
+            <div class="text-sm font-semibold mb-1">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} {{ attEditPop.cur }}</div>
+            <div class="text-xs text-slate-400 mb-3">이미 체크된 기록입니다. 무엇을 하시겠어요?</div>
+            <div class="flex flex-col gap-2">
+              <button @click="attPopChangeTime" class="btn-secondary text-sm">🕐 시간 변경</button>
+              <button @click="attPopCancel" class="btn-secondary text-sm text-rose-500">✕ {{ attEditPop.kind==='in'?'등원':'하원' }} 취소</button>
+              <button @click="attEditPop.show=false" class="text-xs text-slate-400 mt-1">닫기</button>
+            </div>
+          </template>
+          <template v-else>
+            <div class="text-sm font-semibold mb-3">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} 시간 변경</div>
+            <div class="flex items-center justify-center gap-1.5 mb-4">
+              <button @click="attStepTime(-5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-5</button>
+              <button @click="attStepTime(-1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-1</button>
+              <div class="font-mono text-2xl font-bold w-24 text-center">{{ attEditPop.time }}</div>
+              <button @click="attStepTime(1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+1</button>
+              <button @click="attStepTime(5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+5</button>
+            </div>
+            <div class="flex gap-2">
+              <button @click="attEditPop.mode='choose'" class="btn-secondary text-sm flex-1">뒤로</button>
+              <button @click="attSaveTime" class="btn-primary text-sm flex-1">저장</button>
+            </div>
+          </template>
         </div>
       </div>
       <div class="flex items-center gap-3 mb-2 text-sm flex-wrap">
@@ -3218,7 +3234,7 @@ createApp({
       ttStudent: null, ttSearch: '', ttResults: [], ttAll: [], ttInstructors: [], showTtAdd: false,
       ttFilter: { name:'', weekday:'', from:'', to:'', instructor_ids:null, program:'' },
       ttInstrDropdown: false, ttSlotLayout: 'vertical',
-      attEditPop: { show:false, l:null, kind:'', cur:'' },
+      attEditPop: { show:false, l:null, kind:'', cur:'', mode:'choose', time:'' },
       ttView: 'week', ttCalDays: {}, ttCalResv: {}, ttCalAnchor: '', ttCalMonth: '',
       calPop: { show:false, x:0, y:0, date:'', it:{} },
       ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' },
@@ -4593,7 +4609,7 @@ createApp({
     checkAtt(l, kind){
       if (kind==='out' && !l.att.in) return this.notify('등원 후 하원할 수 있습니다.', false);
       const cur = kind==='in' ? l.att.in : l.att.out;
-      if (cur){ this.attEditPop = { show:true, l, kind, cur }; return; }
+      if (cur){ this.attEditPop = { show:true, l, kind, cur, mode:'choose', time:cur }; return; }
       this._doAttCheck(l, kind, {});
     },
     async _doAttCheck(l, kind, opts){
@@ -4603,12 +4619,18 @@ createApp({
         for (const x of this.dashData.lessons){ if (x.student_id===l.student_id) x.att = { in:r.in, out:r.out }; }
       } catch(e){ this.notify(e.message,false); }
     },
-    attPopChangeTime(){
-      const p = this.attEditPop; const label = p.kind==='in' ? '등원' : '하원';
-      const t = (window.prompt(label+' 시각 변경 (HH:MM)', p.cur) || '').trim();
+    attPopChangeTime(){ this.attEditPop.mode = 'edit'; },
+    attStepTime(delta){
+      const p = this.attEditPop;
+      const [h,m] = p.time.split(':').map(Number);
+      let mins = ((h*60+m) + delta + 1440) % 1440;
+      const pad = x=>String(x).padStart(2,'0');
+      p.time = pad(Math.floor(mins/60))+':'+pad(mins%60);
+    },
+    attSaveTime(){
+      const p = this.attEditPop;
       this.attEditPop.show = false;
-      if (!t) return;
-      this._doAttCheck(p.l, p.kind, { time:t });
+      this._doAttCheck(p.l, p.kind, { time:p.time });
     },
     attPopCancel(){
       const p = this.attEditPop; const label = p.kind==='in' ? '등원' : '하원';
