@@ -3595,7 +3595,7 @@ class TimetableCalendarAPI(APIView):
         if sid:
             occ_q = occ_q.filter(student_id=sid)
         overlay = {}
-        for o in occ_q.values("source_timetable_id", "date", "status", "id", "note"):
+        for o in occ_q.values("source_timetable_id", "date", "status", "id", "note", "no_makeup"):
             overlay[(o["source_timetable_id"], str(o["date"]))] = o
         # 등원/하원 출결(오늘 운영과 동일하게 달력에도 표시)
         att_q = DailyAttendance.objects.filter(date__gte=d0, date__lte=d1)
@@ -3635,6 +3635,7 @@ class TimetableCalendarAPI(APIView):
                               "status": (ov["status"] if ov else OccurrenceStatus.SCHEDULED),
                               "occ_id": (ov["id"] if ov else None),
                               "lesson_note": (ov["note"] if ov else ""),
+                              "no_makeup": bool(ov["no_makeup"]) if ov else False,
                               "att": att_map.get((s.student_id, str(cur)), {"in": "", "out": "", "note_tag": "", "note": ""}),
                               "progress": (prog_by_occ.get(ov["id"]) if ov else None)})
             # 보강(makeup) 인스턴스도 포함
@@ -3959,7 +3960,7 @@ class StudentLessonCandidatesAPI(APIView):
     @admin_role_required
     def get(self, request):
         """'수업외 등원'을 특정 정규수업의 보강으로 연결할 대상 후보(그 학생의 수업, 취소·보강·
-        이미 다른 보강이 연결된 것 제외 — 중복 보강 방지). 오늘 기준 -30*back_months일 ~
+        이미 다른 보강이 연결된 것·보강 안 함으로 표시된 것 제외 — 중복 보강 방지). 오늘 기준 -30*back_months일 ~
         +30*fwd_months일 범위(기본 back_months=3, fwd_months=1). 모달의 '-1개월'/'+1개월'
         버튼으로 각 방향을 독립적으로 넓힐 수 있음. 이미 결석인 것과 앞으로 예정된 것 모두
         보여주고, 예정된 걸 고르면 그 자리에서 결석으로 전환한다(AdhocMakeupLinkAPI)."""
@@ -3992,7 +3993,7 @@ class StudentLessonCandidatesAPI(APIView):
             is_makeup=True, makeup_for__isnull=False).values_list("makeup_for_id", flat=True)
         occ = LessonOccurrence.objects.filter(
             student_id=u.id, date__gte=d0, date__lte=d1,
-            is_makeup=False).exclude(status=OccurrenceStatus.CANCELLED)\
+            is_makeup=False, no_makeup=False).exclude(status=OccurrenceStatus.CANCELLED)\
             .exclude(id__in=already_linked).order_by("date", "start_time")
         rows = [{"occ_id": o.id, "date": str(o.date), "start_time": str(o.start_time)[:5],
                 "subject": o.subject or resolve_program_label(o.program) or "미지정",
@@ -4064,7 +4065,7 @@ class StudentAttendanceHistoryAPI(APIView):
             row = {"occ_id": o.id, "date": str(o.date), "start_time": str(o.start_time)[:5],
                   "subject": o.subject or resolve_program_label(o.program) or "미지정",
                   "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
-                  "status": o.status, "is_makeup": o.is_makeup, "lesson_note": o.note,
+                  "status": o.status, "is_makeup": o.is_makeup, "no_makeup": o.no_makeup, "lesson_note": o.note,
                   "att": {"in": _hm_kst(a.check_in_at) if a else "", "out": _hm_kst(a.check_out_at) if a else "",
                           "note_tag": a.note_tag if a else "", "note": a.note if a else ""},
                   "progress": prog_by_occ.get(o.id), "linked": None}

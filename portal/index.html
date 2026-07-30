@@ -742,110 +742,6 @@
         </table>
       </div>
 
-      <!-- 보강 추가 모달 -->
-      <div v-if="makeupOpen" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="makeupOpen=false">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
-          <div class="flex items-center justify-between px-5 py-3 border-b">
-            <div class="font-bold">보강 추가</div>
-            <button @click="makeupOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
-          </div>
-          <div class="p-5 space-y-3">
-            <template v-if="mkStep==='pick'">
-              <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs mb-1">
-                <button @click="mkMode='pending'" :class="['px-3 py-1.5', mkMode==='pending' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">결석 목록에서 고르기</button>
-                <button @click="mkMode='search'" :class="['px-3 py-1.5 border-l border-slate-200', mkMode==='search' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">학생 검색해서 고르기</button>
-              </div>
-
-              <!-- 결석 목록에서 고르기 -->
-              <div v-if="mkMode==='pending'">
-                <p class="text-xs text-slate-400 mb-1">결석했지만 아직 보강을 잡지 않은 수업입니다. 보강할 대상을 선택하세요.</p>
-                <ul class="mt-1 max-h-60 overflow-y-auto border rounded-lg divide-y">
-                  <li v-for="p in mkPending" :key="p.occ_id" @click="pickPending(p)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
-                    <span class="font-medium">{{ p.student_name }}</span>
-                    <span class="text-xs text-slate-500">{{ p.date }} {{ p.start_time }}</span>
-                    <span class="ml-auto text-xs text-slate-400">{{ p.subject }}</span>
-                  </li>
-                  <li v-if="mkPending.length===0" class="px-3 py-4 text-xs text-slate-400 text-center">보강이 필요한 결석이 없습니다.</li>
-                </ul>
-              </div>
-
-              <!-- 학생 검색해서 고르기 -->
-              <div v-else>
-                <label class="lbl">학생 검색</label>
-                <input v-model="mkSearch.query" placeholder="이름/아이디로 검색" class="input py-1" />
-                <ul v-if="mkSearch.query && !mkSearch.student" class="mt-1 max-h-48 overflow-y-auto border rounded-lg divide-y">
-                  <li v-for="s in mkSearchResults" :key="s.id" @click="pickMkStudent(s)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
-                    <span class="font-medium">{{ s.real_name || s.username }}</span>
-                    <span class="text-xs text-slate-400">{{ s.school_name }}{{ schoolSuffix(s.school_type) }} {{ s.grade }}학년 · {{ s.branch }}</span>
-                  </li>
-                  <li v-if="mkSearchResults.length===0" class="px-3 py-4 text-xs text-slate-400 text-center">일치하는 재원 학생이 없습니다.</li>
-                </ul>
-                <template v-if="mkSearch.student">
-                  <div class="bg-slate-50 rounded px-3 py-2 text-sm mt-2 flex items-center gap-2">
-                    <span class="font-medium">{{ mkSearch.student.real_name || mkSearch.student.username }}</span>
-                    <button @click="mkSearch.student=null; mkSearch.candidates=[]" class="ml-auto text-xs text-slate-400 hover:underline">다른 학생</button>
-                  </div>
-                  <div class="flex items-center gap-2 text-xs mt-2">
-                    <span class="text-slate-400">검색 범위: <b class="text-slate-600">{{ mkSearch.from }} ~ {{ mkSearch.to }}</b></span>
-                    <button @click="loadMkCandidates(mkSearch.backMonths+1, mkSearch.fwdMonths)" :disabled="mkSearch.backMonths>=24" class="ml-auto px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40">-1개월</button>
-                    <button @click="loadMkCandidates(mkSearch.backMonths, mkSearch.fwdMonths+1)" :disabled="mkSearch.fwdMonths>=24" class="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40">+1개월</button>
-                    <button @click="loadMkCandidates(3,1)" class="px-2 py-1 rounded border border-slate-200 text-slate-400 hover:bg-slate-50">초기화</button>
-                  </div>
-                  <ul class="mt-1 max-h-48 overflow-y-auto border rounded-lg divide-y">
-                    <li v-for="c in mkSearch.candidates" :key="c.occ_id" @click="pickMkCandidate(c)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
-                      <span>{{ c.date }}({{ wdOf(c.date) }}) {{ c.start_time }} · {{ c.subject }}</span>
-                      <span :class="['ml-auto text-[10px] px-1.5 py-0.5 rounded shrink-0', c.status==='ABSENT' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500']">{{ c.status==='ABSENT' ? '결석' : '예정' }}</span>
-                    </li>
-                    <li v-if="mkSearch.candidates.length===0" class="px-3 py-4 text-xs text-slate-400 text-center">이 범위 안에 수업이 없습니다.</li>
-                  </ul>
-                  <button @click="pickMkStudentOnly" class="mt-2 text-xs text-indigo-500 hover:underline">결석 연결 없이 이 학생으로 새 보강만 추가</button>
-                </template>
-              </div>
-            </template>
-
-            <!-- 보강 대상 선택됨 -->
-            <template v-else>
-              <div class="bg-slate-50 rounded px-3 py-2 text-sm">
-                <div class="flex items-center gap-2">
-                  <span class="text-xs text-slate-400">보강 대상 선택됨</span>
-                  <button @click="clearMkTarget" class="ml-auto text-xs text-slate-400 hover:underline">변경</button>
-                </div>
-                <div class="mt-1"><span class="font-medium">{{ mkForm.student_name }}</span>
-                  <span class="text-xs text-slate-500 ml-1">{{ mkForm.origin }}</span></div>
-              </div>
-              <div class="grid grid-cols-2 gap-2">
-                <div><label class="lbl">보강 할 날짜</label><input v-model="mkForm.date" type="date" class="input py-1" /></div>
-                <div><label class="lbl">보강 할 시간</label><input v-model="mkForm.time" type="time" class="input py-1" /></div>
-              </div>
-              <div><label class="lbl">사유</label><input v-model="mkForm.note" placeholder="예: 6/22 결석 보강" class="input py-1" /></div>
-              <div class="flex justify-end"><button @click="addMakeup" class="btn-primary text-sm">보강 추가</button></div>
-            </template>
-          </div>
-        </div>
-      </div>
-
-      <!-- 결석 → 보강 처리 안내 -->
-      <div v-if="absentPrompt" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" @click.self="absentPrompt=null">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5">
-          <div class="font-bold mb-1">결석 처리되었습니다</div>
-          <p class="text-sm text-slate-500 mb-4">{{ absentPrompt.student_name }} · {{ absentPrompt.subject }} 수업의 보강을 어떻게 할까요?</p>
-          <div class="space-y-2">
-            <button @click="absentSchedule" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-blue-50">
-              <div class="text-sm font-medium text-blue-700">지금 보강 잡기</div>
-              <div class="text-xs text-slate-400">보강 날짜·시간을 바로 지정합니다.</div>
-            </button>
-            <button @click="absentLater" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-slate-50">
-              <div class="text-sm font-medium">나중에</div>
-              <div class="text-xs text-slate-400">보강 필요 목록에 남겨두고 나중에 잡습니다.</div>
-            </button>
-            <button @click="absentNoMakeup" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-slate-50">
-              <div class="text-sm font-medium text-slate-600">보강 안 함</div>
-              <div class="text-xs text-slate-400">보강 없이 결석으로 마무리합니다.</div>
-            </button>
-          </div>
-        </div>
-      </div>
-
       <!-- 수업외 등원 → 보강 연결 모달 -->
       <div v-if="adhocLinkModal" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="adhocLinkModal=null">
         <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
@@ -914,6 +810,110 @@
               </li>
             </ul>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 보강 추가 모달 — 탭과 무관하게 항상 렌더링(오늘 운영·학생 상세 출결기록 어디서든 사용) -->
+    <div v-if="makeupOpen" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="makeupOpen=false">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <div class="font-bold">보강 추가</div>
+          <button @click="makeupOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div class="p-5 space-y-3">
+          <template v-if="mkStep==='pick'">
+            <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs mb-1">
+              <button @click="mkMode='pending'" :class="['px-3 py-1.5', mkMode==='pending' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">결석 목록에서 고르기</button>
+              <button @click="mkMode='search'" :class="['px-3 py-1.5 border-l border-slate-200', mkMode==='search' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">학생 검색해서 고르기</button>
+            </div>
+
+            <!-- 결석 목록에서 고르기 -->
+            <div v-if="mkMode==='pending'">
+              <p class="text-xs text-slate-400 mb-1">결석했지만 아직 보강을 잡지 않은 수업입니다. 보강할 대상을 선택하세요.</p>
+              <ul class="mt-1 max-h-60 overflow-y-auto border rounded-lg divide-y">
+                <li v-for="p in mkPending" :key="p.occ_id" @click="pickPending(p)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
+                  <span class="font-medium">{{ p.student_name }}</span>
+                  <span class="text-xs text-slate-500">{{ p.date }} {{ p.start_time }}</span>
+                  <span class="ml-auto text-xs text-slate-400">{{ p.subject }}</span>
+                </li>
+                <li v-if="mkPending.length===0" class="px-3 py-4 text-xs text-slate-400 text-center">보강이 필요한 결석이 없습니다.</li>
+              </ul>
+            </div>
+
+            <!-- 학생 검색해서 고르기 -->
+            <div v-else>
+              <label class="lbl">학생 검색</label>
+              <input v-model="mkSearch.query" placeholder="이름/아이디로 검색" class="input py-1" />
+              <ul v-if="mkSearch.query && !mkSearch.student" class="mt-1 max-h-48 overflow-y-auto border rounded-lg divide-y">
+                <li v-for="s in mkSearchResults" :key="s.id" @click="pickMkStudent(s)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
+                  <span class="font-medium">{{ s.real_name || s.username }}</span>
+                  <span class="text-xs text-slate-400">{{ s.school_name }}{{ schoolSuffix(s.school_type) }} {{ s.grade }}학년 · {{ s.branch }}</span>
+                </li>
+                <li v-if="mkSearchResults.length===0" class="px-3 py-4 text-xs text-slate-400 text-center">일치하는 재원 학생이 없습니다.</li>
+              </ul>
+              <template v-if="mkSearch.student">
+                <div class="bg-slate-50 rounded px-3 py-2 text-sm mt-2 flex items-center gap-2">
+                  <span class="font-medium">{{ mkSearch.student.real_name || mkSearch.student.username }}</span>
+                  <button @click="mkSearch.student=null; mkSearch.candidates=[]" class="ml-auto text-xs text-slate-400 hover:underline">다른 학생</button>
+                </div>
+                <div class="flex items-center gap-2 text-xs mt-2">
+                  <span class="text-slate-400">검색 범위: <b class="text-slate-600">{{ mkSearch.from }} ~ {{ mkSearch.to }}</b></span>
+                  <button @click="loadMkCandidates(mkSearch.backMonths+1, mkSearch.fwdMonths)" :disabled="mkSearch.backMonths>=24" class="ml-auto px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40">-1개월</button>
+                  <button @click="loadMkCandidates(mkSearch.backMonths, mkSearch.fwdMonths+1)" :disabled="mkSearch.fwdMonths>=24" class="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40">+1개월</button>
+                  <button @click="loadMkCandidates(3,1)" class="px-2 py-1 rounded border border-slate-200 text-slate-400 hover:bg-slate-50">초기화</button>
+                </div>
+                <ul class="mt-1 max-h-48 overflow-y-auto border rounded-lg divide-y">
+                  <li v-for="c in mkSearch.candidates" :key="c.occ_id" @click="pickMkCandidate(c)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
+                    <span>{{ c.date }}({{ wdOf(c.date) }}) {{ c.start_time }} · {{ c.subject }}</span>
+                    <span :class="['ml-auto text-[10px] px-1.5 py-0.5 rounded shrink-0', c.status==='ABSENT' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500']">{{ c.status==='ABSENT' ? '결석' : '예정' }}</span>
+                  </li>
+                  <li v-if="mkSearch.candidates.length===0" class="px-3 py-4 text-xs text-slate-400 text-center">이 범위 안에 수업이 없습니다.</li>
+                </ul>
+                <button @click="pickMkStudentOnly" class="mt-2 text-xs text-indigo-500 hover:underline">결석 연결 없이 이 학생으로 새 보강만 추가</button>
+              </template>
+            </div>
+          </template>
+
+          <!-- 보강 대상 선택됨 -->
+          <template v-else>
+            <div class="bg-slate-50 rounded px-3 py-2 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-slate-400">보강 대상 선택됨</span>
+                <button @click="clearMkTarget" class="ml-auto text-xs text-slate-400 hover:underline">변경</button>
+              </div>
+              <div class="mt-1"><span class="font-medium">{{ mkForm.student_name }}</span>
+                <span class="text-xs text-slate-500 ml-1">{{ mkForm.origin }}</span></div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="lbl">보강 할 날짜</label><input v-model="mkForm.date" type="date" class="input py-1" /></div>
+              <div><label class="lbl">보강 할 시간</label><input v-model="mkForm.time" type="time" class="input py-1" /></div>
+            </div>
+            <div><label class="lbl">사유</label><input v-model="mkForm.note" placeholder="예: 6/22 결석 보강" class="input py-1" /></div>
+            <div class="flex justify-end"><button @click="addMakeup" class="btn-primary text-sm">보강 추가</button></div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- 결석 → 보강 처리 안내 — 탭과 무관하게 항상 렌더링 -->
+    <div v-if="absentPrompt" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" @click.self="absentPrompt=null">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5">
+        <div class="font-bold mb-1">결석 처리되었습니다</div>
+        <p class="text-sm text-slate-500 mb-4">{{ absentPrompt.student_name }} · {{ absentPrompt.subject }} 수업의 보강을 어떻게 할까요?</p>
+        <div class="space-y-2">
+          <button @click="absentSchedule" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-blue-50">
+            <div class="text-sm font-medium text-blue-700">지금 보강 잡기</div>
+            <div class="text-xs text-slate-400">보강 날짜·시간을 바로 지정합니다.</div>
+          </button>
+          <button @click="absentLater" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-slate-50">
+            <div class="text-sm font-medium">나중에</div>
+            <div class="text-xs text-slate-400">보강 필요 목록에 남겨두고 나중에 잡습니다.</div>
+          </button>
+          <button @click="absentNoMakeup" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-slate-50">
+            <div class="text-sm font-medium text-slate-600">보강 안 함</div>
+            <div class="text-xs text-slate-400">보강 없이 결석으로 마무리합니다.</div>
+          </button>
         </div>
       </div>
     </div>
@@ -2178,6 +2178,12 @@
 
             <!-- 출결기록 -->
             <div v-if="stuTab==='attend'" class="space-y-3">
+              <div class="border border-slate-200 rounded-lg px-3 py-2 text-sm flex items-center gap-4 flex-wrap">
+                <span>결석 <b class="text-rose-500">{{ stuAttOverall.absent }}</b></span>
+                <span>지각 <b class="text-amber-600">{{ stuAttOverall.late }}</b></span>
+                <span>보강 <b class="text-blue-600">{{ stuAttOverall.makeupTotal }}</b><span class="text-slate-400 text-xs"> (날짜미정 {{ stuAttOverall.makeupPending }})</span></span>
+                <button @click="openMakeupForThisStudent" class="ml-auto btn-secondary text-sm">+ 보강 추가</button>
+              </div>
               <div class="bg-slate-50 rounded-lg px-3 py-2 text-xs flex items-center gap-4 flex-wrap">
                 <span>이번달 <b class="text-rose-500">결석 {{ stuAttSummary.mAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.mLate }}</b> <span class="text-slate-400">({{ stuAttSummary.mTotal }}회 중 {{ stuAttSummary.mRate }}%)</span></span>
                 <span>최근 3개월 <b class="text-rose-500">결석 {{ stuAttSummary.qAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.qLate }}</b> <span class="text-slate-400">({{ stuAttSummary.qTotal }}회 중 {{ stuAttSummary.qRate }}%)</span></span>
@@ -2198,6 +2204,9 @@
                   <button @click="stuAttBulkForm.note_tag='ABSENT'" :class="['px-2 py-1 rounded text-xs border', stuAttBulkForm.note_tag==='ABSENT' ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석</button>
                   <button v-for="t in attNoteTags" :key="t.value" @click="stuAttBulkForm.note_tag=t.value" class="px-2 py-1 rounded text-xs border" :style="stuAttBulkForm.note_tag===t.value ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
                 </div>
+                <label v-if="stuAttBulkForm.note_tag==='ABSENT'" class="flex items-center gap-1.5">
+                  <input type="checkbox" v-model="stuAttBulkForm.no_makeup" class="w-3.5 h-3.5" /> 보강 안 함(선택한 날짜 모두 보강 대상에서 제외)
+                </label>
                 <input v-model="stuAttBulkForm.note" placeholder="사유(예: 가족여행으로 일정 결석 / 다른 학원 특강으로 이 기간 시간 변동)" class="input py-1" />
                 <div class="flex justify-end"><button @click="applyStuAttBulk" class="btn-primary text-sm">선택한 {{ stuAttSelected.length }}건에 적용</button></div>
               </div>
@@ -3309,7 +3318,7 @@ createApp({
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'progress',l:'진도'},{k:'attend',l:'출결기록'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
       stuAttHist: { rows:[], from:'', to:'', fwdMonths:0 },
-      stuAttSelected: [], stuAttBulkForm: { note_tag:'', note:'' },
+      stuAttSelected: [], stuAttBulkForm: { note_tag:'', note:'', no_makeup:false },
       stuProgress: [], stuProgForm: { date:'', content:'', homework:'' },
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
@@ -3542,6 +3551,23 @@ createApp({
       out.mRate = out.mTotal ? Math.round(out.mAbsent/out.mTotal*100) : 0;
       out.qRate = out.qTotal ? Math.round(out.qAbsent/out.qTotal*100) : 0;
       return out;
+    },
+    stuAttOverall(){
+      // 조회 범위 전체 기준(수업시작일~오늘, +N개월 확장 시 그만큼 포함) 결석/지각/보강 총계.
+      // "남은 보강"은 애매해서 총 보강 건수와, 그 중 아직 보강 날짜조차 안 잡힌(대기) 건수로 나눠 표시.
+      const today = this.todayStr;
+      let absent=0, late=0, makeupTotal=0, makeupPending=0;
+      for (const row of this.stuAttHist.rows){
+        if (row.is_makeup){ makeupTotal++; continue; }
+        if (row.date > today) continue; // 아직 안 지난 예정 수업은 결석/지각 집계에서 제외
+        if (row.status==='ABSENT'){
+          absent++;
+          if (!row.no_makeup && !row.linked) makeupPending++;
+        } else if (row.att.in && (this.hmMin(row.att.in) - this.hmMin(row.start_time)) > 0){
+          late++;
+        }
+      }
+      return { absent, late, makeupTotal, makeupPending };
     },
     dashSubjects(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.subject))]; },
     dashInstructors(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.instructor))]; },
@@ -4738,8 +4764,11 @@ createApp({
     },
     absentLater(){ this.absentPrompt=null; },  // 나중에(보강필요 리스트에 남음)
     async absentNoMakeup(){
-      try { await api('POST','/api/admin/academy/lesson_status', { occ_id:this.absentPrompt.occ_id, status:'ABSENT', no_makeup:true }); this.notify('결석(보강 안 함)으로 처리되었습니다.'); this.absentPrompt=null; this.loadDashboard(); }
-      catch(e){ this.notify(e.message,false); }
+      try {
+        await api('POST','/api/admin/academy/lesson_status', { occ_id:this.absentPrompt.occ_id, status:'ABSENT', no_makeup:true });
+        this.notify('결석(보강 안 함)으로 처리되었습니다.'); this.absentPrompt=null;
+        if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths); else this.loadDashboard();
+      } catch(e){ this.notify(e.message,false); }
     },
     absentSchedule(){ const p=this.absentPrompt; this.absentPrompt=null; this.openMakeupFor(p); },
     dashToday(){ this.dashDate = this.todayStr; this.loadDashboard(); },
@@ -4753,7 +4782,8 @@ createApp({
     calBadge(it){
       const tag = this.isAbsent(it) ? 'ABSENT' : ((it.att && it.att.note_tag) || '');
       if (!tag) return null;
-      return { label: this.attTagLabel(tag), style: this.attTagStyle(tag) };
+      const label = this.attTagLabel(tag) + (tag==='ABSENT' && it.no_makeup ? '(보강X)' : '');
+      return { label, style: this.attTagStyle(tag) };
     },
     async openCalAtt(it, date){
       let occId = it.occ_id;
@@ -4790,6 +4820,14 @@ createApp({
       this.mkSearch={ query:'', student:null, candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' };
       if (!this.students.length) this.loadStudents();
       try { this.mkPending = await api('GET','/api/admin/academy/pending_makeup') || []; } catch(e){ this.mkPending=[]; }
+    },
+    // 학생 상세(출결기록)에서 바로 "보강 추가": 학생 검색 단계를 건너뛰고 이 학생의 후보 목록으로 진입
+    openMakeupForThisStudent(){
+      if (!this.stuDetail) return;
+      this.mkMode='search'; this.mkStep='pick'; this._resetMkForm(); this.makeupOpen=true; this.mkPending=[];
+      this.mkSearch = { query:'', student:{ id:this.stuDetail.id, real_name:(this.stuDetail.real_name||this.stuDetail.username) },
+                        candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' };
+      this.loadMkCandidates(3,1);
     },
     pickPending(p){
       this.mkForm={ makeup_for:p.occ_id, student_id:p.student_id, student_name:p.student_name,
@@ -5332,12 +5370,13 @@ createApp({
       if (!ids.length) return;
       const tag = this.stuAttBulkForm.note_tag;
       const note = this.stuAttBulkForm.note;
+      const noMakeup = this.stuAttBulkForm.no_makeup;
       const rowsById = {}; this.stuAttHist.rows.forEach(r=>{ rowsById[r.occ_id]=r; });
       try {
         for (const occId of ids){
           const row = rowsById[occId]; if (!row) continue;
           if (tag==='ABSENT'){
-            await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'ABSENT', note });
+            await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'ABSENT', note, no_makeup:noMakeup });
             await api('POST','/api/admin/academy/attendance_note', { student_id:this.stuDetail.id, date:row.date, note_tag:'', note:'' });
           } else {
             if (row.status==='ABSENT') await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'SCHEDULED', note:'' });
@@ -5345,7 +5384,7 @@ createApp({
           }
         }
         this.notify(ids.length+'건에 적용되었습니다.');
-        this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'' };
+        this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'', no_makeup:false };
         this.loadStuAttHist(this.stuAttHist.fwdMonths);
       } catch(e){ this.notify(e.message,false); }
     },
@@ -5357,7 +5396,7 @@ createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     stuAttStatusInfo(row){
-      if (row.status==='ABSENT') return { label:'결석', cls:'bg-rose-100 text-rose-600' };
+      if (row.status==='ABSENT') return { label:'결석'+(row.no_makeup?'(보강X)':''), cls:'bg-rose-100 text-rose-600' };
       if (row.is_makeup) return { label:'보강', cls:'bg-blue-100 text-blue-700' };
       if (row.att.in && row.att.out) return { label:'완료', cls:'bg-cyan-100 text-cyan-700' };
       if (row.att.in && this.hmMin(row.att.in) > this.hmMin(row.start_time)) return { label:'지각', cls:'bg-amber-100 text-amber-700' };
@@ -5422,7 +5461,7 @@ createApp({
         this.stuCreds=[]; this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds();
         this.stuProgress=[]; this.stuProgForm={ date:'', content:'', homework:'' }; this.loadStuProgress();
         this.stuAttHist={ rows:[], from:'', to:'', fwdMonths:0 };
-        this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'' };
+        this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'', no_makeup:false };
         this.stuResvForm={ date:'', ampm:'오전', hour:'', min:'00', note:'' };
       } catch(e){ this.notify(e.message,false); }
     },
