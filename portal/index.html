@@ -1985,7 +1985,7 @@
       </div>
       <!-- 검색/필터 -->
       <div class="flex items-center gap-2 mb-3">
-        <input v-model="stuSearch" placeholder="1차 검색 (원번·이름·학교·학년·보호자)" class="input flex-1 min-w-0 py-1" />
+        <input v-model="stuSearch" ref="stuSearchInput" placeholder="1차 검색 (원번·이름·학교·학년·보호자)" class="input flex-1 min-w-0 py-1" />
         <input v-model="stuSearch2" placeholder="2차 검색" class="input flex-1 min-w-0 py-1" />
         <div class="shrink-0 w-28">
           <select v-model="stuStatusFilter" class="input py-1">
@@ -4041,7 +4041,7 @@ const app = createApp({
         this.switchTtView(this.ttView);
         this.loadMkgPending();
       }
-      else if (key==='students'){ this.loadStudents(); this.loadOptions(); }
+      else if (key==='students'){ this.loadStudents(); this.loadOptions(); this.$nextTick(()=> this.$refs.stuSearchInput && this.$refs.stuSearchInput.focus()); }
       else if (key==='children') this.loadChildren();
       else if (key==='hr'){ this.loadStaffProfile().then(()=> this.$nextTick(()=> this.hrSigInit())); }
       else if (key==='lead'){ this.loadOptions(); if (this.isParent) this.prefillLeadFromGuardian(); }
