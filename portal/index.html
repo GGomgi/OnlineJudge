@@ -847,7 +847,7 @@
       </div>
 
       <!-- 출결 상세(시각 수정·비고·이력) 모달 -->
-      <div v-if="attModal" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="attModal=null">
+      <div v-if="attModal" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="attModal=null">
         <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b">
             <div class="font-bold">{{ attModal.student_name }} <span class="text-xs font-normal text-slate-400">{{ attModal.date || dashDate }} · {{ attModal.subject }}</span></div>
@@ -2178,6 +2178,10 @@
 
             <!-- 출결기록 -->
             <div v-if="stuTab==='attend'" class="space-y-3">
+              <div class="bg-slate-50 rounded-lg px-3 py-2 text-xs flex items-center gap-4 flex-wrap">
+                <span>이번달 <b class="text-rose-500">결석 {{ stuAttSummary.mAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.mLate }}</b> <span class="text-slate-400">({{ stuAttSummary.mTotal }}회 중 {{ stuAttSummary.mRate }}%)</span></span>
+                <span>최근 3개월 <b class="text-rose-500">결석 {{ stuAttSummary.qAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.qLate }}</b> <span class="text-slate-400">({{ stuAttSummary.qTotal }}회 중 {{ stuAttSummary.qRate }}%)</span></span>
+              </div>
               <div class="flex items-center gap-2 text-xs flex-wrap">
                 <span class="text-slate-400">조회 범위: <b class="text-slate-600">{{ stuAttHist.from }} ~ {{ stuAttHist.to }}</b> <span class="text-slate-300">(수업시작일 ~ 오늘 기본)</span></span>
                 <button @click="loadStuAttHist(stuAttHist.fwdMonths+1)" class="ml-auto px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">+1개월(이후 예정 보기)</button>
@@ -2192,23 +2196,32 @@
                   <span v-if="g.makeup" class="text-blue-600">보강 {{ g.makeup }}</span>
                   <span class="ml-auto text-slate-400">{{ g.rows.length }}건</span>
                 </div>
-                <table class="w-full text-xs">
+                <table class="w-full text-xs" style="table-layout:fixed">
+                  <colgroup>
+                    <col style="width:15%"><col style="width:14%"><col style="width:11%">
+                    <col style="width:15%"><col style="width:9%"><col style="width:10%"><col>
+                  </colgroup>
                   <thead class="text-slate-400"><tr>
-                    <th class="px-2 py-1 text-left w-16">날짜</th>
+                    <th class="px-2 py-1 text-left">날짜</th>
                     <th class="px-2 py-1 text-left">과목</th>
-                    <th class="px-2 py-1 text-left w-12">등원</th>
-                    <th class="px-2 py-1 text-left w-12">하원</th>
-                    <th class="px-2 py-1 text-left w-14">상태</th>
+                    <th class="px-2 py-1 text-left">강사</th>
+                    <th class="px-2 py-1 text-left">등원</th>
+                    <th class="px-2 py-1 text-left">하원</th>
+                    <th class="px-2 py-1 text-left">상태</th>
                     <th class="px-2 py-1 text-left">비고</th>
                   </tr></thead>
                   <tbody>
                     <tr v-for="row in g.rows" :key="row.occ_id" @click="openStuAttRow(row)" class="border-t hover:bg-indigo-50/50 cursor-pointer">
-                      <td class="px-2 py-1 whitespace-nowrap">{{ row.date.slice(5) }}({{ wdOf(row.date) }})</td>
-                      <td class="px-2 py-1">{{ row.subject }}</td>
-                      <td class="px-2 py-1">{{ row.att.in || '-' }}</td>
-                      <td class="px-2 py-1">{{ row.att.out || '-' }}</td>
+                      <td class="px-2 py-1 whitespace-nowrap truncate">{{ row.date.slice(5) }}({{ wdOf(row.date) }})</td>
+                      <td class="px-2 py-1 truncate">{{ row.subject }}</td>
+                      <td class="px-2 py-1 truncate text-slate-500">{{ row.instructor }}</td>
+                      <td class="px-2 py-1 truncate">
+                        {{ row.att.in || '-' }}
+                        <span v-if="stuAttLateText(row)" class="block text-[10px]" :class="stuAttLateCls(row)">{{ stuAttLateText(row) }}</span>
+                      </td>
+                      <td class="px-2 py-1 truncate">{{ row.att.out || '-' }}</td>
                       <td class="px-2 py-1"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
-                      <td class="px-2 py-1 text-slate-500">
+                      <td class="px-2 py-1 text-slate-500 truncate">
                         <span v-if="stuAttLinkedText(row)" class="text-indigo-500 whitespace-nowrap">({{ stuAttLinkedText(row) }})</span>
                         {{ row.lesson_note || row.att.note || '' }}
                       </td>
@@ -3495,6 +3508,23 @@ createApp({
         else if (st.label==='보강') g.makeup++;
       }
       return groups;
+    },
+    stuAttSummary(){
+      const today = this.todayStr;
+      const thisMonth = today.slice(0,7);
+      const t = new Date(today+'T00:00:00'); t.setDate(t.getDate()-90);
+      const cutoff = t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+      const out = { mAbsent:0, mLate:0, mTotal:0, qAbsent:0, qLate:0, qTotal:0, mRate:0, qRate:0 };
+      for (const row of this.stuAttHist.rows){
+        if (row.date > today || row.is_makeup) continue; // 아직 안 지난 수업·보강행은 결석률 계산에서 제외
+        const absent = row.status==='ABSENT';
+        const late = !absent && row.att.in && (this.hmMin(row.att.in) - this.hmMin(row.start_time)) > 0;
+        if (row.date.slice(0,7)===thisMonth){ out.mTotal++; if(absent) out.mAbsent++; if(late) out.mLate++; }
+        if (row.date>=cutoff){ out.qTotal++; if(absent) out.qAbsent++; if(late) out.qLate++; }
+      }
+      out.mRate = out.mTotal ? Math.round(out.mAbsent/out.mTotal*100) : 0;
+      out.qRate = out.qTotal ? Math.round(out.qAbsent/out.qTotal*100) : 0;
+      return out;
     },
     dashSubjects(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.subject))]; },
     dashInstructors(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.instructor))]; },
@@ -5286,6 +5316,17 @@ createApp({
       if (!row.linked) return '';
       const wd = this.wdOf(row.linked.date);
       return (row.linked.kind==='makeup' ? '보강:' : '결석:') + row.linked.date.slice(5)+'('+wd+') '+row.linked.start_time;
+    },
+    stuAttLateText(row){
+      if (!row.att.in) return '';
+      const diff = this.hmMin(row.att.in) - this.hmMin(row.start_time);
+      if (diff===0) return '정시';
+      return diff>0 ? diff+'분 지각' : (-diff)+'분 일찍';
+    },
+    stuAttLateCls(row){
+      if (!row.att.in) return '';
+      const diff = this.hmMin(row.att.in) - this.hmMin(row.start_time);
+      return diff>0 ? 'text-amber-600' : (diff<0 ? 'text-slate-400' : 'text-emerald-600');
     },
     openStuAttRow(row){
       this.openAtt({ occ_id:row.occ_id, student_id:this.stuDetail.id, student_name:(this.stuDetail.real_name||this.stuDetail.username),
