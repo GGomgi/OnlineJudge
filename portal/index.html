@@ -882,13 +882,14 @@
             <!-- 결석 목록에서 고르기 -->
             <div v-if="mkMode==='pending'">
               <p class="text-xs text-slate-400 mb-1">결석했지만 아직 보강을 잡지 않은 수업입니다. 보강할 대상을 선택하세요.</p>
+              <input v-model="mkPendingSearch" placeholder="이름으로 검색" class="input py-1 mb-1" />
               <ul class="mt-1 max-h-60 overflow-y-auto border rounded-lg divide-y">
-                <li v-for="p in mkPending" :key="p.occ_id" @click="pickPending(p)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
+                <li v-for="p in mkPendingFiltered()" :key="p.occ_id" @click="pickPending(p)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
                   <span class="font-medium">{{ p.student_name }}</span>
-                  <span class="text-xs text-slate-500">{{ p.date }} {{ p.start_time }}</span>
+                  <span class="text-xs text-slate-500">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }}({{ p.duration_minutes||60 }}분)</span>
                   <span class="ml-auto text-xs text-slate-400">{{ p.subject }}</span>
                 </li>
-                <li v-if="mkPending.length===0" class="px-3 py-4 text-xs text-slate-400 text-center">보강이 필요한 결석이 없습니다.</li>
+                <li v-if="mkPendingFiltered().length===0" class="px-3 py-4 text-xs text-slate-400 text-center">보강이 필요한 결석이 없습니다.</li>
               </ul>
             </div>
 
@@ -1572,7 +1573,7 @@
         <!-- 건별 -->
         <ul v-if="mkgGroupBy==='flat'" class="space-y-1 max-h-96 overflow-y-auto">
           <li v-for="p in mkgList" :key="p.occ_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-2">
-            <span class="font-medium">{{ p.student_name }}</span>
+            <span class="font-medium text-indigo-600 cursor-pointer hover:underline" @click="goStudentAttend(p.student_id)">{{ p.student_name }}</span>
             <call-btn :phone="p.parent_phone || p.student_phone"></call-btn>
             <span class="text-xs text-slate-400">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
             <span :class="['text-[11px] px-1.5 py-0.5 rounded shrink-0', mkgDaysCls(p.date)]">D+{{ mkgDaysAgo(p.date) }}</span>
@@ -1588,7 +1589,7 @@
         <ul v-else class="space-y-1 max-h-96 overflow-y-auto">
           <li v-for="g in mkgGrouped()" :key="g.student_id" class="bg-slate-50 rounded px-3 py-2">
             <div class="flex items-center gap-2 text-sm mb-1">
-              <span class="font-medium">{{ g.student_name }}</span>
+              <span class="font-medium text-indigo-600 cursor-pointer hover:underline" @click="goStudentAttend(g.student_id)">{{ g.student_name }}</span>
               <call-btn :phone="g.parent_phone || g.student_phone"></call-btn>
               <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-600">{{ g.items.length }}건</span>
             </div>
@@ -3463,7 +3464,7 @@ const app = createApp({
       mkgList: [], mkgGroupBy: 'student', mkgBranchId: '', mkgLoading: false,
       dashShowDone: true,
       kioskDevicesOpen: false, kioskDevices: [], kioskDeviceBranchId: null,
-      makeupOpen: false, mkMode: 'pending', mkStep: 'pick', mkPending: [],
+      makeupOpen: false, mkMode: 'pending', mkStep: 'pick', mkPending: [], mkPendingSearch: '',
       mkForm: { makeup_for:null, student_id:null, student_name:'', origin:'', time:'', date:'', note:'' },
       mkSearch: { query:'', student:null, candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' },
       absentPrompt: null,
@@ -5001,12 +5002,16 @@ const app = createApp({
     showDashPop(l,e){ clearTimeout(this._dashPopTimer); this.dashPop={ show:true, l, x:Math.min(e.clientX+8,window.innerWidth-280), y:Math.min(e.clientY+8,window.innerHeight-180) }; },
     keepDashPop(){ clearTimeout(this._dashPopTimer); },
     hideDashPop(){ clearTimeout(this._dashPopTimer); this._dashPopTimer=setTimeout(()=>{ this.dashPop.show=false; }, 250); },
+    async goStudentAttend(studentId){
+      if (!studentId) return;
+      this.go('students');
+      await this.openStudent({ id:studentId });
+      this.selectStuTab('attend');
+    },
     async goStudentAttendFromDashPop(){
       const l = this.dashPop.l; if (!l || !l.student_id) return;
       this.dashPop.show=false; clearTimeout(this._dashPopTimer);
-      this.go('students');
-      await this.openStudent({ id:l.student_id });
-      this.selectStuTab('attend');
+      this.goStudentAttend(l.student_id);
     },
     async setAbsent(l){
       const note = window.prompt('결석 사유 (선택)') ?? '';
@@ -5019,8 +5024,13 @@ const app = createApp({
     },
     _resetMkForm(){ this.mkForm={ makeup_for:null, student_id:null, student_name:'', origin:'', time:'', date:'', note:'' }; },
     // 상단 +보강 추가: 보강이 필요한 결석 목록을 모아 보여주고, 골라서 오늘 보강
+    mkPendingFiltered(){
+      const q = (this.mkPendingSearch||'').trim();
+      if (!q) return this.mkPending;
+      return this.mkPending.filter(p=>(p.student_name||'').includes(q));
+    },
     async openMakeup(){
-      this.mkMode='pending'; this.mkStep='pick'; this._resetMkForm(); this.makeupOpen=true; this.mkPending=[];
+      this.mkMode='pending'; this.mkStep='pick'; this._resetMkForm(); this.makeupOpen=true; this.mkPending=[]; this.mkPendingSearch='';
       this.mkSearch={ query:'', student:null, candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' };
       if (!this.students.length) this.loadStudents();
       try { this.mkPending = await api('GET','/api/admin/academy/pending_makeup') || []; } catch(e){ this.mkPending=[]; }
@@ -5062,12 +5072,14 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     // 학생 상세(출결기록)에서 바로 "보강 추가": 학생 검색 단계를 건너뛰고 이 학생의 후보 목록으로 진입
-    openMakeupForThisStudent(){
+    async openMakeupForThisStudent(){
       if (!this.stuDetail) return;
-      this.mkMode='search'; this.mkStep='pick'; this._resetMkForm(); this.makeupOpen=true; this.mkPending=[];
+      this.mkMode='search'; this.mkStep='pick'; this._resetMkForm(); this.makeupOpen=true; this.mkPending=[]; this.mkPendingSearch='';
       this.mkSearch = { query:'', student:{ id:this.stuDetail.id, real_name:(this.stuDetail.real_name||this.stuDetail.username) },
                         candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' };
       this.loadMkCandidates(3,1);
+      try { const all = await api('GET','/api/admin/academy/pending_makeup') || []; this.mkPending = all.filter(p=>p.student_id===this.stuDetail.id); }
+      catch(e){ this.mkPending=[]; }
     },
     pickPending(p){
       this.mkForm={ makeup_for:p.occ_id, student_id:p.student_id, student_name:p.student_name,

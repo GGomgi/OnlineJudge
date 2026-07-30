@@ -3836,6 +3836,7 @@ class PendingMakeupAPI(APIView):
             prof = getattr(o.student, "student_profile", None)
             out.append({"occ_id": o.id, "student_id": o.student_id, "student_name": _name_of(o.student),
                         "date": str(o.date), "start_time": str(o.start_time)[:5],
+                        "duration_minutes": o.duration_minutes,
                         "subject": o.subject or "미지정", "branch": (o.branch.name if o.branch_id else ""),
                         "parent_phone": (prof.parent_phone if prof else ""),
                         "student_phone": (prof.student_phone if prof else "")})
