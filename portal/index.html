@@ -206,7 +206,7 @@
   <div v-if="resvInfoPop.show" @mouseenter="keepResvInfoPop" @mouseleave="hideResvInfoPop" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72" :style="{ left: resvInfoPop.x+'px', top: resvInfoPop.y+'px' }">
     <div class="font-bold text-sm">{{ resvInfoPop.rv.student_name }} <span class="text-xs font-normal text-slate-400">· 학부모 {{ resvInfoPop.rv.parent_name }}</span></div>
     <div class="text-slate-500">{{ resvInfoPop.rv.school_name }}{{ schoolSuffix(resvInfoPop.rv.school_type) }} {{ resvInfoPop.rv.grade ? resvInfoPop.rv.grade+'학년' : '' }}</div>
-    <div class="text-slate-500 flex items-center gap-1">{{ resvInfoPop.rv.parent_phone || '-' }} <call-btn :phone="resvInfoPop.rv.parent_phone"/></div>
+    <div class="text-slate-500 flex items-center gap-1">{{ resvInfoPop.rv.parent_phone || '-' }} <call-btn :phone="resvInfoPop.rv.parent_phone"></call-btn></div>
     <div class="mt-2 pt-2 border-t">
       <div class="font-semibold text-slate-600 mb-1">상담 기록 {{ (resvInfoPop.rv.logs||[]).length }}개</div>
       <ul class="space-y-1 max-h-48 overflow-y-auto pr-1">
@@ -289,8 +289,8 @@
   <div v-if="dashPop.show" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
     <div class="font-bold text-sm mb-1">{{ dashPop.l.student_name }}</div>
     <div class="text-slate-500">{{ dashPop.l.school_name }}{{ schoolSuffix(dashPop.l.school_type) }} {{ dashPop.l.grade ? dashPop.l.grade+'학년' : '' }}</div>
-    <div class="mt-1 flex items-center gap-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span> <call-btn :phone="dashPop.l.parent_phone"/></div>
-    <div class="flex items-center gap-1">학생: <span class="text-slate-600">{{ dashPop.l.student_phone || '-' }}</span> <call-btn :phone="dashPop.l.student_phone"/></div>
+    <div class="mt-1 flex items-center gap-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span> <call-btn :phone="dashPop.l.parent_phone"></call-btn></div>
+    <div class="flex items-center gap-1">학생: <span class="text-slate-600">{{ dashPop.l.student_phone || '-' }}</span> <call-btn :phone="dashPop.l.student_phone"></call-btn></div>
     <div v-if="dashPop.l.att.note_tag || dashPop.l.att.note" class="mt-1 pt-1 border-t">비고: <span v-if="dashPop.l.att.note_tag" class="px-1 rounded" :style="attTagStyle(dashPop.l.att.note_tag)">{{ attTagLabel(dashPop.l.att.note_tag) }}</span> <span class="text-slate-600">{{ dashPop.l.att.note }}</span></div>
   </div>
 
@@ -1020,7 +1020,7 @@
               <div class="text-sm text-slate-500 mt-1">
                 {{ r.branch?.name }}<span v-if="r.school_name"> · {{ r.school_name }}{{ schoolSuffix(r.school_type) }}</span><span v-if="r.grade"> · {{ r.grade }}학년</span>
               </div>
-              <div class="text-sm text-slate-500 flex items-center gap-1">{{ r.parent_phone }} <call-btn :phone="r.parent_phone"/> <span class="text-xs text-indigo-600">· {{ purposeLabel(r) }}</span></div>
+              <div class="text-sm text-slate-500 flex items-center gap-1">{{ r.parent_phone }} <call-btn :phone="r.parent_phone"></call-btn> <span class="text-xs text-indigo-600">· {{ purposeLabel(r) }}</span></div>
               <div v-if="r.interest" class="text-xs text-slate-400 mt-1">문의: {{ r.interest }}</div>
             </div>
             <div class="text-right shrink-0">
@@ -1526,19 +1526,6 @@
 
     <!-- ============ 관리자: 개별 시간표 ============ -->
     <section v-if="tab==='indtt' || tab==='makeup'">
-      <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
-        <!-- 보기 전환 -->
-        <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
-          <button @click="switchTtView('day')" :class="['px-3 py-1.5', ttView==='day' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">일간</button>
-          <button @click="switchTtView('week')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='week' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">주간</button>
-          <button @click="switchTtView('month')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='month' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">월간</button>
-          <button v-if="tab==='indtt'" @click="switchTtView('list')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='list' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">목록</button>
-        </div>
-        <button v-if="tab==='indtt' && hasAnyEdit" @click="openTtAdd" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">
-          + 수업 추가
-          <span :class="['ml-1 px-1.5 py-0.5 rounded text-[11px]', ttUnassignedCount>0 ? 'bg-rose-500' : 'bg-indigo-500']">{{ ttUnassignedCount>0 ? '미등록 '+ttUnassignedCount+'명!' : '미등록 없음' }}</span>
-        </button>
-      </div>
       <p v-if="tab==='indtt'" class="text-xs text-slate-400 mb-3">전체 학생의 개별 수업을 필터로 조회·관리합니다. 입회원 신청서의 요일/시간은 등록 시 자동 생성됩니다.</p>
       <p v-else class="text-xs text-slate-400 mb-3">결석 후 아직 보강 일정이 잡히지 않은 학생을 모아 안내·일정 조율하고, 아래 캘린더에서 이미 잡힌 보강을 확인합니다.</p>
 
@@ -1547,7 +1534,8 @@
         <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
           <h3 class="font-semibold text-sm">날짜미정 보강 <span class="text-xs font-normal text-slate-400">{{ mkgList.length }}건</span></h3>
           <div class="flex items-center gap-2">
-            <select v-model="mkgBranchId" @change="loadMkgPending" class="input py-1 text-xs w-32">
+            <span v-if="!isDirectorUp" class="text-xs text-slate-400 px-1">{{ (myProfile && myProfile.branch && myProfile.branch.name) || '' }}</span>
+            <select v-else v-model="mkgBranchId" @change="loadMkgPending" class="input py-1 text-xs w-32">
               <option value="">지점 전체</option>
               <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
             </select>
@@ -1562,7 +1550,7 @@
         <ul v-if="mkgGroupBy==='flat'" class="space-y-1 max-h-96 overflow-y-auto">
           <li v-for="p in mkgList" :key="p.occ_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-2">
             <span class="font-medium">{{ p.student_name }}</span>
-            <call-btn :phone="p.parent_phone || p.student_phone"/>
+            <call-btn :phone="p.parent_phone || p.student_phone"></call-btn>
             <span class="text-xs text-slate-400">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
             <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 shrink-0">D+{{ mkgDaysAgo(p.date) }}</span>
             <span class="ml-auto flex gap-2 shrink-0">
@@ -1578,7 +1566,7 @@
           <li v-for="g in mkgGrouped()" :key="g.student_id" class="bg-slate-50 rounded px-3 py-2">
             <div class="flex items-center gap-2 text-sm mb-1">
               <span class="font-medium">{{ g.student_name }}</span>
-              <call-btn :phone="g.parent_phone || g.student_phone"/>
+              <call-btn :phone="g.parent_phone || g.student_phone"></call-btn>
               <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-600">{{ g.items.length }}건</span>
             </div>
             <div v-for="p in g.items" :key="p.occ_id" class="flex items-center gap-2 text-xs text-slate-500 pl-1 py-0.5">
@@ -1592,6 +1580,20 @@
           </li>
           <li v-if="!mkgLoading && mkgGrouped().length===0" class="text-center text-xs text-slate-400 py-6">날짜미정 보강이 없습니다.</li>
         </ul>
+      </div>
+
+      <!-- 보기 전환: 캘린더 바로 위에 둬서 어떤 화면인지 놓치지 않게 -->
+      <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
+        <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+          <button @click="switchTtView('day')" :class="['px-3 py-1.5', ttView==='day' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">일간</button>
+          <button @click="switchTtView('week')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='week' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">주간</button>
+          <button @click="switchTtView('month')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='month' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">월간</button>
+          <button v-if="tab==='indtt'" @click="switchTtView('list')" :class="['px-3 py-1.5 border-l border-slate-200', ttView==='list' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">목록</button>
+        </div>
+        <button v-if="tab==='indtt' && hasAnyEdit" @click="openTtAdd" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">
+          + 수업 추가
+          <span :class="['ml-1 px-1.5 py-0.5 rounded text-[11px]', ttUnassignedCount>0 ? 'bg-rose-500' : 'bg-indigo-500']">{{ ttUnassignedCount>0 ? '미등록 '+ttUnassignedCount+'명!' : '미등록 없음' }}</span>
+        </button>
       </div>
 
       <!-- ===== 달력(주간/월간) ===== -->
@@ -2098,7 +2100,7 @@
                 <ul class="space-y-1">
                   <li v-for="gd in stuDetail.guardians" :key="gd.link_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-1.5">
                     <span class="font-medium">{{ gd.name }}<span v-if="gd.relation" class="font-normal text-slate-400">({{ gd.relation }})</span></span>
-                    <span class="text-xs text-slate-400 flex items-center gap-1">{{ gd.phone }} <call-btn :phone="gd.phone"/> · @{{ gd.username }}</span>
+                    <span class="text-xs text-slate-400 flex items-center gap-1">{{ gd.phone }} <call-btn :phone="gd.phone"></call-btn> · @{{ gd.username }}</span>
                     <span v-if="stuCanEdit" class="ml-auto flex gap-2">
                       <button @click="resetGuardianPw(gd)" class="text-xs text-indigo-500 hover:underline">비번 초기화</button>
                       <button @click="unlinkGuardian(gd)" class="text-xs text-rose-400 hover:underline">연결 해제</button>
@@ -2302,13 +2304,11 @@
                   <button @click="stuAttSelected=[]" class="text-slate-400 hover:underline">선택 해제</button>
                 </div>
                 <div class="flex flex-wrap gap-1">
-                  <button @click="stuAttBulkForm.note_tag=''" :class="['px-2 py-1 rounded text-xs border', !stuAttBulkForm.note_tag ? 'border-slate-400' : 'border-slate-200 text-slate-400']">없음</button>
-                  <button @click="stuAttBulkForm.note_tag='ABSENT'" :class="['px-2 py-1 rounded text-xs border', stuAttBulkForm.note_tag==='ABSENT' ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석</button>
-                  <button v-for="t in attNoteTags" :key="t.value" @click="stuAttBulkForm.note_tag=t.value" class="px-2 py-1 rounded text-xs border" :style="stuAttBulkForm.note_tag===t.value ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
+                  <button @click="stuAttBulkForm.note_tag=''; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', !stuAttBulkForm.note_tag ? 'border-slate-400' : 'border-slate-200 text-slate-400']">없음</button>
+                  <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && !stuAttBulkForm.no_makeup) ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석</button>
+                  <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=true" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && stuAttBulkForm.no_makeup) ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석(보강X)</button>
+                  <button v-for="t in attNoteTags" :key="t.value" @click="stuAttBulkForm.note_tag=t.value; stuAttBulkForm.no_makeup=false" class="px-2 py-1 rounded text-xs border" :style="stuAttBulkForm.note_tag===t.value ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
                 </div>
-                <label v-if="stuAttBulkForm.note_tag==='ABSENT'" class="flex items-center gap-1.5">
-                  <input type="checkbox" v-model="stuAttBulkForm.no_makeup" class="w-3.5 h-3.5" /> 보강 안 함(선택한 날짜 모두 보강 대상에서 제외)
-                </label>
                 <input v-model="stuAttBulkForm.note" placeholder="사유(예: 가족여행으로 일정 결석 / 다른 학원 특강으로 이 기간 시간 변동)" class="input py-1" />
                 <div class="flex justify-end"><button @click="applyStuAttBulk" class="btn-primary text-sm">선택한 {{ stuAttSelected.length }}건에 적용</button></div>
               </div>
@@ -2323,8 +2323,8 @@
                 </div>
                 <table class="w-full text-xs" style="table-layout:fixed">
                   <colgroup>
-                    <col style="width:5%"><col style="width:14%"><col style="width:13%"><col style="width:10%">
-                    <col style="width:14%"><col style="width:8%"><col style="width:10%"><col>
+                    <col style="width:5%"><col style="width:12%"><col style="width:12%"><col style="width:9%">
+                    <col style="width:13%"><col style="width:7%"><col style="width:16%"><col>
                   </colgroup>
                   <thead class="text-slate-400"><tr>
                     <th class="px-2 py-1"></th>
@@ -2347,7 +2347,7 @@
                         <span v-if="stuAttLateText(row)" class="block text-[10px]" :class="stuAttLateCls(row)">{{ stuAttLateText(row) }}</span>
                       </td>
                       <td class="px-2 py-1 truncate">{{ row.att.out || '-' }}</td>
-                      <td class="px-2 py-1"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
+                      <td class="px-2 py-1 overflow-hidden"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap text-[11px]', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
                       <td class="px-2 py-1 text-slate-500 truncate" @mouseenter="showNotePop(row,$event)" @mouseleave="hideNotePop">
                         <span v-if="stuAttLinkedText(row)" class="text-indigo-500 whitespace-nowrap">({{ stuAttLinkedText(row) }})</span>
                         {{ row.lesson_note || row.att.note || '' }}
@@ -4002,6 +4002,10 @@ const app = createApp({
         if (!this.branches.length) this.loadBranches();
         this.loadTtInstructors();
         if (this.ttFilter.instructor_ids===null) this.ttFilter.instructor_ids=[];
+        if (!this.isDirectorUp && !this.mkgBranchId){
+          const b = this.myProfile && this.myProfile.branch;
+          if (b) this.mkgBranchId = b.id;
+        }
         if (this.ttView==='list') this.ttView='week';
         this.switchTtView(this.ttView);
         this.loadMkgPending();
