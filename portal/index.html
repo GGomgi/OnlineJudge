@@ -299,6 +299,7 @@
     <div class="font-bold text-sm">{{ calPop.it.student_name }}</div>
     <div class="text-slate-500">{{ calPop.date }} {{ calPop.it.start_time }} · {{ calPop.it.subject }}<template v-if="calPop.it.makeup"> (보강)</template></div>
     <div v-if="calPop.it.status==='ABSENT'" class="mt-1 text-rose-500">결석</div>
+    <div v-else-if="calPop.it.status==='LEAVE'" class="mt-1 text-purple-600">임시휴원<span v-if="calPop.it.lesson_note"> · {{ calPop.it.lesson_note }}</span></div>
     <div class="mt-2 pt-2 border-t">
       <div class="text-indigo-600 font-semibold">📝 진도</div>
       <template v-if="calPop.it.progress && calPop.it.progress.content">
@@ -705,32 +706,34 @@
           <tbody>
             <template v-for="(l,i) in dashLessons" :key="i">
               <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?8:7" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }}</td></tr>
-              <tr class="border-t align-middle hover:bg-slate-50" :class="isAbsent(l) ? 'bg-rose-50/50' : (l.adhoc ? 'bg-amber-50/50' : '')">
+              <tr class="border-t align-middle hover:bg-slate-50" :class="isAbsent(l) ? 'bg-rose-50/50' : (isLeave(l) ? 'bg-violet-50/50' : (l.adhoc ? 'bg-amber-50/50' : ''))">
                 <td class="px-3 py-2 font-mono whitespace-nowrap">
                   <span v-if="l.time_changed" @mouseenter="showTcPop(l,$event)" @mouseleave="hideTcPop" class="text-amber-600 font-bold cursor-help">{{ l.start_time }}</span>
                   <span v-else>{{ l.start_time }}</span>
                 </td>
-                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline" :class="isAbsent(l) ? 'line-through text-slate-400' : ''" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
+                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : ''" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
                 <td class="px-3 py-2 text-slate-500">{{ l.subject }}<span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help" title="">📝</span></td>
                 <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
                 <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
                 <td class="px-3 py-2">
-                  <div class="flex items-center justify-center gap-1 whitespace-nowrap" :class="isAbsent(l) ? 'opacity-60' : ''">
-                    <template v-if="!isAbsent(l)">
+                  <div class="flex items-center justify-center gap-1 whitespace-nowrap" :class="(isAbsent(l)||isLeave(l)) ? 'opacity-60' : ''">
+                    <template v-if="!isAbsent(l) && !isLeave(l)">
                       <button @click="checkAtt(l,'in')" :class="['text-xs px-2 py-1 rounded text-center', l.att.in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-emerald-50']">{{ l.att.in ? '등원 '+l.att.in : '등원' }}</button>
                       <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded text-center', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
                     </template>
+                    <span v-else-if="isLeave(l)" class="text-xs text-violet-500">임시휴원</span>
                     <span v-else class="text-xs text-rose-500">결석{{ l.no_makeup ? ' (보강X)' : '' }}</span>
                   </div>
                 </td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
                   <span v-if="elapsedInfo(l)" class="text-[11px] font-mono" :class="elapsedInfo(l).done ? 'text-emerald-600 font-bold' : (elapsedInfo(l).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ elapsedInfo(l).mins }}분 / {{ elapsedInfo(l).dur }}분</span>
-                  <span v-else-if="!isAbsent(l)" class="text-[11px] font-mono text-slate-300">/ {{ l.duration_minutes||60 }}분</span>
+                  <span v-else-if="!isAbsent(l) && !isLeave(l)" class="text-[11px] font-mono text-slate-300">/ {{ l.duration_minutes||60 }}분</span>
                 </td>
                 <td class="px-3 py-2">
                   <button v-if="l.adhoc" @click="openAdhocLink(l)" class="px-1.5 py-0.5 rounded text-[11px] bg-amber-100 text-amber-700 hover:bg-amber-200">보강 연결</button>
                   <template v-else>
                     <span v-if="isAbsent(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-rose-100 text-rose-600">결석</span>
+                    <span v-else-if="isLeave(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-violet-100 text-violet-600">임시휴원</span>
                     <span v-else-if="l.att.note_tag" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
                     <span v-else @click="openAtt(l)" class="text-[11px] text-slate-300 hover:text-indigo-500 cursor-pointer">비고+</span>
                   </template>
@@ -960,8 +963,29 @@
           </button>
           <button @click="absentNoMakeup" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-slate-50">
             <div class="text-sm font-medium text-slate-600">보강 안 함</div>
-            <div class="text-xs text-slate-400">보강 없이 결석으로 마무리합니다.</div>
+            <div class="text-xs text-slate-400">등록 중 학생/학부모 사정으로 빠진 진짜 결석이며, 보강도 안 합니다.</div>
           </button>
+          <button @click="absentToLeave" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-purple-50">
+            <div class="text-sm font-medium text-purple-600">사실은 임시휴원</div>
+            <div class="text-xs text-slate-400">결제를 쉬는 등 애초에 수업 대상이 아니었던 기간입니다. 결석이 아닌 임시휴원으로 표시합니다.</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 임시휴원 등록(기간 지정) — 탭과 무관하게 항상 렌더링 -->
+    <div v-if="tempLeaveOpen" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" @click.self="tempLeaveOpen=false">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5 space-y-3">
+        <div class="font-bold">임시휴원 등록</div>
+        <p class="text-xs text-slate-400">결제를 쉬는 등 애초에 수업 대상이 아니었던 기간을 지정하면, 그 기간의 정규 수업이 시간표에 "임시휴원"으로 표시됩니다. 기간이 끝나면 자동으로 원래대로 돌아갑니다. (특정 날짜만 고르려면 이 창을 닫고 출결기록에서 체크박스로 선택 후 "임시휴원"을 적용하세요)</p>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="lbl">시작일</label><input v-model="tempLeaveForm.from" type="date" class="input py-1" /></div>
+          <div><label class="lbl">종료일</label><input v-model="tempLeaveForm.to" type="date" class="input py-1" /></div>
+        </div>
+        <div><label class="lbl">사유</label><input v-model="tempLeaveForm.note" placeholder="예: 결제 보류로 2주 쉼" class="input py-1" /></div>
+        <div class="flex justify-end gap-2">
+          <button @click="tempLeaveOpen=false" class="text-sm text-slate-400 hover:underline">취소</button>
+          <button @click="saveTempLeave" class="btn-primary text-sm">등록</button>
         </div>
       </div>
     </div>
@@ -1649,6 +1673,7 @@
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>수업중</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-cyan-400 shrink-0"></span>수업완료</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>결석</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-purple-400 shrink-0"></span>임시휴원</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0"></span>보강</span>
         </div>
 
@@ -2286,6 +2311,7 @@
                 <span>지각 <b class="text-amber-600">{{ stuAttOverall.late }}</b></span>
                 <span>보강 <b class="text-blue-600">{{ stuAttOverall.makeupTotal }}</b><span class="text-slate-400 text-xs"> (날짜미정 {{ stuAttOverall.makeupPending }})</span></span>
                 <button @click="openMakeupForThisStudent" class="ml-auto btn-secondary text-sm">+ 보강 추가</button>
+                <button @click="openTempLeave" class="btn-secondary text-sm">+ 임시휴원 등록</button>
               </div>
               <div class="bg-slate-50 rounded-lg px-3 py-2 text-xs flex items-center gap-4 flex-wrap">
                 <span>이번달 <b class="text-rose-500">결석 {{ stuAttSummary.mAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.mLate }}</b> <span class="text-slate-400">({{ stuAttSummary.mTotal }}회 중 {{ stuAttSummary.mRate }}%)</span></span>
@@ -2306,6 +2332,7 @@
                   <button @click="stuAttBulkForm.note_tag=''; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', !stuAttBulkForm.note_tag ? 'border-slate-400' : 'border-slate-200 text-slate-400']">없음</button>
                   <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && !stuAttBulkForm.no_makeup) ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석</button>
                   <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=true" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && stuAttBulkForm.no_makeup) ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석(보강X)</button>
+                  <button @click="stuAttBulkForm.note_tag='LEAVE'; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', stuAttBulkForm.note_tag==='LEAVE' ? 'border-purple-400 bg-purple-50 text-purple-600' : 'border-slate-200 text-slate-400']">임시휴원</button>
                   <button v-for="t in attNoteTags" :key="t.value" @click="stuAttBulkForm.note_tag=t.value; stuAttBulkForm.no_makeup=false" class="px-2 py-1 rounded text-xs border" :style="stuAttBulkForm.note_tag===t.value ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
                 </div>
                 <input v-model="stuAttBulkForm.note" placeholder="사유(예: 가족여행으로 일정 결석 / 다른 학원 특강으로 이 기간 시간 변동)" class="input py-1" />
@@ -3441,6 +3468,7 @@ const app = createApp({
       mkForm: { makeup_for:null, student_id:null, student_name:'', origin:'', time:'', date:'', note:'' },
       mkSearch: { query:'', student:null, candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' },
       absentPrompt: null,
+      tempLeaveOpen: false, tempLeaveForm: { from:'', to:'', note:'' },
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadStatusSel: [], leadSearch: '', leadSearch2: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
@@ -4271,10 +4299,11 @@ const app = createApp({
     calItemCls(it){
       if ((this.ttFilter.instructor_ids||[]).length > 1) {
         const c = this.instrColor(it.instructor_id);
-        if (c) return c.bg + ' ' + c.text + ' hover:brightness-95' + (it.status==='ABSENT' ? ' line-through opacity-60' : '');
+        if (c) return c.bg + ' ' + c.text + ' hover:brightness-95' + (it.status==='ABSENT'||it.status==='LEAVE' ? ' line-through opacity-60' : '');
       }
-      // 상태별 색: 결석 > 보강 > 수업완료(등원+하원) > 수업중(등원만) > 등원전
+      // 상태별 색: 결석 > 임시휴원 > 보강 > 수업완료(등원+하원) > 수업중(등원만) > 등원전
       if (it.status==='ABSENT') return 'bg-rose-100 text-rose-500 line-through';
+      if (it.status==='LEAVE') return 'bg-purple-100 text-purple-600 line-through';
       if (it.makeup) return 'bg-blue-50 text-blue-700 hover:bg-blue-100';
       const att = it.att || {};
       if (att.in && att.out) return 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200';
@@ -4872,7 +4901,7 @@ const app = createApp({
       try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+(l.date||this.dashDate)); } catch(e){ this.attHist=[]; }
     },
     attShiftLesson(delta){ if(this.attForm.lessonTime) this.attForm.lessonTime=this.shiftHM(this.attForm.lessonTime,delta); },
-    showNotePop(l,e){ this.notePop={ show:true, tag:(this.isAbsent(l) ? '결석' : this.attTagLabel(l.att.note_tag)), note:(this.isAbsent(l) ? (l.lesson_note||'') : (l.att.note||'')), tagStyle:this.attTagStyle(l.att.note_tag), x:Math.min(e.clientX+10,window.innerWidth-260), y:Math.min(e.clientY+10,window.innerHeight-80) }; },
+    showNotePop(l,e){ this.notePop={ show:true, tag:(this.isAbsent(l) ? '결석' : (this.isLeave(l) ? '임시휴원' : this.attTagLabel(l.att.note_tag))), note:((this.isAbsent(l)||this.isLeave(l)) ? (l.lesson_note||'') : (l.att.note||'')), tagStyle:(this.isLeave(l) ? {backgroundColor:'#ede9fe',color:'#7c3aed'} : this.attTagStyle(l.att.note_tag)), x:Math.min(e.clientX+10,window.innerWidth-260), y:Math.min(e.clientY+10,window.innerHeight-80) }; },
     showTcPop(l,e){ this.tcPop={ show:true, orig:l.orig_time||'', now:l.start_time, reason:l.time_change_reason||'', x:Math.min(e.clientX+12,window.innerWidth-240), y:Math.min(e.clientY+12,window.innerHeight-120) }; },
     hideTcPop(){ this.tcPop.show=false; },
     showProgPop(l,e){ const p=l.progress||{}; this.progPop={ show:true, content:p.content||'', homework:p.homework||'', x:Math.min(e.clientX+12,window.innerWidth-280), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
@@ -4912,6 +4941,28 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     absentSchedule(){ const p=this.absentPrompt; this.absentPrompt=null; this.openMakeupFor(p); },
+    async absentToLeave(){
+      try {
+        await api('POST','/api/admin/academy/lesson_status', { occ_id:this.absentPrompt.occ_id, status:'LEAVE' });
+        this.notify('임시휴원으로 처리되었습니다.'); this.absentPrompt=null;
+        if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths); else this.loadDashboard();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    openTempLeave(){
+      if (!this.stuDetail) return;
+      this.tempLeaveForm = { from:'', to:'', note:'' };
+      this.tempLeaveOpen = true;
+    },
+    async saveTempLeave(){
+      const f = this.tempLeaveForm;
+      if (!f.from || !f.to) return this.notify('기간을 입력하세요.', false);
+      try {
+        const d = await api('POST','/api/admin/academy/student_temp_leave', { student_id:this.stuDetail.id, from:f.from, to:f.to, note:f.note });
+        this.notify('임시휴원 '+d.count+'건 처리되었습니다.');
+        this.tempLeaveOpen = false;
+        if (this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths);
+      } catch(e){ this.notify(e.message,false); }
+    },
     dashToday(){ this.dashDate = this.todayStr; this.loadDashboard(); },
     dashShift(n){
       const d = new Date((this.dashDate||this.todayStr)+'T00:00:00'); d.setDate(d.getDate()+n);
@@ -4920,7 +4971,9 @@ const app = createApp({
       this.loadDashboard();
     },
     isAbsent(l){ return l.status==='ABSENT'; },
+    isLeave(l){ return l.status==='LEAVE'; },
     calBadge(it){
+      if (this.isLeave(it)) return { label:'임시휴원', style:{backgroundColor:'#f3e8ff',color:'#9333ea'} };
       const tag = this.isAbsent(it) ? 'ABSENT' : ((it.att && it.att.note_tag) || '');
       if (!tag) return null;
       const label = this.attTagLabel(tag) + (tag==='ABSENT' && it.no_makeup ? '(보강X)' : '');
@@ -5584,8 +5637,11 @@ const app = createApp({
           if (tag==='ABSENT'){
             await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'ABSENT', note, no_makeup:noMakeup });
             await api('POST','/api/admin/academy/attendance_note', { student_id:this.stuDetail.id, date:row.date, note_tag:'', note:'' });
+          } else if (tag==='LEAVE'){
+            await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'LEAVE', note });
+            await api('POST','/api/admin/academy/attendance_note', { student_id:this.stuDetail.id, date:row.date, note_tag:'', note:'' });
           } else {
-            if (row.status==='ABSENT') await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'SCHEDULED', note:'' });
+            if (row.status==='ABSENT' || row.status==='LEAVE') await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'SCHEDULED', note:'' });
             await api('POST','/api/admin/academy/attendance_note', { student_id:this.stuDetail.id, date:row.date, note_tag:tag, note });
           }
         }
@@ -5603,6 +5659,7 @@ const app = createApp({
     },
     stuAttStatusInfo(row){
       if (row.status==='ABSENT') return { label:'결석'+(row.no_makeup?'(보강X)':''), cls:'bg-rose-100 text-rose-600' };
+      if (row.status==='LEAVE') return { label:'임시휴원', cls:'bg-purple-100 text-purple-600' };
       if (row.is_makeup) return { label:'보강', cls:'bg-blue-100 text-blue-700' };
       if (row.att.in && row.att.out) return { label:'완료', cls:'bg-cyan-100 text-cyan-700' };
       if (row.att.in && this.hmMin(row.att.in) > this.hmMin(row.start_time)) return { label:'지각', cls:'bg-amber-100 text-amber-700' };

@@ -707,6 +707,7 @@ class OccurrenceStatus(object):
     SCHEDULED = "SCHEDULED"   # 예정(정규 또는 보강)
     ABSENT = "ABSENT"         # 결석
     CANCELLED = "CANCELLED"   # 취소
+    LEAVE = "LEAVE"           # 임시휴원(기간/날짜 지정 — 결석과 달리 애초에 수업 대상이 아니었음)
 
 
 class LessonOccurrence(models.Model):

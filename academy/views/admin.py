@@ -3761,7 +3761,7 @@ class EnsureOccurrenceAdminAPI(APIView):
 class LessonStatusAdminAPI(APIView):
     @admin_role_required
     def post(self, request):
-        """수업 인스턴스 상태 변경(결석/예정 복원). {occ_id, status:'ABSENT'|'SCHEDULED', note?}"""
+        """수업 인스턴스 상태 변경(결석/예정 복원/임시휴원). {occ_id, status:'ABSENT'|'SCHEDULED'|'LEAVE', note?}"""
         data = request.data
         o = LessonOccurrence.objects.select_related("branch").filter(id=data.get("occ_id")).first()
         if not o:
@@ -3769,14 +3769,14 @@ class LessonStatusAdminAPI(APIView):
         if not can_manage_branch(request.user, o.branch_id):
             return self.error("권한이 없습니다.")
         st = data.get("status")
-        if st not in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.ABSENT):
+        if st not in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.ABSENT, OccurrenceStatus.LEAVE):
             return self.error("상태 값이 올바르지 않습니다.")
         o.status = st
         if "note" in data:
             o.note = (data.get("note") or "").strip()
         if "no_makeup" in data:
             o.no_makeup = bool(data.get("no_makeup"))
-        if st == OccurrenceStatus.SCHEDULED:
+        if st in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.LEAVE):
             o.no_makeup = False
         o.save()
         return self.success({"status": o.status, "note": o.note, "no_makeup": o.no_makeup})
@@ -4140,6 +4140,71 @@ class StudentAttendanceHistoryAPI(APIView):
                 row["linked"] = {"kind": "absence", "date": str(t.date), "start_time": str(t.start_time)[:5]}
             rows.append(row)
         return self.success({"from": str(d0), "to": str(d1), "fwd_months": fwd_months, "rows": rows})
+
+
+class StudentTempLeaveAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """기간을 지정해 임시휴원 일괄 처리. 결석과 달리 애초에 수업 대상이 아니었다는 의미로,
+        등록상태(재원/휴원/퇴원)는 건드리지 않고 그 기간의 정규 수업 인스턴스만 LEAVE로 표시한다.
+        기간이 끝나면 그 다음 정규 수업일부터 자동으로 원래대로 예정(SCHEDULED) 처리됨(별도 복귀 로직 불필요).
+        {student_id, from'YYYY-MM-DD', to'YYYY-MM-DD', note?}"""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        try:
+            d0 = datetime.strptime(data.get("from"), "%Y-%m-%d").date()
+            d1 = datetime.strptime(data.get("to"), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            return self.error("기간이 올바르지 않습니다.")
+        if d1 < d0:
+            return self.error("종료일이 시작일보다 빠릅니다.")
+        if (d1 - d0).days > 366:
+            return self.error("기간은 최대 1년까지 지정할 수 있습니다.")
+        note = (data.get("note") or "").strip()
+        tts = list(StudentTimetable.objects.filter(student_id=u.id, status="ACTIVE"))
+        if not tts:
+            return self.error("이 학생의 정규 시간표가 없습니다.")
+        existing = {(o.source_timetable_id, o.date): o for o in LessonOccurrence.objects.filter(
+            student_id=u.id, date__gte=d0, date__lte=d1, source_timetable__isnull=False)}
+        creates = []
+        touched = []
+        cur = d0
+        while cur <= d1:
+            wd = cur.weekday()
+            for s in tts:
+                if s.weekday != wd:
+                    continue
+                if s.frequency == "BIWEEKLY" and s.active_from and ((cur - s.active_from).days // 7) % 2 != 0:
+                    continue
+                existing_occ = existing.get((s.id, cur))
+                if existing_occ:
+                    touched.append(existing_occ)
+                else:
+                    creates.append(LessonOccurrence(
+                        student_id=s.student_id, branch_id=s.branch_id, source_timetable_id=s.id,
+                        date=cur, start_time=s.start_time, duration_minutes=s.duration_minutes,
+                        program=s.program, subject=s.subject or resolve_program_label(s.program) or "미지정",
+                        instructor_id=s.instructor_id, status=OccurrenceStatus.LEAVE, note=note))
+            cur += timedelta(days=1)
+        if creates:
+            LessonOccurrence.objects.bulk_create(creates)
+        for o in touched:
+            o.status = OccurrenceStatus.LEAVE
+            o.note = note
+            o.no_makeup = False
+            o.save(update_fields=["status", "note", "no_makeup"])
+        count = len(creates) + len(touched)
+        if count:
+            TimetableChange.objects.create(
+                student=u, actor=request.user, action="UPDATE",
+                reason=note or "임시휴원 처리",
+                detail=("임시휴원 처리 — %s ~ %s (%d건)" % (d0, d1, count))[:255])
+        return self.success({"count": count, "from": str(d0), "to": str(d1)})
 
 
 class AdhocMakeupLinkAPI(APIView):
