@@ -724,6 +724,7 @@
                 </td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
                   <span v-if="elapsedInfo(l)" class="text-[11px] font-mono" :class="elapsedInfo(l).done ? 'text-emerald-600 font-bold' : (elapsedInfo(l).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ elapsedInfo(l).mins }}분 / {{ elapsedInfo(l).dur }}분</span>
+                  <span v-else-if="!isAbsent(l)" class="text-[11px] font-mono text-slate-300">/ {{ l.duration_minutes||60 }}분</span>
                 </td>
                 <td class="px-3 py-2">
                   <button v-if="l.adhoc" @click="openAdhocLink(l)" class="px-1.5 py-0.5 rounded text-[11px] bg-amber-100 text-amber-700 hover:bg-amber-200">보강 연결</button>
@@ -1539,6 +1540,15 @@
             {{ id==='__none__' ? '미배정' : ((ttInstructors.find(t=>String(t.user_id)===id)||{}).real_name || (ttInstructors.find(t=>String(t.user_id)===id)||{}).staff_no || id) }}
           </span>
         </div>
+        <!-- 상태 색상 범례 -->
+        <div v-else class="flex flex-wrap items-center gap-2 mb-2 text-[11px]">
+          <span class="text-slate-400">상태</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-slate-300 shrink-0"></span>등원전</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>수업중</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-cyan-400 shrink-0"></span>수업완료</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>결석</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0"></span>보강</span>
+        </div>
 
         <!-- 주간(세로): 시간(20분)×요일 격자, 동시간 학생은 박스가 위아래로 쌓임 -->
         <div v-if="(ttView==='week' || ttView==='day') && ttSlotLayout==='vertical'" class="overflow-x-auto">
@@ -1579,7 +1589,7 @@
             <div class="flex items-stretch">
               <div class="w-14 shrink-0 sticky left-0 z-10 bg-slate-50 border-r border-b border-slate-100"></div>
               <div v-for="(d,i) in ttWeekDates" :key="'h'+i" class="shrink-0 text-center text-[11px] font-medium py-1 border-r border-b border-slate-100 last:border-r-0"
-                   :class="d.isToday ? 'text-indigo-600 bg-indigo-50/30' : 'text-slate-500'"
+                   :class="d.isToday ? 'text-indigo-600 bg-indigo-100' : ('text-slate-500 '+wdBgClass(d.date))"
                    :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px'}">{{ d.label }}</div>
             </div>
             <!-- 본문 행: 시간축 + 요일별 내용(헤더와 같은 기준선에서 시작하므로 시간이 정확히 맞음) -->
@@ -1587,7 +1597,7 @@
               <div class="w-14 shrink-0 sticky left-0 z-10 border-r border-slate-100 bg-slate-50" :style="{height: ttHzHeight()+'px'}">
                 <div v-for="a in ttHzAxis()" :key="a.mins" class="absolute left-0 right-0 -translate-y-1/2 text-center text-[10px] text-slate-400" :style="{top: ttHzTop(a.mins)+'px'}">{{ a.label }}</div>
               </div>
-              <div v-for="(d,i) in ttWeekDates" :key="i" class="relative shrink-0 border-r border-slate-100 last:border-r-0" :class="d.isToday ? 'bg-indigo-50/30' : ''"
+              <div v-for="(d,i) in ttWeekDates" :key="i" class="relative shrink-0 border-r border-slate-100 last:border-r-0" :class="d.isToday ? 'bg-indigo-50/40' : wdBgClass(d.date)"
                    :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px', height: ttHzHeight()+'px'}">
                 <div v-for="a in ttHzAxis()" :key="'g'+a.mins" class="absolute left-0 right-0 border-t" :class="a.mins%60===0 ? 'border-slate-300' : 'border-slate-200'" :style="{top: ttHzTop(a.mins)+'px'}"></div>
                 <div v-for="(L,j) in ttHzDayLayout(d.date).items" :key="j" @click="openCalAtt(L.it, d.date)" @mouseenter="showCalPop(L.it,d.date,$event)" @mouseleave="hideCalPop"
@@ -3991,9 +4001,18 @@ createApp({
         const c = this.instrColor(it.instructor_id);
         if (c) return c.bg + ' ' + c.text + ' hover:brightness-95' + (it.status==='ABSENT' ? ' line-through opacity-60' : '');
       }
+      // 상태별 색: 결석 > 보강 > 수업완료(등원+하원) > 수업중(등원만) > 등원전
       if (it.status==='ABSENT') return 'bg-rose-100 text-rose-500 line-through';
       if (it.makeup) return 'bg-blue-50 text-blue-700 hover:bg-blue-100';
+      const att = it.att || {};
+      if (att.in && att.out) return 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200';
+      if (att.in) return 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200';
       return 'bg-slate-50 text-slate-600 hover:bg-indigo-50';
+    },
+    // 시간표 가로 모드: 요일별 은은한 배경색(구분선이 연해서 안 보이는 문제 대체)
+    wdBgClass(dateStr){
+      const map = {'월':'bg-blue-50/70','화':'bg-emerald-50/70','수':'bg-amber-50/70','목':'bg-violet-50/70','금':'bg-rose-50/50','토':'bg-cyan-50/70','일':'bg-orange-50/60'};
+      return map[this.wdOf(dateStr)] || '';
     },
     showCalPop(it,date,e){ this.calPop={ show:true, it, date, x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
     hideCalPop(){ this.calPop.show=false; },
