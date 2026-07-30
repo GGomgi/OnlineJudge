@@ -866,7 +866,7 @@
     </div>
 
     <!-- 보강 추가 모달 — 탭과 무관하게 항상 렌더링(오늘 운영·학생 상세 출결기록 어디서든 사용) -->
-    <div v-if="makeupOpen" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="makeupOpen=false">
+    <div v-if="makeupOpen" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="makeupOpen=false">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
         <div class="flex items-center justify-between px-5 py-3 border-b">
           <div class="font-bold">보강 추가</div>
@@ -2331,9 +2331,8 @@
                 </div>
                 <div class="flex flex-wrap gap-1">
                   <button @click="stuAttBulkForm.note_tag=''; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', !stuAttBulkForm.note_tag ? 'border-slate-400' : 'border-slate-200 text-slate-400']">없음</button>
-                  <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && !stuAttBulkForm.no_makeup) ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석</button>
-                  <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=true" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && stuAttBulkForm.no_makeup) ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석(보강X)</button>
-                  <button v-for="t in attNoteTags" :key="t.value" @click="stuAttBulkForm.note_tag=t.value; stuAttBulkForm.no_makeup=false" class="px-2 py-1 rounded text-xs border" :style="stuAttBulkForm.note_tag===t.value ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
+                  <button v-for="t in attNoteTags" :key="t.value" @click="stuAttBulkForm.note_tag=t.value; stuAttBulkForm.no_makeup=false" class="px-2 py-1 rounded text-xs border" :style="(stuAttBulkForm.note_tag===t.value && !(t.value==='ABSENT' && stuAttBulkForm.no_makeup)) ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
+                  <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=true" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && stuAttBulkForm.no_makeup) ? 'border-pink-400 bg-pink-50 text-pink-600' : 'border-slate-200 text-slate-400']">결석(보강X)</button>
                 </div>
                 <input v-model="stuAttBulkForm.note" placeholder="사유(예: 가족여행으로 일정 결석 / 다른 학원 특강으로 이 기간 시간 변동)" class="input py-1" />
                 <div class="flex justify-end"><button @click="applyStuAttBulk" class="btn-primary text-sm">선택한 {{ stuAttSelected.length }}건에 적용</button></div>
@@ -5660,7 +5659,7 @@ const app = createApp({
             await api('POST','/api/admin/academy/attendance_note', { student_id:this.stuDetail.id, date:row.date, note_tag:tag, note });
           }
         }
-        this.notify(ids.length+'건에 적용되었습니다.');
+        this.notify(ids.length+'건에 적용되었습니다.' + (tag==='ABSENT' && !noMakeup ? ' 보강 일정은 "보강 관리" 탭 날짜미정 목록에서 잡아주세요.' : ''));
         this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'', no_makeup:false };
         this.loadStuAttHist(this.stuAttHist.fwdMonths);
       } catch(e){ this.notify(e.message,false); }
