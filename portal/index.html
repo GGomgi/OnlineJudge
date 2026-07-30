@@ -992,6 +992,53 @@
       </div>
     </div>
 
+    <!-- 일괄 결석 → 보강 처리 안내 — 탭과 무관하게 항상 렌더링 -->
+    <div v-if="bulkAbsentPrompt" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" @click.self="bulkAbsentPrompt=null">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5">
+        <div class="font-bold mb-1">결석 처리되었습니다 ({{ bulkAbsentPrompt.items.length }}건)</div>
+        <p class="text-sm text-slate-500 mb-4">선택한 날짜들의 보강을 어떻게 할까요?</p>
+        <div class="space-y-2">
+          <button @click="bulkAbsentSchedule" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-blue-50">
+            <div class="text-sm font-medium text-blue-700">지금 보강 잡기</div>
+            <div class="text-xs text-slate-400">날짜별로 보강 날짜·시간을 각각 지정합니다.</div>
+          </button>
+          <button @click="bulkAbsentLater" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-slate-50">
+            <div class="text-sm font-medium">나중에</div>
+            <div class="text-xs text-slate-400">보강 필요 목록에 남겨두고 나중에 잡습니다.</div>
+          </button>
+          <button @click="bulkAbsentNoMakeup" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-slate-50">
+            <div class="text-sm font-medium text-slate-600">보강 안 함</div>
+            <div class="text-xs text-slate-400">보강 없이 결석으로 마무리합니다.</div>
+          </button>
+          <button @click="bulkAbsentToLeave" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-purple-50">
+            <div class="text-sm font-medium text-purple-600">사실은 임시휴원</div>
+            <div class="text-xs text-slate-400">결석이 아닌 임시휴원으로 일괄 재분류합니다.</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 일괄 보강 일정 지정 — 탭과 무관하게 항상 렌더링 -->
+    <div v-if="bulkMakeupOpen" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="bulkMakeupOpen=false">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <div class="font-bold">보강 일정 일괄 지정 <span class="text-xs font-normal text-slate-400">({{ bulkMakeupItems.length }}건)</span></div>
+          <button @click="bulkMakeupOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div class="p-5 space-y-2 max-h-[60vh] overflow-y-auto">
+          <p class="text-xs text-slate-400 mb-1">날짜·시간을 비워두면 그 건은 건너뜁니다(나중에 보강 관리에서 잡을 수 있어요).</p>
+          <div v-for="it in bulkMakeupItems" :key="it.occ_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-2">
+            <span class="text-xs text-slate-400 w-32 shrink-0">{{ it.date }}({{ wdOf(it.date) }}) 결석</span>
+            <input v-model="it.mk_date" type="date" class="input py-1" />
+            <input v-model="it.mk_time" type="time" class="input py-1 w-28" />
+          </div>
+        </div>
+        <div class="px-5 py-3 border-t flex justify-end">
+          <button @click="submitBulkMakeup" class="btn-primary text-sm">일괄 등록</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ============ 관리자: 상담·등록 ============ -->
     <section v-if="tab==='leadmgr' && !convertingLead && !showLeadForm">
       <div class="flex items-center justify-between mb-3 gap-2">
@@ -1630,7 +1677,7 @@
             <button @click="ttCalShift(1)" class="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">▶</button>
             <button @click="ttCalToday" class="ml-1 px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">오늘</button>
           </div>
-          <div><label class="lbl">과정</label><select v-model="ttFilter.program" @change="loadTtCal" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+          <div><label class="lbl">과정</label><select v-model="ttFilter.program" @change="loadTtCal" class="input w-32"><option value="">전체</option><option v-for="o in ttUsedProgramOpts()" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
           <div class="relative">
             <label class="lbl">강사</label>
             <button type="button" @click="ttInstrDropdown=!ttInstrDropdown" class="input w-36 text-left flex items-center justify-between">
@@ -1835,7 +1882,7 @@
             </label>
           </div>
         </div>
-        <div><label class="lbl">과정</label><select v-model="ttFilter.program" class="input w-32"><option value="">전체</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+        <div><label class="lbl">과정</label><select v-model="ttFilter.program" class="input w-32"><option value="">전체</option><option v-for="o in ttUsedProgramOpts()" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
         <button @click="resetTtFilter" class="btn-secondary text-xs">초기화</button>
         <label class="flex items-center gap-1 text-xs text-slate-500 self-center whitespace-nowrap"><input type="checkbox" v-model="ttShowEnded" @change="loadAllTt" class="w-4 h-4"> 삭제(종료) 보기</label>
         <span class="text-xs text-slate-400 ml-auto self-center">{{ filteredTt.length }}건</span>
@@ -1865,7 +1912,7 @@
               <td class="px-3 py-2"><input v-model="s.start_time" :disabled="s.status==='ENDED'" type="time" :class="ttCls(s,'start_time','py-1 w-28')" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" :disabled="s.status==='ENDED'" :class="ttCls(s,'duration_minutes','py-1 w-24 px-2')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
               <td class="px-3 py-2"><div class="flex items-center gap-1">
-                <select v-model="s.program" :disabled="s.status==='ENDED'" :class="ttCls(s,'program','py-1 w-36 px-2')"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
+                <select v-model="s.program" :disabled="s.status==='ENDED'" :class="ttCls(s,'program','py-1 w-36 px-2')"><option value="">미지정</option><option v-for="o in ttUsedProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select>
                 <select v-if="s.program==='LANG'" v-model="s.language" :disabled="s.status==='ENDED'" :class="ttCls(s,'language','py-1 w-12 px-1')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select>
               </div></td>
               <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" :disabled="s.status==='ENDED'" :class="[ttCls(s,'instr','py-1 w-28 px-2'), (!s._instructor_id && s.status!=='ENDED') ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id && s.status!=='ENDED'" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
@@ -3487,6 +3534,7 @@ const app = createApp({
       mkForm: { makeup_for:null, student_id:null, student_name:'', origin:'', time:'', date:'', note:'' },
       mkSearch: { query:'', student:null, candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' },
       absentPrompt: null,
+      bulkAbsentPrompt: null, bulkMakeupOpen: false, bulkMakeupItems: [],
       tempLeaveOpen: false, tempLeaveForm: { from:'', to:'', note:'' },
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
@@ -5697,8 +5745,47 @@ const app = createApp({
             await api('POST','/api/admin/academy/attendance_note', { student_id:this.stuDetail.id, date:row.date, note_tag:tag, note });
           }
         }
-        this.notify(ids.length+'건에 적용되었습니다.' + (tag==='ABSENT' && !noMakeup ? ' 보강 일정은 "보강 관리" 탭 날짜미정 목록에서 잡아주세요.' : ''));
+        const items = ids.map(id=>{ const r=rowsById[id]||{}; return { occ_id:id, date:r.date, start_time:r.start_time, subject:r.subject }; });
         this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'', no_makeup:false };
+        this.loadStuAttHist(this.stuAttHist.fwdMonths);
+        if (tag==='ABSENT' && !noMakeup && items.length){
+          this.bulkAbsentPrompt = { items };
+        } else {
+          this.notify(ids.length+'건에 적용되었습니다.');
+        }
+      } catch(e){ this.notify(e.message,false); }
+    },
+    bulkAbsentLater(){ this.bulkAbsentPrompt=null; this.notify('보강 필요 목록에 남겨뒀어요. "보강 관리" 탭에서 잡을 수 있어요.'); },
+    async bulkAbsentNoMakeup(){
+      const items = this.bulkAbsentPrompt.items;
+      try {
+        for (const it of items){ await api('POST','/api/admin/academy/lesson_status', { occ_id:it.occ_id, status:'ABSENT', no_makeup:true }); }
+        this.notify(items.length+'건 보강 안 함으로 처리되었습니다.'); this.bulkAbsentPrompt=null;
+        this.loadStuAttHist(this.stuAttHist.fwdMonths);
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async bulkAbsentToLeave(){
+      const items = this.bulkAbsentPrompt.items;
+      try {
+        for (const it of items){ await api('POST','/api/admin/academy/lesson_status', { occ_id:it.occ_id, status:'LEAVE' }); }
+        this.notify(items.length+'건 임시휴원으로 처리되었습니다.'); this.bulkAbsentPrompt=null;
+        this.loadStuAttHist(this.stuAttHist.fwdMonths);
+      } catch(e){ this.notify(e.message,false); }
+    },
+    bulkAbsentSchedule(){
+      this.bulkMakeupItems = this.bulkAbsentPrompt.items.map(it=>({ occ_id:it.occ_id, date:it.date, start_time:it.start_time, subject:it.subject, mk_date:'', mk_time:it.start_time||'' }));
+      this.bulkAbsentPrompt = null;
+      this.bulkMakeupOpen = true;
+    },
+    async submitBulkMakeup(){
+      const items = this.bulkMakeupItems.filter(it=>it.mk_date && it.mk_time);
+      if (!items.length) return this.notify('보강 날짜·시간을 입력하세요.', false);
+      try {
+        for (const it of items){
+          await api('POST','/api/admin/academy/makeup_add', { student_id:this.stuDetail.id, date:it.mk_date, start_time:it.mk_time, makeup_for:it.occ_id, note:(it.date+' 결석 보강') });
+        }
+        this.notify(items.length+'건 보강이 추가되었습니다.');
+        this.bulkMakeupOpen=false; this.bulkMakeupItems=[];
         this.loadStuAttHist(this.stuAttHist.fwdMonths);
       } catch(e){ this.notify(e.message,false); }
     },
@@ -5818,6 +5905,20 @@ const app = createApp({
       if (!regVals.size) return all;
       let opts = all.filter(o=>regVals.has(o.value));
       if (s.program && !regVals.has(s.program)){
+        const extra = all.find(o=>o.value===s.program);
+        if (extra) opts = [...opts, extra];
+      }
+      return opts;
+    },
+    ttUsedProgramOpts(){
+      const all = this.options.program||[];
+      const used = new Set((this.ttAll||[]).map(t=>t.program).filter(Boolean));
+      return used.size ? all.filter(o=>used.has(o.value)) : all;
+    },
+    ttUsedProgramOptions(s){
+      const all = this.options.program||[];
+      let opts = this.ttUsedProgramOpts();
+      if (s && s.program && !opts.some(o=>o.value===s.program)){
         const extra = all.find(o=>o.value===s.program);
         if (extra) opts = [...opts, extra];
       }
