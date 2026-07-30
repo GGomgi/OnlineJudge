@@ -63,6 +63,16 @@ createApp({
       const mins = Math.max(0, end-start);
       return mins+'분 / '+(row.duration_minutes||60)+'분';
     },
+    statusInfo(row){
+      if (row.status==='ABSENT') return { label:'결석', cls:'text-rose-400' };
+      if (row.is_makeup) return { label:'보강', cls:'text-blue-400' };
+      if (!row.att.in && this.hmMin(row.start_time) < this.nowMin) return { label:'미등원', cls:'text-rose-300' };
+      return null;
+    },
+    nowLineIndex(){
+      for (let i=0;i<this.board.length;i++){ if (this.hmMin(this.board[i].start_time) > this.nowMin) return i; }
+      return this.board.length;
+    },
     async loadBoard(){
       try { const d = await kioskApi('GET', '/api/academy/kiosk_board?b='+encodeURIComponent(this.b)+'&t='+encodeURIComponent(this.t)); this.board = d.rows||[]; }
       catch(e){ /* 조용히 실패(우측 키패드 동작에는 영향 없음) */ }
@@ -139,18 +149,28 @@ createApp({
             <th class="py-1.5 pr-2 font-normal">학생</th>
             <th class="py-1.5 pr-2 font-normal">등원</th>
             <th class="py-1.5 pr-2 font-normal">하원</th>
+            <th class="py-1.5 pr-2 font-normal">상태</th>
             <th class="py-1.5 pr-2 font-normal text-right">경과</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(r,i) in board" :key="i" class="border-b border-slate-800">
-            <td class="py-1.5 pr-2 font-mono text-slate-300">{{ r.start_time }}</td>
-            <td class="py-1.5 pr-2 font-medium">{{ r.student_name }}<span v-if="r.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">수업외</span></td>
-            <td class="py-1.5 pr-2" :class="r.att.in ? 'text-emerald-400' : 'text-slate-600'">{{ r.att.in || '-' }}</td>
-            <td class="py-1.5 pr-2" :class="r.att.out ? 'text-indigo-400' : 'text-slate-600'">{{ r.att.out || '-' }}</td>
-            <td class="py-1.5 pr-2 text-right text-slate-400 text-xs">{{ elapsed(r) }}</td>
+          <template v-for="(r,i) in board" :key="i">
+            <tr v-if="i===nowLineIndex()" class="bg-rose-500/10">
+              <td colspan="6" class="py-0.5 text-[11px] text-rose-400 font-medium border-y border-rose-500/40">▶ 현재 {{ clock.slice(0,5) }}</td>
+            </tr>
+            <tr class="border-b border-slate-800">
+              <td class="py-1.5 pr-2 font-mono text-slate-300">{{ r.start_time }}</td>
+              <td class="py-1.5 pr-2 font-medium">{{ r.student_name }}<span v-if="r.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">수업외</span></td>
+              <td class="py-1.5 pr-2" :class="r.att.in ? 'text-emerald-400' : 'text-slate-600'">{{ r.att.in || '-' }}</td>
+              <td class="py-1.5 pr-2" :class="r.att.out ? 'text-indigo-400' : 'text-slate-600'">{{ r.att.out || '-' }}</td>
+              <td class="py-1.5 pr-2 text-xs" :class="(statusInfo(r)||{}).cls || 'text-slate-700'">{{ statusInfo(r) ? statusInfo(r).label : '' }}</td>
+              <td class="py-1.5 pr-2 text-right text-xs" :class="elapsed(r) ? 'text-slate-400' : 'text-slate-600'">{{ elapsed(r) || (r.status!=='ABSENT' ? '/ '+(r.duration_minutes||60)+'분' : '') }}</td>
+            </tr>
+          </template>
+          <tr v-if="board.length && nowLineIndex()===board.length" class="bg-rose-500/10">
+            <td colspan="6" class="py-0.5 text-[11px] text-rose-400 font-medium border-y border-rose-500/40">▶ 현재 {{ clock.slice(0,5) }}</td>
           </tr>
-          <tr v-if="board.length===0"><td colspan="5" class="py-8 text-center text-slate-500">오늘 수업이 없습니다.</td></tr>
+          <tr v-if="board.length===0"><td colspan="6" class="py-8 text-center text-slate-500">오늘 수업이 없습니다.</td></tr>
         </tbody>
       </table>
     </div>

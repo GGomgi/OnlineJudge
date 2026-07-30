@@ -907,11 +907,12 @@ class KioskBoardAPI(APIView):
         for a in DailyAttendance.objects.filter(date=d, student_id__in=sids):
             att[a.student_id] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)}
         rows = [{"start_time": str(o.start_time)[:5], "student_name": _name_of(o.student),
-                "duration_minutes": o.duration_minutes,
+                "duration_minutes": o.duration_minutes, "status": o.status, "is_makeup": o.is_makeup,
                 "att": att.get(o.student_id, {"in": "", "out": ""}), "adhoc": False} for o in occ]
         for r in _adhoc_lesson_rows(d, [branch.id]):
             rows.append({"start_time": r["start_time"], "student_name": r["student_name"],
-                        "duration_minutes": r["duration_minutes"], "att": r["att"], "adhoc": True})
+                        "duration_minutes": r["duration_minutes"], "att": r["att"], "adhoc": True,
+                        "status": "SCHEDULED", "is_makeup": False})
         rows.sort(key=lambda r: r["start_time"])
         return self.success({"rows": rows})
 
