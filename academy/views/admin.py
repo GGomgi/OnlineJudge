@@ -3930,6 +3930,13 @@ class StudentLessonCandidatesAPI(APIView):
         d = (now() + timedelta(hours=9)).date()
         d0 = d - timedelta(days=30 * back_months)
         d1 = d + timedelta(days=30 * fwd_months)
+        # 정규 수업 인스턴스는 그 날짜를 실제로 조회(오늘 운영 등)할 때 생성되므로,
+        # 아직 아무도 안 본 미래·과거 날짜는 비어 있을 수 있다 — 조회 전 범위 전체를 만들어둔다.
+        branch_ids = [prof.branch_id] if (prof and prof.branch_id) else None
+        cur = d0
+        while cur <= d1:
+            ensure_occurrences(cur, branch_ids)
+            cur += timedelta(days=1)
         occ = LessonOccurrence.objects.filter(
             student_id=u.id, date__gte=d0, date__lte=d1,
             is_makeup=False).exclude(status=OccurrenceStatus.CANCELLED).order_by("date", "start_time")
