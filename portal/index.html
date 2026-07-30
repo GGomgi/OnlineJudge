@@ -2310,7 +2310,8 @@
                 <span>결석 <b class="text-rose-500">{{ stuAttOverall.absent }}</b></span>
                 <span>지각 <b class="text-amber-600">{{ stuAttOverall.late }}</b></span>
                 <span>보강 <b class="text-blue-600">{{ stuAttOverall.makeupTotal }}</b><span class="text-slate-400 text-xs"> (날짜미정 {{ stuAttOverall.makeupPending }})</span></span>
-                <button @click="openMakeupForThisStudent" class="ml-auto btn-secondary text-sm">+ 보강 추가</button>
+                <button @click="toggleStuAttBulkMode" class="ml-auto btn-secondary text-sm">{{ stuAttBulkMode ? '일괄수정 닫기' : '+ 일괄수정' }}</button>
+                <button @click="openMakeupForThisStudent" class="btn-secondary text-sm">+ 보강 추가</button>
                 <button @click="openTempLeave" class="btn-secondary text-sm">+ 임시휴원 등록</button>
               </div>
               <div class="bg-slate-50 rounded-lg px-3 py-2 text-xs flex items-center gap-4 flex-wrap">
@@ -2319,14 +2320,14 @@
               </div>
               <div class="flex items-center gap-2 text-xs flex-wrap">
                 <span class="text-slate-400">조회 범위: <b class="text-slate-600">{{ stuAttHist.from }} ~ {{ stuAttHist.to }}</b> <span class="text-slate-300">(수업시작일 ~ 오늘 기본)</span></span>
-                <span class="text-slate-300">여러 날짜를 체크해서 같은 사유로 한 번에 처리할 수 있어요</span>
                 <button @click="loadStuAttHist(stuAttHist.fwdMonths+1)" class="ml-auto px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">+1개월(이후 예정 보기)</button>
                 <button v-if="stuAttHist.fwdMonths>0" @click="loadStuAttHist(0)" class="px-2 py-1 rounded border border-slate-200 text-slate-400 hover:bg-slate-50">초기화</button>
               </div>
-              <div v-if="stuAttSelected.length>0" class="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-xs space-y-2">
+              <div v-if="stuAttBulkMode" class="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-xs space-y-2">
                 <div class="flex items-center gap-2">
                   <b class="text-indigo-700">{{ stuAttSelected.length }}건 선택됨</b>
-                  <button @click="stuAttSelected=[]" class="text-slate-400 hover:underline">선택 해제</button>
+                  <span class="text-slate-400">날짜 왼쪽 체크박스로 여러 건 골라 같은 사유로 한 번에 처리하세요</span>
+                  <button v-if="stuAttSelected.length>0" @click="stuAttSelected=[]" class="ml-auto text-slate-400 hover:underline">선택 해제</button>
                 </div>
                 <div class="flex flex-wrap gap-1">
                   <button @click="stuAttBulkForm.note_tag=''; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', !stuAttBulkForm.note_tag ? 'border-slate-400' : 'border-slate-200 text-slate-400']">없음</button>
@@ -2363,7 +2364,7 @@
                   </tr></thead>
                   <tbody>
                     <tr v-for="row in g.rows" :key="row.occ_id" @click="openStuAttRow(row)" class="border-t hover:bg-indigo-50/50 cursor-pointer">
-                      <td class="px-2 py-1" @click.stop="toggleStuAttSel(row.occ_id)"><input type="checkbox" :checked="stuAttSelected.includes(row.occ_id)" class="w-3.5 h-3.5 align-middle" /></td>
+                      <td class="px-2 py-1" @click.stop="stuAttBulkMode && toggleStuAttSel(row.occ_id)"><input v-if="stuAttBulkMode" type="checkbox" :checked="stuAttSelected.includes(row.occ_id)" class="w-3.5 h-3.5 align-middle" /></td>
                       <td class="px-2 py-1 whitespace-nowrap truncate">{{ row.date.slice(5) }}({{ wdOf(row.date) }})</td>
                       <td class="px-2 py-1 truncate">{{ row.subject }}</td>
                       <td class="px-2 py-1 truncate text-slate-500">{{ row.instructor }}</td>
@@ -3445,7 +3446,7 @@ const app = createApp({
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'progress',l:'진도'},{k:'attend',l:'출결기록'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
       stuAttHist: { rows:[], from:'', to:'', fwdMonths:0 },
-      stuAttSelected: [], stuAttBulkForm: { note_tag:'', note:'', no_makeup:false },
+      stuAttSelected: [], stuAttBulkForm: { note_tag:'', note:'', no_makeup:false }, stuAttBulkMode: false,
       stuProgress: [], stuProgForm: { date:'', content:'', homework:'' },
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
@@ -5634,6 +5635,10 @@ const app = createApp({
       const i=this.stuAttSelected.indexOf(occId);
       if (i>=0) this.stuAttSelected.splice(i,1); else this.stuAttSelected.push(occId);
     },
+    toggleStuAttBulkMode(){
+      this.stuAttBulkMode = !this.stuAttBulkMode;
+      if (!this.stuAttBulkMode) this.stuAttSelected=[];
+    },
     async applyStuAttBulk(){
       const ids = this.stuAttSelected;
       if (!ids.length) return;
@@ -5734,7 +5739,7 @@ const app = createApp({
         this.stuCreds=[]; this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds();
         this.stuProgress=[]; this.stuProgForm={ date:'', content:'', homework:'' }; this.loadStuProgress();
         this.stuAttHist={ rows:[], from:'', to:'', fwdMonths:0 };
-        this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'', no_makeup:false };
+        this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'', no_makeup:false }; this.stuAttBulkMode=false;
         this.stuResvForm={ date:'', ampm:'오전', hour:'', min:'00', note:'' };
       } catch(e){ this.notify(e.message,false); }
     },
