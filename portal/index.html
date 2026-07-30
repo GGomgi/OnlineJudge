@@ -206,7 +206,7 @@
   <div v-if="resvInfoPop.show" @mouseenter="keepResvInfoPop" @mouseleave="hideResvInfoPop" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72" :style="{ left: resvInfoPop.x+'px', top: resvInfoPop.y+'px' }">
     <div class="font-bold text-sm">{{ resvInfoPop.rv.student_name }} <span class="text-xs font-normal text-slate-400">· 학부모 {{ resvInfoPop.rv.parent_name }}</span></div>
     <div class="text-slate-500">{{ resvInfoPop.rv.school_name }}{{ schoolSuffix(resvInfoPop.rv.school_type) }} {{ resvInfoPop.rv.grade ? resvInfoPop.rv.grade+'학년' : '' }}</div>
-    <div class="text-slate-500">{{ resvInfoPop.rv.parent_phone || '-' }}</div>
+    <div class="text-slate-500 flex items-center gap-1">{{ resvInfoPop.rv.parent_phone || '-' }} <call-btn :phone="resvInfoPop.rv.parent_phone"/></div>
     <div class="mt-2 pt-2 border-t">
       <div class="font-semibold text-slate-600 mb-1">상담 기록 {{ (resvInfoPop.rv.logs||[]).length }}개</div>
       <ul class="space-y-1 max-h-48 overflow-y-auto pr-1">
@@ -289,8 +289,8 @@
   <div v-if="dashPop.show" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
     <div class="font-bold text-sm mb-1">{{ dashPop.l.student_name }}</div>
     <div class="text-slate-500">{{ dashPop.l.school_name }}{{ schoolSuffix(dashPop.l.school_type) }} {{ dashPop.l.grade ? dashPop.l.grade+'학년' : '' }}</div>
-    <div class="mt-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span></div>
-    <div>학생: <span class="text-slate-600">{{ dashPop.l.student_phone || '-' }}</span></div>
+    <div class="mt-1 flex items-center gap-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span> <call-btn :phone="dashPop.l.parent_phone"/></div>
+    <div class="flex items-center gap-1">학생: <span class="text-slate-600">{{ dashPop.l.student_phone || '-' }}</span> <call-btn :phone="dashPop.l.student_phone"/></div>
     <div v-if="dashPop.l.att.note_tag || dashPop.l.att.note" class="mt-1 pt-1 border-t">비고: <span v-if="dashPop.l.att.note_tag" class="px-1 rounded" :style="attTagStyle(dashPop.l.att.note_tag)">{{ attTagLabel(dashPop.l.att.note_tag) }}</span> <span class="text-slate-600">{{ dashPop.l.att.note }}</span></div>
   </div>
 
@@ -1020,7 +1020,7 @@
               <div class="text-sm text-slate-500 mt-1">
                 {{ r.branch?.name }}<span v-if="r.school_name"> · {{ r.school_name }}{{ schoolSuffix(r.school_type) }}</span><span v-if="r.grade"> · {{ r.grade }}학년</span>
               </div>
-              <div class="text-sm text-slate-500">{{ r.parent_phone }} <span class="text-xs text-indigo-600">· {{ purposeLabel(r) }}</span></div>
+              <div class="text-sm text-slate-500 flex items-center gap-1">{{ r.parent_phone }} <call-btn :phone="r.parent_phone"/> <span class="text-xs text-indigo-600">· {{ purposeLabel(r) }}</span></div>
               <div v-if="r.interest" class="text-xs text-slate-400 mt-1">문의: {{ r.interest }}</div>
             </div>
             <div class="text-right shrink-0">
@@ -2044,7 +2044,7 @@
                 <ul class="space-y-1">
                   <li v-for="gd in stuDetail.guardians" :key="gd.link_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-1.5">
                     <span class="font-medium">{{ gd.name }}<span v-if="gd.relation" class="font-normal text-slate-400">({{ gd.relation }})</span></span>
-                    <span class="text-xs text-slate-400">{{ gd.phone }} · @{{ gd.username }}</span>
+                    <span class="text-xs text-slate-400 flex items-center gap-1">{{ gd.phone }} <call-btn :phone="gd.phone"/> · @{{ gd.username }}</span>
                     <span v-if="stuCanEdit" class="ml-auto flex gap-2">
                       <button @click="resetGuardianPw(gd)" class="text-xs text-indigo-500 hover:underline">비번 초기화</button>
                       <button @click="unlinkGuardian(gd)" class="text-xs text-rose-400 hover:underline">연결 해제</button>
@@ -3333,7 +3333,7 @@ async function api(method, path, body, _retried){
   return json.data;
 }
 
-createApp({
+const app = createApp({
   data(){
     return {
       me: null,
@@ -6192,7 +6192,14 @@ createApp({
       if (this.isDirty()){ e.preventDefault(); e.returnValue=''; return ''; }
     });
   },
-}).mount('#app');
+});
+app.component('call-btn', {
+  props: { phone: String },
+  template: `<a v-if="phone" :href="'tel:'+String(phone).replace(/\\D/g,'')" @click.stop
+      class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200 shrink-0 align-middle"
+      title="전화 걸기" style="font-size:11px;line-height:1">📞</a>`
+});
+app.mount('#app');
 </script>
 <style type="text/tailwindcss">
   .input { @apply w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white; }
