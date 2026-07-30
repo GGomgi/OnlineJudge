@@ -2184,8 +2184,22 @@
               </div>
               <div class="flex items-center gap-2 text-xs flex-wrap">
                 <span class="text-slate-400">조회 범위: <b class="text-slate-600">{{ stuAttHist.from }} ~ {{ stuAttHist.to }}</b> <span class="text-slate-300">(수업시작일 ~ 오늘 기본)</span></span>
+                <span class="text-slate-300">여러 날짜를 체크해서 같은 사유로 한 번에 처리할 수 있어요</span>
                 <button @click="loadStuAttHist(stuAttHist.fwdMonths+1)" class="ml-auto px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">+1개월(이후 예정 보기)</button>
                 <button v-if="stuAttHist.fwdMonths>0" @click="loadStuAttHist(0)" class="px-2 py-1 rounded border border-slate-200 text-slate-400 hover:bg-slate-50">초기화</button>
+              </div>
+              <div v-if="stuAttSelected.length>0" class="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-xs space-y-2">
+                <div class="flex items-center gap-2">
+                  <b class="text-indigo-700">{{ stuAttSelected.length }}건 선택됨</b>
+                  <button @click="stuAttSelected=[]" class="text-slate-400 hover:underline">선택 해제</button>
+                </div>
+                <div class="flex flex-wrap gap-1">
+                  <button @click="stuAttBulkForm.note_tag=''" :class="['px-2 py-1 rounded text-xs border', !stuAttBulkForm.note_tag ? 'border-slate-400' : 'border-slate-200 text-slate-400']">없음</button>
+                  <button @click="stuAttBulkForm.note_tag='ABSENT'" :class="['px-2 py-1 rounded text-xs border', stuAttBulkForm.note_tag==='ABSENT' ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-400']">결석</button>
+                  <button v-for="t in attNoteTags" :key="t.value" @click="stuAttBulkForm.note_tag=t.value" class="px-2 py-1 rounded text-xs border" :style="stuAttBulkForm.note_tag===t.value ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
+                </div>
+                <input v-model="stuAttBulkForm.note" placeholder="사유(예: 가족여행으로 일정 결석 / 다른 학원 특강으로 이 기간 시간 변동)" class="input py-1" />
+                <div class="flex justify-end"><button @click="applyStuAttBulk" class="btn-primary text-sm">선택한 {{ stuAttSelected.length }}건에 적용</button></div>
               </div>
               <div v-if="stuAttHist.rows.length===0" class="text-xs text-slate-400 py-4 text-center">출결 기록이 없습니다.</div>
               <div v-for="g in stuAttHistByMonth" :key="g.ym" class="border rounded-lg overflow-hidden">
@@ -2198,10 +2212,11 @@
                 </div>
                 <table class="w-full text-xs" style="table-layout:fixed">
                   <colgroup>
-                    <col style="width:15%"><col style="width:14%"><col style="width:11%">
-                    <col style="width:15%"><col style="width:9%"><col style="width:10%"><col>
+                    <col style="width:5%"><col style="width:14%"><col style="width:13%"><col style="width:10%">
+                    <col style="width:14%"><col style="width:8%"><col style="width:10%"><col>
                   </colgroup>
                   <thead class="text-slate-400"><tr>
+                    <th class="px-2 py-1"></th>
                     <th class="px-2 py-1 text-left">날짜</th>
                     <th class="px-2 py-1 text-left">과목</th>
                     <th class="px-2 py-1 text-left">강사</th>
@@ -2212,6 +2227,7 @@
                   </tr></thead>
                   <tbody>
                     <tr v-for="row in g.rows" :key="row.occ_id" @click="openStuAttRow(row)" class="border-t hover:bg-indigo-50/50 cursor-pointer">
+                      <td class="px-2 py-1" @click.stop="toggleStuAttSel(row.occ_id)"><input type="checkbox" :checked="stuAttSelected.includes(row.occ_id)" class="w-3.5 h-3.5 align-middle" /></td>
                       <td class="px-2 py-1 whitespace-nowrap truncate">{{ row.date.slice(5) }}({{ wdOf(row.date) }})</td>
                       <td class="px-2 py-1 truncate">{{ row.subject }}</td>
                       <td class="px-2 py-1 truncate text-slate-500">{{ row.instructor }}</td>
@@ -2221,7 +2237,7 @@
                       </td>
                       <td class="px-2 py-1 truncate">{{ row.att.out || '-' }}</td>
                       <td class="px-2 py-1"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
-                      <td class="px-2 py-1 text-slate-500 truncate" :title="(row.lesson_note || row.att.note || '') + (stuAttLinkedText(row) ? ' ('+stuAttLinkedText(row)+')' : '')">
+                      <td class="px-2 py-1 text-slate-500 truncate" @mouseenter="showNotePop(row,$event)" @mouseleave="hideNotePop">
                         <span v-if="stuAttLinkedText(row)" class="text-indigo-500 whitespace-nowrap">({{ stuAttLinkedText(row) }})</span>
                         {{ row.lesson_note || row.att.note || '' }}
                       </td>
@@ -3293,6 +3309,7 @@ createApp({
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'progress',l:'진도'},{k:'attend',l:'출결기록'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
       stuAttHist: { rows:[], from:'', to:'', fwdMonths:0 },
+      stuAttSelected: [], stuAttBulkForm: { note_tag:'', note:'' },
       stuProgress: [], stuProgForm: { date:'', content:'', homework:'' },
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
@@ -5296,7 +5313,42 @@ createApp({
     async addStuProgress(){ const f=this.stuProgForm; if(!(f.content||'').trim() && !(f.homework||'').trim()) return this.notify('수업 내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/lesson_progress', { student_id:this.stuDetail.id, date:f.date||this.todayStr, content:f.content, homework:f.homework }); this.stuProgForm={ date:'', content:'', homework:'' }; this.loadStuProgress(); this.notify('진도가 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async deleteStuProgress(p){ if(!confirm('이 진도 기록을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/lesson_progress?id='+p.id); this.loadStuProgress(); } catch(e){ this.notify(e.message,false); } },
     async loadStuCreds(){ if(!this.stuDetail) return; try { const d = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); this.stuCreds = d.map(c=>({ ...c, _orig:{ site:c.site, login_id:c.login_id, password:c.password } })); } catch(e){ this.stuCreds=[]; } },
-    selectStuTab(k){ this.stuTab=k; if (k==='attend' && !this.stuAttHist.rows.length) this.loadStuAttHist(0); },
+    async selectStuTab(k){
+      this.stuTab=k;
+      if (k==='attend'){
+        if (!this.stuAttHist.rows.length) this.loadStuAttHist(0);
+        if (!this.attNoteTags.length){
+          if (!(this.options.attendance_note||[]).length) await this.loadOptions();
+          this.attNoteTags = (this.options.attendance_note||[]);
+        }
+      }
+    },
+    toggleStuAttSel(occId){
+      const i=this.stuAttSelected.indexOf(occId);
+      if (i>=0) this.stuAttSelected.splice(i,1); else this.stuAttSelected.push(occId);
+    },
+    async applyStuAttBulk(){
+      const ids = this.stuAttSelected;
+      if (!ids.length) return;
+      const tag = this.stuAttBulkForm.note_tag;
+      const note = this.stuAttBulkForm.note;
+      const rowsById = {}; this.stuAttHist.rows.forEach(r=>{ rowsById[r.occ_id]=r; });
+      try {
+        for (const occId of ids){
+          const row = rowsById[occId]; if (!row) continue;
+          if (tag==='ABSENT'){
+            await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'ABSENT', note });
+            await api('POST','/api/admin/academy/attendance_note', { student_id:this.stuDetail.id, date:row.date, note_tag:'', note:'' });
+          } else {
+            if (row.status==='ABSENT') await api('POST','/api/admin/academy/lesson_status', { occ_id:occId, status:'SCHEDULED', note:'' });
+            await api('POST','/api/admin/academy/attendance_note', { student_id:this.stuDetail.id, date:row.date, note_tag:tag, note });
+          }
+        }
+        this.notify(ids.length+'건에 적용되었습니다.');
+        this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'' };
+        this.loadStuAttHist(this.stuAttHist.fwdMonths);
+      } catch(e){ this.notify(e.message,false); }
+    },
     async loadStuAttHist(fwdMonths){
       if (!this.stuDetail) return;
       try {
@@ -5370,6 +5422,7 @@ createApp({
         this.stuCreds=[]; this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds();
         this.stuProgress=[]; this.stuProgForm={ date:'', content:'', homework:'' }; this.loadStuProgress();
         this.stuAttHist={ rows:[], from:'', to:'', fwdMonths:0 };
+        this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'' };
         this.stuResvForm={ date:'', ampm:'오전', hour:'', min:'00', note:'' };
       } catch(e){ this.notify(e.message,false); }
     },
