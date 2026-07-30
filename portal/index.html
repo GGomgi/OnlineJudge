@@ -620,32 +620,23 @@
         </div>
       </div>
 
-      <!-- 등원/하원 이미 체크됨 → 시간변경/취소 선택 팝업 -->
+      <!-- 등원/하원 이미 체크됨 → 시간변경/취소 팝업(시간 조정 후 바로 적용) -->
       <div v-if="attEditPop.show" class="fixed inset-0 z-40 flex items-center justify-center bg-black/20" @click.self="attEditPop.show=false">
         <div class="bg-white rounded-xl shadow-lg p-4 w-72">
-          <template v-if="attEditPop.mode==='choose'">
-            <div class="text-sm font-semibold mb-1">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} {{ attEditPop.cur }}</div>
-            <div class="text-xs text-slate-400 mb-3">이미 체크된 기록입니다. 무엇을 하시겠어요?</div>
-            <div class="flex flex-col gap-2">
-              <button @click="attPopChangeTime" class="btn-secondary text-sm">🕐 시간 변경</button>
-              <button @click="attPopCancel" class="btn-secondary text-sm text-rose-500">✕ {{ attEditPop.kind==='in'?'등원':'하원' }} 취소</button>
-              <button @click="attEditPop.show=false" class="text-xs text-slate-400 mt-1">닫기</button>
-            </div>
-          </template>
-          <template v-else>
-            <div class="text-sm font-semibold mb-3">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} 시간 변경</div>
-            <div class="flex items-center justify-center gap-1.5 mb-4">
-              <button @click="attStepTime(-5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-5</button>
-              <button @click="attStepTime(-1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-1</button>
-              <div class="font-mono text-2xl font-bold w-24 text-center">{{ attEditPop.time }}</div>
-              <button @click="attStepTime(1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+1</button>
-              <button @click="attStepTime(5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+5</button>
-            </div>
-            <div class="flex gap-2">
-              <button @click="attEditPop.mode='choose'" class="btn-secondary text-sm flex-1">뒤로</button>
-              <button @click="attSaveTime" class="btn-primary text-sm flex-1">저장</button>
-            </div>
-          </template>
+          <div class="text-sm font-semibold mb-1">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} {{ attEditPop.cur }}</div>
+          <div class="text-xs text-slate-400 mb-3">이미 체크된 기록입니다. 무엇을 하시겠어요?</div>
+          <div class="flex items-center justify-center gap-1.5 mb-3">
+            <button @click="attStepTime(-5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-5</button>
+            <button @click="attStepTime(-1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-1</button>
+            <div class="font-mono text-2xl font-bold w-24 text-center">{{ attEditPop.time }}</div>
+            <button @click="attStepTime(1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+1</button>
+            <button @click="attStepTime(5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+5</button>
+          </div>
+          <div class="flex flex-col gap-2">
+            <button @click="attSaveTime" class="btn-primary text-sm">🕐 {{ attEditPop.time }}로 시간 변경</button>
+            <button @click="attPopCancel" class="btn-secondary text-sm text-rose-500">✕ {{ attEditPop.kind==='in'?'등원':'하원' }} 취소</button>
+            <button @click="attEditPop.show=false" class="text-xs text-slate-400 mt-1">닫기</button>
+          </div>
         </div>
       </div>
       <div class="flex items-center gap-3 mb-2 text-sm flex-wrap">
@@ -3233,7 +3224,7 @@ createApp({
       ttStudent: null, ttSearch: '', ttResults: [], ttAll: [], ttInstructors: [], showTtAdd: false,
       ttFilter: { name:'', weekday:'', from:'', to:'', instructor_ids:null, program:'' },
       ttInstrDropdown: false, ttSlotLayout: 'vertical',
-      attEditPop: { show:false, l:null, kind:'', cur:'', mode:'choose', time:'' },
+      attEditPop: { show:false, l:null, kind:'', cur:'', time:'' },
       ttView: 'week', ttCalDays: {}, ttCalResv: {}, ttCalAnchor: '', ttCalMonth: '',
       calPop: { show:false, x:0, y:0, date:'', it:{} },
       ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' },
@@ -4608,7 +4599,7 @@ createApp({
     checkAtt(l, kind){
       if (kind==='out' && !l.att.in) return this.notify('등원 후 하원할 수 있습니다.', false);
       const cur = kind==='in' ? l.att.in : l.att.out;
-      if (cur){ this.attEditPop = { show:true, l, kind, cur, mode:'choose', time:cur }; return; }
+      if (cur){ this.attEditPop = { show:true, l, kind, cur, time:cur }; return; }
       this._doAttCheck(l, kind, {});
     },
     async _doAttCheck(l, kind, opts){
@@ -4618,7 +4609,6 @@ createApp({
         for (const x of this.dashData.lessons){ if (x.student_id===l.student_id) x.att = { in:r.in, out:r.out }; }
       } catch(e){ this.notify(e.message,false); }
     },
-    attPopChangeTime(){ this.attEditPop.mode = 'edit'; },
     attStepTime(delta){
       const p = this.attEditPop;
       const [h,m] = p.time.split(':').map(Number);
@@ -5712,7 +5702,7 @@ createApp({
     this.boot();
     setInterval(()=>{ this.clockNow = Date.now(); }, 1000);  // 실시간 시계/경과시간
     // 오늘 운영 탭이 오늘 날짜를 보고 있을 때, 키오스크 등 다른 화면에서의 등원/하원 변경을 반영
-    setInterval(()=>{ if (this.tab==='dashboard' && this.dashIsToday && !this.attModal) this.loadDashboard(); }, 15000);
+    setInterval(()=>{ if (this.tab==='dashboard' && this.dashIsToday && !this.attModal) this.loadDashboard(); }, 5000);
     // 브라우저 이탈(새로고침·뒤로가기·앞으로가기·창 닫기) 시 작성 중 내용 있으면 경고
     window.addEventListener('beforeunload', (e)=>{
       if (this.isDirty()){ e.preventDefault(); e.returnValue=''; return ''; }
