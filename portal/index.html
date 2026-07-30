@@ -776,7 +776,7 @@
                 <ul v-if="mkSearch.query && !mkSearch.student" class="mt-1 max-h-48 overflow-y-auto border rounded-lg divide-y">
                   <li v-for="s in mkSearchResults" :key="s.id" @click="pickMkStudent(s)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
                     <span class="font-medium">{{ s.real_name || s.username }}</span>
-                    <span class="text-xs text-slate-400">{{ s.school_name }} {{ s.grade }}학년 · {{ s.branch }}</span>
+                    <span class="text-xs text-slate-400">{{ s.school_name }}{{ schoolSuffix(s.school_type) }} {{ s.grade }}학년 · {{ s.branch }}</span>
                   </li>
                   <li v-if="mkSearchResults.length===0" class="px-3 py-4 text-xs text-slate-400 text-center">일치하는 재원 학생이 없습니다.</li>
                 </ul>
