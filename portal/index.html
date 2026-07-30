@@ -1532,16 +1532,16 @@
       <!-- ===== 보강 관리: 날짜미정 목록 ===== -->
       <div v-if="tab==='makeup'" class="bg-white rounded-xl shadow-sm p-3 mb-4">
         <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <h3 class="font-semibold text-sm">날짜미정 보강 <span class="text-xs font-normal text-slate-400">{{ mkgList.length }}건</span></h3>
+          <h3 class="font-semibold text-sm">날짜미정 보강 <span class="text-xs font-normal text-slate-400">{{ mkgList.length }}건(오래된 날짜순 정렬)</span></h3>
           <div class="flex items-center gap-2">
             <span v-if="!isDirectorUp" class="text-xs text-slate-400 px-1">{{ (myProfile && myProfile.branch && myProfile.branch.name) || '' }}</span>
             <select v-else v-model="mkgBranchId" @change="loadMkgPending" class="input py-1 text-xs w-32">
               <option value="">지점 전체</option>
               <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
             </select>
-            <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
-              <button @click="mkgGroupBy='flat'" :class="['px-2 py-1', mkgGroupBy==='flat' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">건별</button>
-              <button @click="mkgGroupBy='student'" :class="['px-2 py-1 border-l border-slate-200', mkgGroupBy==='student' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">학생별</button>
+            <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs whitespace-nowrap">
+              <button @click="mkgGroupBy='student'" :class="['px-3 py-1 whitespace-nowrap', mkgGroupBy==='student' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">학생별</button>
+              <button @click="mkgGroupBy='flat'" :class="['px-3 py-1 border-l border-slate-200 whitespace-nowrap', mkgGroupBy==='flat' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">건별</button>
             </div>
           </div>
         </div>
@@ -1552,7 +1552,7 @@
             <span class="font-medium">{{ p.student_name }}</span>
             <call-btn :phone="p.parent_phone || p.student_phone"></call-btn>
             <span class="text-xs text-slate-400">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
-            <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 shrink-0">D+{{ mkgDaysAgo(p.date) }}</span>
+            <span :class="['text-[11px] px-1.5 py-0.5 rounded shrink-0', mkgDaysCls(p.date)]">D+{{ mkgDaysAgo(p.date) }}</span>
             <span class="ml-auto flex gap-2 shrink-0">
               <button @click="openMakeupFor(p)" class="text-xs text-indigo-600 hover:underline">일정잡기</button>
               <button @click="mkgSetNoMakeup(p)" class="text-xs text-slate-400 hover:underline">보강안함</button>
@@ -1571,7 +1571,7 @@
             </div>
             <div v-for="p in g.items" :key="p.occ_id" class="flex items-center gap-2 text-xs text-slate-500 pl-1 py-0.5">
               <span>{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
-              <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 shrink-0">D+{{ mkgDaysAgo(p.date) }}</span>
+              <span :class="['px-1.5 py-0.5 rounded shrink-0', mkgDaysCls(p.date)]">D+{{ mkgDaysAgo(p.date) }}</span>
               <span class="ml-auto flex gap-2 shrink-0">
                 <button @click="openMakeupFor(p)" class="text-indigo-600 hover:underline">일정잡기</button>
                 <button @click="mkgSetNoMakeup(p)" class="text-slate-400 hover:underline">보강안함</button>
@@ -3435,7 +3435,7 @@ const app = createApp({
       tcPop: { show:false, x:0, y:0, orig:'', now:'', reason:'' },
       progPop: { show:false, x:0, y:0, content:'', homework:'' },
       dashFilter: { q:'', subject:'', instructor:'', branch:'' }, dashPop: { show:false, x:0, y:0, l:{att:{}} },
-      mkgList: [], mkgGroupBy: 'flat', mkgBranchId: '', mkgLoading: false,
+      mkgList: [], mkgGroupBy: 'student', mkgBranchId: '', mkgLoading: false,
       dashShowDone: true,
       kioskDevicesOpen: false, kioskDevices: [], kioskDeviceBranchId: null,
       makeupOpen: false, mkMode: 'pending', mkStep: 'pick', mkPending: [],
@@ -4970,6 +4970,9 @@ const app = createApp({
       const [y,m,d]=dateStr.split('-').map(Number);
       const diff = Math.floor((new Date(this.todayStr+'T00:00:00') - new Date(y,m-1,d)) / 86400000);
       return diff;
+    },
+    mkgDaysCls(dateStr){
+      return this.mkgDaysAgo(dateStr) >= 0 ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600';
     },
     mkgGrouped(){
       const m = new Map();
