@@ -3958,11 +3958,11 @@ class MakeupAddAdminAPI(APIView):
 class StudentLessonCandidatesAPI(APIView):
     @admin_role_required
     def get(self, request):
-        """'수업외 등원'을 특정 정규수업의 보강으로 연결할 대상 후보(그 학생의 수업, 취소·보강
-        제외). 오늘 기준 -30*back_months일 ~ +30*fwd_months일 범위(기본 back_months=3,
-        fwd_months=1). 모달의 '-1개월'/'+1개월' 버튼으로 각 방향을 독립적으로 넓힐 수 있음.
-        이미 결석인 것과 앞으로 예정된 것 모두 보여주고, 예정된 걸 고르면 그 자리에서
-        결석으로 전환한다(AdhocMakeupLinkAPI)."""
+        """'수업외 등원'을 특정 정규수업의 보강으로 연결할 대상 후보(그 학생의 수업, 취소·보강·
+        이미 다른 보강이 연결된 것 제외 — 중복 보강 방지). 오늘 기준 -30*back_months일 ~
+        +30*fwd_months일 범위(기본 back_months=3, fwd_months=1). 모달의 '-1개월'/'+1개월'
+        버튼으로 각 방향을 독립적으로 넓힐 수 있음. 이미 결석인 것과 앞으로 예정된 것 모두
+        보여주고, 예정된 걸 고르면 그 자리에서 결석으로 전환한다(AdhocMakeupLinkAPI)."""
         u = User.objects.filter(id=request.GET.get("student_id")).first()
         if not u:
             return self.error("학생이 없습니다.")
@@ -3987,9 +3987,13 @@ class StudentLessonCandidatesAPI(APIView):
         while cur <= d1:
             ensure_occurrences(cur, branch_ids)
             cur += timedelta(days=1)
+        # 이미 다른 보강이 연결된 결석/수업은 후보에서 제외(중복 보강 방지)
+        already_linked = LessonOccurrence.objects.filter(
+            is_makeup=True, makeup_for__isnull=False).values_list("makeup_for_id", flat=True)
         occ = LessonOccurrence.objects.filter(
             student_id=u.id, date__gte=d0, date__lte=d1,
-            is_makeup=False).exclude(status=OccurrenceStatus.CANCELLED).order_by("date", "start_time")
+            is_makeup=False).exclude(status=OccurrenceStatus.CANCELLED)\
+            .exclude(id__in=already_linked).order_by("date", "start_time")
         rows = [{"occ_id": o.id, "date": str(o.date), "start_time": str(o.start_time)[:5],
                 "subject": o.subject or resolve_program_label(o.program) or "미지정",
                 "status": o.status, "note": o.note} for o in occ]
