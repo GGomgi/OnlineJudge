@@ -3248,6 +3248,42 @@ def ensure_occurrences(d, branch_ids=None):
                       "instructor_id": s.instructor_id})
 
 
+def _adhoc_lesson_rows(d, branch_ids):
+    """'수업외 등원' 합성 행: 오늘 등원 체크는 됐지만 정규/보강 수업 인스턴스가 없는 학생.
+    표시용 과목·수업시간·담당강사는 그 학생의 활성 시간표 중 요일이 가장 빠른 것에서 빌려온다."""
+    have_occ = set(LessonOccurrence.objects.filter(date=d).exclude(status=OccurrenceStatus.CANCELLED)
+                   .values_list("student_id", flat=True))
+    att_qs = DailyAttendance.objects.filter(date=d, check_in_at__isnull=False)\
+        .select_related("student", "student__userprofile")
+    if branch_ids is not None:
+        att_qs = att_qs.filter(branch_id__in=branch_ids)
+    rows = []
+    for a in att_qs:
+        if a.student_id in have_occ:
+            continue
+        sp = getattr(a.student, "student_profile", None)
+        prof = getattr(a.student, "academy_profile", None)
+        tt = StudentTimetable.objects.filter(student_id=a.student_id, status="ACTIVE")\
+            .select_related("instructor").order_by("weekday").first()
+        rows.append({
+            "occ_id": None, "adhoc": True, "student_id": a.student_id, "student_name": _name_of(a.student),
+            "start_time": _hm_kst(a.check_in_at), "duration_minutes": (tt.duration_minutes if tt else 60),
+            "time_changed": False, "time_change_reason": "", "orig_time": "",
+            "subject": (tt.subject or resolve_program_label(tt.program) if tt else "") or "수업외",
+            "instructor": _name_of(tt.instructor) if (tt and tt.instructor_id) else "미배정",
+            "branch": (prof.branch.name if prof and prof.branch_id else ""),
+            "branch_id": (prof.branch_id if prof else None),
+            "biweekly": False, "is_makeup": False, "status": "SCHEDULED", "lesson_note": "", "no_makeup": False,
+            "school_type": (sp.school_type if sp else ""), "school_name": (sp.school_name if sp else ""),
+            "grade": (sp.grade if sp else ""), "parent_phone": (sp.parent_phone if sp else ""),
+            "student_phone": (sp.student_phone if sp else ""),
+            "att": {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at),
+                    "note_tag": a.note_tag, "note": a.note},
+            "progress": None,
+        })
+    return rows
+
+
 class DashboardAdminAPI(APIView):
     @admin_role_required
     def get(self, request):
@@ -3306,6 +3342,10 @@ class DashboardAdminAPI(APIView):
         for l in lessons:
             l["att"] = att.get(l["student_id"], {"in": "", "out": "", "note_tag": "", "note": ""})
             l["progress"] = prog.get(l["occ_id"])
+        # 수업외 등원(오늘 수업 없는데 등원 체크된 학생) 합성 행 추가
+        adhoc_branch_ids = [int(bid)] if bid else view
+        lessons.extend(_adhoc_lesson_rows(d, adhoc_branch_ids))
+        lessons.sort(key=lambda x: x["start_time"])
         # 그날 상담 예약(KST 하루) — 위쪽 상담 일정 섹션용
         day_lo = _kst_to_utc(d, "00:00")
         day_hi = _kst_to_utc(d + timedelta(days=1), "00:00")
@@ -3863,3 +3903,73 @@ class MakeupAddAdminAPI(APIView):
             status=OccurrenceStatus.SCHEDULED, is_makeup=True,
             makeup_for_id=data.get("makeup_for"), note=(data.get("note") or "").strip())
         return self.success({"occ_id": occ.id})
+
+
+class StudentLessonCandidatesAPI(APIView):
+    @admin_role_required
+    def get(self, request):
+        """'수업외 등원'을 특정 정규수업의 보강으로 연결할 대상 후보(그 학생의 수업, 오늘 기준
+        -14일~+60일, 취소·보강 제외). 이미 결석인 것과 앞으로 예정된 것 모두 보여주고,
+        예정된 걸 고르면 그 자리에서 결석으로 전환한다(AdhocMakeupLinkAPI)."""
+        u = User.objects.filter(id=request.GET.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        d = (now() + timedelta(hours=9)).date()
+        occ = LessonOccurrence.objects.filter(
+            student_id=u.id, date__gte=d - timedelta(days=14), date__lte=d + timedelta(days=60),
+            is_makeup=False).exclude(status=OccurrenceStatus.CANCELLED).order_by("date", "start_time")
+        rows = [{"occ_id": o.id, "date": str(o.date), "start_time": str(o.start_time)[:5],
+                "subject": o.subject or resolve_program_label(o.program) or "미지정",
+                "status": o.status, "note": o.note} for o in occ]
+        return self.success(rows)
+
+
+class AdhocMakeupLinkAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """'수업외 등원'(오늘 수업 인스턴스 없이 체크만 된 등원)을 학생의 다른 특정 수업의
+        보강으로 연결. 대상이 아직 결석 처리 전이면 이 요청으로 결석 처리(사유 포함)까지 함께 한다.
+        {student_id, target_occ_id, date?(수업외 등원일, 기본 오늘), note?}"""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        target = LessonOccurrence.objects.filter(id=data.get("target_occ_id"), student_id=u.id).first()
+        if not target:
+            return self.error("연결할 수업을 찾을 수 없습니다.")
+        try:
+            d = datetime.strptime(data.get("date"), "%Y-%m-%d").date() if data.get("date") else \
+                (now() + timedelta(hours=9)).date()
+        except (TypeError, ValueError):
+            d = (now() + timedelta(hours=9)).date()
+        att = DailyAttendance.objects.filter(student_id=u.id, date=d).first()
+        if not att or not att.check_in_at:
+            return self.error("등원 기록을 찾을 수 없습니다.")
+        if LessonOccurrence.objects.filter(date=d, student_id=u.id).exclude(status=OccurrenceStatus.CANCELLED).exists():
+            return self.error("이미 그 날짜에 수업 인스턴스가 있습니다.")
+        note = (data.get("note") or "").strip()
+        with transaction.atomic():
+            if target.status != OccurrenceStatus.ABSENT:
+                target.status = OccurrenceStatus.ABSENT
+                if note:
+                    target.note = note
+                target.no_makeup = False
+                target.save()
+            tt = StudentTimetable.objects.filter(student_id=u.id, status="ACTIVE")\
+                .select_related("instructor").order_by("weekday").first()
+            kst_dt = att.check_in_at + timedelta(hours=9)
+            new_occ = LessonOccurrence.objects.create(
+                student=u, branch_id=(prof.branch_id if prof else target.branch_id),
+                source_timetable=None, date=d, start_time=kst_dt.time().replace(second=0, microsecond=0),
+                duration_minutes=(tt.duration_minutes if tt else target.duration_minutes),
+                program=(tt.program if tt else target.program),
+                subject=((tt.subject or resolve_program_label(tt.program)) if tt else target.subject) or "보강",
+                instructor_id=(tt.instructor_id if tt else target.instructor_id),
+                status=OccurrenceStatus.SCHEDULED, is_makeup=True, makeup_for=target, note=note)
+        return self.success({"occ_id": new_occ.id})

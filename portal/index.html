@@ -704,12 +704,12 @@
           <tbody>
             <template v-for="(l,i) in dashLessons" :key="i">
               <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?8:7" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }}</td></tr>
-              <tr class="border-t align-middle hover:bg-slate-50" :class="isAbsent(l) ? 'bg-rose-50/50' : ''">
+              <tr class="border-t align-middle hover:bg-slate-50" :class="isAbsent(l) ? 'bg-rose-50/50' : (l.adhoc ? 'bg-amber-50/50' : '')">
                 <td class="px-3 py-2 font-mono whitespace-nowrap">
                   <span v-if="l.time_changed" @mouseenter="showTcPop(l,$event)" @mouseleave="hideTcPop" class="text-amber-600 font-bold cursor-help">{{ l.start_time }}</span>
                   <span v-else>{{ l.start_time }}</span>
                 </td>
-                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline" :class="isAbsent(l) ? 'line-through text-slate-400' : ''" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
+                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline" :class="isAbsent(l) ? 'line-through text-slate-400' : ''" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
                 <td class="px-3 py-2 text-slate-500">{{ l.subject }}<span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help" title="">📝</span></td>
                 <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
                 <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
@@ -726,9 +726,12 @@
                   <span v-if="elapsedInfo(l)" class="text-[11px] font-mono" :class="elapsedInfo(l).done ? 'text-emerald-600 font-bold' : (elapsedInfo(l).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ elapsedInfo(l).mins }}분 / {{ elapsedInfo(l).dur }}분</span>
                 </td>
                 <td class="px-3 py-2">
-                  <span v-if="isAbsent(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-rose-100 text-rose-600">결석</span>
-                  <span v-else-if="l.att.note_tag" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
-                  <span v-else @click="openAtt(l)" class="text-[11px] text-slate-300 hover:text-indigo-500 cursor-pointer">비고+</span>
+                  <button v-if="l.adhoc" @click="openAdhocLink(l)" class="px-1.5 py-0.5 rounded text-[11px] bg-amber-100 text-amber-700 hover:bg-amber-200">보강 연결</button>
+                  <template v-else>
+                    <span v-if="isAbsent(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-rose-100 text-rose-600">결석</span>
+                    <span v-else-if="l.att.note_tag" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
+                    <span v-else @click="openAtt(l)" class="text-[11px] text-slate-300 hover:text-indigo-500 cursor-pointer">비고+</span>
+                  </template>
                 </td>
               </tr>
             </template>
@@ -840,6 +843,29 @@
                 </li>
               </ul>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 수업외 등원 → 보강 연결 모달 -->
+      <div v-if="adhocLinkModal" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="adhocLinkModal=null">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+          <div class="flex items-center justify-between px-5 py-3 border-b">
+            <div class="font-bold">{{ adhocLinkModal.l.student_name }} <span class="text-xs font-normal text-slate-400">수업외 등원 {{ adhocLinkModal.l.att.in }} → 보강 연결</span></div>
+            <button @click="adhocLinkModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+          <div class="p-5 space-y-3">
+            <p class="text-xs text-slate-400">이 학생의 수업 중 어느 수업의 보강으로 연결할지 선택하세요. 아직 결석 처리 전인(예정) 수업을 고르면 이 연결과 함께 자동으로 결석 처리됩니다.</p>
+            <div v-if="adhocLinkModal.candidates.length===0" class="text-xs text-slate-400 py-4 text-center">연결할 수업이 없습니다(최근 2주 ~ 앞으로 2개월 내 수업 없음).</div>
+            <ul class="space-y-1 max-h-64 overflow-y-auto">
+              <li v-for="c in adhocLinkModal.candidates" :key="c.occ_id" @click="adhocLinkModal.selected=c.occ_id"
+                  :class="['px-3 py-2 rounded-lg border cursor-pointer text-sm flex items-center justify-between', adhocLinkModal.selected===c.occ_id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50']">
+                <span>{{ c.date }} {{ c.start_time }} · {{ c.subject }}</span>
+                <span :class="['text-[10px] px-1.5 py-0.5 rounded shrink-0 ml-2', c.status==='ABSENT' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500']">{{ c.status==='ABSENT' ? '결석' : '예정' }}</span>
+              </li>
+            </ul>
+            <div><label class="lbl">사유</label><input v-model="adhocLinkModal.note" placeholder="예: 학부모 요청으로 미리 옴" class="input py-1" /></div>
+            <div class="flex justify-end"><button :disabled="!adhocLinkModal.selected" @click="submitAdhocLink" class="btn-primary text-sm disabled:opacity-40">보강으로 연결</button></div>
           </div>
         </div>
       </div>
@@ -3153,6 +3179,7 @@ createApp({
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
       attModal: null, attForm: { lessonTime:'', note_tag:'', note:'', progContent:'', progHomework:'' }, attNoteTags: [], attHist: [],
+      adhocLinkModal: null,
       notePop: { show:false, x:0, y:0, tag:'', note:'', tagStyle:{} },
       tcPop: { show:false, x:0, y:0, orig:'', now:'', reason:'' },
       progPop: { show:false, x:0, y:0, content:'', homework:'' },
@@ -4626,6 +4653,19 @@ createApp({
       const reason = (window.prompt(label+' 취소 사유(선택)') || '').trim();
       this.attEditPop.show = false;
       this._doAttCheck(p.l, p.kind, { clear:true, reason });
+    },
+    async openAdhocLink(l){
+      this.adhocLinkModal = { l, candidates:[], selected:null, note:'' };
+      try { this.adhocLinkModal.candidates = await api('GET','/api/admin/academy/student_lesson_candidates?student_id='+l.student_id); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async submitAdhocLink(){
+      const m = this.adhocLinkModal;
+      if (!m.selected) return;
+      try {
+        await api('POST','/api/admin/academy/adhoc_makeup_link', { student_id:m.l.student_id, target_occ_id:m.selected, date:this.dashDate, note:m.note });
+        this.notify('보강으로 연결되었습니다.'); this.adhocLinkModal=null; await this.loadDashboard();
+      } catch(e){ this.notify(e.message,false); }
     },
     async openKiosk(){
       let branchId = (this.myProfile && this.myProfile.branch) ? this.myProfile.branch.id : null;

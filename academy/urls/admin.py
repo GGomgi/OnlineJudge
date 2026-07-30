@@ -21,7 +21,8 @@ from ..views.admin import (AssignRoleAPI, StaffAdminAPI, InstructorListAPI, Staf
                            LessonStatusAdminAPI, MakeupAddAdminAPI, TimetableCalendarAPI,
                            LessonEditAdminAPI, PendingMakeupAPI, LessonAbsenceAPI,
                            LessonProgressAdminAPI, MsgTemplateGroupAdminAPI, MsgTemplateAdminAPI,
-                           FixedTemplateAdminAPI, KioskUrlAdminAPI)
+                           FixedTemplateAdminAPI, KioskUrlAdminAPI,
+                           StudentLessonCandidatesAPI, AdhocMakeupLinkAPI)
 
 urlpatterns = [
     url(r"^academy/staff/?$", StaffAdminAPI.as_view(), name="academy_staff"),
@@ -81,6 +82,8 @@ urlpatterns = [
     url(r"^academy/timetable_calendar/?$", TimetableCalendarAPI.as_view(), name="academy_timetable_calendar"),
     url(r"^academy/lesson_edit/?$", LessonEditAdminAPI.as_view(), name="academy_lesson_edit"),
     url(r"^academy/pending_makeup/?$", PendingMakeupAPI.as_view(), name="academy_pending_makeup"),
+    url(r"^academy/student_lesson_candidates/?$", StudentLessonCandidatesAPI.as_view(), name="academy_student_lesson_candidates"),
+    url(r"^academy/adhoc_makeup_link/?$", AdhocMakeupLinkAPI.as_view(), name="academy_adhoc_makeup_link"),
     url(r"^academy/lesson_absence/?$", LessonAbsenceAPI.as_view(), name="academy_lesson_absence"),
     url(r"^academy/lesson_progress/?$", LessonProgressAdminAPI.as_view(), name="academy_lesson_progress"),
     url(r"^academy/msg_group/?$", MsgTemplateGroupAdminAPI.as_view(), name="academy_msg_group"),

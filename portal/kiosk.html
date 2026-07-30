@@ -145,7 +145,7 @@ createApp({
         <tbody>
           <tr v-for="(r,i) in board" :key="i" class="border-b border-slate-800">
             <td class="py-1.5 pr-2 font-mono text-slate-300">{{ r.start_time }}</td>
-            <td class="py-1.5 pr-2 font-medium">{{ r.student_name }}</td>
+            <td class="py-1.5 pr-2 font-medium">{{ r.student_name }}<span v-if="r.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">수업외</span></td>
             <td class="py-1.5 pr-2" :class="r.att.in ? 'text-emerald-400' : 'text-slate-600'">{{ r.att.in || '-' }}</td>
             <td class="py-1.5 pr-2" :class="r.att.out ? 'text-indigo-400' : 'text-slate-600'">{{ r.att.out || '-' }}</td>
             <td class="py-1.5 pr-2 text-right text-slate-400 text-xs">{{ elapsed(r) }}</td>

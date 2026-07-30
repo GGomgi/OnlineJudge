@@ -16,7 +16,7 @@ from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROL
                       HRNotice, StaffDocument, StaffProfileHistory)
 from ..models import DevRequest, DevRequestComment, Notification, Message
 from ..models import StudentProfile, DailyAttendance, EnrollmentStatus, LessonOccurrence, OccurrenceStatus
-from .admin import ensure_occurrences
+from .admin import ensure_occurrences, _adhoc_lesson_rows
 
 
 def _kst_dt_str(dt):
@@ -908,7 +908,11 @@ class KioskBoardAPI(APIView):
             att[a.student_id] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)}
         rows = [{"start_time": str(o.start_time)[:5], "student_name": _name_of(o.student),
                 "duration_minutes": o.duration_minutes,
-                "att": att.get(o.student_id, {"in": "", "out": ""})} for o in occ]
+                "att": att.get(o.student_id, {"in": "", "out": ""}), "adhoc": False} for o in occ]
+        for r in _adhoc_lesson_rows(d, [branch.id]):
+            rows.append({"start_time": r["start_time"], "student_name": r["student_name"],
+                        "duration_minutes": r["duration_minutes"], "att": r["att"], "adhoc": True})
+        rows.sort(key=lambda r: r["start_time"])
         return self.success({"rows": rows})
 
 
