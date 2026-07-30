@@ -849,7 +849,7 @@
       <div v-if="attModal" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="attModal=null">
         <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b">
-            <div class="font-bold">{{ attModal.student_name }} <span class="text-xs font-normal text-slate-400">{{ dashDate }} · {{ attModal.subject }}</span></div>
+            <div class="font-bold">{{ attModal.student_name }} <span class="text-xs font-normal text-slate-400">{{ attModal.date || dashDate }} · {{ attModal.subject }}</span></div>
             <button @click="attModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
           </div>
           <div class="p-5 space-y-3">
@@ -1553,10 +1553,12 @@
               <tr v-for="sl in ttWeekSlots" :key="sl.mins">
                 <td class="border border-slate-100 bg-slate-50 text-center text-[11px] align-top py-1" :class="sl.half ? 'text-slate-300' : 'text-slate-400'">{{ sl.label }}</td>
                 <td v-for="(d,i) in ttWeekDates" :key="i" :class="['border border-slate-100 align-top p-0.5 min-w-[110px]', d.isToday ? 'bg-indigo-50/30' : '']">
-                  <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
-                       :class="['mb-0.5 px-1.5 py-1 rounded leading-tight cursor-default', calItemCls(it)]">
+                  <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @click="openCalAtt(it, d.date)" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
+                       :class="['mb-0.5 px-1.5 py-1 rounded leading-tight cursor-pointer', calItemCls(it)]">
                     <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}
+                    <span v-if="calBadge(it)" class="ml-1 text-[9px] px-1 rounded" :style="calBadge(it).style">{{ calBadge(it).label }}</span>
                     <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}<template v-if="it.makeup"> · 보강</template></span>
+                    <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">등원 {{ it.att.in||'-' }} · 하원 {{ it.att.out||'-' }}</span>
                   </div>
                   <div v-for="(rv,k) in ttSlotResv(d.date,sl.mins)" :key="'r'+k" @mouseenter="showCalResv(rv,d.date,$event)" @mouseleave="hideResvPop" class="mb-0.5 px-1.5 py-1 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
                     <span class="font-semibold">📅 {{ rv.time }}</span> {{ rv.student_name }}
@@ -1572,20 +1574,29 @@
         <!-- 주간(가로): 요일마다 겹치는 학생끼리 옆으로 나뉘고, 박스 세로 크기가 수업시간(60/90/120분 등)에 비례 -->
         <div v-else-if="(ttView==='week' || ttView==='day') && ttSlotLayout==='horizontal'" class="overflow-x-auto">
           <div v-if="ttWeekSlots.length===0" class="text-center text-xs text-slate-400 py-6">수업이 없습니다.</div>
-          <div v-else class="flex items-start" style="width:max-content">
-            <div class="w-14 shrink-0 sticky left-0 z-10 border-r border-slate-100 bg-slate-50" :style="{height: ttHzHeight()+'px'}">
-              <div v-for="a in ttHzAxis()" :key="a.mins" class="absolute left-0 right-0 -translate-y-1/2 text-center text-[10px] text-slate-400" :style="{top: ttHzTop(a.mins)+'px'}">{{ a.label }}</div>
+          <div v-else style="width:max-content">
+            <!-- 헤더 행: 시간축 자리(빈칸, 폭만 맞춤) + 요일별 헤더 -->
+            <div class="flex items-stretch">
+              <div class="w-14 shrink-0 sticky left-0 z-10 bg-slate-50 border-r border-b border-slate-100"></div>
+              <div v-for="(d,i) in ttWeekDates" :key="'h'+i" class="shrink-0 text-center text-[11px] font-medium py-1 border-r border-b border-slate-100 last:border-r-0"
+                   :class="d.isToday ? 'text-indigo-600 bg-indigo-50/30' : 'text-slate-500'"
+                   :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px'}">{{ d.label }}</div>
             </div>
-            <div v-for="(d,i) in ttWeekDates" :key="i" class="shrink-0 border-r border-slate-100 last:border-r-0" :class="d.isToday ? 'bg-indigo-50/30' : ''" :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px'}">
-              <div class="text-center text-[11px] font-medium py-1 border-b border-slate-100" :class="d.isToday ? 'text-indigo-600' : 'text-slate-500'">{{ d.label }}</div>
-              <div class="relative" :style="{height: ttHzHeight()+'px'}">
-                <div v-for="a in ttHzAxis()" :key="'g'+a.mins" class="absolute left-0 right-0 border-t border-slate-50" :style="{top: ttHzTop(a.mins)+'px'}"></div>
-                <div v-for="(L,j) in ttHzDayLayout(d.date).items" :key="j" @mouseenter="showCalPop(L.it,d.date,$event)" @mouseleave="hideCalPop"
-                     :class="['absolute rounded px-1 py-0.5 leading-tight cursor-default overflow-hidden text-[10px] border border-slate-300/70 shadow-sm', calItemCls(L.it)]"
-                     :style="{ top: ttHzTop(L.start)+'px', height: Math.max((L.end-L.start)*ttHzPxPerMin()-2,16)+'px',
+            <!-- 본문 행: 시간축 + 요일별 내용(헤더와 같은 기준선에서 시작하므로 시간이 정확히 맞음) -->
+            <div class="flex items-start">
+              <div class="w-14 shrink-0 sticky left-0 z-10 border-r border-slate-100 bg-slate-50" :style="{height: ttHzHeight()+'px'}">
+                <div v-for="a in ttHzAxis()" :key="a.mins" class="absolute left-0 right-0 -translate-y-1/2 text-center text-[10px] text-slate-400" :style="{top: ttHzTop(a.mins)+'px'}">{{ a.label }}</div>
+              </div>
+              <div v-for="(d,i) in ttWeekDates" :key="i" class="relative shrink-0 border-r border-slate-100 last:border-r-0" :class="d.isToday ? 'bg-indigo-50/30' : ''"
+                   :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px', height: ttHzHeight()+'px'}">
+                <div v-for="a in ttHzAxis()" :key="'g'+a.mins" class="absolute left-0 right-0 border-t" :class="a.mins%60===0 ? 'border-slate-300' : 'border-slate-200'" :style="{top: ttHzTop(a.mins)+'px'}"></div>
+                <div v-for="(L,j) in ttHzDayLayout(d.date).items" :key="j" @click="openCalAtt(L.it, d.date)" @mouseenter="showCalPop(L.it,d.date,$event)" @mouseleave="hideCalPop"
+                     :class="['absolute rounded px-1 py-0.5 leading-tight cursor-pointer overflow-hidden text-[10px] border border-slate-300/70 shadow-sm', calItemCls(L.it)]"
+                     :style="{ top: ttHzTop(L.start)+'px', height: Math.max((L.end-L.start)*ttHzPxPerMin()-2,30)+'px',
                                left: (L.lane*100/ttHzDayLayout(d.date).lanes)+'%', width: 'calc('+(100/ttHzDayLayout(d.date).lanes)+'% - 2px)' }">
                   <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}</div>
-                  <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}<template v-if="L.it.makeup"> · 보강</template></div>
+                  <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}<template v-if="L.it.makeup"> · 보강</template><template v-if="calBadge(L.it)"> · {{ calBadge(L.it).label }}</template></div>
+                  <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">등원{{ L.it.att.in||'-' }}·하원{{ L.it.att.out||'-' }}</div>
                 </div>
                 <div v-for="(rv,k) in (ttCalResv[d.date]||[])" :key="'r'+k" @mouseenter="showCalResv(rv,d.date,$event)" @mouseleave="hideResvPop"
                      class="absolute rounded px-1 py-0.5 leading-tight bg-amber-50 text-amber-700 border border-amber-200 shadow-sm cursor-help overflow-hidden text-[10px]"
@@ -1603,9 +1614,9 @@
           <div v-for="(c,i) in ttMonthCells" :key="i" class="border border-slate-100 rounded min-h-[80px] p-1" :class="!c.date ? 'bg-slate-50/50' : (c.isToday ? 'bg-indigo-50/40' : '')">
             <template v-if="c.date">
               <div class="text-[11px] mb-0.5" :class="c.isToday ? 'text-indigo-600 font-bold' : 'text-slate-400'">{{ c.day }}</div>
-              <div v-for="(it,j) in (ttCalDays[c.date] ? ttCalDays[c.date].items : [])" :key="j" @mouseenter="showCalPop(it,c.date,$event)" @mouseleave="hideCalPop"
-                   :class="['mb-0.5 px-1 py-0.5 rounded truncate leading-tight cursor-default', calItemCls(it)]">
-                <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<template v-if="it.makeup"> ·보강</template>
+              <div v-for="(it,j) in (ttCalDays[c.date] ? ttCalDays[c.date].items : [])" :key="j" @click="openCalAtt(it, c.date)" @mouseenter="showCalPop(it,c.date,$event)" @mouseleave="hideCalPop"
+                   :class="['mb-0.5 px-1 py-0.5 rounded truncate leading-tight cursor-pointer', calItemCls(it)]">
+                <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<template v-if="it.makeup"> ·보강</template><span v-if="calBadge(it)" class="ml-0.5">·{{ calBadge(it).label }}</span><span v-if="it.att && it.att.in" class="ml-0.5 text-emerald-600">✓</span>
               </div>
               <div v-for="(rv,k) in (ttCalResv[c.date]||[])" :key="'r'+k" @mouseenter="showCalResv(rv,c.date,$event)" @mouseleave="hideResvPop" class="mb-0.5 px-1 py-0.5 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
                 <div class="truncate">📅 {{ rv.time }} {{ rv.student_name }}</div>
@@ -4567,7 +4578,7 @@ createApp({
       this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, note:(l.status==='ABSENT' ? (l.lesson_note||'') : (l.att.note||'')),
                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0, progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
-      try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+this.dashDate); } catch(e){ this.attHist=[]; }
+      try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+(l.date||this.dashDate)); } catch(e){ this.attHist=[]; }
     },
     attShiftLesson(delta){ if(this.attForm.lessonTime) this.attForm.lessonTime=this.shiftHM(this.attForm.lessonTime,delta); },
     showNotePop(l,e){ this.notePop={ show:true, tag:(this.isAbsent(l) ? '결석' : this.attTagLabel(l.att.note_tag)), note:(this.isAbsent(l) ? (l.lesson_note||'') : (l.att.note||'')), tagStyle:this.attTagStyle(l.att.note_tag), x:Math.min(e.clientX+10,window.innerWidth-260), y:Math.min(e.clientY+10,window.innerHeight-80) }; },
@@ -4583,18 +4594,20 @@ createApp({
           await api('POST','/api/admin/academy/lesson_edit', { occ_id:l.occ_id, start_time:this.attForm.lessonTime, reason:this.attForm.note });
         }
         const tag=this.attForm.note_tag, wasAbsent=l.status==='ABSENT';
+        const attDate = l.date || this.dashDate;
         if (tag==='ABSENT'){
           await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'ABSENT', note:this.attForm.note });
-          await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:this.dashDate, note_tag:'', note:'' });
+          await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:attDate, note_tag:'', note:'' });
         } else {
           if (wasAbsent) await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'SCHEDULED', note:'' });
-          await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:this.dashDate, note_tag:tag, note:this.attForm.note });
+          await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:attDate, note_tag:tag, note:this.attForm.note });
         }
         // 진도(변경 시 저장)
         if (this.attForm.progContent!==this._attOrig.progContent || this.attForm.progHomework!==this._attOrig.progHomework){
           await api('POST','/api/admin/academy/lesson_progress', { occ_id:l.occ_id, content:this.attForm.progContent, homework:this.attForm.progHomework });
         }
-        this.notify('저장되었습니다.'); this.attModal=null; await this.loadDashboard();
+        this.notify('저장되었습니다.'); this.attModal=null;
+        if (l.date) this.loadTtCal(); else await this.loadDashboard();
         if (tag==='ABSENT' && !wasAbsent){ this.absentPrompt = { occ_id:l.occ_id, student_id:l.student_id, student_name:l.student_name, subject:l.subject, start_time:l.start_time }; }
       } catch(e){ this.notify(e.message,false); }
     },
@@ -4612,6 +4625,23 @@ createApp({
       this.loadDashboard();
     },
     isAbsent(l){ return l.status==='ABSENT'; },
+    calBadge(it){
+      const tag = this.isAbsent(it) ? 'ABSENT' : ((it.att && it.att.note_tag) || '');
+      if (!tag) return null;
+      return { label: this.attTagLabel(tag), style: this.attTagStyle(tag) };
+    },
+    async openCalAtt(it, date){
+      let occId = it.occ_id;
+      if (!occId && it.timetable_id){
+        try { const d = await api('POST','/api/admin/academy/ensure_occurrence', { timetable_id:it.timetable_id, date }); occId = d.occ_id; }
+        catch(e){ return this.notify(e.message,false); }
+      }
+      if (!occId) return;
+      this.openAtt({ occ_id:occId, student_id:it.student_id, student_name:it.student_name,
+        start_time:it.start_time, subject:it.subject, status:it.status,
+        att: it.att || {in:'',out:'',note_tag:'',note:''}, lesson_note: it.lesson_note||'',
+        progress: it.progress, date, branch: it.branch });
+    },
     hmMin(hm){ if(!hm) return 0; const p=hm.split(':'); return (+p[0])*60+(+p[1]); },
     wdOf(dateStr){ if(!dateStr) return ''; const [y,m,d]=dateStr.split('-').map(Number); return ['일','월','화','수','목','금','토'][new Date(y,m-1,d).getDay()]; },
     shiftHM(hm, delta){ if(!hm) return hm; let m=this.hmMin(hm)+delta; m=Math.max(0,Math.min(1439,m)); const p=x=>String(x).padStart(2,'0'); return p(Math.floor(m/60))+':'+p(m%60); },

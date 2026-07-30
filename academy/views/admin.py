@@ -3590,13 +3590,21 @@ class TimetableCalendarAPI(APIView):
                 q |= Q(instructor__isnull=True)
             slots = slots.filter(q)
         slots = list(slots)
-        # 기간 내 인스턴스 오버레이(결석/취소 상태·occ_id)
+        # 기간 내 인스턴스 오버레이(결석/취소 상태·occ_id·비고 사유)
         occ_q = LessonOccurrence.objects.filter(date__gte=d0, date__lte=d1, source_timetable__isnull=False)
         if sid:
             occ_q = occ_q.filter(student_id=sid)
         overlay = {}
-        for o in occ_q.values("source_timetable_id", "date", "status", "id"):
+        for o in occ_q.values("source_timetable_id", "date", "status", "id", "note"):
             overlay[(o["source_timetable_id"], str(o["date"]))] = o
+        # 등원/하원 출결(오늘 운영과 동일하게 달력에도 표시)
+        att_q = DailyAttendance.objects.filter(date__gte=d0, date__lte=d1)
+        if sid:
+            att_q = att_q.filter(student_id=sid)
+        att_map = {}
+        for a in att_q:
+            att_map[(a.student_id, str(a.date))] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at),
+                                                     "note_tag": a.note_tag, "note": a.note}
         # 진도(있으면) occ_id별
         prog_q = LessonProgress.objects.filter(
             occurrence__date__gte=d0, occurrence__date__lte=d1, is_hidden=False)
@@ -3615,7 +3623,7 @@ class TimetableCalendarAPI(APIView):
                 if s.frequency == "BIWEEKLY" and s.active_from and ((cur - s.active_from).days // 7) % 2 != 0:
                     continue
                 ov = overlay.get((s.id, str(cur)))
-                items.append({"timetable_id": s.id, "start_time": str(s.start_time)[:5],
+                items.append({"timetable_id": s.id, "start_time": str(s.start_time)[:5], "date": str(cur),
                               "duration_minutes": s.duration_minutes,
                               "subject": s.subject or resolve_program_label(s.program) or "미지정",
                               "weekday": s.weekday, "program": s.program,
@@ -3626,6 +3634,8 @@ class TimetableCalendarAPI(APIView):
                               "frequency": s.frequency,
                               "status": (ov["status"] if ov else OccurrenceStatus.SCHEDULED),
                               "occ_id": (ov["id"] if ov else None),
+                              "lesson_note": (ov["note"] if ov else ""),
+                              "att": att_map.get((s.student_id, str(cur)), {"in": "", "out": "", "note_tag": "", "note": ""}),
                               "progress": (prog_by_occ.get(ov["id"]) if ov else None)})
             # 보강(makeup) 인스턴스도 포함
             mk = LessonOccurrence.objects.select_related("student", "instructor").filter(date=cur, is_makeup=True)
@@ -3636,13 +3646,14 @@ class TimetableCalendarAPI(APIView):
             if bid:
                 mk = mk.filter(branch_id=bid)
             for o in mk:
-                items.append({"timetable_id": None, "start_time": str(o.start_time)[:5],
+                items.append({"timetable_id": None, "start_time": str(o.start_time)[:5], "date": str(cur),
                               "duration_minutes": o.duration_minutes,
                               "subject": (o.subject or "보강"), "makeup": True,
                               "student_id": o.student_id, "student_name": _name_of(o.student),
                               "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
                               "instructor_id": o.instructor_id,
-                              "status": o.status, "occ_id": o.id,
+                              "status": o.status, "occ_id": o.id, "lesson_note": o.note,
+                              "att": att_map.get((o.student_id, str(cur)), {"in": "", "out": "", "note_tag": "", "note": ""}),
                               "progress": prog_by_occ.get(o.id)})
             if items:
                 items.sort(key=lambda x: x["start_time"])
@@ -3665,6 +3676,30 @@ class TimetableCalendarAPI(APIView):
                     "id": rv.id, "time": _hm_kst(rv.scheduled_at),
                     "student_name": rv.lead.student_name, "note": rv.note})
         return self.success({"from": str(d0), "to": str(d1), "days": days, "reservations": resv})
+
+
+class EnsureOccurrenceAdminAPI(APIView):
+    @admin_role_required
+    def post(self, request):
+        """달력에서 아직 생성 안 된 정규수업 인스턴스를 만들어 occ_id 반환(비고/결석/진도 편집 진입용).
+        {timetable_id, date}"""
+        data = request.data
+        s = StudentTimetable.objects.filter(id=data.get("timetable_id")).first()
+        if not s:
+            return self.error("시간표를 찾을 수 없습니다.")
+        if not can_manage_branch(request.user, s.branch_id):
+            return self.error("권한이 없습니다.")
+        try:
+            d = datetime.strptime(data.get("date"), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            return self.error("날짜가 올바르지 않습니다.")
+        occ, _ = LessonOccurrence.objects.get_or_create(
+            source_timetable=s, date=d,
+            defaults={"student_id": s.student_id, "branch_id": s.branch_id,
+                     "start_time": s.start_time, "duration_minutes": s.duration_minutes,
+                     "program": s.program, "subject": s.subject or resolve_program_label(s.program) or "미지정",
+                     "instructor_id": s.instructor_id})
+        return self.success({"occ_id": occ.id})
 
 
 class LessonStatusAdminAPI(APIView):

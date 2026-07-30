@@ -22,7 +22,7 @@ from ..views.admin import (AssignRoleAPI, StaffAdminAPI, InstructorListAPI, Staf
                            LessonEditAdminAPI, PendingMakeupAPI, LessonAbsenceAPI,
                            LessonProgressAdminAPI, MsgTemplateGroupAdminAPI, MsgTemplateAdminAPI,
                            FixedTemplateAdminAPI, KioskUrlAdminAPI,
-                           StudentLessonCandidatesAPI, AdhocMakeupLinkAPI)
+                           StudentLessonCandidatesAPI, AdhocMakeupLinkAPI, EnsureOccurrenceAdminAPI)
 
 urlpatterns = [
     url(r"^academy/staff/?$", StaffAdminAPI.as_view(), name="academy_staff"),
@@ -80,6 +80,7 @@ urlpatterns = [
     url(r"^academy/lesson_status/?$", LessonStatusAdminAPI.as_view(), name="academy_lesson_status"),
     url(r"^academy/makeup_add/?$", MakeupAddAdminAPI.as_view(), name="academy_makeup_add"),
     url(r"^academy/timetable_calendar/?$", TimetableCalendarAPI.as_view(), name="academy_timetable_calendar"),
+    url(r"^academy/ensure_occurrence/?$", EnsureOccurrenceAdminAPI.as_view(), name="academy_ensure_occurrence"),
     url(r"^academy/lesson_edit/?$", LessonEditAdminAPI.as_view(), name="academy_lesson_edit"),
     url(r"^academy/pending_makeup/?$", PendingMakeupAPI.as_view(), name="academy_pending_makeup"),
     url(r"^academy/student_lesson_candidates/?$", StudentLessonCandidatesAPI.as_view(), name="academy_student_lesson_candidates"),
