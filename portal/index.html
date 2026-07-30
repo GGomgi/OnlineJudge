@@ -286,11 +286,11 @@
   </div>
 
   <!-- 대시보드 학생 호버 팝오버 -->
-  <div v-if="dashPop.show" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
+  <div v-if="dashPop.show" @mouseenter="keepDashPop" @mouseleave="hideDashPop" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
     <div class="font-bold text-sm mb-1">{{ dashPop.l.student_name }}</div>
     <div class="text-slate-500">{{ dashPop.l.school_name }}{{ schoolSuffix(dashPop.l.school_type) }} {{ dashPop.l.grade ? dashPop.l.grade+'학년' : '' }}</div>
-    <div class="mt-1 flex items-center gap-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span> <call-btn :phone="dashPop.l.parent_phone"></call-btn></div>
-    <div class="flex items-center gap-1">학생: <span class="text-slate-600">{{ dashPop.l.student_phone || '-' }}</span> <call-btn :phone="dashPop.l.student_phone"></call-btn></div>
+    <div class="mt-1.5 flex items-center gap-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span> <call-btn :phone="dashPop.l.parent_phone"></call-btn></div>
+    <div class="mt-1.5 flex items-center gap-1">학생: <call-btn :phone="dashPop.l.student_phone"></call-btn> <span class="text-slate-600">{{ dashPop.l.student_phone || '-' }}</span></div>
     <div v-if="dashPop.l.att.note_tag || dashPop.l.att.note" class="mt-1 pt-1 border-t">비고: <span v-if="dashPop.l.att.note_tag" class="px-1 rounded" :style="attTagStyle(dashPop.l.att.note_tag)">{{ attTagLabel(dashPop.l.att.note_tag) }}</span> <span class="text-slate-600">{{ dashPop.l.att.note }}</span></div>
   </div>
 
@@ -4998,8 +4998,9 @@ const app = createApp({
     shiftHM(hm, delta){ if(!hm) return hm; let m=this.hmMin(hm)+delta; m=Math.max(0,Math.min(1439,m)); const p=x=>String(x).padStart(2,'0'); return p(Math.floor(m/60))+':'+p(m%60); },
     attShiftIn(delta){ if(!this.attForm.in) return; this.attForm.in=this.shiftHM(this.attForm.in,delta); if(this.attForm.out) this.attForm.out=this.shiftHM(this.attForm.out,delta); },
     attShiftOut(delta){ if(!this.attForm.out) return; this.attForm.out=this.shiftHM(this.attForm.out,delta); },
-    showDashPop(l,e){ this.dashPop={ show:true, l, x:Math.min(e.clientX+8,window.innerWidth-280), y:Math.min(e.clientY+8,window.innerHeight-180) }; },
-    hideDashPop(){ this.dashPop.show=false; },
+    showDashPop(l,e){ clearTimeout(this._dashPopTimer); this.dashPop={ show:true, l, x:Math.min(e.clientX+8,window.innerWidth-280), y:Math.min(e.clientY+8,window.innerHeight-180) }; },
+    keepDashPop(){ clearTimeout(this._dashPopTimer); },
+    hideDashPop(){ clearTimeout(this._dashPopTimer); this._dashPopTimer=setTimeout(()=>{ this.dashPop.show=false; }, 250); },
     async setAbsent(l){
       const note = window.prompt('결석 사유 (선택)') ?? '';
       try { await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'ABSENT', note }); this.notify('결석 처리되었습니다.'); this.loadDashboard(); }
@@ -6373,8 +6374,8 @@ const app = createApp({
 app.component('call-btn', {
   props: { phone: String },
   template: `<a v-if="phone" :href="'tel:'+String(phone).replace(/\\D/g,'')" @click.stop
-      class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200 shrink-0 align-middle"
-      title="전화 걸기" style="font-size:11px;line-height:1">📞</a>`
+      class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200 shrink-0 align-middle"
+      title="전화 걸기" style="font-size:13px;line-height:1;touch-action:manipulation">📞</a>`
 });
 app.mount('#app');
 </script>
