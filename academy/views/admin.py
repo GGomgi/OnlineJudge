@@ -3889,19 +3889,34 @@ class MakeupAddAdminAPI(APIView):
             st_time = _t(int(hh), int(mm))
         except (ValueError, AttributeError):
             return self.error("시각 형식이 올바르지 않습니다(HH:MM).")
+        note = (data.get("note") or "").strip()
+        target = None
+        if data.get("makeup_for"):
+            target = LessonOccurrence.objects.filter(id=data.get("makeup_for"), student_id=u.id).first()
+            if not target:
+                return self.error("연결할 수업을 찾을 수 없습니다.")
         src = StudentTimetable.objects.filter(id=data.get("source_timetable_id")).first()
-        dur = data.get("duration") or (src.duration_minutes if src else 60)
-        prog = data.get("program") or (src.program if src else "")
-        subj = resolve_program_label(prog) or (src.subject if src else "") or "보강"
+        # 과목·수업시간·담당강사: 명시 입력 > 정규수업(source_timetable_id) > 연결 대상 수업(target) > 기본값
+        dur = data.get("duration") or (src.duration_minutes if src else (target.duration_minutes if target else 60))
+        prog = data.get("program") or (src.program if src else (target.program if target else ""))
+        subj = resolve_program_label(prog) or (src.subject if src else (target.subject if target else "")) or "보강"
         instr = data.get("instructor_id")
-        if instr is None and src:
-            instr = src.instructor_id
-        occ = LessonOccurrence.objects.create(
-            student=u, branch_id=(prof.branch_id if prof else (src.branch_id if src else None)),
-            source_timetable=None, date=d, start_time=st_time, duration_minutes=dur,
-            program=prog, subject=subj, instructor_id=instr,
-            status=OccurrenceStatus.SCHEDULED, is_makeup=True,
-            makeup_for_id=data.get("makeup_for"), note=(data.get("note") or "").strip())
+        if instr is None:
+            instr = src.instructor_id if src else (target.instructor_id if target else None)
+        with transaction.atomic():
+            # 아직 결석 처리 전(예정)인 수업을 대상으로 고른 경우, 이 보강 연결과 함께 결석 처리한다.
+            if target and target.status != OccurrenceStatus.ABSENT:
+                target.status = OccurrenceStatus.ABSENT
+                if note:
+                    target.note = note
+                target.no_makeup = False
+                target.save()
+            occ = LessonOccurrence.objects.create(
+                student=u, branch_id=(prof.branch_id if prof else (src.branch_id if src else None)),
+                source_timetable=None, date=d, start_time=st_time, duration_minutes=dur,
+                program=prog, subject=subj, instructor_id=instr,
+                status=OccurrenceStatus.SCHEDULED, is_makeup=True,
+                makeup_for_id=data.get("makeup_for"), note=note)
         return self.success({"occ_id": occ.id})
 
 
