@@ -2619,6 +2619,38 @@ class StudentDetailAdminAPI(APIView):
             if oldv != newv:
                 changed.append({"label": "주 교육 회수", "old": str(oldv) if oldv else "(없음)", "new": str(newv) if newv else "(없음)"})
             sp.weekly_sessions = newv
+        if "programs" in data:
+            def _fmt_progs(progs):
+                parts = []
+                for p in (progs or []):
+                    if not isinstance(p, dict) or not p.get("value"):
+                        continue
+                    if p["value"] == "LANG" and p.get("language"):
+                        parts.append(_opt_label("program", "LANG") + "(" + p["language"] + ")")
+                    elif p.get("custom"):
+                        parts.append(p["custom"])
+                    else:
+                        parts.append(_opt_label("program", p["value"]))
+                return " · ".join(parts) if parts else "(없음)"
+            raw = data.get("programs")
+            try:
+                new_progs = _json.loads(raw) if isinstance(raw, str) else (raw or [])
+            except (ValueError, TypeError):
+                new_progs = []
+            try:
+                old_progs = _json.loads(sp.programs) if sp.programs else []
+            except (ValueError, TypeError):
+                old_progs = []
+            new_disp, old_disp = _fmt_progs(new_progs), _fmt_progs(old_progs)
+            if new_disp != old_disp:
+                item = {"label": "등록 과정", "old": old_disp, "new": new_disp}
+                reason = (data.get("programs_reason") or "").strip()
+                if reason:
+                    item["reason"] = reason
+                changed.append(item)
+                sp.programs = _json.dumps(new_progs, ensure_ascii=False)
+                sp.program = new_progs[0].get("value", "") if new_progs else ""
+                sp.program_language = new_progs[0].get("language", "") if new_progs else ""
         if changed:
             try:
                 log = _json.loads(sp.edit_log) if sp.edit_log else []
