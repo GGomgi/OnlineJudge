@@ -866,7 +866,7 @@
             <ul class="space-y-1 max-h-64 overflow-y-auto">
               <li v-for="c in adhocLinkModal.candidates" :key="c.occ_id" @click="adhocLinkModal.selected=c.occ_id"
                   :class="['px-3 py-2 rounded-lg border cursor-pointer text-sm flex items-center justify-between', adhocLinkModal.selected===c.occ_id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50']">
-                <span>{{ c.date }} {{ c.start_time }} · {{ c.subject }}</span>
+                <span>{{ c.date }}({{ wdOf(c.date) }}) {{ c.start_time }} · {{ c.subject }}</span>
                 <span :class="['text-[10px] px-1.5 py-0.5 rounded shrink-0 ml-2', c.status==='ABSENT' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500']">{{ c.status==='ABSENT' ? '결석' : '예정' }}</span>
               </li>
             </ul>
@@ -4567,6 +4567,7 @@ createApp({
     },
     isAbsent(l){ return l.status==='ABSENT'; },
     hmMin(hm){ if(!hm) return 0; const p=hm.split(':'); return (+p[0])*60+(+p[1]); },
+    wdOf(dateStr){ if(!dateStr) return ''; const [y,m,d]=dateStr.split('-').map(Number); return ['일','월','화','수','목','금','토'][new Date(y,m-1,d).getDay()]; },
     shiftHM(hm, delta){ if(!hm) return hm; let m=this.hmMin(hm)+delta; m=Math.max(0,Math.min(1439,m)); const p=x=>String(x).padStart(2,'0'); return p(Math.floor(m/60))+':'+p(m%60); },
     attShiftIn(delta){ if(!this.attForm.in) return; this.attForm.in=this.shiftHM(this.attForm.in,delta); if(this.attForm.out) this.attForm.out=this.shiftHM(this.attForm.out,delta); },
     attShiftOut(delta){ if(!this.attForm.out) return; this.attForm.out=this.shiftHM(this.attForm.out,delta); },
