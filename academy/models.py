@@ -866,7 +866,8 @@ class StudentTimetable(models.Model):
     program = models.CharField(max_length=32, blank=True, default="")  # 등록 과정 코드(과목)
     subject = models.CharField(max_length=64, blank=True, default="")  # 표시용 과정명(라벨)
     frequency = models.CharField(max_length=16, default=TimetableFrequency.WEEKLY)  # 매주/격주
-    active_from = models.DateField(null=True, blank=True)  # 수업 시작일
+    active_from = models.DateField(null=True, blank=True)  # 수업 시작일(이 날짜부터 적용)
+    active_until = models.DateField(null=True, blank=True)  # 마지막 적용일(이 날짜까지, 없으면 무기한)
     room = models.CharField(max_length=64, blank=True, default="")
     status = models.CharField(max_length=16, default=TimetableStatus.ACTIVE)
     create_time = models.DateTimeField(auto_now_add=True)

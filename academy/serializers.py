@@ -621,3 +621,4 @@ class EditStudentTimetableSerializer(serializers.Serializer):
     room = serializers.CharField(max_length=64, required=False, allow_blank=True)
     status = serializers.ChoiceField(choices=["ACTIVE", "PAUSED", "ENDED"], required=False)
     reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    effective_date = serializers.DateField(required=False, allow_null=True)

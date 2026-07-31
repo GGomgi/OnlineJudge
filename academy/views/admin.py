@@ -2317,6 +2317,8 @@ class StudentTimetableAdminAPI(APIView):
         reason = (data.get("reason") or "").strip()
         if not reason:
             return self.error("변경 이유를 입력하세요.")
+        if data.get("effective_date"):
+            return self._put_from_date(request, slot, data, reason)
         before = {"weekday": slot.weekday, "start_time": str(slot.start_time)[:5],
                   "duration_minutes": slot.duration_minutes, "program": slot.program,
                   "frequency": slot.frequency, "instructor_id": slot.instructor_id}
@@ -2371,6 +2373,72 @@ class StudentTimetableAdminAPI(APIView):
             detail=("; ".join(parts))[:255] if parts else "수정")
         slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=slot.pk)
         return self.success(StudentTimetableSerializer(slot).data)
+
+    def _put_from_date(self, request, slot, data, reason):
+        """"이 날짜부터 이후 전체" 적용: 기존 시간표는 그 전날까지만 유효하게 종료하고,
+        새 값으로 새 시간표를 그 날짜부터 시작하도록 분기 생성. 이미 찍혀있던 그 날짜 이후
+        수업 인스턴스(스냅샷) 중 개별 수정(이 날짜만 변경) 안 된 것·아직 등원 안 한 것만
+        새 시간표에 맞게 정리(요일이 안 맞으면 삭제, 맞으면 값 갱신)."""
+        eff = data["effective_date"]
+        old_weekday = slot.weekday
+        # 기존 시간표는 그 전날까지만 유효
+        slot.active_until = eff - timedelta(days=1)
+        slot.save(update_fields=["active_until"])
+        # 새 시간표: 넘어온 값으로 덮어쓰고, 안 넘어온 값은 기존 것 유지
+        new_kwargs = dict(
+            student=slot.student, branch=slot.branch, class_type=slot.class_type,
+            weekday=data.get("weekday", slot.weekday), start_time=data.get("start_time", slot.start_time),
+            duration_minutes=data.get("duration_minutes", slot.duration_minutes),
+            frequency=data.get("frequency", slot.frequency),
+            room=data.get("room", slot.room), status=slot.status,
+            active_from=eff, active_until=None)
+        if "program" in data:
+            new_kwargs["program"] = data.get("program") or ""
+            new_kwargs["subject"] = (data.get("subject") or "").strip() or resolve_program_label(new_kwargs["program"]) or ""
+        else:
+            new_kwargs["program"] = slot.program
+            new_kwargs["subject"] = data.get("subject") or slot.subject
+        if "instructor_id" in data:
+            new_kwargs["instructor"] = User.objects.filter(id=data["instructor_id"]).first() if data["instructor_id"] else None
+        else:
+            new_kwargs["instructor"] = slot.instructor
+        new_slot = StudentTimetable.objects.create(**new_kwargs)
+
+        # 이미 찍힌 미래 스냅샷 정리(개별 수정된 것·이미 등원한 날짜는 보존)
+        att_dates = set(DailyAttendance.objects.filter(
+            student=slot.student, date__gte=eff, check_in_at__isnull=False).values_list("date", flat=True))
+        reconciled, dropped = 0, 0
+        for occ in LessonOccurrence.objects.filter(source_timetable=slot, date__gte=eff, is_makeup=False,
+                                                    time_change_reason="").exclude(status=OccurrenceStatus.ABSENT):
+            if occ.date in att_dates:
+                continue
+            if occ.date.weekday() != new_slot.weekday or not _slot_active_on(new_slot, occ.date):
+                occ.delete()
+                dropped += 1
+                continue
+            occ.source_timetable = new_slot
+            occ.start_time = new_slot.start_time
+            occ.duration_minutes = new_slot.duration_minutes
+            occ.program = new_slot.program
+            occ.subject = new_slot.subject
+            occ.instructor_id = new_slot.instructor_id
+            occ.save()
+            reconciled += 1
+
+        labels = {"weekday": "요일", "start_time": "시각", "duration_minutes": "수업길이",
+                  "program": "과정", "frequency": "반복"}
+        old_vals = {"weekday": _WD[old_weekday], "start_time": str(slot.start_time)[:5],
+                    "duration_minutes": slot.duration_minutes, "program": resolve_program_label(slot.program) or "미지정",
+                    "frequency": {"WEEKLY": "매주", "BIWEEKLY": "격주"}.get(slot.frequency, slot.frequency)}
+        new_vals = {"weekday": _WD[new_slot.weekday], "start_time": str(new_slot.start_time)[:5],
+                    "duration_minutes": new_slot.duration_minutes, "program": resolve_program_label(new_slot.program) or "미지정",
+                    "frequency": {"WEEKLY": "매주", "BIWEEKLY": "격주"}.get(new_slot.frequency, new_slot.frequency)}
+        parts = [f"{labels[k]} {old_vals[k]} → {new_vals[k]}" for k in labels if old_vals[k] != new_vals[k]]
+        TimetableChange.objects.create(
+            student=slot.student, actor=request.user, action="UPDATE", reason=reason,
+            detail=("%s부터 시간표 변경: %s" % (str(eff), "; ".join(parts) if parts else "수정"))[:255])
+        new_slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=new_slot.pk)
+        return self.success(StudentTimetableSerializer(new_slot).data)
 
     @admin_role_required
     def delete(self, request):
@@ -3266,6 +3334,18 @@ def _hm_kst(dt):
     return (dt + timedelta(hours=9)).strftime("%H:%M")
 
 
+def _slot_active_on(s, d):
+    """패턴이 날짜 d에 적용되는지: 유효기간(active_from~active_until)·격주 패리티 확인.
+    active_from/active_until로 "이 날짜부터 이후" 시간표 분기를 표현한다(둘 다 없으면 항상 적용)."""
+    if s.active_from and d < s.active_from:
+        return False
+    if s.active_until and d > s.active_until:
+        return False
+    if s.frequency == "BIWEEKLY" and s.active_from and ((d - s.active_from).days // 7) % 2 != 0:
+        return False
+    return True
+
+
 def ensure_occurrences(d, branch_ids=None):
     """지정일 d의 정규 수업 인스턴스를 시간표 패턴에서 생성(없는 것만). branch_ids=None이면 전체."""
     wd = d.weekday()
@@ -3276,10 +3356,8 @@ def ensure_occurrences(d, branch_ids=None):
     existing = set(LessonOccurrence.objects.filter(date=d, source_timetable__isnull=False)
                    .values_list("source_timetable_id", flat=True))
     for s in slots:
-        # 격주: 수업 시작일 기준 짝수 주만 인스턴스 생성
-        if s.frequency == "BIWEEKLY" and s.active_from:
-            if ((d - s.active_from).days // 7) % 2 != 0:
-                continue
+        if not _slot_active_on(s, d):
+            continue
         if s.id in existing:
             continue
         LessonOccurrence.objects.get_or_create(
@@ -3717,7 +3795,7 @@ class TimetableCalendarAPI(APIView):
             for s in slots:
                 if s.weekday != wd:
                     continue
-                if s.frequency == "BIWEEKLY" and s.active_from and ((cur - s.active_from).days // 7) % 2 != 0:
+                if not _slot_active_on(s, cur):
                     continue
                 ov = overlay.get((s.id, str(cur)))
                 ov_program = (ov["program"] if ov else "") or s.program
@@ -4186,7 +4264,7 @@ class StudentAttendanceHistoryAPI(APIView):
                 for s in tts:
                     if s.weekday != wd:
                         continue
-                    if s.frequency == "BIWEEKLY" and s.active_from and ((cur - s.active_from).days // 7) % 2 != 0:
+                    if not _slot_active_on(s, cur):
                         continue
                     if (s.id, cur) in existing:
                         continue
@@ -4268,7 +4346,7 @@ class StudentTempLeaveAPI(APIView):
             for s in tts:
                 if s.weekday != wd:
                     continue
-                if s.frequency == "BIWEEKLY" and s.active_from and ((cur - s.active_from).days // 7) % 2 != 0:
+                if not _slot_active_on(s, cur):
                     continue
                 existing_occ = existing.get((s.id, cur))
                 if existing_occ:
