@@ -936,19 +936,46 @@ class KioskBoardAPI(APIView):
             return self.error(dev_err)
         d = _kst_today()
         ensure_occurrences(d, [branch.id])
-        occ = LessonOccurrence.objects.select_related("student", "student__userprofile").filter(
+        occ = LessonOccurrence.objects.select_related("student", "student__userprofile", "makeup_for").filter(
             date=d, branch_id=branch.id).exclude(status=OccurrenceStatus.CANCELLED).order_by("start_time")
         sids = [o.student_id for o in occ]
         att = {}
         for a in DailyAttendance.objects.filter(date=d, student_id__in=sids):
             att[a.student_id] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)}
-        rows = [{"start_time": str(o.start_time)[:5], "student_name": _name_of(o.student),
+        rows = [{"occ_id": o.id, "start_time": str(o.start_time)[:5], "student_name": _name_of(o.student),
                 "duration_minutes": o.duration_minutes, "status": o.status, "is_makeup": o.is_makeup,
+                "no_makeup": o.no_makeup, "student_id": o.student_id,
+                "_absence_date": (str(o.makeup_for.date) if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
+                "_absence_time": (str(o.makeup_for.start_time)[:5] if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
                 "att": att.get(o.student_id, {"in": "", "out": ""}), "adhoc": False} for o in occ]
         for r in _adhoc_lesson_rows(d, [branch.id]):
-            rows.append({"start_time": r["start_time"], "student_name": r["student_name"],
+            rows.append({"occ_id": None, "start_time": r["start_time"], "student_name": r["student_name"],
                         "duration_minutes": r["duration_minutes"], "att": r["att"], "adhoc": True,
-                        "status": "SCHEDULED", "is_makeup": False})
+                        "status": "SCHEDULED", "is_makeup": False, "no_makeup": False, "student_id": None,
+                        "_absence_date": "", "_absence_time": ""})
+        # 결석↔보강 상호 연결 표시(포털과 동일한 규칙)
+        absent_ids = [r["occ_id"] for r in rows if r["status"] == OccurrenceStatus.ABSENT and r["occ_id"]]
+        makeup_of = {m.makeup_for_id: m for m in LessonOccurrence.objects.filter(
+            is_makeup=True, makeup_for_id__in=absent_ids)} if absent_ids else {}
+        mk_keys = {(m.student_id, m.date) for m in makeup_of.values()}
+        mk_att = {}
+        if mk_keys:
+            for a in DailyAttendance.objects.filter(
+                    student_id__in={sid for sid, _ in mk_keys}, date__in={dt for _, dt in mk_keys}):
+                if (a.student_id, a.date) in mk_keys:
+                    mk_att[(a.student_id, a.date)] = a
+        for r in rows:
+            r["linked"] = None
+            if r["status"] == OccurrenceStatus.ABSENT:
+                mk = makeup_of.get(r["occ_id"])
+                if mk:
+                    a = mk_att.get((mk.student_id, mk.date))
+                    done = bool(a and a.check_in_at and a.check_out_at)
+                    r["linked"] = {"kind": "makeup", "date": str(mk.date), "start_time": str(mk.start_time)[:5],
+                                   "status": mk.status, "done": done}
+            elif r["_absence_date"]:
+                r["linked"] = {"kind": "absence", "date": r["_absence_date"], "start_time": r["_absence_time"]}
+            del r["_absence_date"], r["_absence_time"], r["occ_id"], r["student_id"]
         rows.sort(key=lambda r: r["start_time"])
         return self.success({"rows": rows})
 

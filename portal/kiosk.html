@@ -48,6 +48,8 @@ createApp({
   },
   computed: {
     dots(){ const arr=['','','','']; for(let i=0;i<this.digits.length;i++) arr[i]='●'; return arr; },
+    checkedInCount(){ return this.board.filter(r=>r.att && r.att.in).length; },
+    checkedOutCount(){ return this.board.filter(r=>r.att && r.att.out).length; },
   },
   methods: {
     tickClock(){
@@ -58,6 +60,20 @@ createApp({
       this.nowMin = d.getHours()*60 + d.getMinutes();
     },
     hmMin(hm){ if (!hm) return 0; const [h,m] = hm.split(':').map(Number); return h*60+m; },
+    wdOf(dateStr){ if (!dateStr) return ''; const WD=['일','월','화','수','목','금','토']; return WD[new Date(dateStr+'T00:00:00').getDay()]; },
+    mkAbsenceRefSuffix(row){
+      if (!row.linked || row.linked.kind!=='absence') return '(결석연결없음)';
+      return '(결석 '+row.linked.date.slice(5)+'('+this.wdOf(row.linked.date)+'))';
+    },
+    stuAbsenceSuffix(row){
+      if (row.no_makeup) return '(보강안함)';
+      const lk = row.linked;
+      if (!lk) return '(보강미정)';
+      const md = lk.date.slice(5)+'('+this.wdOf(lk.date)+')';
+      if (lk.status==='ABSENT') return '(보강결석)';
+      if (lk.done) return '(보강 '+md+' 완료)';
+      return '(보강 '+md+' 예정)';
+    },
     elapsed(row){
       if (!row.att.in) return '';
       const start = this.hmMin(row.att.in);
@@ -66,9 +82,9 @@ createApp({
       return mins+'분 / '+(row.duration_minutes||60)+'분';
     },
     statusInfo(row){
-      if (row.status==='ABSENT') return { label:'결석', cls:'text-rose-400' };
+      if (row.status==='ABSENT') return { label:'결석'+this.stuAbsenceSuffix(row), cls:'text-rose-400' };
       if (row.status==='LEAVE') return { label:'임시휴원', cls:'text-purple-400' };
-      if (row.is_makeup) return { label:'보강', cls:'text-blue-400' };
+      if (row.is_makeup) return { label:'보강'+this.mkAbsenceRefSuffix(row), cls:'text-blue-400' };
       if (!row.att.in && this.hmMin(row.start_time) < this.nowMin) return { label:'미등원', cls:'text-rose-300' };
       return null;
     },
@@ -201,7 +217,10 @@ createApp({
     <template v-else>
     <!-- 왼쪽: 오늘 출결 현황판 -->
     <div class="w-[58%] h-full overflow-y-auto border-r border-slate-700 p-5">
-      <div class="text-sm text-slate-400 mb-3">📋 오늘 출결 현황</div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-sm text-slate-400">📋 오늘 출결 현황</div>
+        <div class="text-xs text-slate-400">등원 <span class="text-emerald-400 font-semibold">{{ checkedInCount }}</span>명, 하원 <span class="text-indigo-400 font-semibold">{{ checkedOutCount }}</span>명</div>
+      </div>
       <table class="w-full text-sm">
         <thead class="sticky top-0 bg-slate-900">
           <tr class="text-slate-400 text-left border-b border-slate-700">
@@ -223,7 +242,7 @@ createApp({
               <td class="py-1.5 pr-2 font-medium" :class="nameCls(r)">{{ r.student_name }}<span v-if="r.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">수업외</span></td>
               <td class="py-1.5 pr-2" :class="r.att.in ? 'text-emerald-400' : 'text-slate-600'">{{ r.att.in || '-' }}</td>
               <td class="py-1.5 pr-2" :class="r.att.out ? 'text-indigo-400' : 'text-slate-600'">{{ r.att.out || '-' }}</td>
-              <td class="py-1.5 pr-2 text-xs" :class="(statusInfo(r)||{}).cls || 'text-slate-700'">{{ statusInfo(r) ? statusInfo(r).label : '' }}</td>
+              <td class="py-1.5 pr-2 text-xs whitespace-nowrap" :class="(statusInfo(r)||{}).cls || 'text-slate-700'">{{ statusInfo(r) ? statusInfo(r).label : '' }}</td>
               <td class="py-1.5 pr-2 text-right text-xs" :class="elapsed(r) ? 'text-slate-400' : 'text-slate-600'">{{ elapsed(r) || (r.status!=='ABSENT' ? '/ '+(r.duration_minutes||60)+'분' : '') }}</td>
             </tr>
           </template>
