@@ -1797,7 +1797,8 @@
                   <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @click="openCalAtt(it, d.date)" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
                        :class="['mb-0.5 px-1.5 py-1 rounded leading-tight cursor-pointer', calItemCls(it)]">
                     <span class="block"><span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}</span>
-                    <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}<template v-if="it.makeup"> · 보강{{ mkAbsenceRefSuffix(it) }}</template><span v-if="calBadge(it)" class="ml-1 px-1 rounded" :style="calBadge(it).style">{{ calBadge(it).label }}</span></span>
+                    <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}</span>
+                    <span v-if="it.makeup || calBadge(it)" class="block text-[10px] opacity-70"><template v-if="it.makeup">보강{{ mkAbsenceRefSuffix(it) }}</template><template v-if="it.makeup && calBadge(it)"> · </template><span v-if="calBadge(it)" class="px-1 rounded" :style="calBadge(it).style">{{ calBadge(it).label }}</span></span>
                     <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">등원: {{ it.att.in||'-' }}</span>
                     <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">하원: {{ it.att.out||'-' }}</span>
                   </div>
@@ -1836,7 +1837,8 @@
                      :style="{ top: ttHzTop(L.start)+'px', height: Math.max((L.end-L.start)*ttHzPxPerMin()-2,30)+'px',
                                left: (L.lane*100/ttHzDayLayout(d.date).lanes)+'%', width: 'calc('+(100/ttHzDayLayout(d.date).lanes)+'% - 2px)' }">
                   <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}</div>
-                  <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}<template v-if="L.it.makeup"> · 보강{{ mkAbsenceRefSuffix(L.it) }}</template><template v-if="calBadge(L.it)"> · {{ calBadge(L.it).label }}</template></div>
+                  <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}</div>
+                  <div v-if="L.it.makeup || calBadge(L.it)" class="opacity-70 truncate"><template v-if="L.it.makeup">보강{{ mkAbsenceRefSuffix(L.it) }}</template><template v-if="L.it.makeup && calBadge(L.it)"> · </template><template v-if="calBadge(L.it)">{{ calBadge(L.it).label }}</template></div>
                   <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">등원: {{ L.it.att.in||'-' }}</div>
                   <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">하원: {{ L.it.att.out||'-' }}</div>
                 </div>
