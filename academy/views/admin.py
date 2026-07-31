@@ -4001,6 +4001,17 @@ class LessonEditAdminAPI(APIView):
         if not can_manage_branch(request.user, o.branch_id):
             return self.error("권한이 없습니다.")
         changes = []
+        if "date" in data:
+            if not o.is_makeup:
+                return self.error("정규수업은 날짜를 옮길 수 없습니다(요일 반복 시간표 자체를 바꾸려면 시간표 탭에서 수정하세요).")
+            try:
+                new_date = datetime.strptime(data.get("date"), "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                return self.error("날짜 형식이 올바르지 않습니다.")
+            if new_date != o.date:
+                changes.append("보강 날짜 %s → %s" % (str(o.date), str(new_date)))
+                o.date = new_date
+                o.time_change_reason = (data.get("reason") or "").strip() or "보강 일정 변경"
         if "start_time" in data:
             tm = (data.get("start_time") or "").strip()
             if not tm:
@@ -4040,7 +4051,7 @@ class LessonEditAdminAPI(APIView):
         instr_u = User.objects.filter(id=o.instructor_id).first() if o.instructor_id else None
         instr_name = _name_of(instr_u) if instr_u else "미배정"
         if not changes:
-            return self.success({"changed": False, "start_time": str(o.start_time)[:5],
+            return self.success({"changed": False, "date": str(o.date), "start_time": str(o.start_time)[:5],
                                  "duration_minutes": o.duration_minutes, "instructor_id": o.instructor_id,
                                  "instructor": instr_name, "program": o.program, "subject": o.subject})
         reason = (data.get("reason") or "").strip()
@@ -4048,8 +4059,8 @@ class LessonEditAdminAPI(APIView):
         TimetableChange.objects.create(
             student=o.student, actor=request.user, action="UPDATE",
             reason=reason or "수업 정보 수정",
-            detail=("%s: %s (그 날짜만)" % (str(o.date), "; ".join(changes)))[:255])
-        return self.success({"changed": True, "start_time": str(o.start_time)[:5],
+            detail=("%s: %s" % (str(o.date), "; ".join(changes)))[:255])
+        return self.success({"changed": True, "date": str(o.date), "start_time": str(o.start_time)[:5],
                              "duration_minutes": o.duration_minutes, "instructor_id": o.instructor_id,
                              "instructor": instr_name, "program": o.program, "subject": o.subject})
 
@@ -4319,7 +4330,10 @@ class StudentAttendanceHistoryAPI(APIView):
             if o.status == OccurrenceStatus.ABSENT:
                 mk = makeup_of.get(o.id)
                 if mk:
-                    row["linked"] = {"kind": "makeup", "date": str(mk.date), "start_time": str(mk.start_time)[:5]}
+                    mk_att = att_map.get(mk.date)
+                    mk_done = bool(mk_att and mk_att.check_in_at and mk_att.check_out_at)
+                    row["linked"] = {"kind": "makeup", "date": str(mk.date), "start_time": str(mk.start_time)[:5],
+                                     "status": mk.status, "done": mk_done}
             elif o.is_makeup and o.makeup_for_id and o.makeup_for:
                 t = o.makeup_for
                 row["linked"] = {"kind": "absence", "date": str(t.date), "start_time": str(t.start_time)[:5]}

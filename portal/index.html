@@ -838,6 +838,10 @@
           <button @click="attModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
         </div>
         <div class="p-5 space-y-3">
+          <div v-if="attModal.is_makeup">
+            <label class="lbl">보강 날짜 <span class="text-slate-400">(다른 날짜로 일정 변경)</span></label>
+            <input v-model="attForm.mkDate" type="date" class="input py-1 w-40" />
+          </div>
           <div>
             <label class="lbl">수업 시각 <span class="text-slate-400">(이 날짜만 변경 · ±10분)</span></label>
             <div class="flex items-center gap-1">
@@ -3804,7 +3808,11 @@ const app = createApp({
       const today = this.todayStr;
       let absent=0, late=0, makeupTotal=0, makeupPending=0;
       for (const row of this.stuAttHist.rows){
-        if (row.is_makeup){ makeupTotal++; continue; }
+        if (row.is_makeup){
+          makeupTotal++;
+          if (row.status==='ABSENT' && row.date<=today) absent++; // 보강 자체를 결석 — 기회 소멸, 결석 집계엔 포함
+          continue;
+        }
         if (row.date > today) continue; // 아직 안 지난 예정 수업은 결석/지각 집계에서 제외
         if (row.status==='ABSENT'){
           absent++;
@@ -4999,11 +5007,12 @@ const app = createApp({
       this.attModal = l;
       const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.status==='LEAVE' ? 'TEMP_LEAVE' : (l.att.note_tag||''));
       const lang0 = (l.program==='LANG') ? this.parseRowLanguage(l.subject) : '';
+      const mkDate0 = l.is_makeup ? (l.date||'') : '';
       this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, note:((l.status==='ABSENT'||l.status==='LEAVE') ? (l.lesson_note||'') : (l.att.note||'')),
-                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60,
+                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0,
                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0,
-                        instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60,
+                        instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0,
                         progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       if (!this.ttInstructors.length) this.loadTtInstructors();
       try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+(l.date||this.dashDate)); } catch(e){ this.attHist=[]; }
@@ -5024,6 +5033,9 @@ const app = createApp({
       try {
         const lessonEditBody = { occ_id:l.occ_id, reason:this.attForm.note };
         let lessonEditDirty = false;
+        if (l.is_makeup && this.attForm.mkDate && this.attForm.mkDate !== this._attOrig.mkDate){
+          lessonEditBody.date = this.attForm.mkDate; lessonEditDirty = true;
+        }
         if (this.attForm.lessonTime && this.attForm.lessonTime !== this._attOrig.lessonTime){
           lessonEditBody.start_time = this.attForm.lessonTime; lessonEditDirty = true;
         }
@@ -5118,7 +5130,7 @@ const app = createApp({
       }
       if (!occId) return;
       this.openAtt({ occ_id:occId, student_id:it.student_id, student_name:it.student_name,
-        start_time:it.start_time, subject:it.subject, status:it.status,
+        start_time:it.start_time, subject:it.subject, status:it.status, is_makeup: !!it.makeup,
         duration_minutes:it.duration_minutes, instructor_id:it.instructor_id, program:it.program,
         att: it.att || {in:'',out:'',note_tag:'',note:''}, lesson_note: it.lesson_note||'',
         progress: it.progress, date, branch: it.branch });
@@ -5872,7 +5884,7 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     stuAttStatusInfo(row){
-      if (row.status==='ABSENT') return { label:'결석'+(row.no_makeup?'(보강X)':''), cls:'bg-rose-100 text-rose-600' };
+      if (row.status==='ABSENT') return { label:'결석'+this.stuAbsenceSuffix(row), cls:'bg-rose-100 text-rose-600' };
       if (row.status==='LEAVE') return { label:'임시휴원', cls:'bg-purple-100 text-purple-600' };
       if (row.is_makeup) return { label:'보강', cls:'bg-blue-100 text-blue-700' };
       if (row.att.in && row.att.out) return { label:'완료', cls:'bg-cyan-100 text-cyan-700' };
@@ -5884,6 +5896,16 @@ const app = createApp({
       if (!row.linked) return '';
       const wd = this.wdOf(row.linked.date);
       return (row.linked.kind==='makeup' ? '보강:' : '결석:') + row.linked.date.slice(5)+'('+wd+') '+row.linked.start_time;
+    },
+    // 결석 상태 옆 괄호 표시: 보강안함/미정/예정/완료/보강결석(기회 소멸)
+    stuAbsenceSuffix(row){
+      if (row.no_makeup) return '(보강안함)';
+      const lk = row.linked;
+      if (!lk) return '(보강미정)';
+      const md = lk.date.slice(5)+'('+this.wdOf(lk.date)+')';
+      if (lk.status==='ABSENT') return '(보강결석)';
+      if (lk.done) return '(보강 '+md+' 완료)';
+      return '(보강 '+md+' 예정)';
     },
     stuAttLateText(row){
       if (!row.att.in) return '';
@@ -5898,7 +5920,7 @@ const app = createApp({
     },
     openStuAttRow(row){
       this.openAtt({ occ_id:row.occ_id, student_id:this.stuDetail.id, student_name:(this.stuDetail.real_name||this.stuDetail.username),
-        start_time:row.start_time, subject:row.subject, status:row.status,
+        start_time:row.start_time, subject:row.subject, status:row.status, is_makeup: !!row.is_makeup,
         duration_minutes:row.duration_minutes, instructor_id:row.instructor_id, program:row.program,
         att: row.att, lesson_note: row.lesson_note||'', progress: row.progress||null, date: row.date });
     },
