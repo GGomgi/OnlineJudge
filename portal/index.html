@@ -712,7 +712,7 @@
                   <span v-if="l.time_changed" @mouseenter="showTcPop(l,$event)" @mouseleave="hideTcPop" class="text-amber-600 font-bold cursor-help">{{ l.start_time }}</span>
                   <span v-else>{{ l.start_time }}</span>
                 </td>
-                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
+                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700 whitespace-nowrap">보강{{ mkAbsenceRefSuffix(l) }}</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
                 <td class="px-3 py-2 text-slate-500 max-w-[64px] truncate">{{ l.subject }}<span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help" title="">📝</span></td>
                 <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
                 <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
@@ -1780,7 +1780,7 @@
                   <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @click="openCalAtt(it, d.date)" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
                        :class="['mb-0.5 px-1.5 py-1 rounded leading-tight cursor-pointer', calItemCls(it)]">
                     <span class="block"><span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}</span>
-                    <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}<template v-if="it.makeup"> · 보강</template><span v-if="calBadge(it)" class="ml-1 px-1 rounded" :style="calBadge(it).style">{{ calBadge(it).label }}</span></span>
+                    <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}<template v-if="it.makeup"> · 보강{{ mkAbsenceRefSuffix(it) }}</template><span v-if="calBadge(it)" class="ml-1 px-1 rounded" :style="calBadge(it).style">{{ calBadge(it).label }}</span></span>
                     <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">등원: {{ it.att.in||'-' }}</span>
                     <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">하원: {{ it.att.out||'-' }}</span>
                   </div>
@@ -1819,7 +1819,7 @@
                      :style="{ top: ttHzTop(L.start)+'px', height: Math.max((L.end-L.start)*ttHzPxPerMin()-2,30)+'px',
                                left: (L.lane*100/ttHzDayLayout(d.date).lanes)+'%', width: 'calc('+(100/ttHzDayLayout(d.date).lanes)+'% - 2px)' }">
                   <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}</div>
-                  <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}<template v-if="L.it.makeup"> · 보강</template><template v-if="calBadge(L.it)"> · {{ calBadge(L.it).label }}</template></div>
+                  <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}<template v-if="L.it.makeup"> · 보강{{ mkAbsenceRefSuffix(L.it) }}</template><template v-if="calBadge(L.it)"> · {{ calBadge(L.it).label }}</template></div>
                   <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">등원: {{ L.it.att.in||'-' }}</div>
                   <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">하원: {{ L.it.att.out||'-' }}</div>
                 </div>
@@ -1841,7 +1841,7 @@
               <div class="text-[11px] mb-0.5" :class="c.isToday ? 'text-indigo-600 font-bold' : 'text-slate-400'">{{ c.day }}</div>
               <div v-for="(it,j) in (ttCalDays[c.date] ? ttCalDays[c.date].items : [])" :key="j" @click="openCalAtt(it, c.date)" @mouseenter="showCalPop(it,c.date,$event)" @mouseleave="hideCalPop"
                    :class="['mb-0.5 px-1 py-0.5 rounded truncate leading-tight cursor-pointer', calItemCls(it)]">
-                <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<template v-if="it.makeup"> ·보강</template><span v-if="calBadge(it)" class="ml-0.5">·{{ calBadge(it).label }}</span><span v-if="it.att && it.att.in" class="ml-0.5 text-emerald-600">✓</span>
+                <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<template v-if="it.makeup"> ·보강{{ mkAbsenceRefSuffix(it) }}</template><span v-if="calBadge(it)" class="ml-0.5">·{{ calBadge(it).label }}</span><span v-if="it.att && it.att.in" class="ml-0.5 text-emerald-600">✓</span>
               </div>
               <div v-for="(rv,k) in (ttCalResv[c.date]||[])" :key="'r'+k" @mouseenter="showCalResv(rv,c.date,$event)" @mouseleave="hideResvPop" class="mb-0.5 px-1 py-0.5 rounded leading-tight bg-amber-50 text-amber-700 cursor-help">
                 <div class="truncate">📅 {{ rv.time }} {{ rv.student_name }}</div>
@@ -2480,7 +2480,6 @@
                       <td class="px-2 py-1 truncate">{{ row.att.out || '-' }}</td>
                       <td class="px-2 py-1 overflow-hidden"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap text-[11px]', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
                       <td class="px-2 py-1 text-slate-500 truncate" @mouseenter="showNotePop(row,$event)" @mouseleave="hideNotePop">
-                        <span v-if="stuAttLinkedText(row)" class="text-indigo-500 whitespace-nowrap">({{ stuAttLinkedText(row) }})</span>
                         {{ row.lesson_note || row.att.note || '' }}
                       </td>
                     </tr>
@@ -5886,16 +5885,16 @@ const app = createApp({
     stuAttStatusInfo(row){
       if (row.status==='ABSENT') return { label:'결석'+this.stuAbsenceSuffix(row), cls:'bg-rose-100 text-rose-600' };
       if (row.status==='LEAVE') return { label:'임시휴원', cls:'bg-purple-100 text-purple-600' };
-      if (row.is_makeup) return { label:'보강', cls:'bg-blue-100 text-blue-700' };
+      if (row.is_makeup) return { label:'보강'+this.mkAbsenceRefSuffix(row), cls:'bg-blue-100 text-blue-700' };
       if (row.att.in && row.att.out) return { label:'완료', cls:'bg-cyan-100 text-cyan-700' };
       if (row.att.in && this.hmMin(row.att.in) > this.hmMin(row.start_time)) return { label:'지각', cls:'bg-amber-100 text-amber-700' };
       if (row.att.in) return { label:'수업중', cls:'bg-emerald-100 text-emerald-700' };
       return { label:'등원전', cls:'bg-slate-100 text-slate-500' };
     },
-    stuAttLinkedText(row){
-      if (!row.linked) return '';
-      const wd = this.wdOf(row.linked.date);
-      return (row.linked.kind==='makeup' ? '보강:' : '결석:') + row.linked.date.slice(5)+'('+wd+') '+row.linked.start_time;
+    // 보강 상태 옆 괄호 표시: 어떤 결석을 보강하는지
+    mkAbsenceRefSuffix(row){
+      if (!row.linked || row.linked.kind!=='absence') return '';
+      return '(결석 '+row.linked.date.slice(5)+'('+this.wdOf(row.linked.date)+'))';
     },
     // 결석 상태 옆 괄호 표시: 보강안함/미정/예정/완료/보강결석(기회 소멸)
     stuAbsenceSuffix(row){

@@ -3416,7 +3416,8 @@ class DashboardAdminAPI(APIView):
         wd = d.weekday()
         view = viewable_branch_ids(request.user)  # None=전체
         ensure_occurrences(d, view)
-        occ = LessonOccurrence.objects.select_related("student", "instructor", "branch", "source_timetable").filter(
+        occ = LessonOccurrence.objects.select_related(
+            "student", "instructor", "branch", "source_timetable", "makeup_for").filter(
             date=d).exclude(status=OccurrenceStatus.CANCELLED)
         if view is not None:
             occ = occ.filter(branch_id__in=view)
@@ -3445,6 +3446,8 @@ class DashboardAdminAPI(APIView):
                 "branch": (o.branch.name if o.branch_id else ""),
                 "biweekly": biweekly, "is_makeup": o.is_makeup,
                 "status": o.status, "lesson_note": o.note, "no_makeup": o.no_makeup,
+                "_absence_date": (str(o.makeup_for.date) if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
+                "_absence_time": (str(o.makeup_for.start_time)[:5] if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
                 "school_type": (sp.school_type if sp else ""),
                 "school_name": (sp.school_name if sp else ""),
                 "grade": (sp.grade if sp else ""),
@@ -3481,8 +3484,11 @@ class DashboardAdminAPI(APIView):
                 if mk:
                     a = mk_att.get((mk.student_id, mk.date))
                     done = bool(a and a.check_in_at and a.check_out_at)
-                    l["linked"] = {"date": str(mk.date), "start_time": str(mk.start_time)[:5],
+                    l["linked"] = {"kind": "makeup", "date": str(mk.date), "start_time": str(mk.start_time)[:5],
                                    "status": mk.status, "done": done}
+            elif l["_absence_date"]:
+                l["linked"] = {"kind": "absence", "date": l["_absence_date"], "start_time": l["_absence_time"]}
+            del l["_absence_date"], l["_absence_time"]
         # 수업외 등원(오늘 수업 없는데 등원 체크된 학생) 합성 행 추가
         adhoc_branch_ids = [int(bid)] if bid else view
         lessons.extend(_adhoc_lesson_rows(d, adhoc_branch_ids))
@@ -3861,7 +3867,8 @@ class TimetableCalendarAPI(APIView):
                               "att": att_map.get((s.student_id, str(cur)), {"in": "", "out": "", "note_tag": "", "note": ""}),
                               "progress": (prog_by_occ.get(ov["id"]) if ov else None)})
             # 보강(makeup) 인스턴스도 포함
-            mk = LessonOccurrence.objects.select_related("student", "instructor").filter(date=cur, is_makeup=True)
+            mk = LessonOccurrence.objects.select_related("student", "instructor", "makeup_for").filter(
+                date=cur, is_makeup=True)
             if sid:
                 mk = mk.filter(student_id=sid)
             if view is not None:
@@ -3869,13 +3876,17 @@ class TimetableCalendarAPI(APIView):
             if bid:
                 mk = mk.filter(branch_id=bid)
             for o in mk:
+                linked = None
+                if o.makeup_for_id and o.makeup_for:
+                    linked = {"kind": "absence", "date": str(o.makeup_for.date),
+                              "start_time": str(o.makeup_for.start_time)[:5]}
                 items.append({"timetable_id": None, "start_time": str(o.start_time)[:5], "date": str(cur),
                               "duration_minutes": o.duration_minutes,
                               "subject": (o.subject or "보강"), "program": o.program or "", "makeup": True,
                               "student_id": o.student_id, "student_name": _name_of(o.student),
                               "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
                               "instructor_id": o.instructor_id,
-                              "status": o.status, "occ_id": o.id, "lesson_note": o.note,
+                              "status": o.status, "occ_id": o.id, "lesson_note": o.note, "linked": linked,
                               "att": att_map.get((o.student_id, str(cur)), {"in": "", "out": "", "note_tag": "", "note": ""}),
                               "progress": prog_by_occ.get(o.id)})
             if items:
