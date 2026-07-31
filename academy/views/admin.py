@@ -3883,12 +3883,28 @@ class EnsureOccurrenceAdminAPI(APIView):
         return self.success({"occ_id": occ.id})
 
 
+def _clear_attendance_for_absence(student, d, actor, note):
+    """결석 처리된 날짜에 이미 등원/하원 기록이 있으면 지우고(소프트) 이력 남김.
+    등원한 기록이 남아있는데 결석으로 표시되면 앞뒤가 안 맞아서 — 프론트에서 확인창을 띄운 뒤 호출한다."""
+    a = DailyAttendance.objects.filter(student=student, date=d).first()
+    if not a or (not a.check_in_at and not a.check_out_at):
+        return
+    old_in = _hm_kst(a.check_in_at) if a.check_in_at else "-"
+    old_out = _hm_kst(a.check_out_at) if a.check_out_at else "-"
+    a.check_in_at = None
+    a.check_out_at = None
+    a.save(update_fields=["check_in_at", "check_out_at"])
+    detail = "결석 처리로 등원/하원 기록 삭제(등원 %s · 하원 %s)" % (old_in, old_out)
+    AttendanceChange.objects.create(attendance=a, actor=actor, detail=detail, reason=note or "")
+
+
 class LessonStatusAdminAPI(APIView):
     @admin_role_required
     def post(self, request):
-        """수업 인스턴스 상태 변경(결석/예정 복원/임시휴원). {occ_id, status:'ABSENT'|'SCHEDULED'|'LEAVE', note?}"""
+        """수업 인스턴스 상태 변경(결석/예정 복원/임시휴원). {occ_id, status:'ABSENT'|'SCHEDULED'|'LEAVE', note?}
+        결석으로 바뀌는 경우 그 날짜에 등원/하원 기록이 있으면 함께 지움(프론트에서 미리 확인받고 호출)."""
         data = request.data
-        o = LessonOccurrence.objects.select_related("branch").filter(id=data.get("occ_id")).first()
+        o = LessonOccurrence.objects.select_related("branch", "student").filter(id=data.get("occ_id")).first()
         if not o:
             return self.error("수업이 없습니다.")
         if not can_manage_branch(request.user, o.branch_id):
@@ -3904,6 +3920,8 @@ class LessonStatusAdminAPI(APIView):
         if st in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.LEAVE):
             o.no_makeup = False
         o.save()
+        if st == OccurrenceStatus.ABSENT:
+            _clear_attendance_for_absence(o.student, o.date, request.user, o.note)
         return self.success({"status": o.status, "note": o.note, "no_makeup": o.no_makeup})
 
 

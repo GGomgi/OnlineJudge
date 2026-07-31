@@ -5011,6 +5011,10 @@ const app = createApp({
     hideNotePop(){ this.notePop.show=false; },
     async saveAtt(){
       const l=this.attModal;
+      if (this.attForm.note_tag==='ABSENT' && l.status!=='ABSENT' && l.att && (l.att.in || l.att.out)){
+        const msg = '이미 등원/하원 기록이 있어요(등원 '+(l.att.in||'-')+' · 하원 '+(l.att.out||'-')+').\n결석 처리하면 이 등원/하원 기록이 삭제됩니다. 계속할까요?';
+        if (!window.confirm(msg)) return;
+      }
       try {
         const lessonEditBody = { occ_id:l.occ_id, reason:this.attForm.note };
         let lessonEditDirty = false;
@@ -5784,6 +5788,13 @@ const app = createApp({
       const note = this.stuAttBulkForm.note;
       const noMakeup = this.stuAttBulkForm.no_makeup;
       const rowsById = {}; this.stuAttHist.rows.forEach(r=>{ rowsById[r.occ_id]=r; });
+      if (tag==='ABSENT'){
+        const withAtt = ids.filter(id=>{ const r=rowsById[id]; return r && r.status!=='ABSENT' && r.att && (r.att.in || r.att.out); });
+        if (withAtt.length){
+          const msg = withAtt.length+'건은 이미 등원/하원 기록이 있어요.\n결석 처리하면 그 기록들이 삭제됩니다. 계속할까요?';
+          if (!window.confirm(msg)) return;
+        }
+      }
       try {
         for (const occId of ids){
           const row = rowsById[occId]; if (!row) continue;
