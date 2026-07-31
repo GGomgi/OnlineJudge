@@ -1794,9 +1794,10 @@
               <tr v-for="sl in ttWeekSlots" :key="sl.mins">
                 <td class="border border-slate-100 bg-slate-50 text-center text-[11px] align-top py-1" :class="sl.half ? 'text-slate-300' : 'text-slate-400'">{{ sl.label }}</td>
                 <td v-for="(d,i) in ttWeekDates" :key="i" :class="['border border-slate-100 align-top p-0.5 min-w-[110px]', d.isToday ? 'bg-indigo-50/30' : '']">
+                  <div v-if="ttConnAt(d.date,sl.mins)" class="w-full" :class="ttConnBarCls(d.date,sl.mins)" style="height:6px"></div>
                   <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @click="openCalAtt(it, d.date)" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
-                       :class="['mb-0.5 px-1.5 py-1 rounded leading-tight cursor-pointer', calItemCls(it)]">
-                    <span class="block"><span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}</span>
+                       :class="['px-1.5 py-1 leading-tight cursor-pointer', calItemCls(it), ttConnRole(it,d.date)==='first' ? 'rounded-t' : (ttConnRole(it,d.date)==='second' ? 'rounded-b mb-0.5' : 'rounded mb-0.5')]">
+                    <span class="block"><span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<span v-if="ttConnRole(it,d.date)" class="ml-1 opacity-60" title="연속 수업(이어짐)">🔗</span></span>
                     <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}({{ it.duration_minutes||60 }}분)</span>
                     <span v-if="it.makeup || calBadge(it)" class="block text-[10px] opacity-70"><template v-if="it.makeup">보강{{ mkAbsenceRefSuffix(it) }}</template><template v-if="it.makeup && calBadge(it)"> · </template><span v-if="calBadge(it)" class="px-1 rounded" :style="calBadge(it).style">{{ calBadge(it).label }}</span></span>
                     <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">등원: {{ it.att.in||'-' }}</span>
@@ -4377,6 +4378,35 @@ const app = createApp({
     ttSlotItems(date,mins){
       const day=this.ttCalDays[date]; if(!day) return [];
       return day.items.filter(it=>{ const [h,m]=it.start_time.split(':').map(Number); const v=h*60+m; return v>=mins && v<mins+20; });
+    },
+    // 세로(주간/일간) 캘린더: 같은 학생의 연속 2회 수업(바로 이어지는 시간)을 이어붙여 보여주기 위한 헬퍼
+    ttConnPairs(date){
+      const day=this.ttCalDays[date]; if(!day) return [];
+      const toM=t=>{ const [h,m]=t.split(':').map(Number); return h*60+m; };
+      const byStudent={};
+      day.items.forEach(it=>{ if(!it.student_id) return; (byStudent[it.student_id]=byStudent[it.student_id]||[]).push(it); });
+      const pairs=[];
+      Object.values(byStudent).forEach(arr=>{
+        arr.sort((a,b)=>toM(a.start_time)-toM(b.start_time));
+        for(let i=0;i<arr.length-1;i++){
+          const s1=toM(arr[i].start_time), e1=s1+(arr[i].duration_minutes||60), s2=toM(arr[i+1].start_time);
+          if (e1===s2) pairs.push({ a:arr[i], b:arr[i+1], s1, e1:s2 });
+        }
+      });
+      return pairs;
+    },
+    ttConnAt(date,mins){
+      return this.ttConnPairs(date).find(p=>mins>p.s1 && mins<p.e1) || null;
+    },
+    ttConnRole(it,date){
+      const p = this.ttConnPairs(date).find(p=>p.a===it || p.b===it);
+      if (!p) return null;
+      return p.a===it ? 'first' : 'second';
+    },
+    ttConnBarCls(date,mins){
+      const p = this.ttConnAt(date,mins); if(!p) return 'bg-slate-100';
+      const m = (this.calItemCls(p.a)||'').match(/bg-\S+/);
+      return m ? m[0] : 'bg-slate-100';
     },
     ttSlotResv(date,mins){
       return (this.ttCalResv[date]||[]).filter(rv=>{ const [h,m]=rv.time.split(':').map(Number); const v=h*60+m; return v>=mins && v<mins+20; });
