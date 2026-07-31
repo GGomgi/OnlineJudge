@@ -4065,6 +4065,24 @@ class LessonEditAdminAPI(APIView):
                 changes.append("보강 날짜 %s → %s" % (str(o.date), str(new_date)))
                 o.date = new_date
                 o.time_change_reason = (data.get("reason") or "").strip() or "보강 일정 변경"
+        if "makeup_for" in data:
+            if not o.is_makeup:
+                return self.error("보강 건만 결석과 연결할 수 있습니다.")
+            target_id = data.get("makeup_for")
+            if target_id:
+                target = LessonOccurrence.objects.filter(id=target_id, student_id=o.student_id).first()
+                if not target:
+                    return self.error("연결할 결석을 찾을 수 없습니다.")
+                if target.status != OccurrenceStatus.ABSENT:
+                    return self.error("결석 상태인 수업만 연결할 수 있습니다.")
+                if LessonOccurrence.objects.filter(is_makeup=True, makeup_for_id=target.id).exclude(id=o.id).exists():
+                    return self.error("이미 다른 보강과 연결된 결석입니다.")
+                if o.makeup_for_id != target.id:
+                    changes.append("결석 연결: %s %s" % (str(target.date), str(target.start_time)[:5]))
+                    o.makeup_for = target
+            elif o.makeup_for_id:
+                changes.append("결석 연결 해제")
+                o.makeup_for = None
         if "start_time" in data:
             tm = (data.get("start_time") or "").strip()
             if not tm:

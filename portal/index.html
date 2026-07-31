@@ -842,6 +842,14 @@
             <label class="lbl">보강 날짜 <span class="text-slate-400">(다른 날짜로 일정 변경)</span></label>
             <input v-model="attForm.mkDate" type="date" class="input py-1 w-40" />
           </div>
+          <div v-if="attModal.is_makeup && !attModal.linked">
+            <label class="lbl">결석 연결 <span class="text-slate-400">(이 보강이 메꾸는 결석 선택 — 나중에 연결도 가능)</span></label>
+            <select v-model.number="attForm.linkTarget" class="input py-1">
+              <option :value="null">연결 안 함(날짜미정 결석과 무관)</option>
+              <option v-for="p in mkLinkCandidates" :key="p.occ_id" :value="p.occ_id">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</option>
+            </select>
+            <p v-if="mkLinkCandidates.length===0" class="text-[11px] text-slate-400 mt-1">이 학생의 날짜미정 결석이 없습니다.</p>
+          </div>
           <div>
             <label class="lbl">수업 시각 <span class="text-slate-400">(이 날짜만 변경 · ±10분)</span></label>
             <div class="flex items-center gap-1">
@@ -3560,7 +3568,7 @@ const app = createApp({
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
-      attModal: null, attForm: { lessonTime:'', note_tag:'', note:'', progContent:'', progHomework:'' }, attNoteTags: [], attHist: [],
+      attModal: null, attForm: { lessonTime:'', note_tag:'', note:'', progContent:'', progHomework:'' }, attNoteTags: [], attHist: [], mkLinkCandidates: [],
       adhocLinkModal: null,
       notePop: { show:false, x:0, y:0, tag:'', note:'', tagStyle:{} },
       tcPop: { show:false, x:0, y:0, orig:'', now:'', reason:'' },
@@ -5008,12 +5016,17 @@ const app = createApp({
       const lang0 = (l.program==='LANG') ? this.parseRowLanguage(l.subject) : '';
       const mkDate0 = l.is_makeup ? (l.date||'') : '';
       this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, note:((l.status==='ABSENT'||l.status==='LEAVE') ? (l.lesson_note||'') : (l.att.note||'')),
-                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0,
+                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:null,
                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0,
                         instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0,
                         progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       if (!this.ttInstructors.length) this.loadTtInstructors();
+      this.mkLinkCandidates = [];
+      if (l.is_makeup && !l.linked){
+        try { const all = await api('GET','/api/admin/academy/pending_makeup') || []; this.mkLinkCandidates = all.filter(p=>p.student_id===l.student_id); }
+        catch(e){ this.mkLinkCandidates = []; }
+      }
       try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+(l.date||this.dashDate)); } catch(e){ this.attHist=[]; }
     },
     attShiftLesson(delta){ if(this.attForm.lessonTime) this.attForm.lessonTime=this.shiftHM(this.attForm.lessonTime,delta); },
@@ -5034,6 +5047,9 @@ const app = createApp({
         let lessonEditDirty = false;
         if (l.is_makeup && this.attForm.mkDate && this.attForm.mkDate !== this._attOrig.mkDate){
           lessonEditBody.date = this.attForm.mkDate; lessonEditDirty = true;
+        }
+        if (l.is_makeup && !l.linked && this.attForm.linkTarget){
+          lessonEditBody.makeup_for = this.attForm.linkTarget; lessonEditDirty = true;
         }
         if (this.attForm.lessonTime && this.attForm.lessonTime !== this._attOrig.lessonTime){
           lessonEditBody.start_time = this.attForm.lessonTime; lessonEditDirty = true;
