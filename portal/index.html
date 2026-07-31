@@ -288,7 +288,7 @@
 
   <!-- 대시보드 학생 호버 팝오버 -->
   <div v-if="dashPop.show" @mouseenter="keepDashPop" @mouseleave="hideDashPop" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
-    <div class="font-bold text-sm mb-1 text-indigo-600 cursor-pointer hover:underline" @click="goStudentAttendFromDashPop">{{ dashPop.l.student_name }} →</div>
+    <div class="font-bold text-sm mb-1 text-indigo-600 cursor-pointer hover:underline" @click="goStudentAttendFromDashPop">{{ dashPop.l.student_name }}</div>
     <div class="text-slate-500">{{ dashPop.l.school_name }}{{ schoolSuffix(dashPop.l.school_type) }} {{ dashPop.l.grade ? dashPop.l.grade+'학년' : '' }}</div>
     <div class="mt-1.5 flex items-center gap-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span> <call-btn :phone="dashPop.l.parent_phone"></call-btn></div>
     <div class="mt-1.5 flex items-center gap-1">학생: <call-btn :phone="dashPop.l.student_phone"></call-btn> <span class="text-slate-600">{{ dashPop.l.student_phone || '-' }}</span></div>
