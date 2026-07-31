@@ -1838,7 +1838,8 @@
                               ttConnRole(L.it,d.date)==='first' ? 'rounded-t' : (ttConnRole(L.it,d.date)==='second' ? 'rounded-b border-t-0' : 'rounded')]"
                      :style="{ top: ttHzTop(L.start)+'px', height: Math.max((L.end-L.start)*ttHzPxPerMin()-(ttConnRole(L.it,d.date)==='first'?0:2),30)+'px',
                                left: (L.lane*100/ttHzDayLayout(d.date).lanes)+'%', width: 'calc('+(100/ttHzDayLayout(d.date).lanes)+'% - 2px)' }">
-                  <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}<span v-if="ttConnRole(L.it,d.date)" class="ml-1 opacity-60" title="연속 수업(이어짐)">🔗</span></div>
+                  <span v-if="ttConnRole(L.it,d.date)" class="absolute top-0.5 right-0.5 text-[9px] opacity-70 leading-none" title="연속 수업(이어짐)">🔗</span>
+                  <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}</div>
                   <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}({{ L.it.duration_minutes||60 }}분)</div>
                   <div v-if="L.it.makeup || calBadge(L.it)" class="opacity-70 truncate"><template v-if="L.it.makeup">보강{{ mkAbsenceRefSuffix(L.it) }}</template><template v-if="L.it.makeup && calBadge(L.it)"> · </template><template v-if="calBadge(L.it)">{{ calBadge(L.it).label }}</template></div>
                   <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">등원: {{ L.it.att.in||'-' }}</div>
