@@ -3929,9 +3929,9 @@ class LessonEditAdminAPI(APIView):
                 o.instructor_id = newi
         if "program" in data:
             newp = data.get("program") or ""
-            if newp != (o.program or ""):
+            new_subj = (data.get("subject") or "").strip() or resolve_program_label(newp) or "미지정"
+            if newp != (o.program or "") or new_subj != (o.subject or ""):
                 old_subj = o.subject or "미지정"
-                new_subj = resolve_program_label(newp) or old_subj
                 changes.append("과정 %s → %s" % (old_subj, new_subj))
                 o.program = newp
                 o.subject = new_subj

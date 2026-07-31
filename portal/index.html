@@ -840,7 +840,7 @@
               <button @click="attShiftLesson(10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">+10분</button>
             </div>
           </div>
-          <div class="grid grid-cols-3 gap-2">
+          <div class="grid grid-cols-2 gap-2">
             <div>
               <label class="lbl">수업시간(분)</label>
               <select v-model.number="attForm.duration" class="input py-1"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select>
@@ -857,6 +857,13 @@
               <select v-model="attForm.program" class="input py-1">
                 <option value="">미지정</option>
                 <option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <div v-if="attForm.program==='LANG'">
+              <label class="lbl">언어</label>
+              <select v-model="attForm.language" class="input py-1">
+                <option value="">선택</option>
+                <option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
               </select>
             </div>
           </div>
@@ -4982,11 +4989,12 @@ const app = createApp({
     async openAtt(l){
       this.attModal = l;
       const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.status==='LEAVE' ? 'TEMP_LEAVE' : (l.att.note_tag||''));
+      const lang0 = (l.program==='LANG') ? this.parseRowLanguage(l.subject) : '';
       this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, note:((l.status==='ABSENT'||l.status==='LEAVE') ? (l.lesson_note||'') : (l.att.note||'')),
-                       instructor_id:l.instructor_id||null, program:l.program||'', duration:l.duration_minutes||60,
+                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60,
                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0,
-                        instructor_id:l.instructor_id||null, program:l.program||'', duration:l.duration_minutes||60,
+                        instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60,
                         progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       if (!this.ttInstructors.length) this.loadTtInstructors();
       try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+(l.date||this.dashDate)); } catch(e){ this.attHist=[]; }
@@ -5012,8 +5020,10 @@ const app = createApp({
         if (this.attForm.instructor_id !== this._attOrig.instructor_id){
           lessonEditBody.instructor_id = this.attForm.instructor_id; lessonEditDirty = true;
         }
-        if (this.attForm.program !== this._attOrig.program){
-          lessonEditBody.program = this.attForm.program; lessonEditDirty = true;
+        if (this.attForm.program !== this._attOrig.program || this.attForm.language !== this._attOrig.language){
+          lessonEditBody.program = this.attForm.program;
+          lessonEditBody.subject = this.rowSubject({ program:this.attForm.program, language:this.attForm.language });
+          lessonEditDirty = true;
         }
         if (lessonEditDirty){
           await api('POST','/api/admin/academy/lesson_edit', lessonEditBody);
