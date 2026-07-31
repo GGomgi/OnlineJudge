@@ -3361,8 +3361,9 @@ class DashboardAdminAPI(APIView):
                 "start_time": str(o.start_time)[:5], "duration_minutes": o.duration_minutes,
                 "time_changed": time_changed, "time_change_reason": (o.time_change_reason if time_changed else ""),
                 "orig_time": (str(o.source_timetable.start_time)[:5] if (time_changed and o.source_timetable) else ""),
-                "subject": o.subject or "미지정",
+                "subject": o.subject or "미지정", "program": o.program or "",
                 "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
+                "instructor_id": o.instructor_id,
                 "branch": (o.branch.name if o.branch_id else ""),
                 "biweekly": biweekly, "is_makeup": o.is_makeup,
                 "status": o.status, "lesson_note": o.note, "no_makeup": o.no_makeup,
@@ -3677,13 +3678,16 @@ class TimetableCalendarAPI(APIView):
                 q |= Q(instructor__isnull=True)
             slots = slots.filter(q)
         slots = list(slots)
-        # 기간 내 인스턴스 오버레이(결석/취소 상태·occ_id·비고 사유)
+        # 기간 내 인스턴스 오버레이(결석/취소 상태·occ_id·비고 사유·당일 시각/강사/과정 변경분)
         occ_q = LessonOccurrence.objects.filter(date__gte=d0, date__lte=d1, source_timetable__isnull=False)
         if sid:
             occ_q = occ_q.filter(student_id=sid)
         overlay = {}
-        for o in occ_q.values("source_timetable_id", "date", "status", "id", "note", "no_makeup"):
+        for o in occ_q.values("source_timetable_id", "date", "status", "id", "note", "no_makeup",
+                               "start_time", "duration_minutes", "instructor_id", "program", "subject"):
             overlay[(o["source_timetable_id"], str(o["date"]))] = o
+        ov_instr_ids = {o["instructor_id"] for o in overlay.values() if o["instructor_id"]}
+        ov_instr_names = {u.id: _name_of(u) for u in User.objects.filter(id__in=ov_instr_ids)}
         # 등원/하원 출결(오늘 운영과 동일하게 달력에도 표시)
         att_q = DailyAttendance.objects.filter(date__gte=d0, date__lte=d1)
         if sid:
@@ -3710,13 +3714,18 @@ class TimetableCalendarAPI(APIView):
                 if s.frequency == "BIWEEKLY" and s.active_from and ((cur - s.active_from).days // 7) % 2 != 0:
                     continue
                 ov = overlay.get((s.id, str(cur)))
-                items.append({"timetable_id": s.id, "start_time": str(s.start_time)[:5], "date": str(cur),
-                              "duration_minutes": s.duration_minutes,
-                              "subject": s.subject or resolve_program_label(s.program) or "미지정",
-                              "weekday": s.weekday, "program": s.program,
+                ov_program = (ov["program"] if ov else "") or s.program
+                items.append({"timetable_id": s.id,
+                              "start_time": (str(ov["start_time"])[:5] if ov else str(s.start_time)[:5]),
+                              "date": str(cur),
+                              "duration_minutes": (ov["duration_minutes"] if ov else s.duration_minutes),
+                              "subject": ((ov["subject"] if ov else "") or s.subject or
+                                          resolve_program_label(s.program) or "미지정"),
+                              "weekday": s.weekday, "program": ov_program,
                               "student_id": s.student_id, "student_name": _name_of(s.student),
-                              "instructor": _name_of(s.instructor) if s.instructor_id else "미배정",
-                              "instructor_id": s.instructor_id,
+                              "instructor": (ov_instr_names.get(ov["instructor_id"], "미배정") if ov
+                                             else (_name_of(s.instructor) if s.instructor_id else "미배정")),
+                              "instructor_id": (ov["instructor_id"] if ov else s.instructor_id),
                               "branch": (s.branch.name if s.branch_id else ""), "branch_id": s.branch_id,
                               "frequency": s.frequency,
                               "status": (ov["status"] if ov else OccurrenceStatus.SCHEDULED),
@@ -3736,7 +3745,7 @@ class TimetableCalendarAPI(APIView):
             for o in mk:
                 items.append({"timetable_id": None, "start_time": str(o.start_time)[:5], "date": str(cur),
                               "duration_minutes": o.duration_minutes,
-                              "subject": (o.subject or "보강"), "makeup": True,
+                              "subject": (o.subject or "보강"), "program": o.program or "", "makeup": True,
                               "student_id": o.student_id, "student_name": _name_of(o.student),
                               "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
                               "instructor_id": o.instructor_id,
@@ -3878,36 +3887,69 @@ class PendingMakeupAPI(APIView):
 class LessonEditAdminAPI(APIView):
     @admin_role_required
     def post(self, request):
-        """오늘 하루 수업 인스턴스 시각/길이 변경 + 사유(이력). {occ_id, start_time'HH:MM', duration?, reason?}"""
+        """수업 인스턴스(그 날짜 하나만) 시각·길이·강사·과정 변경 + 사유(이력).
+        정규수업은 패턴(StudentTimetable)은 그대로 두고 이 날짜 인스턴스만 바뀜(달력에도 반영).
+        보강은 애초에 패턴이 없어 이 값이 유일한 소스.
+        {occ_id, start_time?'HH:MM', duration?, instructor_id?, program?, reason?}"""
         data = request.data
-        o = LessonOccurrence.objects.select_related("branch").filter(id=data.get("occ_id")).first()
+        o = LessonOccurrence.objects.select_related("branch", "instructor", "student").filter(
+            id=data.get("occ_id")).first()
         if not o:
             return self.error("수업이 없습니다.")
         if not can_manage_branch(request.user, o.branch_id):
             return self.error("권한이 없습니다.")
-        tm = (data.get("start_time") or "").strip()
-        if not tm:
-            return self.error("시각을 입력하세요.")
-        from datetime import time as _t
-        try:
-            hh, mm = tm.split(":")
-            new_time = _t(int(hh), int(mm))
-        except (ValueError, AttributeError):
-            return self.error("시각 형식이 올바르지 않습니다(HH:MM).")
-        old = str(o.start_time)[:5]
-        o.start_time = new_time
+        changes = []
+        if "start_time" in data:
+            tm = (data.get("start_time") or "").strip()
+            if not tm:
+                return self.error("시각을 입력하세요.")
+            from datetime import time as _t
+            try:
+                hh, mm = tm.split(":")
+                new_time = _t(int(hh), int(mm))
+            except (ValueError, AttributeError):
+                return self.error("시각 형식이 올바르지 않습니다(HH:MM).")
+            old_tm = str(o.start_time)[:5]
+            if old_tm != tm:
+                changes.append("시각 %s → %s" % (old_tm, tm))
+                o.start_time = new_time
+                o.time_change_reason = (data.get("reason") or "").strip() or "수업 정보 수정"
         if data.get("duration"):
-            o.duration_minutes = data.get("duration")
+            newd = int(data.get("duration"))
+            if newd != o.duration_minutes:
+                changes.append("수업시간 %s분 → %s분" % (o.duration_minutes, newd))
+                o.duration_minutes = newd
+        if "instructor_id" in data:
+            newi = data.get("instructor_id") or None
+            if newi != o.instructor_id:
+                old_name = _name_of(o.instructor) if o.instructor_id else "미배정"
+                new_u = User.objects.filter(id=newi).first() if newi else None
+                new_name = _name_of(new_u) if new_u else "미배정"
+                changes.append("강사 %s → %s" % (old_name, new_name))
+                o.instructor_id = newi
+        if "program" in data:
+            newp = data.get("program") or ""
+            if newp != (o.program or ""):
+                old_subj = o.subject or "미지정"
+                new_subj = resolve_program_label(newp) or old_subj
+                changes.append("과정 %s → %s" % (old_subj, new_subj))
+                o.program = newp
+                o.subject = new_subj
+        instr_u = User.objects.filter(id=o.instructor_id).first() if o.instructor_id else None
+        instr_name = _name_of(instr_u) if instr_u else "미배정"
+        if not changes:
+            return self.success({"changed": False, "start_time": str(o.start_time)[:5],
+                                 "duration_minutes": o.duration_minutes, "instructor_id": o.instructor_id,
+                                 "instructor": instr_name, "program": o.program, "subject": o.subject})
         reason = (data.get("reason") or "").strip()
-        if old != tm:
-            o.time_change_reason = reason or "오늘 수업 시각 변경"
         o.save()
-        if old != tm:
-            TimetableChange.objects.create(
-                student=o.student, actor=request.user, action="UPDATE",
-                reason=reason or "오늘 수업 시각 변경",
-                detail=("%s 수업 시각 %s → %s (오늘 하루)" % (str(o.date), old, tm))[:255])
-        return self.success({"start_time": str(o.start_time)[:5]})
+        TimetableChange.objects.create(
+            student=o.student, actor=request.user, action="UPDATE",
+            reason=reason or "수업 정보 수정",
+            detail=("%s: %s (그 날짜만)" % (str(o.date), "; ".join(changes)))[:255])
+        return self.success({"changed": True, "start_time": str(o.start_time)[:5],
+                             "duration_minutes": o.duration_minutes, "instructor_id": o.instructor_id,
+                             "instructor": instr_name, "program": o.program, "subject": o.subject})
 
 
 class LessonProgressAdminAPI(APIView):
@@ -4159,7 +4201,9 @@ class StudentAttendanceHistoryAPI(APIView):
             a = att_map.get(o.date)
             row = {"occ_id": o.id, "date": str(o.date), "start_time": str(o.start_time)[:5],
                   "subject": o.subject or resolve_program_label(o.program) or "미지정",
+                  "program": o.program or "", "duration_minutes": o.duration_minutes,
                   "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
+                  "instructor_id": o.instructor_id,
                   "status": o.status, "is_makeup": o.is_makeup, "no_makeup": o.no_makeup, "lesson_note": o.note,
                   "att": {"in": _hm_kst(a.check_in_at) if a else "", "out": _hm_kst(a.check_out_at) if a else "",
                           "note_tag": a.note_tag if a else "", "note": a.note if a else ""},

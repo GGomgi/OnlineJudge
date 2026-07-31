@@ -833,13 +833,34 @@
         </div>
         <div class="p-5 space-y-3">
           <div>
-            <label class="lbl">오늘 수업 시각 <span class="text-slate-400">(오늘 하루만 변경 · ±10분)</span></label>
+            <label class="lbl">수업 시각 <span class="text-slate-400">(이 날짜만 변경 · ±10분)</span></label>
             <div class="flex items-center gap-1">
               <button @click="attShiftLesson(-10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">-10분</button>
               <input v-model="attForm.lessonTime" type="time" class="input py-1 w-28" />
               <button @click="attShiftLesson(10)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">+10분</button>
             </div>
           </div>
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="lbl">수업시간(분)</label>
+              <select v-model.number="attForm.duration" class="input py-1"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select>
+            </div>
+            <div>
+              <label class="lbl">강사</label>
+              <select v-model.number="attForm.instructor_id" class="input py-1">
+                <option :value="null">미배정</option>
+                <option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="lbl">과정</label>
+              <select v-model="attForm.program" class="input py-1">
+                <option value="">미지정</option>
+                <option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-400">이 날짜 수업에만 적용되며, 요일 반복 시간표(패턴) 자체는 바뀌지 않습니다. 정규 패턴을 바꾸려면 시간표 탭에서 수정하세요.</p>
           <div class="border-t pt-2">
             <label class="lbl">비고 표시</label>
             <div class="flex flex-wrap gap-1 mb-2">
@@ -4962,8 +4983,12 @@ const app = createApp({
       this.attModal = l;
       const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.status==='LEAVE' ? 'TEMP_LEAVE' : (l.att.note_tag||''));
       this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, note:((l.status==='ABSENT'||l.status==='LEAVE') ? (l.lesson_note||'') : (l.att.note||'')),
+                       instructor_id:l.instructor_id||null, program:l.program||'', duration:l.duration_minutes||60,
                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
-      this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0, progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
+      this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0,
+                        instructor_id:l.instructor_id||null, program:l.program||'', duration:l.duration_minutes||60,
+                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
+      if (!this.ttInstructors.length) this.loadTtInstructors();
       try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+(l.date||this.dashDate)); } catch(e){ this.attHist=[]; }
     },
     attShiftLesson(delta){ if(this.attForm.lessonTime) this.attForm.lessonTime=this.shiftHM(this.attForm.lessonTime,delta); },
@@ -4976,8 +5001,22 @@ const app = createApp({
     async saveAtt(){
       const l=this.attModal;
       try {
+        const lessonEditBody = { occ_id:l.occ_id, reason:this.attForm.note };
+        let lessonEditDirty = false;
         if (this.attForm.lessonTime && this.attForm.lessonTime !== this._attOrig.lessonTime){
-          await api('POST','/api/admin/academy/lesson_edit', { occ_id:l.occ_id, start_time:this.attForm.lessonTime, reason:this.attForm.note });
+          lessonEditBody.start_time = this.attForm.lessonTime; lessonEditDirty = true;
+        }
+        if (this.attForm.duration && this.attForm.duration !== this._attOrig.duration){
+          lessonEditBody.duration = this.attForm.duration; lessonEditDirty = true;
+        }
+        if (this.attForm.instructor_id !== this._attOrig.instructor_id){
+          lessonEditBody.instructor_id = this.attForm.instructor_id; lessonEditDirty = true;
+        }
+        if (this.attForm.program !== this._attOrig.program){
+          lessonEditBody.program = this.attForm.program; lessonEditDirty = true;
+        }
+        if (lessonEditDirty){
+          await api('POST','/api/admin/academy/lesson_edit', lessonEditBody);
         }
         const tag=this.attForm.note_tag, wasAbsent=l.status==='ABSENT', wasLeave=l.status==='LEAVE';
         const attDate = l.date || this.dashDate;
@@ -5057,6 +5096,7 @@ const app = createApp({
       if (!occId) return;
       this.openAtt({ occ_id:occId, student_id:it.student_id, student_name:it.student_name,
         start_time:it.start_time, subject:it.subject, status:it.status,
+        duration_minutes:it.duration_minutes, instructor_id:it.instructor_id, program:it.program,
         att: it.att || {in:'',out:'',note_tag:'',note:''}, lesson_note: it.lesson_note||'',
         progress: it.progress, date, branch: it.branch });
     },
@@ -5824,6 +5864,7 @@ const app = createApp({
     openStuAttRow(row){
       this.openAtt({ occ_id:row.occ_id, student_id:this.stuDetail.id, student_name:(this.stuDetail.real_name||this.stuDetail.username),
         start_time:row.start_time, subject:row.subject, status:row.status,
+        duration_minutes:row.duration_minutes, instructor_id:row.instructor_id, program:row.program,
         att: row.att, lesson_note: row.lesson_note||'', progress: row.progress||null, date: row.date });
     },
     credFieldDirty(c, f){ return c._orig && c[f] !== c._orig[f]; },
