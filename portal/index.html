@@ -712,7 +712,7 @@
                   <span v-if="l.time_changed" @mouseenter="showTcPop(l,$event)" @mouseleave="hideTcPop" class="text-amber-600 font-bold cursor-help">{{ l.start_time }}</span>
                   <span v-else>{{ l.start_time }}</span>
                 </td>
-                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700 whitespace-nowrap">보강{{ mkAbsenceRefSuffix(l) }}</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
+                <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-if="l.is_makeup" @click="openAtt(l)" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer whitespace-nowrap">보강{{ mkAbsenceRefSuffix(l) }}</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
                 <td class="px-3 py-2 text-slate-500 max-w-[64px] truncate">{{ l.subject }}<span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help" title="">📝</span></td>
                 <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
                 <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
@@ -842,13 +842,19 @@
             <label class="lbl">보강 날짜 <span class="text-slate-400">(다른 날짜로 일정 변경)</span></label>
             <input v-model="attForm.mkDate" type="date" class="input py-1 w-40" />
           </div>
-          <div v-if="attModal.is_makeup && !attModal.linked">
-            <label class="lbl">결석 연결 <span class="text-slate-400">(이 보강이 메꾸는 결석 선택 — 나중에 연결도 가능)</span></label>
-            <select v-model.number="attForm.linkTarget" class="input py-1">
-              <option :value="null">연결 안 함(날짜미정 결석과 무관)</option>
-              <option v-for="p in mkLinkCandidates" :key="p.occ_id" :value="p.occ_id">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</option>
-            </select>
-            <p v-if="mkLinkCandidates.length===0" class="text-[11px] text-slate-400 mt-1">이 학생의 날짜미정 결석이 없습니다.</p>
+          <div v-if="attModal.is_makeup">
+            <label class="lbl">결석 연결 <span class="text-slate-400">(이 보강이 메꾸는 결석)</span></label>
+            <div v-if="attModal.linked" class="flex items-center gap-2 text-xs bg-blue-50 rounded px-2 py-1.5">
+              <span>현재 연결: {{ attModal.linked.date.slice(5) }}({{ wdOf(attModal.linked.date) }}) {{ attModal.linked.start_time }}</span>
+              <button @click="unlinkMakeup" class="ml-auto text-rose-500 hover:underline shrink-0">연결 해제</button>
+            </div>
+            <template v-else>
+              <select v-model.number="attForm.linkTarget" class="input py-1">
+                <option :value="null">연결 안 함(날짜미정 결석과 무관)</option>
+                <option v-for="p in mkLinkCandidates" :key="p.occ_id" :value="p.occ_id">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</option>
+              </select>
+              <p v-if="mkLinkCandidates.length===0" class="text-[11px] text-slate-400 mt-1">이 학생의 날짜미정 결석이 없습니다.</p>
+            </template>
           </div>
           <div>
             <label class="lbl">수업 시각 <span class="text-slate-400">(이 날짜만 변경 · ±10분)</span></label>
@@ -5030,6 +5036,19 @@ const app = createApp({
       try { this.attHist = await api('GET','/api/admin/academy/attendance_note?student_id='+l.student_id+'&date='+(l.date||this.dashDate)); } catch(e){ this.attHist=[]; }
     },
     attShiftLesson(delta){ if(this.attForm.lessonTime) this.attForm.lessonTime=this.shiftHM(this.attForm.lessonTime,delta); },
+    async unlinkMakeup(){
+      if (!confirm('결석 연결을 해제할까요?')) return;
+      try {
+        await api('POST','/api/admin/academy/lesson_edit', { occ_id:this.attModal.occ_id, makeup_for:null, reason:'결석 연결 해제' });
+        this.notify('연결이 해제되었습니다.');
+        this.attModal.linked = null;
+        const l = this.attModal;
+        try { const all = await api('GET','/api/admin/academy/pending_makeup') || []; this.mkLinkCandidates = all.filter(p=>p.student_id===l.student_id); }
+        catch(e){ this.mkLinkCandidates = []; }
+        if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths);
+        else if (l.date) this.loadTtCal(); else this.loadDashboard();
+      } catch(e){ this.notify(e.message,false); }
+    },
     showNotePop(l,e){ this.notePop={ show:true, tag:(this.isAbsent(l) ? '결석' : (this.isLeave(l) ? '임시휴원' : this.attTagLabel(l.att.note_tag))), note:((this.isAbsent(l)||this.isLeave(l)) ? (l.lesson_note||'') : (l.att.note||'')), tagStyle:(this.isLeave(l) ? {backgroundColor:'#ede9fe',color:'#7c3aed'} : this.attTagStyle(l.att.note_tag)), x:Math.min(e.clientX+10,window.innerWidth-260), y:Math.min(e.clientY+10,window.innerHeight-80) }; },
     showTcPop(l,e){ this.tcPop={ show:true, orig:l.orig_time||'', now:l.start_time, reason:l.time_change_reason||'', x:Math.min(e.clientX+12,window.innerWidth-240), y:Math.min(e.clientY+12,window.innerHeight-120) }; },
     hideTcPop(){ this.tcPop.show=false; },
@@ -5909,7 +5928,7 @@ const app = createApp({
     },
     // 보강 상태 옆 괄호 표시: 어떤 결석을 보강하는지
     mkAbsenceRefSuffix(row){
-      if (!row.linked || row.linked.kind!=='absence') return '';
+      if (!row.linked || row.linked.kind!=='absence') return '(결석연결없음)';
       return '(결석 '+row.linked.date.slice(5)+'('+this.wdOf(row.linked.date)+'))';
     },
     // 결석 상태 옆 괄호 표시: 보강안함/미정/예정/완료/보강결석(기회 소멸)
