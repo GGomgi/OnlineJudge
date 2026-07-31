@@ -1834,10 +1834,11 @@
                    :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px', height: ttHzHeight()+'px'}">
                 <div v-for="a in ttHzAxis()" :key="'g'+a.mins" class="absolute left-0 right-0 border-t" :class="a.mins%60===0 ? 'border-slate-300' : 'border-slate-200'" :style="{top: ttHzTop(a.mins)+'px'}"></div>
                 <div v-for="(L,j) in ttHzDayLayout(d.date).items" :key="j" @click="openCalAtt(L.it, d.date)" @mouseenter="showCalPop(L.it,d.date,$event)" @mouseleave="hideCalPop"
-                     :class="['absolute rounded px-1 py-0.5 leading-tight cursor-pointer overflow-hidden text-[10px] border border-slate-300/70 shadow-sm', calItemCls(L.it)]"
-                     :style="{ top: ttHzTop(L.start)+'px', height: Math.max((L.end-L.start)*ttHzPxPerMin()-2,30)+'px',
+                     :class="['absolute px-1 py-0.5 leading-tight cursor-pointer overflow-hidden text-[10px] border border-slate-300/70 shadow-sm', calItemCls(L.it),
+                              ttConnRole(L.it,d.date)==='first' ? 'rounded-t' : (ttConnRole(L.it,d.date)==='second' ? 'rounded-b border-t-0' : 'rounded')]"
+                     :style="{ top: ttHzTop(L.start)+'px', height: Math.max((L.end-L.start)*ttHzPxPerMin()-(ttConnRole(L.it,d.date)==='first'?0:2),30)+'px',
                                left: (L.lane*100/ttHzDayLayout(d.date).lanes)+'%', width: 'calc('+(100/ttHzDayLayout(d.date).lanes)+'% - 2px)' }">
-                  <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}</div>
+                  <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}<span v-if="ttConnRole(L.it,d.date)" class="ml-1 opacity-60" title="연속 수업(이어짐)">🔗</span></div>
                   <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}({{ L.it.duration_minutes||60 }}분)</div>
                   <div v-if="L.it.makeup || calBadge(L.it)" class="opacity-70 truncate"><template v-if="L.it.makeup">보강{{ mkAbsenceRefSuffix(L.it) }}</template><template v-if="L.it.makeup && calBadge(L.it)"> · </template><template v-if="calBadge(L.it)">{{ calBadge(L.it).label }}</template></div>
                   <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">등원: {{ L.it.att.in||'-' }}</div>
@@ -4435,12 +4436,26 @@ const app = createApp({
     ttHzDayLayout(date){
       const day=this.ttCalDays[date]; const items=day ? day.items.slice() : [];
       const toM=t=>{ const [h,m]=t.split(':').map(Number); return h*60+m; };
-      items.sort((a,b)=> toM(a.start_time)-toM(b.start_time) || ((b.duration_minutes||60)-(a.duration_minutes||60)));
-      const laneEnd=[]; const laid=[];
+      // 같은 학생의 바로 이어지는 연속 수업(뒤 항목의 시작=앞 항목의 종료)은 같은 레인에 이어 배치
+      const contOf = new Map();
+      items.forEach(it=>{
+        if (!it.student_id) return;
+        const s = toM(it.start_time);
+        const prev = items.find(o=>o!==it && o.student_id===it.student_id && (toM(o.start_time)+(o.duration_minutes||60))===s);
+        if (prev) contOf.set(it, prev);
+      });
+      items.sort((a,b)=> toM(a.start_time)-toM(b.start_time)
+        || (contOf.has(a)!==contOf.has(b) ? (contOf.has(a) ? -1 : 1) : 0)
+        || ((b.duration_minutes||60)-(a.duration_minutes||60)));
+      const laneEnd=[]; const laid=[]; const laneByItem=new Map();
       items.forEach(it=>{
         const start=toM(it.start_time), dur=it.duration_minutes||60, end=start+dur;
-        let lane=laneEnd.findIndex(e=>e<=start);
+        let lane=-1;
+        const prev = contOf.get(it);
+        if (prev && laneByItem.has(prev) && laneEnd[laneByItem.get(prev)]<=start) lane=laneByItem.get(prev);
+        if (lane<0) lane=laneEnd.findIndex(e=>e<=start);
         if (lane<0){ lane=laneEnd.length; laneEnd.push(end); } else laneEnd[lane]=end;
+        laneByItem.set(it, lane);
         laid.push({ it, start, end, lane });
       });
       return { lanes: Math.max(1, laneEnd.length), items: laid };
