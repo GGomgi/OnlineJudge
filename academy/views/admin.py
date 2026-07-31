@@ -3551,6 +3551,12 @@ class AttendanceNoteAdminAPI(APIView):
                 out.append({"detail": c.detail, "reason": c.reason,
                             "actor": _name_of(c.actor) if c.actor_id else "",
                             "time": _kst_dt_str(c.create_time)})
+        # 그 날짜 수업(정규 하루/보강) 시각·강사·과정 변경 및 보강 생성 이력도 같이 표시
+        for c in TimetableChange.objects.filter(student=u, detail__startswith=str(d)).select_related("actor"):
+            out.append({"detail": c.detail, "reason": c.reason,
+                        "actor": _name_of(c.actor) if c.actor_id else "",
+                        "time": _kst_dt_str(c.create_time)})
+        out.sort(key=lambda x: x["time"])
         return self.success(out)
 
 
@@ -4090,6 +4096,12 @@ class MakeupAddAdminAPI(APIView):
                 program=prog, subject=subj, instructor_id=instr,
                 status=OccurrenceStatus.SCHEDULED, is_makeup=True,
                 makeup_for_id=data.get("makeup_for"), note=note)
+            instr_u = User.objects.filter(id=instr).first() if instr else None
+            TimetableChange.objects.create(
+                student=u, actor=request.user, action="CREATE", reason=note or "보강 생성",
+                detail=("%s 보강 생성: %s %s분 %s%s" % (
+                    str(d), tm, dur, subj or "보강",
+                    (" · " + _name_of(instr_u)) if instr_u else ""))[:255])
         return self.success({"occ_id": occ.id})
 
 
