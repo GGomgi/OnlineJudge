@@ -713,7 +713,7 @@
                   <span v-else>{{ l.start_time }}</span>
                 </td>
                 <td class="px-3 py-2 font-medium whitespace-nowrap"><span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-if="l.is_makeup" class="ml-1 text-[10px] px-1 rounded bg-blue-100 text-blue-700">보강</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span></td>
-                <td class="px-3 py-2 text-slate-500">{{ l.subject }}<span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help" title="">📝</span></td>
+                <td class="px-3 py-2 text-slate-500 max-w-[64px] truncate">{{ l.subject }}<span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help" title="">📝</span></td>
                 <td class="px-3 py-2" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
                 <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
                 <td class="px-3 py-2">
@@ -723,7 +723,7 @@
                       <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded text-center', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
                     </template>
                     <span v-else-if="isLeave(l)" class="text-xs text-violet-500">임시휴원</span>
-                    <span v-else class="text-xs text-rose-500">결석{{ l.no_makeup ? ' (보강X)' : '' }}</span>
+                    <span v-else class="text-xs text-rose-500">결석{{ stuAbsenceSuffix(l) }}</span>
                   </div>
                 </td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
@@ -733,7 +733,7 @@
                 <td class="px-3 py-2">
                   <button v-if="l.adhoc" @click="openAdhocLink(l)" class="px-1.5 py-0.5 rounded text-[11px] bg-amber-100 text-amber-700 hover:bg-amber-200">보강 연결</button>
                   <template v-else>
-                    <span v-if="isAbsent(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-rose-100 text-rose-600">결석</span>
+                    <span v-if="isAbsent(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-rose-100 text-rose-600 whitespace-nowrap">결석{{ stuAbsenceSuffix(l) }}</span>
                     <span v-else-if="isLeave(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-violet-100 text-violet-600">임시휴원</span>
                     <span v-else-if="l.att.note_tag" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
                     <span v-else @click="openAtt(l)" class="text-[11px] text-slate-300 hover:text-indigo-500 cursor-pointer">비고+</span>
@@ -5117,10 +5117,10 @@ const app = createApp({
     isLeave(l){ return l.status==='LEAVE'; },
     calBadge(it){
       if (this.isLeave(it)) return { label:'임시휴원', style:{backgroundColor:'#f3e8ff',color:'#9333ea'} };
-      const tag = this.isAbsent(it) ? 'ABSENT' : ((it.att && it.att.note_tag) || '');
+      if (this.isAbsent(it)) return { label:'결석'+this.stuAbsenceSuffix(it), style: this.attTagStyle('ABSENT') };
+      const tag = (it.att && it.att.note_tag) || '';
       if (!tag) return null;
-      const label = this.attTagLabel(tag) + (tag==='ABSENT' && it.no_makeup ? '(보강X)' : '');
-      return { label, style: this.attTagStyle(tag) };
+      return { label: this.attTagLabel(tag), style: this.attTagStyle(tag) };
     },
     async openCalAtt(it, date){
       let occId = it.occ_id;

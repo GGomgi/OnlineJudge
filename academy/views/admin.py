@@ -3463,6 +3463,26 @@ class DashboardAdminAPI(APIView):
         for l in lessons:
             l["att"] = att.get(l["student_id"], {"in": "", "out": "", "note_tag": "", "note": ""})
             l["progress"] = prog.get(l["occ_id"])
+        # 결석 건에 연결된 보강의 진행상황(예정/완료/보강도 결석) — 결석 표시 세분화용
+        absent_ids = [l["occ_id"] for l in lessons if l["status"] == OccurrenceStatus.ABSENT]
+        makeup_of = {m.makeup_for_id: m for m in LessonOccurrence.objects.filter(
+            is_makeup=True, makeup_for_id__in=absent_ids)} if absent_ids else {}
+        mk_keys = {(m.student_id, m.date) for m in makeup_of.values()}
+        mk_att = {}
+        if mk_keys:
+            for a in DailyAttendance.objects.filter(
+                    student_id__in={sid for sid, _ in mk_keys}, date__in={dt for _, dt in mk_keys}):
+                if (a.student_id, a.date) in mk_keys:
+                    mk_att[(a.student_id, a.date)] = a
+        for l in lessons:
+            l["linked"] = None
+            if l["status"] == OccurrenceStatus.ABSENT:
+                mk = makeup_of.get(l["occ_id"])
+                if mk:
+                    a = mk_att.get((mk.student_id, mk.date))
+                    done = bool(a and a.check_in_at and a.check_out_at)
+                    l["linked"] = {"date": str(mk.date), "start_time": str(mk.start_time)[:5],
+                                   "status": mk.status, "done": done}
         # 수업외 등원(오늘 수업 없는데 등원 체크된 학생) 합성 행 추가
         adhoc_branch_ids = [int(bid)] if bid else view
         lessons.extend(_adhoc_lesson_rows(d, adhoc_branch_ids))
@@ -3772,6 +3792,27 @@ class TimetableCalendarAPI(APIView):
             overlay[(o["source_timetable_id"], str(o["date"]))] = o
         ov_instr_ids = {o["instructor_id"] for o in overlay.values() if o["instructor_id"]}
         ov_instr_names = {u.id: _name_of(u) for u in User.objects.filter(id__in=ov_instr_ids)}
+        # 결석 건에 연결된 보강의 진행상황(예정/완료/보강도 결석) — 결석 표시 세분화용
+        absent_ids = [o["id"] for o in overlay.values() if o["status"] == OccurrenceStatus.ABSENT]
+        makeup_of = {m.makeup_for_id: m for m in LessonOccurrence.objects.filter(
+            is_makeup=True, makeup_for_id__in=absent_ids)} if absent_ids else {}
+        mk_keys = {(m.student_id, m.date) for m in makeup_of.values()}
+        mk_att = {}
+        if mk_keys:
+            for a in DailyAttendance.objects.filter(
+                    student_id__in={sid_ for sid_, _ in mk_keys}, date__in={dt for _, dt in mk_keys}):
+                if (a.student_id, a.date) in mk_keys:
+                    mk_att[(a.student_id, a.date)] = a
+
+        def _linked_for(ov):
+            if not ov or ov["status"] != OccurrenceStatus.ABSENT:
+                return None
+            mk = makeup_of.get(ov["id"])
+            if not mk:
+                return None
+            a = mk_att.get((mk.student_id, mk.date))
+            done = bool(a and a.check_in_at and a.check_out_at)
+            return {"date": str(mk.date), "start_time": str(mk.start_time)[:5], "status": mk.status, "done": done}
         # 등원/하원 출결(오늘 운영과 동일하게 달력에도 표시)
         att_q = DailyAttendance.objects.filter(date__gte=d0, date__lte=d1)
         if sid:
@@ -3816,6 +3857,7 @@ class TimetableCalendarAPI(APIView):
                               "occ_id": (ov["id"] if ov else None),
                               "lesson_note": (ov["note"] if ov else ""),
                               "no_makeup": bool(ov["no_makeup"]) if ov else False,
+                              "linked": _linked_for(ov),
                               "att": att_map.get((s.student_id, str(cur)), {"in": "", "out": "", "note_tag": "", "note": ""}),
                               "progress": (prog_by_occ.get(ov["id"]) if ov else None)})
             # 보강(makeup) 인스턴스도 포함
