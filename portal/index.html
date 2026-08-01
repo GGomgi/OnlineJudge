@@ -1029,8 +1029,8 @@
                 <span class="text-xs text-slate-500 ml-1">{{ mkForm.origin }}</span></div>
             </div>
             <div class="grid grid-cols-2 gap-2">
-              <div><label class="lbl">보강 할 날짜</label><input v-model="mkForm.date" type="date" class="input py-1" /></div>
-              <div><label class="lbl">보강 할 시간</label><input v-model="mkForm.time" type="time" class="input py-1" /></div>
+              <div><label class="lbl">보강 할 날짜</label><input v-model="mkForm.date" type="date" class="input py-1" @click="$event.target.showPicker && $event.target.showPicker()" /></div>
+              <div><label class="lbl">보강 할 시간</label><input v-model="mkForm.time" type="time" class="input py-1" @click="$event.target.showPicker && $event.target.showPicker()" @change="$event.target.blur()" /></div>
             </div>
             <div v-if="mkForm.pair" class="text-xs px-3 py-2 rounded bg-blue-50 text-blue-700">연속 2타임 결석 보강 — 두번째 타임은 {{ mkPairSecondTime() }}부터 이어서 자동으로 함께 잡힙니다.</div>
             <div><label class="lbl">사유</label><input v-model="mkForm.note" placeholder="예: 6/22 결석 보강" class="input py-1" /></div>
@@ -5647,7 +5647,10 @@ const app = createApp({
           const t2 = this.shiftHM(f.time, f.pair.offsetMinutes);
           await api('POST','/api/admin/academy/makeup_add', { student_id:f.student_id, date:f.date, start_time:t2, makeup_for:f.pair.occ_id, note:f.note });
         }
-        this.notify('보강이 추가되었습니다.'); this.makeupOpen=false; this.loadDashboard();
+        this.notify('보강이 추가되었습니다.'); this.makeupOpen=false;
+        if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths);
+        else if (this.tab==='timetable') this.loadTtCal();
+        else this.loadDashboard();
       } catch(e){ this.notify(e.message,false); }
     },
     elapsedInfo(l){
