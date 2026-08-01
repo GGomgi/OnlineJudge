@@ -4763,6 +4763,7 @@ const app = createApp({
     },
     sortArrow(key){ if (this.staffSort.key!==key) return ' ↕'; return this.staffSort.dir>0 ? ' ▲' : ' ▼'; },
     async saveTt(s){
+      if (!this.ttRowDirty(s)) return this.notify('변경된 내용이 없습니다.', false);
       if (!s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
       const reason = window.prompt('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침');
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
@@ -6387,6 +6388,7 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     async saveStuTt(s){
+      if (!this.ttRowDirty(s)) return this.notify('변경된 내용이 없습니다.', false);
       if (!s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
       const reason = window.prompt('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침');
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
