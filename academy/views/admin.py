@@ -2380,6 +2380,11 @@ class StudentTimetableAdminAPI(APIView):
         수업 인스턴스(스냅샷) 중 개별 수정(이 날짜만 변경) 안 된 것·아직 등원 안 한 것만
         새 시간표에 맞게 정리(요일이 안 맞으면 삭제, 맞으면 값 갱신)."""
         eff = data["effective_date"]
+        if isinstance(eff, str):
+            try:
+                eff = datetime.strptime(eff, "%Y-%m-%d").date()
+            except ValueError:
+                return self.error("적용 시작일 형식이 올바르지 않습니다.")
         old_weekday = slot.weekday
         # 기존 시간표는 그 전날까지만 유효
         slot.active_until = eff - timedelta(days=1)
