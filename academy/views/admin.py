@@ -3977,6 +3977,8 @@ class LessonStatusAdminAPI(APIView):
             o.no_makeup = bool(data.get("no_makeup"))
         if st in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.LEAVE):
             o.no_makeup = False
+        if st == OccurrenceStatus.CANCELLED:
+            o.makeup_for = None  # 연결된 결석이 있었다면 재연결 가능하도록 해제
         o.save()
         if st == OccurrenceStatus.ABSENT:
             _clear_attendance_for_absence(o.student, o.date, request.user, o.note)

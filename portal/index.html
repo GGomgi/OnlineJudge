@@ -866,9 +866,12 @@
           <button @click="attModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
         </div>
         <div class="p-5 space-y-3">
-          <div v-if="attModal.is_makeup">
-            <label class="lbl">보강 날짜 <span class="text-slate-400">(다른 날짜로 일정 변경)</span></label>
-            <input v-model="attForm.mkDate" type="date" class="input py-1 w-40" />
+          <div v-if="attModal.is_makeup" class="flex items-end gap-2">
+            <div class="flex-1">
+              <label class="lbl">보강 날짜 <span class="text-slate-400">(다른 날짜로 일정 변경)</span></label>
+              <input v-model="attForm.mkDate" type="date" class="input py-1 w-40" />
+            </div>
+            <button @click="cancelMakeup" class="text-xs text-rose-500 hover:underline mb-2">이 보강 취소</button>
           </div>
           <div v-if="attModal.is_makeup">
             <label class="lbl">결석 연결 <span class="text-slate-400">(이 보강이 메꾸는 결석)</span></label>
@@ -5180,6 +5183,16 @@ const app = createApp({
         const l = this.attModal;
         try { const all = await api('GET','/api/admin/academy/pending_makeup') || []; this.mkLinkCandidates = all.filter(p=>p.student_id===l.student_id); }
         catch(e){ this.mkLinkCandidates = []; }
+        if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths);
+        else if (l.date) this.loadTtCal(); else this.loadDashboard();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async cancelMakeup(){
+      const l = this.attModal;
+      if (!confirm('이 보강 일정을 취소할까요? (결석 연결이 있다면 함께 해제됩니다)')) return;
+      try {
+        await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'CANCELLED', reason:'보강 취소' });
+        this.notify('보강이 취소되었습니다.'); this.attModal=null;
         if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths);
         else if (l.date) this.loadTtCal(); else this.loadDashboard();
       } catch(e){ this.notify(e.message,false); }
