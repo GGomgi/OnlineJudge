@@ -1029,6 +1029,18 @@
       </div>
     </div>
 
+    <!-- 연속 수업(같은 학생 바로 이어지는 2타임) 함께 적용 여부 확인 — 탭과 무관하게 항상 렌더링 -->
+    <div v-if="linkedPrompt" class="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center" @click.self="linkedChoose(false)">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5">
+        <div class="font-bold mb-1">연속 수업 확인</div>
+        <p class="text-sm text-slate-500 mb-4">{{ linkedPrompt.text }}</p>
+        <div class="flex gap-2 justify-end">
+          <button @click="linkedChoose(false)" class="btn-secondary text-sm">{{ linkedPrompt.noLabel }}</button>
+          <button @click="linkedChoose(true)" class="btn-primary text-sm">{{ linkedPrompt.yesLabel }}</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 결석 → 보강 처리 안내 — 탭과 무관하게 항상 렌더링 -->
     <div v-if="absentPrompt" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" @click.self="absentPrompt=null">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5">
@@ -3609,6 +3621,7 @@ const app = createApp({
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
       attModal: null, attForm: { lessonTime:'', note_tag:'', note:'', progContent:'', progHomework:'' }, attNoteTags: [], attHist: [], mkLinkCandidates: [],
+      linkedPrompt: null,
       adhocLinkModal: null,
       notePop: { show:false, x:0, y:0, tag:'', note:'', tagStyle:{} },
       tcPop: { show:false, x:0, y:0, orig:'', now:'', reason:'' },
@@ -5094,6 +5107,33 @@ const app = createApp({
     },
     attTagLabel(v){ const t=this.attNoteTags.find(x=>x.value===v); return t ? t.label : (LEGACY_TAG_LABELS[v] || v); },
     attTagStyle(v){ const t=this.attNoteTags.find(x=>x.value===v); const c=(t&&t.color)||LEGACY_TAG_COLORS[v]||'#64748b'; return { backgroundColor:c+'22', color:c }; },
+    // 같은 학생의 바로 이어지는 연속 수업(예: 90분+90분 연속)을 찾음. 오늘 운영/캘린더/출결기록
+    // 세 화면 중 지금 로드돼 있는 데이터에서 찾아본다.
+    findContPartner(l){
+      if (!l || !l.occ_id || !l.start_time) return null;
+      const toM=t=>{ const [h,m]=(t||'0:0').split(':').map(Number); return h*60+m; };
+      const s = toM(l.start_time), e = s + (l.duration_minutes||60);
+      const matches = o => { if (!o || o.occ_id===l.occ_id || !o.start_time) return false;
+        const os=toM(o.start_time), oe=os+(o.duration_minutes||60); return oe===s || e===os; };
+      if (this.dashData && this.dashData.lessons){
+        const hit = this.dashData.lessons.find(o=>o.student_id===l.student_id && matches(o));
+        if (hit) return hit;
+      }
+      const date = l.date;
+      if (date && this.ttCalDays[date]){
+        const hit = this.ttCalDays[date].items.find(o=>o.student_id===l.student_id && matches(o));
+        if (hit) return hit;
+      }
+      if (this.stuDetail && this.stuAttHist && this.stuAttHist.rows.length){
+        const hit = this.stuAttHist.rows.find(o=>o.date===date && matches(o));
+        if (hit) return hit;
+      }
+      return null;
+    },
+    askLinked(text, noLabel, yesLabel){
+      return new Promise(resolve=>{ this.linkedPrompt = { text, noLabel, yesLabel, resolve }; });
+    },
+    linkedChoose(v){ const p=this.linkedPrompt; this.linkedPrompt=null; if (p) p.resolve(v); },
     async openAtt(l){
       this.attModal = l;
       const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.status==='LEAVE' ? 'TEMP_LEAVE' : (l.att.note_tag||''));
@@ -5144,6 +5184,20 @@ const app = createApp({
         const msg = '이미 등원/하원 기록이 있어요(등원 '+(l.att.in||'-')+' · 하원 '+(l.att.out||'-')+').\n결석 처리하면 이 등원/하원 기록이 삭제됩니다. 계속할까요?';
         if (!window.confirm(msg)) return;
       }
+      const tagChk = this.attForm.note_tag, wasAbsentChk = l.status==='ABSENT', wasLeaveChk = l.status==='LEAVE';
+      const partner = this.findContPartner(l);
+      let applyBoth = false;
+      if (partner){
+        if ((tagChk==='ABSENT'||tagChk==='TEMP_LEAVE') && !wasAbsentChk && !wasLeaveChk){
+          applyBoth = await this.askLinked(
+            l.student_name+'님은 '+partner.start_time+' 수업과 바로 이어지는 연속 수업입니다. 연결된 수업이 있어 같이 적용됩니다. 진행하시겠습니까? 지금 선택된 수업만 적용하시겠습니까?',
+            '이 수업만', '같이 적용');
+        } else if ((wasAbsentChk||wasLeaveChk) && tagChk!=='ABSENT' && tagChk!=='TEMP_LEAVE' && (partner.status==='ABSENT'||partner.status==='LEAVE')){
+          applyBoth = await this.askLinked(
+            '연속된 수업으로 동일하게 작성된 부분이 있습니다. 모두 취소하시겠습니까?',
+            '이 수업만 취소', '모두 취소');
+        }
+      }
       try {
         const lessonEditBody = { occ_id:l.occ_id, reason:this.attForm.note };
         let lessonEditDirty = false;
@@ -5182,6 +5236,11 @@ const app = createApp({
           if (wasAbsent || wasLeave) await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'SCHEDULED', note:'' });
           await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:attDate, note_tag:tag, note:this.attForm.note });
         }
+        if (applyBoth && partner){
+          if (tag==='ABSENT') await api('POST','/api/admin/academy/lesson_status', { occ_id:partner.occ_id, status:'ABSENT', note:this.attForm.note });
+          else if (tag==='TEMP_LEAVE') await api('POST','/api/admin/academy/lesson_status', { occ_id:partner.occ_id, status:'LEAVE', note:this.attForm.note });
+          else await api('POST','/api/admin/academy/lesson_status', { occ_id:partner.occ_id, status:'SCHEDULED', note:'' });
+        }
         // 진도(변경 시 저장)
         if (this.attForm.progContent!==this._attOrig.progContent || this.attForm.progHomework!==this._attOrig.progHomework){
           await api('POST','/api/admin/academy/lesson_progress', { occ_id:l.occ_id, content:this.attForm.progContent, homework:this.attForm.progHomework });
@@ -5189,13 +5248,14 @@ const app = createApp({
         this.notify('저장되었습니다.'); this.attModal=null;
         if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths);
         else if (l.date) this.loadTtCal(); else await this.loadDashboard();
-        if (tag==='ABSENT' && !wasAbsent){ this.absentPrompt = { occ_id:l.occ_id, student_id:l.student_id, student_name:l.student_name, subject:l.subject, start_time:l.start_time }; }
+        if (tag==='ABSENT' && !wasAbsent){ this.absentPrompt = { occ_id:l.occ_id, student_id:l.student_id, student_name:l.student_name, subject:l.subject, start_time:l.start_time, extraOccIds:(applyBoth && partner) ? [partner.occ_id] : [] }; }
       } catch(e){ this.notify(e.message,false); }
     },
     absentLater(){ this.absentPrompt=null; },  // 나중에(보강필요 리스트에 남음)
     async absentNoMakeup(){
       try {
-        await api('POST','/api/admin/academy/lesson_status', { occ_id:this.absentPrompt.occ_id, status:'ABSENT', no_makeup:true });
+        const ids = [this.absentPrompt.occ_id, ...(this.absentPrompt.extraOccIds||[])];
+        for (const id of ids){ await api('POST','/api/admin/academy/lesson_status', { occ_id:id, status:'ABSENT', no_makeup:true }); }
         this.notify('결석(보강 안 함)으로 처리되었습니다.'); this.absentPrompt=null;
         if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths); else this.loadDashboard();
       } catch(e){ this.notify(e.message,false); }
@@ -5203,7 +5263,8 @@ const app = createApp({
     absentSchedule(){ const p=this.absentPrompt; this.absentPrompt=null; this.openMakeupFor(p); },
     async absentToLeave(){
       try {
-        await api('POST','/api/admin/academy/lesson_status', { occ_id:this.absentPrompt.occ_id, status:'LEAVE' });
+        const ids = [this.absentPrompt.occ_id, ...(this.absentPrompt.extraOccIds||[])];
+        for (const id of ids){ await api('POST','/api/admin/academy/lesson_status', { occ_id:id, status:'LEAVE' }); }
         this.notify('임시휴원으로 처리되었습니다.'); this.absentPrompt=null;
         if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths); else this.loadDashboard();
       } catch(e){ this.notify(e.message,false); }
