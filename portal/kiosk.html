@@ -9,6 +9,14 @@
 <style>
   html, body { height: 100%; overscroll-behavior: none; }
   body { user-select: none; }
+  /* 설정 패널 슬라이더를 어두운 테마에 맞게 */
+  input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px;
+    background: #475569; outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px;
+    border-radius: 50%; background: #6366f1; border: 2px solid #c7d2fe; cursor: pointer; margin-top: -6px; }
+  input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #6366f1;
+    border: 2px solid #c7d2fe; cursor: pointer; }
+  input[type=range]::-moz-range-track { background: #475569; height: 4px; border-radius: 999px; }
 </style>
 </head>
 <body class="bg-slate-900 text-white h-screen w-screen overflow-hidden">

@@ -1818,8 +1818,8 @@
             {{ id==='__none__' ? '미배정' : ((ttInstructors.find(t=>String(t.user_id)===id)||{}).real_name || (ttInstructors.find(t=>String(t.user_id)===id)||{}).staff_no || id) }}
           </span>
         </div>
-        <!-- 상태 색상 범례 -->
-        <div v-else class="flex flex-wrap items-center gap-2 mb-2 text-[11px]">
+        <!-- 상태 색상 범례(강사 색상과 무관하게 항상 표시 — 결석/임시휴원/보강은 강사 선택 시에도 이 색을 유지함) -->
+        <div class="flex flex-wrap items-center gap-2 mb-2 text-[11px]">
           <span class="text-slate-400">상태</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-slate-300 shrink-0"></span>등원전</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>수업중</span>
@@ -4598,14 +4598,15 @@ const app = createApp({
       return this.instrPalette[idx % this.instrPalette.length];
     },
     calItemCls(it){
-      if ((this.ttFilter.instructor_ids||[]).length > 1) {
-        const c = this.instrColor(it.instructor_id);
-        if (c) return c.bg + ' ' + c.text + ' hover:brightness-95' + (it.status==='ABSENT'||it.status==='LEAVE' ? ' line-through opacity-60' : '');
-      }
-      // 상태별 색: 결석 > 임시휴원 > 보강 > 수업완료(등원+하원) > 수업중(등원만) > 등원전
+      // 결석/임시휴원/보강은 강사 색상 모드에서도 항상 이 색을 유지(기존 수업과 확실히 구분)
       if (it.status==='ABSENT') return 'bg-rose-100 text-rose-500 line-through';
       if (it.status==='LEAVE') return 'bg-purple-100 text-purple-600 line-through';
       if (it.makeup) return 'bg-blue-50 text-blue-700 hover:bg-blue-100';
+      if ((this.ttFilter.instructor_ids||[]).length > 1) {
+        const c = this.instrColor(it.instructor_id);
+        if (c) return c.bg + ' ' + c.text + ' hover:brightness-95';
+      }
+      // 상태별 색: 수업완료(등원+하원) > 수업중(등원만) > 등원전
       const att = it.att || {};
       if (att.in && att.out) return 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200';
       if (att.in) return 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200';
