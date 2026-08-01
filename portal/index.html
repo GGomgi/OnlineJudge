@@ -1866,6 +1866,16 @@
                    :class="d.isToday ? 'text-indigo-600 bg-indigo-100' : ('text-slate-500 '+wdBgClass(d.date))"
                    :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px'}">{{ d.label }}</div>
             </div>
+            <!-- 강사 2명 이상 선택 시: 요일 칸 안을 강사별 세로 칸으로 다시 나눠 이름 표시 -->
+            <div v-if="(ttFilter.instructor_ids||[]).length>1" class="flex items-stretch">
+              <div class="w-14 shrink-0 sticky left-0 z-10 bg-slate-50 border-r border-b border-slate-100"></div>
+              <div v-for="(d,i) in ttWeekDates" :key="'hi'+i" class="shrink-0 flex border-r border-b border-slate-100 last:border-r-0">
+                <div v-for="lm in ttHzDayLayout(d.date).laneMeta" :key="lm.key" class="text-center text-[10px] py-0.5 border-r border-slate-100 last:border-r-0 truncate px-0.5"
+                     :style="{width:(lm.width*84)+'px'}">
+                  <span class="inline-flex items-center gap-1"><span :class="['w-2 h-2 rounded-full inline-block shrink-0', (instrColor(lm.key)||{}).dot]"></span><span class="truncate">{{ lm.name }}</span></span>
+                </div>
+              </div>
+            </div>
             <!-- 본문 행: 시간축 + 요일별 내용(헤더와 같은 기준선에서 시작하므로 시간이 정확히 맞음) -->
             <div class="flex items-start">
               <div class="w-14 shrink-0 sticky left-0 z-10 border-r border-slate-100 bg-slate-50" :style="{height: ttHzHeight()+'px'}">
@@ -4492,6 +4502,8 @@ const app = createApp({
     ttHzDayLayout(date){
       const day=this.ttCalDays[date]; const items=day ? day.items.slice() : [];
       const toM=t=>{ const [h,m]=t.split(':').map(Number); return h*60+m; };
+      // 강사 2명 이상 선택 시: 겹침 기준 그리디 배치 대신 강사별로 세로 칸을 고정 배분
+      if ((this.ttFilter.instructor_ids||[]).length > 1) return this.ttHzDayLayoutByInstr(items, toM);
       // 같은 학생의 바로 이어지는 연속 수업(뒤 항목의 시작=앞 항목의 종료)은 같은 레인에 이어 배치
       const contOf = new Map();
       items.forEach(it=>{
@@ -4515,6 +4527,36 @@ const app = createApp({
         laid.push({ it, start, end, lane });
       });
       return { lanes: Math.max(1, laneEnd.length), items: laid };
+    },
+    // 강사별 세로 칸 고정 배치: 선택된 강사 순서대로 칸을 예약하고(수업 없어도 빈 칸 유지),
+    // 같은 강사 내에서 시간이 겹치면 그 강사 칸 안에서만 추가로 나눔
+    ttHzDayLayoutByInstr(items, toM){
+      const selIds = this.ttFilter.instructor_ids||[];
+      const byKey = {}; selIds.forEach(k=>byKey[k]=[]);
+      items.forEach(it=>{
+        const key = it.instructor_id ? String(it.instructor_id) : '__none__';
+        if (key in byKey) byKey[key].push(it);
+      });
+      let laneOffset = 0; const laneMeta = []; const laid = [];
+      selIds.forEach(key=>{
+        const arr = (byKey[key]||[]).slice().sort((a,b)=>toM(a.start_time)-toM(b.start_time));
+        const laneEnd = [];
+        arr.forEach(it=>{
+          const start=toM(it.start_time), dur=it.duration_minutes||60, end=start+dur;
+          let lane=laneEnd.findIndex(e=>e<=start);
+          if (lane<0){ lane=laneEnd.length; laneEnd.push(end); } else laneEnd[lane]=end;
+          laid.push({ it, start, end, lane: laneOffset+lane });
+        });
+        const width = Math.max(1, laneEnd.length);
+        laneMeta.push({ key, name: this.instrNameOf(key), offset: laneOffset, width });
+        laneOffset += width;
+      });
+      return { lanes: Math.max(1, laneOffset), items: laid, laneMeta };
+    },
+    instrNameOf(key){
+      if (key==='__none__') return '미배정';
+      const t = this.ttInstructors.find(x=>String(x.user_id)===key);
+      return t ? (t.real_name||t.staff_no) : key;
     },
     truncate(s,n){ s=s||''; return s.length>n ? s.slice(0,n)+'...' : s; },
     showCalResv(rv,date,e){ this.resvPop={ show:true, at:(date+' '+rv.time+' · '+(rv.student_name||'')), note:rv.note, by:'', created:'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
