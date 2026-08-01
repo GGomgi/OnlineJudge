@@ -3954,10 +3954,11 @@ const app = createApp({
     dashIsToday(){ return this.dashDate===this.todayStr; },
     nowMin(){ const d=new Date(this.clockNow); return d.getHours()*60+d.getMinutes(); },
     nowLineIndex(){
-      // 현재 시각보다 시작이 늦은 첫 수업 인덱스(없으면 끝)
+      // 이미 시작된(현재 시각 이하) 마지막 수업 바로 다음 인덱스(없으면 0)
+      // 연속수업 붙여배치로 순서가 앞뒤로 섞일 수 있어 뒤에서부터 훑어야 정확함
       const ls=this.dashLessonsOrdered;
-      for (let i=0;i<ls.length;i++){ if (this.hmMin(ls[i].start_time) > this.nowMin) return i; }
-      return ls.length;
+      for (let i=ls.length-1;i>=0;i--){ if (this.hmMin(ls[i].start_time) <= this.nowMin) return i+1; }
+      return 0;
     },
     ttUnassignedCount(){
       // 재원이면서 개별 시간표 슬롯이 없는 학생 수(수업 추가 대상)
