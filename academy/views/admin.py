@@ -2766,7 +2766,9 @@ class StudentStatusAdminAPI(APIView):
 
     @staticmethod
     def _sync_timetables(student, to_status, actor, reason):
-        """휴원→일시중지(PAUSED), 재원→복원(ACTIVE), 퇴원→종료(ENDED). 변경 이력 기록."""
+        """휴원→일시중지(PAUSED), 재원→복원(ACTIVE), 퇴원→종료(ENDED). 변경 이력 기록.
+        휴원·퇴원 시 오늘 포함 이후로 이미 만들어져 있던(스냅샷) 정규 수업 인스턴스는
+        취소 처리해 오늘 운영·시간표 캘린더에서 오늘부터 안 보이게 함(이전 날짜 기록은 그대로 유지)."""
         from ..models import TimetableStatus
         slots = StudentTimetable.objects.filter(student=student)
         changed = 0
@@ -2787,6 +2789,12 @@ class StudentStatusAdminAPI(APIView):
             action, label = "DELETE", "퇴원 처리 — 시간표 종료"
         else:
             return ""
+        if to_status in (EnrollmentStatus.ON_LEAVE, EnrollmentStatus.WITHDRAWN):
+            today = _kst_today()
+            LessonOccurrence.objects.filter(
+                student=student, date__gte=today, is_makeup=False, source_timetable__isnull=False,
+            ).exclude(status__in=(OccurrenceStatus.ABSENT, OccurrenceStatus.CANCELLED)).update(
+                status=OccurrenceStatus.CANCELLED)
         if changed:
             TimetableChange.objects.create(
                 student=student, actor=actor, action=action,
@@ -3769,8 +3777,10 @@ class TimetableCalendarAPI(APIView):
             except (TypeError, ValueError):
                 d0 = now().date().replace(day=1)
                 d1 = d0 + timedelta(days=30)
-        # 패턴 시간표를 기간 내 날짜로 펼침(생성 없이 계산만)
-        slots = StudentTimetable.objects.select_related("branch", "student", "instructor").filter(status="ACTIVE")
+        # 패턴 시간표를 기간 내 날짜로 펼침(생성 없이 계산만). 휴원/퇴원(PAUSED/ENDED)이라도 이미
+        # 스냅샷(overlay)이 있는 과거 날짜는 그대로 보여줘야 하므로 상태로 미리 거르지 않고,
+        # 실제 표시 여부(미래 가상 일정 투영 여부)는 아래 날짜 루프에서 판단.
+        slots = StudentTimetable.objects.select_related("branch", "student", "instructor").all()
         if sid:
             slots = slots.filter(student_id=sid)
         if view is not None:
@@ -3849,9 +3859,14 @@ class TimetableCalendarAPI(APIView):
             for s in slots:
                 if s.weekday != wd:
                     continue
-                if not _slot_active_on(s, cur):
-                    continue
                 ov = overlay.get((s.id, str(cur)))
+                if ov is None:
+                    # 실제 스냅샷(이미 있었던 기록)이 없는 가상 투영 일정은, 지금 활성 패턴이고
+                    # 유효기간 내일 때만 보여줌(휴원/퇴원 이후 미래 날짜에 안 보이게)
+                    if s.status != "ACTIVE" or not _slot_active_on(s, cur):
+                        continue
+                elif ov["status"] == OccurrenceStatus.CANCELLED:
+                    continue
                 ov_program = (ov["program"] if ov else "") or s.program
                 items.append({"timetable_id": s.id,
                               "start_time": (str(ov["start_time"])[:5] if ov else str(s.start_time)[:5]),
