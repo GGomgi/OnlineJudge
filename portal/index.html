@@ -3974,7 +3974,7 @@ const app = createApp({
     dashReservationsAll(){ const f=this.dashFilter; return (this.dashData.reservations||[]).filter(rv => !f.branch || rv.branch===f.branch); },
     dashReservations(){ return this.dashReservationsAll.filter(rv => this.dashShowDone || rv.status!=='DONE'); },
     dashEnrolled(){ const f=this.dashFilter; return (this.dashData.enrolled_leads||[]).filter(l => !f.branch || l.branch===f.branch); },
-    dashAllDone(){ const ls=this.dashLessons; return ls.length>0 && ls.every(l=>this.isAbsent(l) || l.att.out); },
+    dashAllDone(){ const ls=this.dashLessons; return ls.length>0 && ls.every(l=>this.isAbsent(l) || this.isLeave(l) || l.att.out); },
     nowClock(){ const d=new Date(this.clockNow); const p=x=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); },
     dashIsToday(){ return this.dashDate===this.todayStr; },
     nowMin(){ const d=new Date(this.clockNow); return d.getHours()*60+d.getMinutes(); },
