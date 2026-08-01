@@ -3461,6 +3461,7 @@ class DashboardAdminAPI(APIView):
                 "status": o.status, "lesson_note": o.note, "no_makeup": o.no_makeup,
                 "_absence_date": (str(o.makeup_for.date) if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
                 "_absence_time": (str(o.makeup_for.start_time)[:5] if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
+                "_absence_occid": (o.makeup_for_id if (o.is_makeup and o.makeup_for_id) else None),
                 "school_type": (sp.school_type if sp else ""),
                 "school_name": (sp.school_name if sp else ""),
                 "grade": (sp.grade if sp else ""),
@@ -3500,8 +3501,8 @@ class DashboardAdminAPI(APIView):
                     l["linked"] = {"kind": "makeup", "occ_id": mk.id, "date": str(mk.date), "start_time": str(mk.start_time)[:5],
                                    "status": mk.status, "done": done}
             elif l["_absence_date"]:
-                l["linked"] = {"kind": "absence", "date": l["_absence_date"], "start_time": l["_absence_time"]}
-            del l["_absence_date"], l["_absence_time"]
+                l["linked"] = {"kind": "absence", "occ_id": l["_absence_occid"], "date": l["_absence_date"], "start_time": l["_absence_time"]}
+            del l["_absence_date"], l["_absence_time"], l["_absence_occid"]
         # 수업외 등원(오늘 수업 없는데 등원 체크된 학생) 합성 행 추가
         adhoc_branch_ids = [int(bid)] if bid else view
         lessons.extend(_adhoc_lesson_rows(d, adhoc_branch_ids))
@@ -3900,7 +3901,7 @@ class TimetableCalendarAPI(APIView):
             for o in mk:
                 linked = None
                 if o.makeup_for_id and o.makeup_for:
-                    linked = {"kind": "absence", "date": str(o.makeup_for.date),
+                    linked = {"kind": "absence", "occ_id": o.makeup_for_id, "date": str(o.makeup_for.date),
                               "start_time": str(o.makeup_for.start_time)[:5]}
                 items.append({"timetable_id": None, "start_time": str(o.start_time)[:5], "date": str(cur),
                               "duration_minutes": o.duration_minutes,
@@ -4460,7 +4461,7 @@ class StudentAttendanceHistoryAPI(APIView):
                                      "status": mk.status, "done": mk_done}
             elif o.is_makeup and o.makeup_for_id and o.makeup_for:
                 t = o.makeup_for
-                row["linked"] = {"kind": "absence", "date": str(t.date), "start_time": str(t.start_time)[:5]}
+                row["linked"] = {"kind": "absence", "occ_id": t.id, "date": str(t.date), "start_time": str(t.start_time)[:5]}
             rows.append(row)
         return self.success({"from": str(d0), "to": str(d1), "fwd_months": fwd_months, "rows": rows})
 

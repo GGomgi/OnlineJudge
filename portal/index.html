@@ -882,17 +882,11 @@
           </div>
           <div v-if="attModal.is_makeup">
             <label class="lbl">결석 연결 <span class="text-slate-400">(이 보강이 메꾸는 결석)</span></label>
-            <div v-if="attModal.linked" class="flex items-center gap-2 text-xs bg-blue-50 rounded px-2 py-1.5">
-              <span>현재 연결: {{ attModal.linked.date.slice(5) }}({{ wdOf(attModal.linked.date) }}) {{ attModal.linked.start_time }}</span>
-              <button @click="unlinkMakeup" class="ml-auto text-rose-500 hover:underline shrink-0">연결 해제</button>
-            </div>
-            <template v-else>
-              <select v-model.number="attForm.linkTarget" class="input py-1">
-                <option :value="null">연결 안 함(날짜미정 결석과 무관)</option>
-                <option v-for="p in mkLinkCandidates" :key="p.occ_id" :value="p.occ_id">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</option>
-              </select>
-              <p v-if="mkLinkCandidates.length===0" class="text-[11px] text-slate-400 mt-1">이 학생의 날짜미정 결석이 없습니다.</p>
-            </template>
+            <select v-model.number="attForm.linkTarget" class="input py-1">
+              <option :value="null">연결 안 함(날짜미정 결석과 무관)</option>
+              <option v-for="p in mkLinkCandidates" :key="p.occ_id" :value="p.occ_id">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</option>
+            </select>
+            <p v-if="mkLinkCandidates.length===0" class="text-[11px] text-slate-400 mt-1">이 학생의 날짜미정 결석이 없습니다.</p>
           </div>
           <div>
             <label class="lbl">수업 시각 <span class="text-slate-400">(이 날짜만 변경 · ±10분)</span></label>
@@ -5295,17 +5289,24 @@ const app = createApp({
       const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.status==='LEAVE' ? 'TEMP_LEAVE' : (l.att.note_tag||''));
       const lang0 = (l.program==='LANG') ? this.parseRowLanguage(l.subject) : '';
       const mkDate0 = l.is_makeup ? (l.date||'') : '';
+      const linkTarget0 = (l.is_makeup && l.linked && l.linked.kind==='absence') ? l.linked.occ_id : null;
       this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, note:((l.status==='ABSENT'||l.status==='LEAVE') ? (l.lesson_note||'') : (l.att.note||'')),
-                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:null,
+                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0,
                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0,
-                        instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0,
+                        instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0,
                         progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:'') };
       if (!this.ttInstructors.length) this.loadTtInstructors();
       this.mkLinkCandidates = [];
-      if (l.is_makeup && !l.linked){
-        try { const all = await api('GET','/api/admin/academy/pending_makeup') || []; this.mkLinkCandidates = all.filter(p=>p.student_id===l.student_id); }
-        catch(e){ this.mkLinkCandidates = []; }
+      if (l.is_makeup){
+        try {
+          const all = await api('GET','/api/admin/academy/pending_makeup') || [];
+          this.mkLinkCandidates = all.filter(p=>p.student_id===l.student_id);
+          // 이미 연결된 결석은 "보강필요 목록"엔 안 나오니(이미 처리됨), 현재 연결된 게 있으면 목록 맨 위에 끼워넣음
+          if (linkTarget0 && !this.mkLinkCandidates.some(p=>p.occ_id===linkTarget0)){
+            this.mkLinkCandidates.unshift({ occ_id:linkTarget0, date:l.linked.date, start_time:l.linked.start_time, subject:l.subject||'' });
+          }
+        } catch(e){ this.mkLinkCandidates = []; }
       }
       await this.loadAttHist(l.student_id, l.date||this.dashDate);
     },
@@ -5315,19 +5316,6 @@ const app = createApp({
       catch(e){ this.attHist = []; }
     },
     attShiftLesson(delta){ if(this.attForm.lessonTime) this.attForm.lessonTime=this.shiftHM(this.attForm.lessonTime,delta); },
-    async unlinkMakeup(){
-      if (!confirm('결석 연결을 해제할까요?')) return;
-      try {
-        await api('POST','/api/admin/academy/lesson_edit', { occ_id:this.attModal.occ_id, makeup_for:null, reason:'결석 연결 해제' });
-        this.notify('연결이 해제되었습니다.');
-        this.attModal.linked = null;
-        const l = this.attModal;
-        try { const all = await api('GET','/api/admin/academy/pending_makeup') || []; this.mkLinkCandidates = all.filter(p=>p.student_id===l.student_id); }
-        catch(e){ this.mkLinkCandidates = []; }
-        if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths);
-        else if (l.date) this.loadTtCal(); else this.loadDashboard();
-      } catch(e){ this.notify(e.message,false); }
-    },
     async cancelMakeup(){
       const l = this.attModal;
       if (!confirm('이 보강 일정을 취소할까요? (결석 연결이 있다면 함께 해제됩니다)')) return;
@@ -5378,8 +5366,8 @@ const app = createApp({
         if (l.is_makeup && this.attForm.mkDate && this.attForm.mkDate !== this._attOrig.mkDate){
           lessonEditBody.date = this.attForm.mkDate; lessonEditDirty = true;
         }
-        if (l.is_makeup && !l.linked && this.attForm.linkTarget){
-          lessonEditBody.makeup_for = this.attForm.linkTarget; lessonEditDirty = true;
+        if (l.is_makeup && this.attForm.linkTarget !== this._attOrig.linkTarget){
+          lessonEditBody.makeup_for = this.attForm.linkTarget || null; lessonEditDirty = true;
         }
         if (this.attForm.lessonTime && this.attForm.lessonTime !== this._attOrig.lessonTime){
           lessonEditBody.start_time = this.attForm.lessonTime; lessonEditDirty = true;
