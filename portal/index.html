@@ -5198,6 +5198,12 @@ const app = createApp({
             '이 수업만 취소', '모두 취소');
         }
       }
+      let cancelMakeupToo = null;
+      if (wasAbsentChk && tagChk!=='ABSENT' && tagChk!=='TEMP_LEAVE' && l.linked && l.linked.kind==='makeup' && l.linked.occ_id){
+        if (window.confirm('이 결석에 연결된 보강 일정('+l.linked.date+'('+this.wdOf(l.linked.date)+') '+l.linked.start_time+')이 있습니다.\n보강도 함께 취소할까요?\n(취소를 누르면 결석만 취소되고 보강 일정은 그대로 유지됩니다.)')){
+          cancelMakeupToo = l.linked.occ_id;
+        }
+      }
       try {
         const lessonEditBody = { occ_id:l.occ_id, reason:this.attForm.note };
         let lessonEditDirty = false;
@@ -5235,6 +5241,9 @@ const app = createApp({
         } else {
           if (wasAbsent || wasLeave) await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'SCHEDULED', note:'' });
           await api('POST','/api/admin/academy/attendance_note', { student_id:l.student_id, date:attDate, note_tag:tag, note:this.attForm.note });
+          if (cancelMakeupToo){
+            await api('POST','/api/admin/academy/lesson_status', { occ_id:cancelMakeupToo, status:'CANCELLED', reason:'연결된 결석 취소로 함께 취소' });
+          }
         }
         if (applyBoth && partner){
           if (tag==='ABSENT') await api('POST','/api/admin/academy/lesson_status', { occ_id:partner.occ_id, status:'ABSENT', note:this.attForm.note });

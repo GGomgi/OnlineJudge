@@ -3484,7 +3484,7 @@ class DashboardAdminAPI(APIView):
                 if mk:
                     a = mk_att.get((mk.student_id, mk.date))
                     done = bool(a and a.check_in_at and a.check_out_at)
-                    l["linked"] = {"kind": "makeup", "date": str(mk.date), "start_time": str(mk.start_time)[:5],
+                    l["linked"] = {"kind": "makeup", "occ_id": mk.id, "date": str(mk.date), "start_time": str(mk.start_time)[:5],
                                    "status": mk.status, "done": done}
             elif l["_absence_date"]:
                 l["linked"] = {"kind": "absence", "date": l["_absence_date"], "start_time": l["_absence_time"]}
@@ -3820,7 +3820,7 @@ class TimetableCalendarAPI(APIView):
                 return None
             a = mk_att.get((mk.student_id, mk.date))
             done = bool(a and a.check_in_at and a.check_out_at)
-            return {"date": str(mk.date), "start_time": str(mk.start_time)[:5], "status": mk.status, "done": done}
+            return {"kind": "makeup", "occ_id": mk.id, "date": str(mk.date), "start_time": str(mk.start_time)[:5], "status": mk.status, "done": done}
         # 등원/하원 출결(오늘 운영과 동일하게 달력에도 표시)
         att_q = DailyAttendance.objects.filter(date__gte=d0, date__lte=d1)
         if sid:
@@ -3956,8 +3956,9 @@ def _clear_attendance_for_absence(student, d, actor, note):
 class LessonStatusAdminAPI(APIView):
     @admin_role_required
     def post(self, request):
-        """수업 인스턴스 상태 변경(결석/예정 복원/임시휴원). {occ_id, status:'ABSENT'|'SCHEDULED'|'LEAVE', note?}
-        결석으로 바뀌는 경우 그 날짜에 등원/하원 기록이 있으면 함께 지움(프론트에서 미리 확인받고 호출)."""
+        """수업 인스턴스 상태 변경(결석/예정 복원/임시휴원/보강 취소). {occ_id, status:'ABSENT'|'SCHEDULED'|'LEAVE'|'CANCELLED', note?}
+        결석으로 바뀌는 경우 그 날짜에 등원/하원 기록이 있으면 함께 지움(프론트에서 미리 확인받고 호출).
+        CANCELLED는 보강(is_makeup) 건에 한해서만 허용(결석 취소 시 연결된 보강도 같이 취소하는 용도)."""
         data = request.data
         o = LessonOccurrence.objects.select_related("branch", "student").filter(id=data.get("occ_id")).first()
         if not o:
@@ -3965,8 +3966,10 @@ class LessonStatusAdminAPI(APIView):
         if not can_manage_branch(request.user, o.branch_id):
             return self.error("권한이 없습니다.")
         st = data.get("status")
-        if st not in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.ABSENT, OccurrenceStatus.LEAVE):
+        if st not in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.ABSENT, OccurrenceStatus.LEAVE, OccurrenceStatus.CANCELLED):
             return self.error("상태 값이 올바르지 않습니다.")
+        if st == OccurrenceStatus.CANCELLED and not o.is_makeup:
+            return self.error("보강 건만 취소할 수 있습니다.")
         o.status = st
         if "note" in data:
             o.note = (data.get("note") or "").strip()
@@ -3977,6 +3980,10 @@ class LessonStatusAdminAPI(APIView):
         o.save()
         if st == OccurrenceStatus.ABSENT:
             _clear_attendance_for_absence(o.student, o.date, request.user, o.note)
+        if st == OccurrenceStatus.CANCELLED:
+            TimetableChange.objects.create(student=o.student, actor=request.user, action="DELETE",
+                reason=(data.get("reason") or ""),
+                detail=("%s 보강 취소: %s %s분" % (str(o.date), str(o.start_time)[:5], o.duration_minutes))[:255])
         return self.success({"status": o.status, "note": o.note, "no_makeup": o.no_makeup})
 
 
@@ -4405,7 +4412,7 @@ class StudentAttendanceHistoryAPI(APIView):
                 if mk:
                     mk_att = att_map.get(mk.date)
                     mk_done = bool(mk_att and mk_att.check_in_at and mk_att.check_out_at)
-                    row["linked"] = {"kind": "makeup", "date": str(mk.date), "start_time": str(mk.start_time)[:5],
+                    row["linked"] = {"kind": "makeup", "occ_id": mk.id, "date": str(mk.date), "start_time": str(mk.start_time)[:5],
                                      "status": mk.status, "done": mk_done}
             elif o.is_makeup and o.makeup_for_id and o.makeup_for:
                 t = o.makeup_for
