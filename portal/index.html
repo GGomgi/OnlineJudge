@@ -1041,13 +1041,16 @@
     </div>
 
     <!-- 연속 수업(같은 학생 바로 이어지는 2타임) 함께 적용 여부 확인 — 탭과 무관하게 항상 렌더링 -->
-    <div v-if="linkedPrompt" class="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center" @click.self="linkedChoose(false)">
+    <div v-if="linkedPrompt" class="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center" @click.self="linkedChoose(null)">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5">
         <div class="font-bold mb-1">연속 수업 확인</div>
         <p class="text-sm text-slate-500 mb-4">{{ linkedPrompt.text }}</p>
-        <div class="flex gap-2 justify-end">
-          <button @click="linkedChoose(false)" class="btn-secondary text-sm">{{ linkedPrompt.noLabel }}</button>
-          <button @click="linkedChoose(true)" class="btn-primary text-sm">{{ linkedPrompt.yesLabel }}</button>
+        <div class="flex items-center justify-between gap-2">
+          <button @click="linkedChoose(null)" class="text-xs text-slate-400 hover:underline">취소</button>
+          <div class="flex gap-2">
+            <button @click="linkedChoose(false)" class="btn-secondary text-sm">{{ linkedPrompt.noLabel }}</button>
+            <button @click="linkedChoose(true)" class="btn-primary text-sm">{{ linkedPrompt.yesLabel }}</button>
+          </div>
         </div>
       </div>
     </div>
@@ -5354,10 +5357,12 @@ const app = createApp({
           applyBoth = await this.askLinked(
             l.student_name+'님은 '+partner.start_time+' 수업과 바로 이어지는 연속 수업입니다. 연결된 수업이 있어 같이 적용됩니다. 진행하시겠습니까? 지금 선택된 수업만 적용하시겠습니까?',
             '이 수업만', '같이 적용');
+          if (applyBoth===null) return;
         } else if ((wasAbsentChk||wasLeaveChk) && tagChk!=='ABSENT' && tagChk!=='TEMP_LEAVE' && (partner.status==='ABSENT'||partner.status==='LEAVE')){
           applyBoth = await this.askLinked(
             '연속된 수업으로 동일하게 작성된 부분이 있습니다. 모두 취소하시겠습니까?',
             '이 수업만 취소', '모두 취소');
+          if (applyBoth===null) return;
         }
       }
       let cancelMakeupToo = null;
@@ -5439,6 +5444,7 @@ const app = createApp({
         const together = await this.askLinked(
           '연속 수업입니다. 보강도 '+p.duration_minutes+'분+'+p.partner.duration_minutes+'분으로 이어서 두 타임 함께 잡을까요?',
           '이 수업만 잡기(나머지는 나중에)', '이어서 함께 잡기');
+        if (together===null) return;
         if (together){ this.openMakeupPairFor(p); return; }
       }
       this.openMakeupFor(p);
