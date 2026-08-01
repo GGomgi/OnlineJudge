@@ -655,7 +655,7 @@
           <div class="flex items-center justify-center gap-1.5 mb-3">
             <button @click="attStepTime(-5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-5</button>
             <button @click="attStepTime(-1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-1</button>
-            <input v-model="attEditPop.time" type="time" class="font-mono text-2xl font-bold w-32 text-center border-0 focus:ring-2 focus:ring-indigo-300 rounded" />
+            <input v-model="attEditPop.time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="font-mono text-2xl font-bold w-24 text-center border-0 focus:ring-2 focus:ring-indigo-300 rounded" />
             <button @click="attStepTime(1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+1</button>
             <button @click="attStepTime(5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+5</button>
           </div>
