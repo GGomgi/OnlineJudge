@@ -3640,7 +3640,9 @@ class AttendanceNoteAdminAPI(APIView):
 
     @admin_role_required
     def get(self, request):
-        """출결 변경 이력. student_id, date."""
+        """출결 변경 이력. student_id, date. 열람은 원장 이상만 가능."""
+        if not _is_director_up(request.user):
+            return self.error("권한이 없습니다.")
         u = User.objects.filter(id=request.GET.get("student_id")).first()
         if not u:
             return self.error("학생이 없습니다.")
