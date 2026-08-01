@@ -45,6 +45,8 @@ createApp({
       isFullscreen: false,
       keepAwake: localStorage.getItem('kiosk_keep_awake') === '1',
       _wakeLock: null,
+      leftRatio: parseInt(localStorage.getItem('kiosk_left_ratio')) || 58,
+      ratioSettingsOpen: false,
       deviceId: '', deviceStatus: 'checking',  // checking | PENDING | APPROVED | REVOKED | badlink
     };
   },
@@ -217,19 +219,50 @@ createApp({
       else { document.exitFullscreen && document.exitFullscreen(); }
     },
     async requestWakeLock(){
-      if (!('wakeLock' in navigator)) return;
-      try {
-        this._wakeLock = await navigator.wakeLock.request('screen');
-        this._wakeLock.addEventListener('release', ()=>{ this._wakeLock = null; });
-      } catch(e){ /* 지원 안 하거나 거부됨 — 조용히 무시(태블릿 기본 설정 따름) */ }
+      // 표준 Wake Lock API(HTTPS 등 보안 컨텍스트 필요) — 되면 이걸로 충분함
+      if ('wakeLock' in navigator){
+        try {
+          this._wakeLock = await navigator.wakeLock.request('screen');
+          this._wakeLock.addEventListener('release', ()=>{ this._wakeLock = null; });
+        } catch(e){ /* 지원 안 하거나 거부됨 — 아래 대체 방식으로 처리 */ }
+      }
+      // 대체 방식: HTTP 등 Wake Lock API를 못 쓰는 환경에서도 동작하도록, 화면에 안 보이는
+      // 1x1 캔버스를 영상으로 계속 재생시켜 모바일 브라우저의 화면 꺼짐을 억제(널리 쓰이는 방법)
+      this._startNoSleepFallback();
     },
     releaseWakeLock(){
       if (this._wakeLock){ this._wakeLock.release(); this._wakeLock = null; }
+      this._stopNoSleepFallback();
+    },
+    _startNoSleepFallback(){
+      if (this._noSleepVideo) return;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 2; canvas.height = 2;
+        canvas.getContext('2d').fillRect(0, 0, 2, 2);
+        const stream = canvas.captureStream(1);
+        const v = document.createElement('video');
+        v.muted = true; v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('autoplay', '');
+        v.srcObject = stream;
+        v.style.cssText = 'position:fixed;left:-1px;top:-1px;width:1px;height:1px;opacity:0;pointer-events:none;';
+        document.body.appendChild(v);
+        v.play().catch(()=>{});
+        this._noSleepVideo = v; this._noSleepStream = stream;
+      } catch(e){ /* 미지원 브라우저면 조용히 무시 */ }
+    },
+    _stopNoSleepFallback(){
+      if (this._noSleepVideo){ this._noSleepVideo.pause(); this._noSleepVideo.remove(); this._noSleepVideo = null; }
+      if (this._noSleepStream){ this._noSleepStream.getTracks().forEach(t=>t.stop()); this._noSleepStream = null; }
     },
     toggleKeepAwake(){
       this.keepAwake = !this.keepAwake;
       localStorage.setItem('kiosk_keep_awake', this.keepAwake ? '1' : '0');
       if (this.keepAwake) this.requestWakeLock(); else this.releaseWakeLock();
+    },
+    setLeftRatio(v){
+      const n = Math.max(20, Math.min(80, parseInt(v) || 58));
+      this.leftRatio = n;
+      localStorage.setItem('kiosk_left_ratio', n);
     },
   },
   async mounted(){
@@ -239,7 +272,10 @@ createApp({
     if (this.keepAwake) this.requestWakeLock();
     // 화면 꺼짐 방지는 탭이 백그라운드로 가면 자동 해제되므로, 다시 보일 때 켜져 있으면 재요청
     document.addEventListener('visibilitychange', ()=>{
-      if (document.visibilityState === 'visible' && this.keepAwake) this.requestWakeLock();
+      if (document.visibilityState === 'visible' && this.keepAwake){
+        this.requestWakeLock();
+        if (this._noSleepVideo) this._noSleepVideo.play().catch(()=>{});
+      }
     });
     if (!this.b || !this.t){
       this.deviceStatus = 'badlink';
@@ -261,6 +297,18 @@ createApp({
         <input type="checkbox" :checked="keepAwake" @change="toggleKeepAwake" class="w-3.5 h-3.5" />
         {{ keepAwake ? '🔆 계속 켜짐' : '화면 꺼짐 방지' }}
       </label>
+      <div class="relative">
+        <button @click="ratioSettingsOpen=!ratioSettingsOpen" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">⚙️ 화면 비율</button>
+        <div v-if="ratioSettingsOpen" class="absolute right-0 mt-1 w-64 bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-3 text-xs text-slate-300">
+          <div class="flex items-center justify-between mb-1">
+            <span>출결현황</span>
+            <span class="font-mono">{{ leftRatio }}% / {{ 100-leftRatio }}%</span>
+            <span>키오스크</span>
+          </div>
+          <input type="range" min="20" max="80" step="2" :value="leftRatio" @input="setLeftRatio($event.target.value)" class="w-full" />
+          <div class="text-[10px] text-slate-500 mt-2">이 기기에만 적용됩니다.</div>
+        </div>
+      </div>
       <button @click="toggleFullscreen" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">
         {{ isFullscreen ? '⤢ 전체화면 해제' : '⛶ 전체화면' }}
       </button>
@@ -294,7 +342,7 @@ createApp({
 
     <template v-else>
     <!-- 왼쪽: 오늘 출결 현황판 -->
-    <div class="w-[58%] h-full overflow-y-auto border-r border-slate-700 p-5">
+    <div class="h-full overflow-y-auto border-r border-slate-700 p-5" :style="{width: leftRatio+'%'}">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm text-slate-400">📋 오늘 출결 현황</div>
         <div class="text-xs text-slate-400">등원 <span class="text-emerald-400 font-semibold">{{ checkedInCount }}</span>명, 하원 <span class="text-indigo-400 font-semibold">{{ checkedOutCount }}</span>명</div>
@@ -333,7 +381,7 @@ createApp({
     </div>
 
     <!-- 오른쪽: 시계 + 키패드 -->
-    <div class="w-[42%] h-full flex flex-col items-center justify-center p-6">
+    <div class="h-full flex flex-col items-center justify-center p-6" :style="{width: (100-leftRatio)+'%'}">
       <div class="text-center w-full max-w-xs">
         <div class="text-sm text-slate-400 mb-1">두잉창의코딩 · 출결</div>
         <div class="font-mono text-2xl font-bold mb-6 tracking-wider">{{ clock }}</div>
