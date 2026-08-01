@@ -2563,7 +2563,7 @@
                     <col style="width:10%"><col style="width:10%"><col style="width:16%"><col>
                   </colgroup>
                   <thead class="text-slate-400"><tr>
-                    <th class="px-2 py-1"></th>
+                    <th class="px-2 py-1"><input v-if="stuAttBulkMode" type="checkbox" :checked="isGroupFullySelected(g)" @click="toggleStuAttGroupSel(g)" class="w-3.5 h-3.5 align-middle" title="이 달 전체 선택" /></th>
                     <th class="px-2 py-1 text-left">날짜</th>
                     <th class="px-2 py-1 text-left">과목</th>
                     <th class="px-2 py-1 text-left">강사</th>
@@ -6200,6 +6200,18 @@ const app = createApp({
     toggleStuAttSel(occId){
       const i=this.stuAttSelected.indexOf(occId);
       if (i>=0) this.stuAttSelected.splice(i,1); else this.stuAttSelected.push(occId);
+    },
+    isGroupFullySelected(g){
+      return g.rows.length>0 && g.rows.every(r=>this.stuAttSelected.includes(r.occ_id));
+    },
+    toggleStuAttGroupSel(g){
+      if (this.isGroupFullySelected(g)){
+        const ids = new Set(g.rows.map(r=>r.occ_id));
+        this.stuAttSelected = this.stuAttSelected.filter(id=>!ids.has(id));
+      } else {
+        const existing = new Set(this.stuAttSelected);
+        g.rows.forEach(r=>{ if(!existing.has(r.occ_id)) this.stuAttSelected.push(r.occ_id); });
+      }
     },
     toggleStuAttBulkMode(){
       this.stuAttBulkMode = !this.stuAttBulkMode;
