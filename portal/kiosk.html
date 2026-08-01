@@ -46,6 +46,8 @@ createApp({
       keepAwake: localStorage.getItem('kiosk_keep_awake') === '1',
       _wakeLock: null,
       leftRatio: parseInt(localStorage.getItem('kiosk_left_ratio')) || 58,
+      leftZoom: parseInt(localStorage.getItem('kiosk_left_zoom')) || 100,
+      rightZoom: parseInt(localStorage.getItem('kiosk_right_zoom')) || 100,
       ratioSettingsOpen: false,
       deviceId: '', deviceStatus: 'checking',  // checking | PENDING | APPROVED | REVOKED | badlink
     };
@@ -264,6 +266,16 @@ createApp({
       this.leftRatio = n;
       localStorage.setItem('kiosk_left_ratio', n);
     },
+    setLeftZoom(v){
+      const n = Math.max(70, Math.min(200, parseInt(v) || 100));
+      this.leftZoom = n;
+      localStorage.setItem('kiosk_left_zoom', n);
+    },
+    setRightZoom(v){
+      const n = Math.max(70, Math.min(200, parseInt(v) || 100));
+      this.rightZoom = n;
+      localStorage.setItem('kiosk_right_zoom', n);
+    },
   },
   async mounted(){
     this.tickClock();
@@ -298,15 +310,31 @@ createApp({
         {{ keepAwake ? '🔆 계속 켜짐' : '화면 꺼짐 방지' }}
       </label>
       <div class="relative">
-        <button @click="ratioSettingsOpen=!ratioSettingsOpen" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">⚙️ 화면 비율</button>
-        <div v-if="ratioSettingsOpen" class="absolute right-0 mt-1 w-64 bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-3 text-xs text-slate-300">
-          <div class="flex items-center justify-between mb-1">
-            <span>출결현황</span>
-            <span class="font-mono">{{ leftRatio }}% / {{ 100-leftRatio }}%</span>
-            <span>키오스크</span>
+        <button @click="ratioSettingsOpen=!ratioSettingsOpen" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">⚙️ 화면 설정</button>
+        <div v-if="ratioSettingsOpen" class="absolute right-0 mt-1 w-72 bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-3 text-xs text-slate-300 space-y-3">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span>출결현황</span>
+              <span class="font-mono">{{ leftRatio }}% / {{ 100-leftRatio }}%</span>
+              <span>키오스크</span>
+            </div>
+            <input type="range" min="20" max="80" step="2" :value="leftRatio" @input="setLeftRatio($event.target.value)" class="w-full" />
           </div>
-          <input type="range" min="20" max="80" step="2" :value="leftRatio" @input="setLeftRatio($event.target.value)" class="w-full" />
-          <div class="text-[10px] text-slate-500 mt-2">이 기기에만 적용됩니다.</div>
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span>출결현황 글씨 크기</span>
+              <span class="font-mono">{{ leftZoom }}%</span>
+            </div>
+            <input type="range" min="70" max="200" step="10" :value="leftZoom" @input="setLeftZoom($event.target.value)" class="w-full" />
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span>키오스크 글씨 크기</span>
+              <span class="font-mono">{{ rightZoom }}%</span>
+            </div>
+            <input type="range" min="70" max="200" step="10" :value="rightZoom" @input="setRightZoom($event.target.value)" class="w-full" />
+          </div>
+          <div class="text-[10px] text-slate-500">이 기기에만 적용됩니다.</div>
         </div>
       </div>
       <button @click="toggleFullscreen" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">
@@ -342,7 +370,8 @@ createApp({
 
     <template v-else>
     <!-- 왼쪽: 오늘 출결 현황판 -->
-    <div class="h-full overflow-y-auto border-r border-slate-700 p-5" :style="{width: leftRatio+'%'}">
+    <div class="h-full overflow-auto border-r border-slate-700 p-5" :style="{width: leftRatio+'%'}">
+    <div :style="{zoom: leftZoom/100}">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm text-slate-400">📋 오늘 출결 현황</div>
         <div class="text-xs text-slate-400">등원 <span class="text-emerald-400 font-semibold">{{ checkedInCount }}</span>명, 하원 <span class="text-indigo-400 font-semibold">{{ checkedOutCount }}</span>명</div>
@@ -379,10 +408,11 @@ createApp({
         </tbody>
       </table>
     </div>
+    </div>
 
     <!-- 오른쪽: 시계 + 키패드 -->
-    <div class="h-full flex flex-col items-center justify-center p-6" :style="{width: (100-leftRatio)+'%'}">
-      <div class="text-center w-full max-w-xs">
+    <div class="h-full flex flex-col items-center justify-center p-6 overflow-auto" :style="{width: (100-leftRatio)+'%'}">
+      <div class="text-center w-full max-w-xs" :style="{zoom: rightZoom/100}">
         <div class="text-sm text-slate-400 mb-1">두잉창의코딩 · 출결</div>
         <div class="font-mono text-2xl font-bold mb-6 tracking-wider">{{ clock }}</div>
 
