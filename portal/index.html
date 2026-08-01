@@ -5514,8 +5514,22 @@ const app = createApp({
       if (l.att.out) end = this.hmMin(l.att.out);
       else if (this.dashIsToday) end = this.nowMin;
       else return null;
-      const mins = Math.max(0, end - start);
+      const totalMins = Math.max(0, end - start);
       const dur = l.duration_minutes||60;
+      // 같은 날 같은 학생이 등원/하원을 공유하는 수업이 여러 개면(연속 타임 등), 시작시각 순서대로
+      // 앞 수업부터 채워 경과시간을 나눠 배분 — 안 그러면 두 수업 다 전체 경과시간으로 표시돼 헷갈림
+      const siblings = (this.dashData.lessons||[]).filter(o=>o.student_id===l.student_id && !this.isAbsent(o) && o.att && o.att.in);
+      if (siblings.length > 1){
+        siblings.sort((a,b)=>this.hmMin(a.start_time)-this.hmMin(b.start_time));
+        let remaining = totalMins;
+        for (const o of siblings){
+          const odur = o.duration_minutes||60;
+          const share = Math.min(remaining, odur);
+          if (o.occ_id===l.occ_id) return { mins:share, dur, over:share>dur, done:!!l.att.out };
+          remaining = Math.max(0, remaining - odur);
+        }
+      }
+      const mins = totalMins;
       return { mins, dur, over: mins > dur, done: !!l.att.out };
     },
     needsCallHighlight(l){
@@ -5527,11 +5541,15 @@ const app = createApp({
       return (this.nowMin - this.hmMin(l.start_time)) > 10;
     },
     attStatusTag(l){
-      // 미등원/지각 (오늘, 미하원 기준)
-      if (l.att.out) return null;
+      // 지각(10분 초과)/조기등원(15분 이상 일찍)/미등원
       const startM = this.hmMin(l.start_time);
-      if (l.att.in){ return this.hmMin(l.att.in) > startM ? {label:'지각', cls:'bg-amber-100 text-amber-700'} : null; }
-      if (this.dashIsToday && this.nowMin > startM) return {label:'미등원', cls:'bg-rose-100 text-rose-600'};
+      if (l.att.in){
+        const diff = this.hmMin(l.att.in) - startM;
+        if (diff > 10) return {label:diff+'분지각', cls:'bg-amber-100 text-amber-700'};
+        if (diff < -15) return {label:(-diff)+'분 일찍('+l.att.in+')', cls:'bg-sky-100 text-sky-700'};
+        return null;
+      }
+      if (!l.att.out && this.dashIsToday && this.nowMin > startM) return {label:'미등원', cls:'bg-rose-100 text-rose-600'};
       return null;
     },
     checkAtt(l, kind){
@@ -6125,8 +6143,12 @@ const app = createApp({
       if (row.status==='ABSENT') return { label:'결석'+this.stuAbsenceSuffix(row), cls:'bg-rose-100 text-rose-600' };
       if (row.status==='LEAVE') return { label:'임시휴원', cls:'bg-purple-100 text-purple-600' };
       if (row.is_makeup) return { label:'보강'+this.mkAbsenceRefSuffix(row), cls:'bg-blue-100 text-blue-700' };
+      if (row.att.in){
+        const diff = this.hmMin(row.att.in) - this.hmMin(row.start_time);
+        if (diff > 10) return { label:diff+'분지각', cls:'bg-amber-100 text-amber-700' };
+        if (diff < -15) return { label:(-diff)+'분 일찍('+row.att.in+')', cls:'bg-sky-100 text-sky-700' };
+      }
       if (row.att.in && row.att.out) return { label:'완료', cls:'bg-cyan-100 text-cyan-700' };
-      if (row.att.in && this.hmMin(row.att.in) > this.hmMin(row.start_time)) return { label:'지각', cls:'bg-amber-100 text-amber-700' };
       if (row.att.in) return { label:'수업중', cls:'bg-emerald-100 text-emerald-700' };
       return { label:'등원전', cls:'bg-slate-100 text-slate-500' };
     },
