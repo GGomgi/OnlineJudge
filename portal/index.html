@@ -2283,40 +2283,41 @@
                   </div>
                 </div>
               </div>
-              <!-- 과목 · 시간표 (개별 시간표와 동일 편집) -->
+              <!-- 과목 · 시간표 (개별 시간표와 동일 편집 — 인적사항 수정 모드와 별도로 자체 수정 모드 사용) -->
               <div class="border-t pt-2">
                 <div class="flex items-center justify-between mb-1">
-                  <div class="text-xs font-semibold text-slate-500">과목 · 시간표 <span class="font-normal text-slate-400">(수정 시 사유→이력 기록)</span></div>
+                  <div class="text-xs font-semibold text-slate-500">과목 · 시간표 <span class="font-normal text-slate-400">(수정 시 사유→이력 기록, 누르면 바로 적용)</span></div>
                   <div class="flex items-center gap-3">
                     <label class="text-[11px] text-slate-400 inline-flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="stuTtShowHistory" class="w-3 h-3" />과거 이력 보기</label>
-                    <button v-if="stuCanEdit && stuEditMode" @click="addStuTtRow" class="text-xs text-indigo-600 hover:underline">+ 시간표 추가</button>
+                    <button v-if="stuCanEdit" @click="stuTtEditMode=!stuTtEditMode" :class="['text-xs px-2 py-0.5 rounded border', stuTtEditMode ? 'border-amber-300 text-amber-600 bg-amber-50' : 'border-slate-200 text-indigo-600 hover:bg-indigo-50']">{{ stuTtEditMode ? '시간표 수정 종료' : '✎ 시간표 수정' }}</button>
+                    <button v-if="stuCanEdit && stuTtEditMode" @click="addStuTtRow" class="text-xs text-indigo-600 hover:underline">+ 시간표 추가</button>
                   </div>
                 </div>
                 <div v-if="stuTimetables.length" class="space-y-2">
                   <div v-for="s in stuTtVisibleRows()" :key="s.id || s._tmpId" :class="['rounded-lg border px-2 py-1.5 overflow-x-auto', s.status==='PAUSED' ? 'bg-amber-50' : '', !stuTtIsCurrent(s) ? 'opacity-60' : '', (s.id && ttRowDirty(s)) ? 'ring-1 ring-amber-300' : '', !s.id ? 'ring-1 ring-indigo-300 bg-indigo-50/30' : '']">
                     <div v-if="!stuTtIsCurrent(s)" class="text-[10px] text-slate-400 mb-0.5">{{ s.active_from||'~' }} ~ {{ s.active_until }} 사용됨</div>
                     <div class="flex items-center gap-1 text-xs whitespace-nowrap">
-                      <div class="w-12 shrink-0"><select v-model.number="s.weekday" :disabled="!stuEditMode" :class="ttCls(s,'weekday','py-1 !pl-1 !pr-0')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
-                      <div class="w-28 shrink-0"><input v-model="s.start_time" type="time" :readonly="!stuEditMode" :class="ttCls(s,'start_time','py-1 !pl-1 !pr-0')" /></div>
-                      <div class="w-16 shrink-0"><select v-model.number="s.duration_minutes" :disabled="!stuEditMode" :class="ttCls(s,'duration_minutes','py-1 !pl-1 !pr-0')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></div>
-                      <div class="w-36 shrink-0"><select v-model="s.program" :disabled="!stuEditMode" :class="ttCls(s,'program','py-1 !pl-1 !pr-0')"><option value="">미지정</option><option v-for="o in stuTtProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
-                      <div v-if="s.program==='LANG'" class="w-12 shrink-0"><select v-model="s.language" :disabled="!stuEditMode" :class="ttCls(s,'language','py-1 !pl-1 !pr-0')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select></div>
-                      <div class="w-20 shrink-0"><select v-model.number="s._instructor_id" :disabled="!stuEditMode" :class="[ttCls(s,'instr','py-1 !pl-1 !pr-0'), !s._instructor_id ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
-                      <div class="w-14 shrink-0"><select v-model="s.frequency" :disabled="!stuEditMode" :class="ttCls(s,'frequency','py-1 !pl-1 !pr-0')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></div>
+                      <div class="w-12 shrink-0"><select v-model.number="s.weekday" :disabled="!stuTtEditMode" :class="ttCls(s,'weekday','py-1 !pl-1 !pr-0')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
+                      <div class="w-28 shrink-0"><input v-model="s.start_time" type="time" :readonly="!stuTtEditMode" :class="ttCls(s,'start_time','py-1 !pl-1 !pr-0')" /></div>
+                      <div class="w-16 shrink-0"><select v-model.number="s.duration_minutes" :disabled="!stuTtEditMode" :class="ttCls(s,'duration_minutes','py-1 !pl-1 !pr-0')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></div>
+                      <div class="w-36 shrink-0"><select v-model="s.program" :disabled="!stuTtEditMode" :class="ttCls(s,'program','py-1 !pl-1 !pr-0')"><option value="">미지정</option><option v-for="o in stuTtProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+                      <div v-if="s.program==='LANG'" class="w-12 shrink-0"><select v-model="s.language" :disabled="!stuTtEditMode" :class="ttCls(s,'language','py-1 !pl-1 !pr-0')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select></div>
+                      <div class="w-20 shrink-0"><select v-model.number="s._instructor_id" :disabled="!stuTtEditMode" :class="[ttCls(s,'instr','py-1 !pl-1 !pr-0'), !s._instructor_id ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
+                      <div class="w-14 shrink-0"><select v-model="s.frequency" :disabled="!stuTtEditMode" :class="ttCls(s,'frequency','py-1 !pl-1 !pr-0')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></div>
                       <span v-if="s.status==='PAUSED'" class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 shrink-0">휴원중지</span>
                       <span class="ml-auto flex gap-2 shrink-0 pl-1 items-center">
                         <template v-if="!s.id">
-                          <button v-if="stuCanEdit && stuEditMode" @click="createStuTt(s)" class="text-emerald-600 font-bold hover:underline">저장</button>
-                          <button v-if="stuCanEdit && stuEditMode" @click="removeStuTtRow(s)" class="text-slate-400 hover:underline">취소</button>
+                          <button v-if="stuCanEdit && stuTtEditMode" @click="createStuTt(s)" class="text-emerald-600 font-bold hover:underline">저장</button>
+                          <button v-if="stuCanEdit && stuTtEditMode" @click="removeStuTtRow(s)" class="text-slate-400 hover:underline">취소</button>
                         </template>
                         <template v-else>
-                          <template v-if="stuCanEdit && stuEditMode && ttRowDirty(s)">
+                          <template v-if="stuCanEdit && stuTtEditMode && ttRowDirty(s)">
                             <label class="text-[10px] text-slate-400 inline-flex items-center gap-0.5 mr-1" title="처음부터 잘못 입력된 데이터라 이력을 나누지 않고 이 행 자체를 바로 수정"><input type="checkbox" v-model="s._fullEdit" class="w-3 h-3" />전체수정</label>
                             <input v-if="!s._fullEdit" v-model="s.effective_date" type="date" title="적용 시작일(기본 오늘)" class="input py-0.5 px-1 text-[11px] w-32" />
                           </template>
-                          <button v-if="stuCanEdit && stuEditMode" @click="saveStuTt(s)" :class="['hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">수정</button>
-                          <button v-if="stuCanEdit && stuEditMode && ttRowDirty(s)" @click="revertTt(s)" class="text-slate-400 hover:underline">취소</button>
-                          <button v-if="stuCanEdit && stuEditMode" @click="delStuTt(s)" class="text-rose-500 hover:underline">삭제</button>
+                          <button v-if="stuCanEdit && stuTtEditMode" @click="saveStuTt(s)" :class="['hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">수정</button>
+                          <button v-if="stuCanEdit && stuTtEditMode && ttRowDirty(s)" @click="revertTt(s)" class="text-slate-400 hover:underline">취소</button>
+                          <button v-if="stuCanEdit && stuTtEditMode" @click="delStuTt(s)" class="text-rose-500 hover:underline">삭제</button>
                           <button @mouseenter="openTtHistory(s,$event)" @mouseleave="scheduleCloseTt" class="text-slate-500 hover:underline">이력</button>
                         </template>
                       </span>
@@ -3667,7 +3668,7 @@ const app = createApp({
       stuProgress: [], stuProgForm: { date:'', content:'', homework:'' },
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', ampm:'오전', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
-      stuTtShowHistory: false,
+      stuTtShowHistory: false, stuTtEditMode: false,
       stuResvForm: { date:'', ampm:'오전', hour:'', min:'00', note:'' },
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
@@ -6366,7 +6367,7 @@ const app = createApp({
         try { this.stuProgramsEdit = JSON.parse((d.profile&&d.profile.programs)||'[]'); } catch(e){ this.stuProgramsEdit=[]; }
         this.stuProgramsEditOrig = JSON.parse(JSON.stringify(this.stuProgramsEdit));
         this.stuEditMode = false;
-        this.stuTtShowHistory = false;
+        this.stuTtShowHistory = false; this.stuTtEditMode = false;
         this.buildStuTimetables(d);
         if (!this.ttInstructors.length) this.loadTtInstructors();
         if (!(this.options.program||[]).length) this.loadOptions();
