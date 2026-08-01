@@ -1824,9 +1824,9 @@
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-slate-300 shrink-0"></span>등원전</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>수업중</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-cyan-400 shrink-0"></span>수업완료</span>
-          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>결석</span>
-          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-purple-400 shrink-0"></span>임시휴원</span>
-          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0"></span>보강</span>
+          <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowAbsent" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>결석</label>
+          <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowLeave" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-purple-400 shrink-0"></span>임시휴원</label>
+          <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowMakeup" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0"></span>보강</label>
         </div>
 
         <!-- 주간(세로): 시간(20분)×요일 격자, 동시간 학생은 박스가 위아래로 쌓임 -->
@@ -1877,7 +1877,7 @@
             <div v-if="(ttFilter.instructor_ids||[]).length>1" class="flex items-stretch">
               <div class="w-14 shrink-0 sticky left-0 z-10 bg-slate-50 border-r border-b border-slate-100"></div>
               <div v-for="(d,i) in ttWeekDates" :key="'hi'+i" class="shrink-0 flex border-r border-b border-slate-100 last:border-r-0">
-                <div v-for="lm in ttHzDayLayout(d.date).laneMeta" :key="lm.key" class="text-center text-[10px] py-0.5 border-r border-slate-100 last:border-r-0 truncate px-0.5"
+                <div v-for="lm in ttHzDayLayout(d.date).laneMeta" :key="lm.key" class="text-center text-[10px] py-0.5 border-r-2 border-slate-300 last:border-r-0 truncate px-0.5"
                      :style="{width:(lm.width*84)+'px'}">
                   <span class="inline-flex items-center gap-1"><span :class="['w-2 h-2 rounded-full inline-block shrink-0', (instrColor(lm.key)||{}).dot]"></span><span class="truncate">{{ lm.name }}</span></span>
                 </div>
@@ -1891,6 +1891,12 @@
               <div v-for="(d,i) in ttWeekDates" :key="i" class="relative shrink-0 border-r border-slate-100 last:border-r-0" :class="d.isToday ? 'bg-indigo-50/40' : wdBgClass(d.date)"
                    :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px', height: ttHzHeight()+'px'}">
                 <div v-for="a in ttHzAxis()" :key="'g'+a.mins" class="absolute left-0 right-0 border-t" :class="a.mins%60===0 ? 'border-slate-300' : 'border-slate-200'" :style="{top: ttHzTop(a.mins)+'px'}"></div>
+                <!-- 강사 경계선(강사 2명 이상 선택 시): 강사 사이 구분을 더 두드러지게 -->
+                <template v-if="(ttFilter.instructor_ids||[]).length>1">
+                  <div v-for="lm in ttHzDayLayout(d.date).laneMeta.slice(0,-1)" :key="'b'+lm.key"
+                       class="absolute top-0 bottom-0 border-r-2 border-slate-300 z-[1]"
+                       :style="{left: ((lm.offset+lm.width)*100/ttHzDayLayout(d.date).lanes)+'%'}"></div>
+                </template>
                 <div v-for="(L,j) in ttHzDayLayout(d.date).items" :key="j" @click="openCalAtt(L.it, d.date)" @mouseenter="showCalPop(L.it,d.date,$event)" @mouseleave="hideCalPop"
                      :class="['absolute px-1 py-0.5 leading-tight cursor-pointer overflow-hidden text-[10px] border border-slate-300/70 shadow-sm', calItemCls(L.it),
                               ttConnRole(L.it,d.date)==='first' ? 'rounded-t' : (ttConnRole(L.it,d.date)==='second' ? 'rounded-b border-t-0' : 'rounded')]"
@@ -3733,7 +3739,8 @@ const app = createApp({
       ttFilter: { name:'', weekday:'', from:'', to:'', instructor_ids:null, program:'' },
       ttInstrDropdown: false, ttSlotLayout: 'horizontal',
       attEditPop: { show:false, l:null, kind:'', cur:'', time:'' },
-      ttView: 'day', ttCalDays: {}, ttCalResv: {}, ttCalAnchor: '', ttCalMonth: '',
+      ttView: 'day', ttCalDaysRaw: {}, ttCalResv: {}, ttCalAnchor: '', ttCalMonth: '',
+      ttShowAbsent: true, ttShowLeave: true, ttShowMakeup: true,
       calPop: { show:false, x:0, y:0, date:'', it:{} },
       ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' },
       classes: [], sel: null, roster: [],
@@ -3746,6 +3753,15 @@ const app = createApp({
   },
   computed: {
     isStaff(){ return this.me && (this.me.user.admin_type === 'Admin' || this.me.user.admin_type === 'Super Admin'); },
+    // 시간표 캘린더: 상태 범례 체크박스(결석/보강/임시휴원 표시 여부)로 걸러낸 결과
+    ttCalDays(){
+      const raw = this.ttCalDaysRaw; const out = {};
+      for (const date in raw){
+        const day = raw[date];
+        out[date] = { ...day, items: (day.items||[]).filter(it=>this.ttItemVisible(it)) };
+      }
+      return out;
+    },
     mainMaxW(){ return { normal:'max-w-5xl', wide:'max-w-[1400px]', full:'max-w-full' }[this.layoutWidth] || 'max-w-5xl'; },
     canManageStaff(){
       if (this.me && this.me.user.admin_type === 'Super Admin') return true;
@@ -4443,7 +4459,7 @@ const app = createApp({
       const f=this.ttFilter;
       let qs='';
       if (this.ttView==='month'){ qs='month='+this.ttCalMonth; }
-      else { const w=this.ttWeekDates; if(!w.length){ this.ttCalDays={}; this.ttCalResv={}; return; } qs='from='+w[0].date+'&to='+w[w.length-1].date; }
+      else { const w=this.ttWeekDates; if(!w.length){ this.ttCalDaysRaw={}; this.ttCalResv={}; return; } qs='from='+w[0].date+'&to='+w[w.length-1].date; }
       if (f.program) qs+='&program='+encodeURIComponent(f.program);
       if ((f.instructor_ids||[]).length) qs+='&instructor_ids='+encodeURIComponent(f.instructor_ids.join(','));
       if (this.tab==='makeup' && this.mkgBranchId) qs+='&branch_id='+encodeURIComponent(this.mkgBranchId);
@@ -4456,9 +4472,9 @@ const app = createApp({
             if (items.length) days[k]={ count: items.length, items };
           });
         }
-        this.ttCalDays=days; this.ttCalResv=(this.tab==='makeup') ? {} : (d.reservations||{});
+        this.ttCalDaysRaw=days; this.ttCalResv=(this.tab==='makeup') ? {} : (d.reservations||{});
       }
-      catch(e){ this.ttCalDays={}; this.ttCalResv={}; this.notify(e.message,false); }
+      catch(e){ this.ttCalDaysRaw={}; this.ttCalResv={}; this.notify(e.message,false); }
     },
     ttCalShift(n){
       if (this.ttView==='month'){
@@ -4569,12 +4585,27 @@ const app = createApp({
       });
       let laneOffset = 0; const laneMeta = []; const laid = [];
       selIds.forEach(key=>{
-        const arr = (byKey[key]||[]).slice().sort((a,b)=>toM(a.start_time)-toM(b.start_time));
-        const laneEnd = [];
+        const arr = (byKey[key]||[]).slice();
+        // 같은 학생의 바로 이어지는 연속 수업(뒤 항목의 시작=앞 항목의 종료)은 같은 레인에 이어 배치
+        const contOf = new Map();
+        arr.forEach(it=>{
+          if (!it.student_id) return;
+          const s = toM(it.start_time);
+          const prev = arr.find(o=>o!==it && o.student_id===it.student_id && (toM(o.start_time)+(o.duration_minutes||60))===s);
+          if (prev) contOf.set(it, prev);
+        });
+        arr.sort((a,b)=> toM(a.start_time)-toM(b.start_time)
+          || (contOf.has(a)!==contOf.has(b) ? (contOf.has(a) ? -1 : 1) : 0)
+          || ((b.duration_minutes||60)-(a.duration_minutes||60)));
+        const laneEnd = []; const laneByItem = new Map();
         arr.forEach(it=>{
           const start=toM(it.start_time), dur=it.duration_minutes||60, end=start+dur;
-          let lane=laneEnd.findIndex(e=>e<=start);
+          let lane=-1;
+          const prev = contOf.get(it);
+          if (prev && laneByItem.has(prev) && laneEnd[laneByItem.get(prev)]<=start) lane=laneByItem.get(prev);
+          if (lane<0) lane=laneEnd.findIndex(e=>e<=start);
           if (lane<0){ lane=laneEnd.length; laneEnd.push(end); } else laneEnd[lane]=end;
+          laneByItem.set(it, lane);
           laid.push({ it, start, end, lane: laneOffset+lane });
         });
         const width = Math.max(1, laneEnd.length);
@@ -4588,6 +4619,12 @@ const app = createApp({
       const t = this.ttInstructors.find(x=>String(x.user_id)===key);
       return t ? (t.real_name||t.staff_no) : key;
     },
+    ttItemVisible(it){
+      if (it.status==='ABSENT') return this.ttShowAbsent;
+      if (it.status==='LEAVE') return this.ttShowLeave;
+      if (it.makeup) return this.ttShowMakeup;
+      return true;
+    },
     truncate(s,n){ s=s||''; return s.length>n ? s.slice(0,n)+'...' : s; },
     showCalResv(rv,date,e){ this.resvPop={ show:true, at:(date+' '+rv.time+' · '+(rv.student_name||'')), note:rv.note, by:'', created:'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
     instrColor(instructorId){
@@ -4599,10 +4636,12 @@ const app = createApp({
     },
     calItemCls(it){
       // 결석/임시휴원/보강은 강사 색상 모드에서도 항상 이 색을 유지(기존 수업과 확실히 구분)
-      if (it.status==='ABSENT') return 'bg-rose-100 text-rose-500 line-through';
-      if (it.status==='LEAVE') return 'bg-purple-100 text-purple-600 line-through';
-      if (it.makeup) return 'bg-blue-50 text-blue-700 hover:bg-blue-100';
-      if ((this.ttFilter.instructor_ids||[]).length > 1) {
+      // 단, 강사별 보기에서는 일반 수업(강사색)이 더 도드라지도록 살짝 흐리게
+      const instrMode = (this.ttFilter.instructor_ids||[]).length > 1;
+      if (it.status==='ABSENT') return 'bg-rose-100 text-rose-500 line-through' + (instrMode ? ' opacity-60' : '');
+      if (it.status==='LEAVE') return 'bg-purple-100 text-purple-600 line-through' + (instrMode ? ' opacity-60' : '');
+      if (it.makeup) return 'bg-blue-50 text-blue-700 hover:bg-blue-100' + (instrMode ? ' opacity-60' : '');
+      if (instrMode) {
         const c = this.instrColor(it.instructor_id);
         if (c) return c.bg + ' ' + c.text + ' hover:brightness-95';
       }
