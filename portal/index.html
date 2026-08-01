@@ -770,6 +770,7 @@
                   <template v-else>
                     <span v-if="isAbsent(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-rose-100 text-rose-600 whitespace-nowrap">결석{{ stuAbsenceSuffix(l) }}</span>
                     <span v-else-if="isLeave(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-violet-100 text-violet-600">임시휴원</span>
+                    <span v-else-if="isEarlyLeavePending(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer whitespace-nowrap" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}{{ stuAbsenceSuffix(l) }}</span>
                     <span v-else-if="l.att.note_tag" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
                     <span v-else @click="openAtt(l)" class="text-[11px] text-slate-300 hover:text-indigo-500 cursor-pointer">비고+</span>
                   </template>
@@ -884,9 +885,9 @@
             <label class="lbl">결석 연결 <span class="text-slate-400">(이 보강이 메꾸는 결석)</span></label>
             <select v-model.number="attForm.linkTarget" class="input py-1">
               <option :value="null">연결 안 함(날짜미정 결석과 무관)</option>
-              <option v-for="p in mkLinkCandidates" :key="p.occ_id" :value="p.occ_id">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</option>
+              <option v-for="p in mkLinkCandidates" :key="p.occ_id" :value="p.occ_id">[{{ p.kind==='early_leave'?'조퇴':'결석' }}] {{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</option>
             </select>
-            <p v-if="mkLinkCandidates.length===0" class="text-[11px] text-slate-400 mt-1">이 학생의 날짜미정 결석이 없습니다.</p>
+            <p v-if="mkLinkCandidates.length===0" class="text-[11px] text-slate-400 mt-1">이 학생의 날짜미정 결석·조퇴예정이 없습니다.</p>
           </div>
           <div>
             <label class="lbl">수업 시각 <span class="text-slate-400">(이 날짜만 변경 · ±10분)</span></label>
@@ -1088,6 +1089,28 @@
         <div class="flex justify-end gap-2">
           <button @click="tempLeaveOpen=false" class="text-sm text-slate-400 hover:underline">취소</button>
           <button @click="saveTempLeave" class="btn-primary text-sm">등록</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 조퇴예정 → 보강 처리 안내 — 탭과 무관하게 항상 렌더링 -->
+    <div v-if="earlyLeavePrompt" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" @click.self="earlyLeavePrompt=null">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5">
+        <div class="font-bold mb-1">조퇴예정으로 표시되었습니다</div>
+        <p class="text-sm text-slate-500 mb-4">{{ earlyLeavePrompt.student_name }} · {{ earlyLeavePrompt.subject }} 수업의 남은 시간, 보강을 어떻게 할까요?</p>
+        <div class="space-y-2">
+          <button @click="earlyLeaveSchedule" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-blue-50">
+            <div class="text-sm font-medium text-blue-700">지금 보강 잡기</div>
+            <div class="text-xs text-slate-400">보강 날짜·시간을 바로 지정합니다.</div>
+          </button>
+          <button @click="earlyLeaveLater" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-slate-50">
+            <div class="text-sm font-medium">나중에</div>
+            <div class="text-xs text-slate-400">보강 필요 목록에 남겨두고 나중에 잡습니다.</div>
+          </button>
+          <button @click="earlyLeaveNoMakeup" class="w-full text-left px-3 py-2 rounded-lg border hover:bg-slate-50">
+            <div class="text-sm font-medium text-slate-600">보강 안 함</div>
+            <div class="text-xs text-slate-400">남은 시간이 짧거나 보강이 필요 없는 경우입니다.</div>
+          </button>
         </div>
       </div>
     </div>
@@ -3591,6 +3614,7 @@
 const { createApp } = Vue;
 
 const ROLE_LABELS = {HQ_ADMIN:'본부 관리자',HR_ADMIN:'인사 관리자',REGIONAL_MANAGER:'지부장',BRANCH_MANAGER:'원장',VICE_PRINCIPAL:'부원장',INSTRUCTOR:'강사',TA:'조교',STUDENT:'학생',PARENT:'학부모',EXTERNAL_INSTRUCTOR_ADMIN:'외부 강사'};
+const EARLY_LEAVE_TAG = 'EARLY_LEAVE_EXPECTED';
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
 // 옛 비고 태그 코드(선택목록 개편 전 데이터) 폴백 라벨·색
 const LEGACY_TAG_LABELS = {LATE:'지각',EXCUSED:'사유결석',LEAVE:'조퇴',EARLY_LEAVE:'조퇴',PRE_CONTACT:'사전연락',MAKEUP:'보강',ABSENT:'결석',PRESENT:'출석'};
@@ -3681,7 +3705,7 @@ const app = createApp({
       makeupOpen: false, mkMode: 'pending', mkStep: 'pick', mkPending: [], mkPendingSearch: '',
       mkForm: { makeup_for:null, student_id:null, student_name:'', origin:'', time:'', date:'', note:'' },
       mkSearch: { query:'', student:null, candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' },
-      absentPrompt: null,
+      absentPrompt: null, earlyLeavePrompt: null,
       bulkAbsentPrompt: null, bulkMakeupOpen: false, bulkMakeupItems: [],
       tempLeaveOpen: false, tempLeaveForm: { from:'', to:'', note:'' },
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
@@ -5302,9 +5326,9 @@ const app = createApp({
         try {
           const all = await api('GET','/api/admin/academy/pending_makeup') || [];
           this.mkLinkCandidates = all.filter(p=>p.student_id===l.student_id);
-          // 이미 연결된 결석은 "보강필요 목록"엔 안 나오니(이미 처리됨), 현재 연결된 게 있으면 목록 맨 위에 끼워넣음
+          // 이미 연결된 결석·조퇴예정은 "보강필요 목록"엔 안 나오니(이미 처리됨), 현재 연결된 게 있으면 목록 맨 위에 끼워넣음
           if (linkTarget0 && !this.mkLinkCandidates.some(p=>p.occ_id===linkTarget0)){
-            this.mkLinkCandidates.unshift({ occ_id:linkTarget0, date:l.linked.date, start_time:l.linked.start_time, subject:l.subject||'' });
+            this.mkLinkCandidates.unshift({ occ_id:linkTarget0, date:l.linked.date, start_time:l.linked.start_time, subject:l.subject||'', kind:l.linked.kind });
           }
         } catch(e){ this.mkLinkCandidates = []; }
       }
@@ -5416,6 +5440,9 @@ const app = createApp({
         if (tag==='ABSENT' && !wasAbsent){ this.absentPrompt = { occ_id:l.occ_id, student_id:l.student_id, student_name:l.student_name, subject:l.subject, start_time:l.start_time, date:attDate, duration_minutes:l.duration_minutes||60,
           extraOccIds:(applyBoth && partner) ? [partner.occ_id] : [],
           partner:(applyBoth && partner) ? { occ_id:partner.occ_id, start_time:partner.start_time, duration_minutes:partner.duration_minutes||60 } : null }; }
+        if (tag===EARLY_LEAVE_TAG && this._attOrig.note_tag!==EARLY_LEAVE_TAG){
+          this.earlyLeavePrompt = { occ_id:l.occ_id, student_id:l.student_id, student_name:l.student_name, subject:l.subject, start_time:l.start_time, date:attDate, duration_minutes:l.duration_minutes||60 };
+        }
       } catch(e){ this.notify(e.message,false); }
     },
     absentLater(){ this.absentPrompt=null; },  // 나중에(보강필요 리스트에 남음)
@@ -5446,6 +5473,15 @@ const app = createApp({
         if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths); else this.loadDashboard();
       } catch(e){ this.notify(e.message,false); }
     },
+    earlyLeaveLater(){ this.earlyLeavePrompt=null; },
+    async earlyLeaveNoMakeup(){
+      try {
+        await api('POST','/api/admin/academy/lesson_status', { occ_id:this.earlyLeavePrompt.occ_id, status:'SCHEDULED', no_makeup:true });
+        this.notify('조퇴(보강 안 함)으로 처리되었습니다.'); this.earlyLeavePrompt=null;
+        if (this.stuDetail && this.stuTab==='attend') this.loadStuAttHist(this.stuAttHist.fwdMonths); else this.loadDashboard();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    earlyLeaveSchedule(){ const p=this.earlyLeavePrompt; this.earlyLeavePrompt=null; this.openMakeupFor(p); },
     openTempLeave(){
       if (!this.stuDetail) return;
       this.tempLeaveForm = { from:'', to:'', note:'' };
@@ -5470,9 +5506,11 @@ const app = createApp({
     },
     isAbsent(l){ return l.status==='ABSENT'; },
     isLeave(l){ return l.status==='LEAVE'; },
+    isEarlyLeavePending(l){ return !!(l && l.att && l.att.note_tag===EARLY_LEAVE_TAG); },
     calBadge(it){
       if (this.isLeave(it)) return { label:'임시휴원', style:{backgroundColor:'#f3e8ff',color:'#9333ea'} };
       if (this.isAbsent(it)) return { label:'결석'+this.stuAbsenceSuffix(it), style: this.attTagStyle('ABSENT') };
+      if (this.isEarlyLeavePending(it)) return { label:'조퇴예정'+this.stuAbsenceSuffix(it), style: this.attTagStyle(EARLY_LEAVE_TAG) };
       const tag = (it.att && it.att.note_tag) || '';
       if (!tag) return null;
       return { label: this.attTagLabel(tag), style: this.attTagStyle(tag) };
@@ -6300,6 +6338,7 @@ const app = createApp({
       if (row.status==='ABSENT') return { label:'결석'+this.stuAbsenceSuffix(row), cls:'bg-rose-100 text-rose-600' };
       if (row.status==='LEAVE') return { label:'임시휴원', cls:'bg-purple-100 text-purple-600' };
       if (row.is_makeup) return { label:'보강'+this.mkAbsenceRefSuffix(row), cls:'bg-blue-100 text-blue-700' };
+      if (this.isEarlyLeavePending(row)) return { label:'조퇴예정'+this.stuAbsenceSuffix(row), cls:'bg-orange-100 text-orange-700' };
       if (row.att.in){
         const diff = this.hmMin(row.att.in) - this.hmMin(this.lateRefStart(row));
         if (diff > this.lateThreshold) return { label:diff+'분 지각', cls:'bg-amber-100 text-amber-700' };
@@ -6311,8 +6350,9 @@ const app = createApp({
     },
     // 보강 상태 옆 괄호 표시: 어떤 결석을 보강하는지
     mkAbsenceRefSuffix(row){
-      if (!row.linked || row.linked.kind!=='absence') return '(결석연결없음)';
-      return '(결석 '+row.linked.date.slice(5)+'('+this.wdOf(row.linked.date)+'))';
+      if (!row.linked || (row.linked.kind!=='absence' && row.linked.kind!=='early_leave')) return '(연결없음)';
+      const label = row.linked.kind==='early_leave' ? '조퇴' : '결석';
+      return '('+label+' '+row.linked.date.slice(5)+'('+this.wdOf(row.linked.date)+'))';
     },
     // 결석 상태 옆 괄호 표시: 보강안함/미정/예정/완료/보강결석(기회 소멸)
     stuAbsenceSuffix(row){

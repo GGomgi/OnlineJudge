@@ -3347,6 +3347,18 @@ def _hm_kst(dt):
     return (dt + timedelta(hours=9)).strftime("%H:%M")
 
 
+EARLY_LEAVE_TAG = "EARLY_LEAVE_EXPECTED"
+
+
+def _link_target_kind(occ_status, note_tag):
+    """보강이 연결될 수 있는 대상인지와 그 종류(결석/조퇴예정). 둘 다 아니면 None."""
+    if occ_status == OccurrenceStatus.ABSENT:
+        return "absence"
+    if occ_status == OccurrenceStatus.SCHEDULED and note_tag == EARLY_LEAVE_TAG:
+        return "early_leave"
+    return None
+
+
 def _slot_active_on(s, d):
     """패턴이 날짜 d에 적용되는지: 유효기간(active_from~active_until)·격주 패리티 확인.
     active_from/active_until로 "이 날짜부터 이후" 시간표 분기를 표현한다(둘 다 없으면 항상 적용)."""
@@ -3480,10 +3492,11 @@ class DashboardAdminAPI(APIView):
         for l in lessons:
             l["att"] = att.get(l["student_id"], {"in": "", "out": "", "note_tag": "", "note": ""})
             l["progress"] = prog.get(l["occ_id"])
-        # 결석 건에 연결된 보강의 진행상황(예정/완료/보강도 결석) — 결석 표시 세분화용
-        absent_ids = [l["occ_id"] for l in lessons if l["status"] == OccurrenceStatus.ABSENT]
+        # 결석/조퇴예정 건에 연결된 보강의 진행상황(예정/완료/보강도 결석) — 표시 세분화용
+        link_target_ids = [l["occ_id"] for l in lessons
+                            if _link_target_kind(l["status"], l["att"]["note_tag"])]
         makeup_of = {m.makeup_for_id: m for m in LessonOccurrence.objects.filter(
-            is_makeup=True, makeup_for_id__in=absent_ids)} if absent_ids else {}
+            is_makeup=True, makeup_for_id__in=link_target_ids)} if link_target_ids else {}
         mk_keys = {(m.student_id, m.date) for m in makeup_of.values()}
         mk_att = {}
         if mk_keys:
@@ -3491,9 +3504,22 @@ class DashboardAdminAPI(APIView):
                     student_id__in={sid for sid, _ in mk_keys}, date__in={dt for _, dt in mk_keys}):
                 if (a.student_id, a.date) in mk_keys:
                     mk_att[(a.student_id, a.date)] = a
+        # 보강 쪽에서 "어떤 결석/조퇴예정을 메꾸는지" 표시하기 위해 연결 대상의 종류 판정
+        target_ids = [l["_absence_occid"] for l in lessons if l.get("_absence_occid")]
+        target_info = {}
+        if target_ids:
+            for t in LessonOccurrence.objects.filter(id__in=target_ids).only("id", "status", "student_id", "date"):
+                target_info[t.id] = (t.status, t.student_id, t.date)
+        target_att_tag = {}
+        sd_keys = {(sid, dt) for _st, sid, dt in target_info.values()}
+        if sd_keys:
+            for a in DailyAttendance.objects.filter(
+                    student_id__in={sid for sid, _ in sd_keys}, date__in={dt for _, dt in sd_keys}):
+                if (a.student_id, a.date) in sd_keys:
+                    target_att_tag[(a.student_id, a.date)] = a.note_tag
         for l in lessons:
             l["linked"] = None
-            if l["status"] == OccurrenceStatus.ABSENT:
+            if link_target_ids and l["occ_id"] in link_target_ids:
                 mk = makeup_of.get(l["occ_id"])
                 if mk:
                     a = mk_att.get((mk.student_id, mk.date))
@@ -3501,7 +3527,13 @@ class DashboardAdminAPI(APIView):
                     l["linked"] = {"kind": "makeup", "occ_id": mk.id, "date": str(mk.date), "start_time": str(mk.start_time)[:5],
                                    "status": mk.status, "done": done}
             elif l["_absence_date"]:
-                l["linked"] = {"kind": "absence", "occ_id": l["_absence_occid"], "date": l["_absence_date"], "start_time": l["_absence_time"]}
+                tid = l["_absence_occid"]
+                tinfo = target_info.get(tid)
+                kind = "absence"
+                if tinfo:
+                    tstatus, tsid, tdate = tinfo
+                    kind = _link_target_kind(tstatus, target_att_tag.get((tsid, tdate))) or "absence"
+                l["linked"] = {"kind": kind, "occ_id": tid, "date": l["_absence_date"], "start_time": l["_absence_time"]}
             del l["_absence_date"], l["_absence_time"], l["_absence_occid"]
         # 수업외 등원(오늘 수업 없는데 등원 체크된 학생) 합성 행 추가
         adhoc_branch_ids = [int(bid)] if bid else view
@@ -3812,14 +3844,23 @@ class TimetableCalendarAPI(APIView):
             occ_q = occ_q.filter(student_id=sid)
         overlay = {}
         for o in occ_q.values("source_timetable_id", "date", "status", "id", "note", "no_makeup",
-                               "start_time", "duration_minutes", "instructor_id", "program", "subject"):
+                               "start_time", "duration_minutes", "instructor_id", "program", "subject", "student_id"):
             overlay[(o["source_timetable_id"], str(o["date"]))] = o
         ov_instr_ids = {o["instructor_id"] for o in overlay.values() if o["instructor_id"]}
         ov_instr_names = {u.id: _name_of(u) for u in User.objects.filter(id__in=ov_instr_ids)}
-        # 결석 건에 연결된 보강의 진행상황(예정/완료/보강도 결석) — 결석 표시 세분화용
-        absent_ids = [o["id"] for o in overlay.values() if o["status"] == OccurrenceStatus.ABSENT]
+        # 등원/하원 출결(오늘 운영과 동일하게 달력에도 표시)
+        att_q = DailyAttendance.objects.filter(date__gte=d0, date__lte=d1)
+        if sid:
+            att_q = att_q.filter(student_id=sid)
+        att_map = {}
+        for a in att_q:
+            att_map[(a.student_id, str(a.date))] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at),
+                                                     "note_tag": a.note_tag, "note": a.note}
+        # 결석/조퇴예정 건에 연결된 보강의 진행상황(예정/완료/보강도 결석) — 표시 세분화용
+        link_target_ids = [o["id"] for o in overlay.values()
+                            if _link_target_kind(o["status"], att_map.get((o["student_id"], str(o["date"])), {}).get("note_tag", ""))]
         makeup_of = {m.makeup_for_id: m for m in LessonOccurrence.objects.filter(
-            is_makeup=True, makeup_for_id__in=absent_ids)} if absent_ids else {}
+            is_makeup=True, makeup_for_id__in=link_target_ids)} if link_target_ids else {}
         mk_keys = {(m.student_id, m.date) for m in makeup_of.values()}
         mk_att = {}
         if mk_keys:
@@ -3829,7 +3870,10 @@ class TimetableCalendarAPI(APIView):
                     mk_att[(a.student_id, a.date)] = a
 
         def _linked_for(ov):
-            if not ov or ov["status"] != OccurrenceStatus.ABSENT:
+            if not ov:
+                return None
+            kind = _link_target_kind(ov["status"], att_map.get((ov["student_id"], str(ov["date"])), {}).get("note_tag", ""))
+            if not kind:
                 return None
             mk = makeup_of.get(ov["id"])
             if not mk:
@@ -3837,14 +3881,6 @@ class TimetableCalendarAPI(APIView):
             a = mk_att.get((mk.student_id, mk.date))
             done = bool(a and a.check_in_at and a.check_out_at)
             return {"kind": "makeup", "occ_id": mk.id, "date": str(mk.date), "start_time": str(mk.start_time)[:5], "status": mk.status, "done": done}
-        # 등원/하원 출결(오늘 운영과 동일하게 달력에도 표시)
-        att_q = DailyAttendance.objects.filter(date__gte=d0, date__lte=d1)
-        if sid:
-            att_q = att_q.filter(student_id=sid)
-        att_map = {}
-        for a in att_q:
-            att_map[(a.student_id, str(a.date))] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at),
-                                                     "note_tag": a.note_tag, "note": a.note}
         # 진도(있으면) occ_id별
         prog_q = LessonProgress.objects.filter(
             occurrence__date__gte=d0, occurrence__date__lte=d1, is_hidden=False)
@@ -3901,8 +3937,11 @@ class TimetableCalendarAPI(APIView):
             for o in mk:
                 linked = None
                 if o.makeup_for_id and o.makeup_for:
-                    linked = {"kind": "absence", "occ_id": o.makeup_for_id, "date": str(o.makeup_for.date),
-                              "start_time": str(o.makeup_for.start_time)[:5]}
+                    t = o.makeup_for
+                    t_att = DailyAttendance.objects.filter(student_id=t.student_id, date=t.date).first()
+                    t_kind = _link_target_kind(t.status, t_att.note_tag if t_att else "") or "absence"
+                    linked = {"kind": t_kind, "occ_id": o.makeup_for_id, "date": str(t.date),
+                              "start_time": str(t.start_time)[:5]}
                 items.append({"timetable_id": None, "start_time": str(o.start_time)[:5], "date": str(cur),
                               "duration_minutes": o.duration_minutes,
                               "subject": (o.subject or "보강"), "program": o.program or "", "makeup": True,
@@ -3995,8 +4034,9 @@ class LessonStatusAdminAPI(APIView):
         if "note" in data:
             o.note = (data.get("note") or "").strip()
         if "no_makeup" in data:
+            # 명시적으로 넘어온 값을 우선(조퇴예정 등 SCHEDULED 상태에서도 "보강 안 함" 지정 가능하도록)
             o.no_makeup = bool(data.get("no_makeup"))
-        if st in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.LEAVE):
+        elif st in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.LEAVE):
             o.no_makeup = False
         if st == OccurrenceStatus.CANCELLED:
             o.makeup_for = None  # 연결된 결석이 있었다면 재연결 가능하도록 해제
@@ -4045,29 +4085,47 @@ class LessonAbsenceAPI(APIView):
 class PendingMakeupAPI(APIView):
     @admin_role_required
     def get(self, request):
-        """보강 필요 리스트: 결석(ABSENT)인데 보강 미배정·보강 안 함 아닌 수업.
-        branch_id 주면 해당 지점만. 오래된 결석부터(날짜 오름차순)."""
+        """보강 필요 리스트: 결석(ABSENT) 또는 조퇴예정 표시된 수업 중 보강 미배정·보강 안 함
+        아닌 것. branch_id 주면 해당 지점만. 오래된 것부터(날짜 오름차순)."""
         view = viewable_branch_ids(request.user)
+        bid = request.GET.get("branch_id")
+        made = set(LessonOccurrence.objects.filter(is_makeup=True, makeup_for__isnull=False)
+                   .values_list("makeup_for_id", flat=True))
+
         qs = LessonOccurrence.objects.select_related("student", "student__student_profile", "branch").filter(
             status=OccurrenceStatus.ABSENT, is_makeup=False, no_makeup=False)
         if view is not None:
             qs = qs.filter(branch_id__in=view)
-        bid = request.GET.get("branch_id")
         if bid:
             qs = qs.filter(branch_id=bid)
-        made = set(LessonOccurrence.objects.filter(is_makeup=True, makeup_for__isnull=False)
-                   .values_list("makeup_for_id", flat=True))
+
+        # 조퇴예정 태그가 붙은 날짜의 수업도 후보에 포함
+        el_pairs = list(DailyAttendance.objects.filter(note_tag=EARLY_LEAVE_TAG).values_list("student_id", "date"))
+        el_qs = LessonOccurrence.objects.none()
+        if el_pairs:
+            q = Q()
+            for sid, dt in el_pairs:
+                q |= Q(student_id=sid, date=dt)
+            el_qs = LessonOccurrence.objects.select_related("student", "student__student_profile", "branch").filter(
+                q, status=OccurrenceStatus.SCHEDULED, is_makeup=False, no_makeup=False)
+            if view is not None:
+                el_qs = el_qs.filter(branch_id__in=view)
+            if bid:
+                el_qs = el_qs.filter(branch_id=bid)
+
         out = []
-        for o in qs.order_by("date", "start_time")[:300]:
+        for o, kind in [(o, "absence") for o in qs.order_by("date", "start_time")[:300]] + \
+                        [(o, "early_leave") for o in el_qs.order_by("date", "start_time")[:300]]:
             if o.id in made:
                 continue
             prof = getattr(o.student, "student_profile", None)
             out.append({"occ_id": o.id, "student_id": o.student_id, "student_name": _name_of(o.student),
                         "date": str(o.date), "start_time": str(o.start_time)[:5],
-                        "duration_minutes": o.duration_minutes,
+                        "duration_minutes": o.duration_minutes, "kind": kind,
                         "subject": o.subject or "미지정", "branch": (o.branch.name if o.branch_id else ""),
                         "parent_phone": (prof.parent_phone if prof else ""),
                         "student_phone": (prof.student_phone if prof else "")})
+        out.sort(key=lambda r: (r["date"], r["start_time"]))
         return self.success(out)
 
 
@@ -4121,21 +4179,24 @@ class LessonEditAdminAPI(APIView):
                             old_att.save(update_fields=["check_in_at", "check_out_at"])
         if "makeup_for" in data:
             if not o.is_makeup:
-                return self.error("보강 건만 결석과 연결할 수 있습니다.")
+                return self.error("보강 건만 결석·조퇴예정과 연결할 수 있습니다.")
             target_id = data.get("makeup_for")
             if target_id:
                 target = LessonOccurrence.objects.filter(id=target_id, student_id=o.student_id).first()
                 if not target:
-                    return self.error("연결할 결석을 찾을 수 없습니다.")
-                if target.status != OccurrenceStatus.ABSENT:
-                    return self.error("결석 상태인 수업만 연결할 수 있습니다.")
+                    return self.error("연결할 결석·조퇴예정을 찾을 수 없습니다.")
+                target_att = DailyAttendance.objects.filter(student_id=target.student_id, date=target.date).first()
+                target_kind = _link_target_kind(target.status, target_att.note_tag if target_att else "")
+                if not target_kind:
+                    return self.error("결석 또는 조퇴예정 상태인 수업만 연결할 수 있습니다.")
                 if LessonOccurrence.objects.filter(is_makeup=True, makeup_for_id=target.id).exclude(id=o.id).exists():
-                    return self.error("이미 다른 보강과 연결된 결석입니다.")
+                    return self.error("이미 다른 보강과 연결된 건입니다.")
                 if o.makeup_for_id != target.id:
-                    changes.append("결석 연결: %s %s" % (str(target.date), str(target.start_time)[:5]))
+                    label = "결석" if target_kind == "absence" else "조퇴예정"
+                    changes.append("%s 연결: %s %s" % (label, str(target.date), str(target.start_time)[:5]))
                     o.makeup_for = target
             elif o.makeup_for_id:
-                changes.append("결석 연결 해제")
+                changes.append("연결 해제")
                 o.makeup_for = None
         if "start_time" in data:
             tm = (data.get("start_time") or "").strip()
@@ -4315,13 +4376,17 @@ class MakeupAddAdminAPI(APIView):
         if instr is None:
             instr = src.instructor_id if src else (target.instructor_id if target else None)
         with transaction.atomic():
-            # 아직 결석 처리 전(예정)인 수업을 대상으로 고른 경우, 이 보강 연결과 함께 결석 처리한다.
-            if target and target.status != OccurrenceStatus.ABSENT:
-                target.status = OccurrenceStatus.ABSENT
-                if note:
-                    target.note = note
-                target.no_makeup = False
-                target.save()
+            # 아직 결석·조퇴예정 처리 전(그냥 예정 수업)인 대상을 고른 경우에만 결석으로 자동 처리.
+            # 이미 조퇴예정으로 표시된 대상은 그대로 두고(학생은 출석했으므로) 결석 처리하지 않음.
+            if target:
+                target_att = DailyAttendance.objects.filter(student_id=target.student_id, date=target.date).first()
+                target_kind = _link_target_kind(target.status, target_att.note_tag if target_att else "")
+                if not target_kind:
+                    target.status = OccurrenceStatus.ABSENT
+                    if note:
+                        target.note = note
+                    target.no_makeup = False
+                    target.save()
             occ = LessonOccurrence.objects.create(
                 student=u, branch_id=(prof.branch_id if prof else (src.branch_id if src else None)),
                 source_timetable=None, date=d, start_time=st_time, duration_minutes=dur,
@@ -4452,7 +4517,7 @@ class StudentAttendanceHistoryAPI(APIView):
                   "att": {"in": _hm_kst(a.check_in_at) if a else "", "out": _hm_kst(a.check_out_at) if a else "",
                           "note_tag": a.note_tag if a else "", "note": a.note if a else ""},
                   "progress": prog_by_occ.get(o.id), "linked": None}
-            if o.status == OccurrenceStatus.ABSENT:
+            if _link_target_kind(o.status, a.note_tag if a else ""):
                 mk = makeup_of.get(o.id)
                 if mk:
                     mk_att = att_map.get(mk.date)
@@ -4461,7 +4526,9 @@ class StudentAttendanceHistoryAPI(APIView):
                                      "status": mk.status, "done": mk_done}
             elif o.is_makeup and o.makeup_for_id and o.makeup_for:
                 t = o.makeup_for
-                row["linked"] = {"kind": "absence", "occ_id": t.id, "date": str(t.date), "start_time": str(t.start_time)[:5]}
+                t_att = att_map.get(t.date)
+                t_kind = _link_target_kind(t.status, t_att.note_tag if t_att else "") or "absence"
+                row["linked"] = {"kind": t_kind, "occ_id": t.id, "date": str(t.date), "start_time": str(t.start_time)[:5]}
             rows.append(row)
         return self.success({"from": str(d0), "to": str(d1), "fwd_months": fwd_months, "rows": rows})
 
@@ -4559,7 +4626,9 @@ class AdhocMakeupLinkAPI(APIView):
             return self.error("이미 그 날짜에 수업 인스턴스가 있습니다.")
         note = (data.get("note") or "").strip()
         with transaction.atomic():
-            if target.status != OccurrenceStatus.ABSENT:
+            target_att = DailyAttendance.objects.filter(student_id=target.student_id, date=target.date).first()
+            target_kind = _link_target_kind(target.status, target_att.note_tag if target_att else "")
+            if not target_kind:
                 target.status = OccurrenceStatus.ABSENT
                 if note:
                     target.note = note
