@@ -4073,9 +4073,31 @@ class LessonEditAdminAPI(APIView):
             except (TypeError, ValueError):
                 return self.error("날짜 형식이 올바르지 않습니다.")
             if new_date != o.date:
-                changes.append("보강 날짜 %s → %s" % (str(o.date), str(new_date)))
+                old_date = o.date
+                changes.append("보강 날짜 %s → %s" % (str(old_date), str(new_date)))
                 o.date = new_date
                 o.time_change_reason = (data.get("reason") or "").strip() or "보강 일정 변경"
+                # 옛 날짜에 이 보강 말고 남은 수업이 없다면(등원/하원 기록이 이 보강 때문에 생긴 것으로 보고)
+                # 새 날짜로 함께 옮겨준다 — 안 옮기면 옛 날짜에 '수업외'로 고아 데이터가 남음
+                still_others = LessonOccurrence.objects.filter(student_id=o.student_id, date=old_date)\
+                    .exclude(id=o.id).exclude(status=OccurrenceStatus.CANCELLED).exists()
+                if not still_others:
+                    old_att = DailyAttendance.objects.filter(student_id=o.student_id, date=old_date).first()
+                    if old_att and (old_att.check_in_at or old_att.check_out_at):
+                        new_att, _ = DailyAttendance.objects.get_or_create(
+                            student_id=o.student_id, date=new_date, defaults={"branch_id": o.branch_id})
+                        if not new_att.check_in_at and not new_att.check_out_at:
+                            new_att.check_in_at = old_att.check_in_at
+                            new_att.check_out_at = old_att.check_out_at
+                            new_att.note_tag = old_att.note_tag
+                            new_att.note = old_att.note
+                            new_att.save()
+                            AttendanceChange.objects.create(attendance=new_att, actor=request.user,
+                                detail="보강 날짜 변경으로 등원/하원 기록 이동(%s → %s)" % (str(old_date), str(new_date)),
+                                reason=(data.get("reason") or "").strip())
+                            old_att.check_in_at = None
+                            old_att.check_out_at = None
+                            old_att.save(update_fields=["check_in_at", "check_out_at"])
         if "makeup_for" in data:
             if not o.is_makeup:
                 return self.error("보강 건만 결석과 연결할 수 있습니다.")
