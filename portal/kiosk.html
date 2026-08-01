@@ -43,6 +43,8 @@ createApp({
       matches: [], resultMsg: '', resultSub: '', busy: false,
       board: [], nowMin: 0,
       isFullscreen: false,
+      keepAwake: localStorage.getItem('kiosk_keep_awake') === '1',
+      _wakeLock: null,
       deviceId: '', deviceStatus: 'checking',  // checking | PENDING | APPROVED | REVOKED | badlink
     };
   },
@@ -214,11 +216,31 @@ createApp({
       if (!document.fullscreenElement){ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
       else { document.exitFullscreen && document.exitFullscreen(); }
     },
+    async requestWakeLock(){
+      if (!('wakeLock' in navigator)) return;
+      try {
+        this._wakeLock = await navigator.wakeLock.request('screen');
+        this._wakeLock.addEventListener('release', ()=>{ this._wakeLock = null; });
+      } catch(e){ /* 지원 안 하거나 거부됨 — 조용히 무시(태블릿 기본 설정 따름) */ }
+    },
+    releaseWakeLock(){
+      if (this._wakeLock){ this._wakeLock.release(); this._wakeLock = null; }
+    },
+    toggleKeepAwake(){
+      this.keepAwake = !this.keepAwake;
+      localStorage.setItem('kiosk_keep_awake', this.keepAwake ? '1' : '0');
+      if (this.keepAwake) this.requestWakeLock(); else this.releaseWakeLock();
+    },
   },
   async mounted(){
     this.tickClock();
     setInterval(this.tickClock, 1000);
     document.addEventListener('fullscreenchange', ()=>{ this.isFullscreen = !!document.fullscreenElement; });
+    if (this.keepAwake) this.requestWakeLock();
+    // 화면 꺼짐 방지는 탭이 백그라운드로 가면 자동 해제되므로, 다시 보일 때 켜져 있으면 재요청
+    document.addEventListener('visibilitychange', ()=>{
+      if (document.visibilityState === 'visible' && this.keepAwake) this.requestWakeLock();
+    });
     if (!this.b || !this.t){
       this.deviceStatus = 'badlink';
       this.resultSub = '관리자에게 링크를 다시 요청하세요.';
@@ -234,9 +256,15 @@ createApp({
     setInterval(()=>{ if (this.deviceStatus!=='APPROVED') this.requestDevice(); }, 5000);
   },
   template: `
-    <button @click="toggleFullscreen" class="fixed top-2 right-2 z-50 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">
-      {{ isFullscreen ? '⤢ 전체화면 해제' : '⛶ 전체화면' }}
-    </button>
+    <div class="fixed top-2 right-2 z-50 flex items-center gap-1.5">
+      <label class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600 cursor-pointer select-none">
+        <input type="checkbox" :checked="keepAwake" @change="toggleKeepAwake" class="w-3.5 h-3.5" />
+        {{ keepAwake ? '🔆 계속 켜짐' : '화면 꺼짐 방지' }}
+      </label>
+      <button @click="toggleFullscreen" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">
+        {{ isFullscreen ? '⤢ 전체화면 해제' : '⛶ 전체화면' }}
+      </button>
+    </div>
 
     <!-- 기기 미승인: 대기/거절 화면(승인되면 자동으로 아래 본 화면으로 전환) -->
     <div v-if="deviceStatus!=='APPROVED'" class="w-full h-full flex items-center justify-center p-6">
