@@ -187,6 +187,13 @@
                           :class="['px-2 py-1 rounded border', layoutWidth===w.k ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 hover:bg-slate-50']">{{ w.l }}</button>
                 </div>
               </div>
+              <div class="flex items-center justify-between mt-2">
+                <span>지각·조기등원 기준</span>
+                <div class="flex items-center gap-1">
+                  <input type="number" min="1" :value="lateThreshold" @change="setLateThreshold($event.target.value)" class="input py-0.5 px-1 w-14 text-right" />
+                  <span class="text-slate-400">분</span>
+                </div>
+              </div>
               <div class="text-[10px] text-slate-400 mt-2">이 브라우저에만 적용되며, 다른 직원 화면에는 영향 없습니다.</div>
             </div>
           </div>
@@ -730,7 +737,7 @@
             </tr>
           </thead>
           <tbody>
-            <template v-for="(l,i) in dashLessons" :key="i">
+            <template v-for="(l,i) in dashLessonsOrdered" :key="i">
               <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?8:7" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }}</td></tr>
               <tr class="border-t align-middle hover:bg-slate-50" :class="isAbsent(l) ? 'bg-rose-50/50' : (isLeave(l) ? 'bg-violet-50/50' : (l.adhoc ? 'bg-amber-50/50' : ''))">
                 <td class="px-3 py-2 font-mono whitespace-nowrap">
@@ -738,7 +745,7 @@
                   <span v-else>{{ l.start_time }}</span>
                 </td>
                 <td class="px-3 py-2 font-medium whitespace-nowrap">
-                  <span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span>
+                  <span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="findContPartner(l)" class="ml-0.5 opacity-60" title="연속 수업(이어짐)">🔗</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span>
                   <span v-if="l.is_makeup" @click="openAtt(l)" class="block mt-0.5 text-[10px] px-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer w-fit">보강{{ mkAbsenceRefSuffix(l) }}</span>
                 </td>
                 <td class="px-3 py-2 text-slate-500 max-w-[64px] truncate">{{ l.subject }}<span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help" title="">📝</span></td>
@@ -3629,6 +3636,7 @@ const app = createApp({
       dbView: 'list', dbList: [], dbDetail: null, dbForm: { id:null, title:'', body:'' }, dbComment: '', _dbEditor: null, _dbViewer: null,
       notiOpen: false, notiUnread: 0, notiList: [], _notiTimer: null,
       settingsOpen: false, layoutWidth: localStorage.getItem('portal_layout_width') || 'normal',
+      lateThreshold: parseInt(localStorage.getItem('portal_late_threshold')) || 5,
       msgBox: 'inbox', msgList: [], msgCompose: false, msgForm: { recipient_id:null, body:'' }, msgUnread: 0, msgExpand: {}, msgPickerOpen: false,
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
       statusPop: { show:false, x:0, y:0, name:'', list:[] },
@@ -3851,6 +3859,27 @@ const app = createApp({
         return true;
       });
     },
+    // 같은 학생의 바로 이어지는 연속 수업(뒤 수업 시작=앞 수업 종료)은 시간순 정렬을 깨더라도
+    // 서로 붙여서 보여줌 — 시간표엔 잘 이어져 보이는데 목록에서 뚝뚝 떨어져 보이면 헷갈리기 때문
+    dashLessonsOrdered(){
+      const list = this.dashLessons;
+      const toM = t=>this.hmMin(t);
+      const partnerOf = new Map();
+      list.forEach(it=>{
+        if (!it.student_id) return;
+        const s = toM(it.start_time), e = s + (it.duration_minutes||60);
+        const nxt = list.find(o=>o!==it && o.student_id===it.student_id && toM(o.start_time)===e);
+        if (nxt) partnerOf.set(it, nxt);
+      });
+      const emitted = new Set(); const out = [];
+      list.forEach(it=>{
+        if (emitted.has(it)) return;
+        out.push(it); emitted.add(it);
+        const nxt = partnerOf.get(it);
+        if (nxt && !emitted.has(nxt)){ out.push(nxt); emitted.add(nxt); }
+      });
+      return out;
+    },
     mkSearchResults(){
       const q=(this.mkSearch.query||'').trim().toLowerCase(); if(!q) return [];
       return (this.students||[]).filter(s=>s.enrollment_status==='ENROLLED' &&
@@ -3926,7 +3955,7 @@ const app = createApp({
     nowMin(){ const d=new Date(this.clockNow); return d.getHours()*60+d.getMinutes(); },
     nowLineIndex(){
       // 현재 시각보다 시작이 늦은 첫 수업 인덱스(없으면 끝)
-      const ls=this.dashLessons;
+      const ls=this.dashLessonsOrdered;
       for (let i=0;i<ls.length;i++){ if (this.hmMin(ls[i].start_time) > this.nowMin) return i; }
       return ls.length;
     },
@@ -5583,12 +5612,12 @@ const app = createApp({
       return (this.nowMin - this.hmMin(l.start_time)) > 10;
     },
     attStatusTag(l){
-      // 지각(10분 초과)/조기등원(15분 이상 일찍)/미등원
+      // 지각/조기등원(설정한 기준 분 초과)/미등원
       const startM = this.hmMin(l.start_time);
       if (l.att.in){
         const diff = this.hmMin(l.att.in) - startM;
-        if (diff > 10) return {label:diff+'분지각', cls:'bg-amber-100 text-amber-700'};
-        if (diff < -15) return {label:(-diff)+'분 일찍('+l.att.in+')', cls:'bg-sky-100 text-sky-700'};
+        if (diff > this.lateThreshold) return {label:diff+'분 지각', cls:'bg-amber-100 text-amber-700'};
+        if (diff < -this.lateThreshold) return {label:(-diff)+'분 일찍', cls:'bg-sky-100 text-sky-700'};
         return null;
       }
       if (!l.att.out && this.dashIsToday && this.nowMin > startM) return {label:'미등원', cls:'bg-rose-100 text-rose-600'};
@@ -5695,6 +5724,10 @@ const app = createApp({
     },
     // ── 설정(헤더 톱니) ──
     setLayoutWidth(w){ this.layoutWidth=w; localStorage.setItem('portal_layout_width', w); },
+    setLateThreshold(v){
+      const n = Math.max(1, parseInt(v)||5);
+      this.lateThreshold = n; localStorage.setItem('portal_late_threshold', n);
+    },
     // ── 알림(헤더 종) ──
     async loadNoti(){ if(!this.isStaff) return; try { const d=await api('GET','/api/academy/notifications'); this.notiUnread=d.unread||0; this.notiList=d.items||[]; } catch(e){} },
     toggleNoti(){ this.notiOpen=!this.notiOpen; if(this.notiOpen) this.loadNoti(); },
@@ -6187,8 +6220,8 @@ const app = createApp({
       if (row.is_makeup) return { label:'보강'+this.mkAbsenceRefSuffix(row), cls:'bg-blue-100 text-blue-700' };
       if (row.att.in){
         const diff = this.hmMin(row.att.in) - this.hmMin(row.start_time);
-        if (diff > 10) return { label:diff+'분지각', cls:'bg-amber-100 text-amber-700' };
-        if (diff < -15) return { label:(-diff)+'분 일찍('+row.att.in+')', cls:'bg-sky-100 text-sky-700' };
+        if (diff > this.lateThreshold) return { label:diff+'분 지각', cls:'bg-amber-100 text-amber-700' };
+        if (diff < -this.lateThreshold) return { label:(-diff)+'분 일찍', cls:'bg-sky-100 text-sky-700' };
       }
       if (row.att.in && row.att.out) return { label:'완료', cls:'bg-cyan-100 text-cyan-700' };
       if (row.att.in) return { label:'수업중', cls:'bg-emerald-100 text-emerald-700' };
