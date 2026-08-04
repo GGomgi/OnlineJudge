@@ -4512,7 +4512,7 @@ class StudentAttendanceHistoryAPI(APIView):
                 LessonOccurrence.objects.bulk_create(creates, ignore_conflicts=True)
         occ = list(LessonOccurrence.objects.filter(student_id=u.id, date__gte=d0, date__lte=d1)
                    .exclude(status=OccurrenceStatus.CANCELLED)
-                   .select_related("makeup_for", "instructor").order_by("-date", "-start_time"))
+                   .select_related("makeup_for", "instructor", "source_timetable").order_by("-date", "-start_time"))
         att_map = {a.date: a for a in DailyAttendance.objects.filter(student_id=u.id, date__gte=d0, date__lte=d1)}
         occ_ids = [o.id for o in occ]
         makeup_of = {m.makeup_for_id: m for m in
@@ -4523,12 +4523,17 @@ class StudentAttendanceHistoryAPI(APIView):
         rows = []
         for o in occ:
             a = att_map.get(o.date)
+            time_changed = bool(o.source_timetable and o.source_timetable.start_time
+                                 and str(o.start_time)[:5] != str(o.source_timetable.start_time)[:5])
             row = {"occ_id": o.id, "date": str(o.date), "start_time": str(o.start_time)[:5],
                   "subject": o.subject or resolve_program_label(o.program) or "미지정",
                   "program": o.program or "", "duration_minutes": o.duration_minutes,
                   "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
                   "instructor_id": o.instructor_id,
                   "status": o.status, "is_makeup": o.is_makeup, "no_makeup": o.no_makeup, "lesson_note": o.note,
+                  "time_changed": time_changed,
+                  "orig_time": (str(o.source_timetable.start_time)[:5] if (time_changed and o.source_timetable) else ""),
+                  "time_change_reason": (o.time_change_reason if time_changed else ""),
                   "att": {"in": _hm_kst(a.check_in_at) if a else "", "out": _hm_kst(a.check_out_at) if a else "",
                           "note_tag": a.note_tag if a else "", "note": a.note if a else ""},
                   "progress": prog_by_occ.get(o.id), "linked": None}
