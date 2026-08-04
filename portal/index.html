@@ -3145,11 +3145,12 @@
             <textarea ref="msgBodyEdit" v-model="msgEditForm.body" rows="6" placeholder="본문. 변수는 {학생이름} 처럼 중괄호로." class="input text-sm"></textarea>
             <!-- 변수 버튼(커서에 삽입) -->
             <div class="flex flex-wrap gap-1">
-              <button v-for="v in msgAutoVars" :key="v" type="button" @mousedown.prevent="insertMsgVar(v)" class="text-[11px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100">{{ '{'+v+'}' }}</button>
+              <button v-for="v in msgAutoVars" :key="v" type="button" @mousedown.prevent="insertMsgVar(v)" :title="'예: '+msgVarExample(v)" class="text-[11px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100">{{ '{'+v+'}' }}</button>
               <button v-for="v in msgCustomVars" :key="'c'+v" type="button" @mousedown.prevent="insertMsgVar(v)" class="text-[11px] px-2 py-1 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200">{{ '{'+v+'}' }}</button>
               <button type="button" @mousedown.prevent="addCustomVar" class="text-[11px] px-2 py-1 rounded-full border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50">+ 변수 추가</button>
             </div>
             <p class="text-[11px] text-slate-400">초록=자동 변수(학생 연결 시 자동), 회색=직접 입력 변수. 버튼을 누르면 커서 위치에 삽입됩니다.</p>
+            <p class="text-[11px] text-slate-400 leading-relaxed">예시 — <span v-for="(v,vi) in msgAutoVars" :key="'ex'+v">{{ vi>0 ? ' · ' : '' }}{{ '{'+v+'}' }}={{ msgVarExample(v) }}</span></p>
             <div class="flex justify-end gap-2">
               <button @click="msgEdit=false" class="btn-secondary text-xs">취소</button>
               <button @click="saveMsgTemplate" class="btn-primary text-xs">저장</button>
@@ -3632,7 +3633,10 @@ const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'
 const LEGACY_TAG_LABELS = {LATE:'지각',EXCUSED:'사유결석',LEAVE:'조퇴',EARLY_LEAVE:'조퇴',PRE_CONTACT:'사전연락',MAKEUP:'보강',ABSENT:'결석',PRESENT:'출석'};
 const LEGACY_TAG_COLORS = {LATE:'#f59e0b',EXCUSED:'#8b5cf6',LEAVE:'#f97316',EARLY_LEAVE:'#f97316',PRE_CONTACT:'#3b82f6',MAKEUP:'#10b981',ABSENT:'#ef4444',PRESENT:'#10b981'};
 const DEV_STATUS = {NONE:{label:'접수',cls:'bg-slate-100 text-slate-500'},CONFIRMED:{label:'확인',cls:'bg-violet-100 text-violet-700'},REVIEWING:{label:'검토중',cls:'bg-amber-100 text-amber-700'},IN_PROGRESS:{label:'개발중',cls:'bg-blue-100 text-blue-700'},DONE:{label:'완료',cls:'bg-emerald-100 text-emerald-700'}};
-const MSG_AUTO_VARS = ['학생이름','학부모','지점','학교','학년','원번','이번달','오늘'];
+const MSG_AUTO_VARS = ['학생이름','학부모이름','학부모관계','학부모관계높임','지점','학교','학년','원번','이번달','오늘'];
+const MSG_AUTO_VAR_EXAMPLES = {학생이름:'김민준', 학부모이름:'홍길동', 학부모관계:'어머니', 학부모관계높임:'어머님',
+  지점:'청라점', 학교:'청라초', 학년:'4학년', 원번:'C10001', 이번달:'8월', 오늘:'2026-08-04'};
+const PARENT_RELATION_HONORIFIC = {어머니:'어머님', 아버지:'아버님', 할머니:'할머님', 할아버지:'할아버님'};
 const ATT_CLASS = {PRESENT:'text-emerald-700 bg-emerald-50',LATE:'text-amber-700 bg-amber-50',ABSENT:'text-rose-700 bg-rose-50',EARLY_LEAVE:'text-orange-700 bg-orange-50',EXCUSED:'text-slate-700 bg-slate-100'};
 
 function getCookie(name){
@@ -5882,7 +5886,13 @@ const app = createApp({
       const p=x=>String(x).padStart(2,'0'); const d=new Date();
       switch(k){
         case '학생이름': return s ? (s.real_name||s.username||'') : '';
-        case '학부모': return s ? (s.parent_name||'') : '';
+        case '학부모이름': return s ? (s.parent_name||'') : '';
+        case '학부모관계': return s ? (s.parent_relation||'') : '';
+        case '학부모관계높임': {
+          const r = s ? (s.parent_relation||'') : '';
+          if (!r) return '';
+          return PARENT_RELATION_HONORIFIC[r] || (r.endsWith('님') ? r : r+'님');
+        }
         case '지점': return s ? (s.branch||'') : '';
         case '학교': return s ? (s.school_name||'') : '';
         case '학년': return s ? (s.grade ? s.grade+'학년' : '') : '';
@@ -5892,6 +5902,7 @@ const app = createApp({
         default: return '';
       }
     },
+    msgVarExample(k){ return MSG_AUTO_VAR_EXAMPLES[k] || ''; },
     syncMsgVars(){ const nv={ ...this.msgVars }; for(const k of this.msgTokens){ if(this.isAutoVar(k)) nv[k]=this.msgAutoValue(k, this.msgStudent); else if(nv[k]===undefined) nv[k]=''; } this.msgVars=nv; },
     async loadMsgtpl(){ if(!this.students.length) this.loadStudents(); this.fixedTplLoaded=false; this.loadFixedTpls(); try { this.msgtplGroups = await api('GET','/api/admin/academy/msg_group'); if(!this.msgtplGroupId && this.msgtplGroups.length) this.msgtplGroupId=this.msgtplGroups[0].id; await this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
     async saveFixedTpl(b, t){ try { const d = await api('PUT','/api/admin/academy/fixed_template', { branch_id:b.branch_id, key:t.key, body:t.body }); t.customized=d.customized; t.updated_by=d.updated_by; t.update_time=d.update_time; if(t.key==='enroll_link') this.fixedTplMap[b.branch_id]=t.body; this.notify(b.branch_name+' 고정 템플릿이 저장되었습니다.'); } catch(e){ this.notify(e.message,false); } },
