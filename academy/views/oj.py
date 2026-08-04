@@ -975,7 +975,7 @@ class KioskBoardAPI(APIView):
                                    "status": mk.status, "done": done}
             elif r["_absence_date"]:
                 r["linked"] = {"kind": "absence", "date": r["_absence_date"], "start_time": r["_absence_time"]}
-            del r["_absence_date"], r["_absence_time"], r["occ_id"], r["student_id"]
+            del r["_absence_date"], r["_absence_time"], r["occ_id"]
         rows.sort(key=lambda r: r["start_time"])
         return self.success({"rows": rows})
 
