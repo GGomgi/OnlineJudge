@@ -1866,7 +1866,7 @@
                   <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @click="openCalAtt(it, d.date)" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
                        :class="['px-1.5 py-1 leading-tight cursor-pointer', calItemCls(it), ttConnRole(it,d.date)==='first' ? 'rounded-t' : (ttConnRole(it,d.date)==='second' ? 'rounded-b mb-0.5' : 'rounded mb-0.5')]">
                     <span class="block"><span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<span v-if="ttConnRole(it,d.date)" class="ml-1 opacity-60" title="연속 수업(이어짐)">🔗</span></span>
-                    <span v-if="it.school_name || it.grade" class="block text-[10px] opacity-70">{{ it.school_name }}{{ schoolSuffix(it.school_type) }}{{ it.grade ? ' '+it.grade+'학년' : '' }}</span>
+                    <span v-if="it.school_name || it.grade" class="block text-[10px] opacity-70">{{ schoolGradeShort(it.school_name, it.school_type, it.grade) }}</span>
                     <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}({{ it.duration_minutes||60 }}분)</span>
                     <span v-if="it.makeup || calBadge(it)" class="block text-[10px] opacity-70"><template v-if="it.makeup">보강{{ mkAbsenceRefSuffix(it) }}</template><template v-if="it.makeup && calBadge(it)"> · </template><span v-if="calBadge(it)" class="px-1 rounded" :style="calBadge(it).style">{{ calBadge(it).label }}</span></span>
                     <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">등원: {{ it.att.in||'-' }}</span>
@@ -1926,7 +1926,7 @@
                                left: (L.lane*100/ttHzDayLayout(d.date).lanes)+'%', width: 'calc('+(100/ttHzDayLayout(d.date).lanes)+'% - 2px)' }">
                   <span v-if="ttConnRole(L.it,d.date)" class="absolute top-0.5 right-0.5 text-[9px] opacity-70 leading-none" title="연속 수업(이어짐)">🔗</span>
                   <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}</div>
-                  <div v-if="L.it.school_name || L.it.grade" class="opacity-70 truncate">{{ L.it.school_name }}{{ schoolSuffix(L.it.school_type) }}{{ L.it.grade ? ' '+L.it.grade+'학년' : '' }}</div>
+                  <div v-if="L.it.school_name || L.it.grade" class="opacity-70 truncate">{{ schoolGradeShort(L.it.school_name, L.it.school_type, L.it.grade) }}</div>
                   <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}({{ L.it.duration_minutes||60 }}분)</div>
                   <div v-if="L.it.makeup || calBadge(L.it)" class="opacity-70 truncate"><template v-if="L.it.makeup">보강{{ mkAbsenceRefSuffix(L.it) }}</template><template v-if="L.it.makeup && calBadge(L.it)"> · </template><template v-if="calBadge(L.it)">{{ calBadge(L.it).label }}</template></div>
                   <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">등원: {{ L.it.att.in||'-' }}</div>
@@ -5047,6 +5047,14 @@ const app = createApp({
     optAllowCustom(cat, value){ const f = this.optList_(cat).find(o=>o.value===value); return !!(f && f.allow_custom); },
     schoolLabel(t){ return this.optLabel('school_type', t); },
     schoolSuffix(t){ return ({ELEMENTARY:'초등학교',MIDDLE:'중학교',HIGH:'고등학교',UNIVERSITY:'대학교'})[t] || ''; },
+    schoolSuffixShort(t){ return ({ELEMENTARY:'초',MIDDLE:'중',HIGH:'고',UNIVERSITY:'대'})[t] || ''; },
+    schoolGradeShort(name, type, grade){
+      // 좁은 칸용 축약 표기: 청일초등학교 5학년→청일초5, 달튼 7학년(국제학교)→달튼7, 성인→성인
+      const n = (name||'').trim();
+      if (!n && !grade) return '';
+      if (n === '성인') return '성인';
+      return n + this.schoolSuffixShort(type) + (grade || '');
+    },
     purposeLabel(r){
       if (this.optAllowCustom('counseling_purpose', r.purpose) && r.purpose_detail) return r.purpose_detail;
       return this.optLabel('counseling_purpose', r.purpose) || '-';
