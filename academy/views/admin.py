@@ -4381,7 +4381,12 @@ class MakeupAddAdminAPI(APIView):
         # 과목·수업시간·담당강사: 명시 입력 > 정규수업(source_timetable_id) > 연결 대상 수업(target) > 기본값
         dur = data.get("duration") or (src.duration_minutes if src else (target.duration_minutes if target else 60))
         prog = data.get("program") or (src.program if src else (target.program if target else ""))
-        subj = resolve_program_label(prog) or (src.subject if src else (target.subject if target else "")) or "보강"
+        # 과목: 명시 입력 > 정규수업(src)/연결 대상(target)의 실제 과목(언어 등 세부 포함) > 과정 코드의 일반 라벨.
+        # 순서를 뒤집으면(과정라벨을 먼저 쓰면) LANG 과정이 항상 '프로그래밍언어'로만 나오고
+        # 실제 저장된 세부 과목(예: Python 약어 'Py')을 덮어써버리므로 주의.
+        subj = (data.get("subject") or "").strip() or \
+            (src.subject if src else "") or (target.subject if target else "") or \
+            resolve_program_label(prog) or "보강"
         instr = data.get("instructor_id")
         if instr is None:
             instr = src.instructor_id if src else (target.instructor_id if target else None)
