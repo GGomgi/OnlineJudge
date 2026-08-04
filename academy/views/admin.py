@@ -3755,6 +3755,8 @@ class KioskDeviceListAPI(APIView):
             return self.error("지점을 찾을 수 없습니다.")
         if not _is_director_up(request.user):
             return self.error("원장 이상만 관리할 수 있습니다.")
+        if not can_manage_branch(request.user, branch.id):
+            return self.error("이 지점을 관리할 권한이 없습니다.")
         rows = [{"id": d.id, "device_id": d.device_id[:8], "label": d.label, "user_agent": d.user_agent,
                 "status": d.status, "requested_at": _kst_dt_str(d.requested_at),
                 "approved_at": _kst_dt_str(d.approved_at) if d.approved_at else "",
@@ -3772,6 +3774,8 @@ class KioskDeviceActionAPI(APIView):
             return self.error("기기를 찾을 수 없습니다.")
         if not _is_director_up(request.user):
             return self.error("원장 이상만 관리할 수 있습니다.")
+        if not can_manage_branch(request.user, d.branch_id):
+            return self.error("이 지점을 관리할 권한이 없습니다.")
         action = request.data.get("action")
         if action == "approve":
             d.status = KioskDeviceStatus.APPROVED
