@@ -145,6 +145,16 @@ createApp({
       });
       return out;
     },
+    // 연속수업 짝의 위/아래 역할(포털 캘린더의 rounded-t/rounded-b 붙임과 같은 개념을
+    // 표 행에서는 두 행 사이 구분선을 없애고 배경을 이어서 하나로 묶어 보여줌)
+    contRole(r,i){
+      const partner = this.findContPartner(r);
+      if (!partner) return null;
+      const ls = this.boardOrdered();
+      if (ls[i+1]===partner) return 'first';
+      if (ls[i-1]===partner) return 'second';
+      return null;
+    },
     nowLineIndex(){
       // 이미 시작된 마지막 수업 바로 다음 인덱스(연속수업 붙여배치로 순서가 섞일 수 있어 뒤에서부터 훑음)
       const ls=this.boardOrdered();
@@ -400,7 +410,7 @@ createApp({
             <tr v-if="i===nowLineIndex()" ref="nowRow" class="bg-rose-500/10">
               <td colspan="6" class="py-0.5 text-[11px] text-rose-400 font-medium border-y border-rose-500/40">▶ 현재 {{ clock.slice(0,5) }}</td>
             </tr>
-            <tr class="border-b border-slate-800">
+            <tr :class="['border-slate-800', contRole(r,i)==='first' ? 'border-b-0 bg-indigo-500/10' : (contRole(r,i)==='second' ? 'border-b bg-indigo-500/10' : 'border-b')]">
               <td class="py-1.5 pr-2 font-mono text-slate-300">{{ r.start_time }}</td>
               <td class="py-1.5 pr-2 font-medium" :class="nameCls(r)">{{ r.student_name }}<span v-if="findContPartner(r)" class="ml-0.5 opacity-60" title="연속 수업(이어짐)">🔗</span><span v-if="r.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">수업외</span></td>
               <td class="py-1.5 pr-2" :class="r.att.in ? 'text-emerald-400' : 'text-slate-600'">{{ r.att.in || '-' }}</td>
