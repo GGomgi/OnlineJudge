@@ -1841,9 +1841,9 @@
         <!-- 상태 색상 범례(강사 색상과 무관하게 항상 표시 — 결석/임시휴원/보강은 강사 선택 시에도 이 색을 유지함) -->
         <div class="flex flex-wrap items-center gap-2 mb-2 text-[11px]">
           <span class="text-slate-400">상태</span>
-          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-slate-300 shrink-0"></span>등원전</span>
-          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>수업중</span>
-          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-cyan-400 shrink-0"></span>수업완료</span>
+          <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowPre" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-slate-300 shrink-0"></span>등원전</label>
+          <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowInProgress" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>수업중</label>
+          <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowDone" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-cyan-400 shrink-0"></span>수업완료</label>
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowAbsent" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>결석</label>
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowLeave" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-purple-400 shrink-0"></span>임시휴원</label>
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowMakeup" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0"></span>보강</label>
@@ -3798,6 +3798,7 @@ const app = createApp({
       attEditPop: { show:false, l:null, kind:'', cur:'', time:'' },
       ttView: 'day', ttCalDaysRaw: {}, ttCalResv: {}, ttCalAnchor: '', ttCalMonth: '',
       ttShowAbsent: true, ttShowLeave: true, ttShowMakeup: true, ttHoverMin: null,
+      ttShowPre: true, ttShowInProgress: true, ttShowDone: true,
       calPop: { show:false, x:0, y:0, date:'', it:{} },
       ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' },
       classes: [], sel: null, roster: [],
@@ -4681,7 +4682,10 @@ const app = createApp({
       if (it.status==='ABSENT') return this.ttShowAbsent;
       if (it.status==='LEAVE') return this.ttShowLeave;
       if (it.makeup) return this.ttShowMakeup;
-      return true;
+      const att = it.att || {};
+      if (att.in && att.out) return this.ttShowDone;
+      if (att.in) return this.ttShowInProgress;
+      return this.ttShowPre;
     },
     // 학생 인적사항의 과목·시간표 목록: 기본은 지금 실제 사용 중인 것만, "과거 이력 보기" 체크 시 전부
     stuTtIsCurrent(s){
