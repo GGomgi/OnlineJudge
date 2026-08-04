@@ -3813,7 +3813,8 @@ class TimetableCalendarAPI(APIView):
         # 패턴 시간표를 기간 내 날짜로 펼침(생성 없이 계산만). 휴원/퇴원(PAUSED/ENDED)이라도 이미
         # 스냅샷(overlay)이 있는 과거 날짜는 그대로 보여줘야 하므로 상태로 미리 거르지 않고,
         # 실제 표시 여부(미래 가상 일정 투영 여부)는 아래 날짜 루프에서 판단.
-        slots = StudentTimetable.objects.select_related("branch", "student", "instructor").all()
+        slots = StudentTimetable.objects.select_related(
+            "branch", "student", "student__student_profile", "instructor").all()
         if sid:
             slots = slots.filter(student_id=sid)
         if view is not None:
@@ -3905,6 +3906,7 @@ class TimetableCalendarAPI(APIView):
                 elif ov["status"] == OccurrenceStatus.CANCELLED:
                     continue
                 ov_program = (ov["program"] if ov else "") or s.program
+                sp = getattr(s.student, "student_profile", None)
                 items.append({"timetable_id": s.id,
                               "start_time": (str(ov["start_time"])[:5] if ov else str(s.start_time)[:5]),
                               "date": str(cur),
@@ -3913,6 +3915,9 @@ class TimetableCalendarAPI(APIView):
                                           resolve_program_label(s.program) or "미지정"),
                               "weekday": s.weekday, "program": ov_program,
                               "student_id": s.student_id, "student_name": _name_of(s.student),
+                              "school_type": (sp.school_type if sp else ""),
+                              "school_name": (sp.school_name if sp else ""),
+                              "grade": (sp.grade if sp else ""),
                               "instructor": (ov_instr_names.get(ov["instructor_id"], "미배정") if ov
                                              else (_name_of(s.instructor) if s.instructor_id else "미배정")),
                               "instructor_id": (ov["instructor_id"] if ov else s.instructor_id),
@@ -3926,7 +3931,8 @@ class TimetableCalendarAPI(APIView):
                               "att": att_map.get((s.student_id, str(cur)), {"in": "", "out": "", "note_tag": "", "note": ""}),
                               "progress": (prog_by_occ.get(ov["id"]) if ov else None)})
             # 보강(makeup) 인스턴스도 포함
-            mk = LessonOccurrence.objects.select_related("student", "instructor", "makeup_for").filter(
+            mk = LessonOccurrence.objects.select_related(
+                "student", "student__student_profile", "instructor", "makeup_for").filter(
                 date=cur, is_makeup=True)
             if sid:
                 mk = mk.filter(student_id=sid)
@@ -3942,10 +3948,14 @@ class TimetableCalendarAPI(APIView):
                     t_kind = _link_target_kind(t.status, t_att.note_tag if t_att else "") or "absence"
                     linked = {"kind": t_kind, "occ_id": o.makeup_for_id, "date": str(t.date),
                               "start_time": str(t.start_time)[:5]}
+                o_sp = getattr(o.student, "student_profile", None)
                 items.append({"timetable_id": None, "start_time": str(o.start_time)[:5], "date": str(cur),
                               "duration_minutes": o.duration_minutes,
                               "subject": (o.subject or "보강"), "program": o.program or "", "makeup": True,
                               "student_id": o.student_id, "student_name": _name_of(o.student),
+                              "school_type": (o_sp.school_type if o_sp else ""),
+                              "school_name": (o_sp.school_name if o_sp else ""),
+                              "grade": (o_sp.grade if o_sp else ""),
                               "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
                               "instructor_id": o.instructor_id,
                               "status": o.status, "occ_id": o.id, "lesson_note": o.note, "linked": linked,
