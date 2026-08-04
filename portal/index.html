@@ -1908,11 +1908,18 @@
             <!-- 본문 행: 시간축 + 요일별 내용(헤더와 같은 기준선에서 시작하므로 시간이 정확히 맞음) -->
             <div class="flex items-start">
               <div class="w-14 shrink-0 sticky left-0 z-10 border-r border-slate-100 bg-slate-50" :style="{height: ttHzHeight()+'px'}">
-                <div v-for="a in ttHzAxis()" :key="a.mins" class="absolute left-0 right-0 -translate-y-1/2 text-center text-[10px] text-slate-400" :style="{top: ttHzTop(a.mins)+'px'}">{{ a.label }}</div>
+                <div v-for="a in ttHzAxis()" :key="a.mins" @mouseenter="ttHoverMin=a.mins" @mouseleave="ttHoverMin=null"
+                     class="absolute left-0 right-0 -translate-y-1/2 text-center text-[10px] cursor-default" :class="ttHoverMin===a.mins ? 'text-indigo-600 font-semibold' : 'text-slate-400'" :style="{top: ttHzTop(a.mins)+'px'}">{{ a.label }}</div>
               </div>
               <div v-for="(d,i) in ttWeekDates" :key="i" class="relative shrink-0 border-r border-slate-100 last:border-r-0" :class="d.isToday ? 'bg-indigo-50/40' : wdBgClass(d.date)"
                    :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px', height: ttHzHeight()+'px'}">
                 <div v-for="a in ttHzAxis()" :key="'g'+a.mins" class="absolute left-0 right-0 border-t" :class="a.mins%60===0 ? 'border-slate-300' : 'border-slate-200'" :style="{top: ttHzTop(a.mins)+'px'}"></div>
+                <!-- 현재시각 라인(오늘 칸에 자동 표시) -->
+                <div v-if="d.isToday && ttNowInRange()" class="absolute left-0 right-0 border-t-2 border-rose-500 z-20 pointer-events-none" :style="{top: ttHzTop(nowMin)+'px'}">
+                  <span class="absolute left-0.5 -translate-y-full text-[9px] text-rose-500 font-semibold whitespace-nowrap">{{ nowClock.slice(0,5) }}</span>
+                </div>
+                <!-- 왼쪽 시간축 호버 라인 -->
+                <div v-if="ttHoverMin!==null" class="absolute left-0 right-0 border-t-2 border-indigo-400 border-dashed z-20 pointer-events-none" :style="{top: ttHzTop(ttHoverMin)+'px'}"></div>
                 <!-- 강사 경계선(강사 2명 이상 선택 시): 강사 사이 구분을 더 두드러지게 -->
                 <template v-if="(ttFilter.instructor_ids||[]).length>1">
                   <div v-for="lm in ttHzDayLayout(d.date).laneMeta.slice(0,-1)" :key="'b'+lm.key"
@@ -3790,7 +3797,7 @@ const app = createApp({
       ttInstrDropdown: false, ttSlotLayout: 'horizontal',
       attEditPop: { show:false, l:null, kind:'', cur:'', time:'' },
       ttView: 'day', ttCalDaysRaw: {}, ttCalResv: {}, ttCalAnchor: '', ttCalMonth: '',
-      ttShowAbsent: true, ttShowLeave: true, ttShowMakeup: true,
+      ttShowAbsent: true, ttShowLeave: true, ttShowMakeup: true, ttHoverMin: null,
       calPop: { show:false, x:0, y:0, date:'', it:{} },
       ttForm: { weekday:0, ampm:'PM', hour:null, min:null, duration_minutes:60, instructor_id:null, program:'', frequency:'WEEKLY' },
       classes: [], sel: null, roster: [],
@@ -4593,6 +4600,7 @@ const app = createApp({
     },
     ttHzHeight(){ const {lo,hi}=this.ttHzRange(); return Math.max(60,(hi-lo)*this.ttHzPxPerMin()); },
     ttHzTop(mins){ return (mins-this.ttHzRange().lo)*this.ttHzPxPerMin(); },
+    ttNowInRange(){ const {lo,hi}=this.ttHzRange(); return this.nowMin>=lo && this.nowMin<=hi; },
     ttHzResvTop(rv){ const [h,m]=rv.time.split(':').map(Number); return this.ttHzTop(h*60+m); },
     // 하루치 항목을 시작시각 겹침 기준으로 열(lane)에 배치 — 겹치는 항목만 나란히, 나머지는 전체 폭
     ttHzDayLayout(date){
