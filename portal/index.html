@@ -3633,10 +3633,11 @@ const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'
 const LEGACY_TAG_LABELS = {LATE:'지각',EXCUSED:'사유결석',LEAVE:'조퇴',EARLY_LEAVE:'조퇴',PRE_CONTACT:'사전연락',MAKEUP:'보강',ABSENT:'결석',PRESENT:'출석'};
 const LEGACY_TAG_COLORS = {LATE:'#f59e0b',EXCUSED:'#8b5cf6',LEAVE:'#f97316',EARLY_LEAVE:'#f97316',PRE_CONTACT:'#3b82f6',MAKEUP:'#10b981',ABSENT:'#ef4444',PRESENT:'#10b981'};
 const DEV_STATUS = {NONE:{label:'접수',cls:'bg-slate-100 text-slate-500'},CONFIRMED:{label:'확인',cls:'bg-violet-100 text-violet-700'},REVIEWING:{label:'검토중',cls:'bg-amber-100 text-amber-700'},IN_PROGRESS:{label:'개발중',cls:'bg-blue-100 text-blue-700'},DONE:{label:'완료',cls:'bg-emerald-100 text-emerald-700'}};
-const MSG_AUTO_VARS = ['학생이름','학부모이름','학부모관계','학부모관계높임','지점','학교','학년','원번','이번달','오늘'];
-const MSG_AUTO_VAR_EXAMPLES = {학생이름:'김민준', 학부모이름:'홍길동', 학부모관계:'어머니', 학부모관계높임:'어머님',
-  지점:'청라점', 학교:'청라초', 학년:'4학년', 원번:'C10001', 이번달:'8월', 오늘:'2026-08-04'};
+const MSG_AUTO_VARS = ['학생성명','학생이름','학부모이름','학부모관계','학부모관계높임','지점','학교','학교전체','학년','원번','이번달','오늘'];
+const MSG_AUTO_VAR_EXAMPLES = {학생성명:'김민준', 학생이름:'민준', 학부모이름:'홍길동', 학부모관계:'어머니', 학부모관계높임:'어머님',
+  지점:'청라점', 학교:'청라초', 학교전체:'청라초등학교', 학년:'4학년', 원번:'C10001', 이번달:'8월', 오늘:'2026-08-04'};
 const PARENT_RELATION_HONORIFIC = {어머니:'어머님', 아버지:'아버님', 할머니:'할머님', 할아버지:'할아버님'};
+const TWO_CHAR_SURNAMES = ['남궁','황보','제갈','선우','독고','서문','사공','동방'];
 const ATT_CLASS = {PRESENT:'text-emerald-700 bg-emerald-50',LATE:'text-amber-700 bg-amber-50',ABSENT:'text-rose-700 bg-rose-50',EARLY_LEAVE:'text-orange-700 bg-orange-50',EXCUSED:'text-slate-700 bg-slate-100'};
 
 function getCookie(name){
@@ -5882,10 +5883,16 @@ const app = createApp({
     async deleteMessage(m){ if(!confirm('이 쪽지를 삭제할까요?')) return; try { await api('DELETE','/api/academy/messages?id='+m.id); this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
     // ── 문자 템플릿 ──
     isAutoVar(k){ return MSG_AUTO_VARS.includes(k); },
+    givenNameOnly(name){
+      if (!name) return '';
+      for (const sn of TWO_CHAR_SURNAMES){ if (name.startsWith(sn) && name.length > sn.length) return name.slice(sn.length); }
+      return name.length > 1 ? name.slice(1) : name;
+    },
     msgAutoValue(k, s){
       const p=x=>String(x).padStart(2,'0'); const d=new Date();
       switch(k){
-        case '학생이름': return s ? (s.real_name||s.username||'') : '';
+        case '학생성명': return s ? (s.real_name||s.username||'') : '';
+        case '학생이름': return s ? this.givenNameOnly(s.real_name||s.username||'') : '';
         case '학부모이름': return s ? (s.parent_name||'') : '';
         case '학부모관계': return s ? (s.parent_relation||'') : '';
         case '학부모관계높임': {
@@ -5895,6 +5902,7 @@ const app = createApp({
         }
         case '지점': return s ? (s.branch||'') : '';
         case '학교': return s ? (s.school_name||'') : '';
+        case '학교전체': return s ? (s.school_name ? s.school_name+this.schoolSuffix(s.school_type) : '') : '';
         case '학년': return s ? (s.grade ? s.grade+'학년' : '') : '';
         case '원번': return s ? (s.enroll_no||'') : '';
         case '이번달': return (d.getMonth()+1)+'월';
