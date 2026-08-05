@@ -3489,7 +3489,7 @@ class DashboardAdminAPI(APIView):
         prog = {}
         occ_ids = [l["occ_id"] for l in lessons]
         for p in LessonProgress.objects.filter(occurrence_id__in=occ_ids, is_hidden=False):
-            prog[p.occurrence_id] = {"content": p.content, "homework": p.homework}
+            prog[p.occurrence_id] = {"content": p.content, "homework": p.homework, "feedback": p.feedback}
         for l in lessons:
             l["att"] = att.get(l["student_id"], {"in": "", "out": "", "note_tag": "", "note": ""})
             l["progress"] = prog.get(l["occ_id"])
@@ -3714,7 +3714,7 @@ class AttendanceNoteAdminAPI(APIView):
             out.append({"detail": c.detail, "reason": c.reason,
                         "actor": _name_of(c.actor) if c.actor_id else "",
                         "time": _kst_dt_str(c.create_time)})
-        out.sort(key=lambda x: x["time"])
+        out.sort(key=lambda x: x["time"], reverse=True)  # 최신이 위로
         return self.success(out)
 
 
@@ -3897,8 +3897,8 @@ class TimetableCalendarAPI(APIView):
             occurrence__date__gte=d0, occurrence__date__lte=d1, is_hidden=False)
         if sid:
             prog_q = prog_q.filter(student_id=sid)
-        prog_by_occ = {p["occurrence_id"]: {"content": p["content"], "homework": p["homework"]}
-                       for p in prog_q.values("occurrence_id", "content", "homework")}
+        prog_by_occ = {p["occurrence_id"]: {"content": p["content"], "homework": p["homework"], "feedback": p["feedback"]}
+                       for p in prog_q.values("occurrence_id", "content", "homework", "feedback")}
         days = {}
         cur = d0
         while cur <= d1:
@@ -4281,7 +4281,8 @@ class LessonProgressAdminAPI(APIView):
             if not p:
                 return self.success(None)
             return self.success({"id": p.id, "date": str(p.date), "content": p.content,
-                                 "homework": p.homework, "author": _name_of(p.author) if p.author_id else "",
+                                 "homework": p.homework, "feedback": p.feedback,
+                                 "author": _name_of(p.author) if p.author_id else "",
                                  "time": _kst_dt_str(p.update_time)})
         sid = request.GET.get("student_id")
         u = User.objects.filter(id=sid).first()
@@ -4294,6 +4295,7 @@ class LessonProgressAdminAPI(APIView):
         for p in LessonProgress.objects.select_related("author", "occurrence").filter(
                 student=u, is_hidden=False).order_by("-date", "-id")[:200]:
             out.append({"id": p.id, "date": str(p.date), "content": p.content, "homework": p.homework,
+                        "feedback": p.feedback,
                         "subject": (p.occurrence.subject if p.occurrence_id else ""),
                         "author": _name_of(p.author) if p.author_id else "",
                         "time": _kst_dt_str(p.update_time)})
@@ -4306,6 +4308,7 @@ class LessonProgressAdminAPI(APIView):
         data = request.data
         content = (data.get("content") or "").strip()
         homework = (data.get("homework") or "").strip()
+        feedback = (data.get("feedback") or "").strip()
         occ_id = data.get("occ_id")
         if occ_id:
             o = LessonOccurrence.objects.select_related("branch").filter(id=occ_id).first()
@@ -4338,6 +4341,7 @@ class LessonProgressAdminAPI(APIView):
                 p = LessonProgress(student=u, date=d)
         p.content = content
         p.homework = homework
+        p.feedback = feedback
         p.author = request.user
         p.save()
         return self.success({"id": p.id})
@@ -4527,9 +4531,9 @@ class StudentAttendanceHistoryAPI(APIView):
         occ_ids = [o.id for o in occ]
         makeup_of = {m.makeup_for_id: m for m in
                     LessonOccurrence.objects.filter(is_makeup=True, makeup_for_id__in=occ_ids)}
-        prog_by_occ = {p["occurrence_id"]: {"content": p["content"], "homework": p["homework"]}
+        prog_by_occ = {p["occurrence_id"]: {"content": p["content"], "homework": p["homework"], "feedback": p["feedback"]}
                       for p in LessonProgress.objects.filter(
-                          occurrence_id__in=occ_ids, is_hidden=False).values("occurrence_id", "content", "homework")}
+                          occurrence_id__in=occ_ids, is_hidden=False).values("occurrence_id", "content", "homework", "feedback")}
         rows = []
         for o in occ:
             a = att_map.get(o.date)

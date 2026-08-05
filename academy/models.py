@@ -751,6 +751,7 @@ class LessonProgress(models.Model):
     date = models.DateField()
     content = models.TextField(blank=True, default="")    # 수업 내용
     homework = models.TextField(blank=True, default="")   # 숙제
+    feedback = models.TextField(blank=True, default="")   # 피드백(태도·이해도 등, 선택)
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                on_delete=models.SET_NULL, related_name="+")
     is_hidden = models.BooleanField(default=False)
