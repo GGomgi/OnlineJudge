@@ -2447,9 +2447,23 @@ class StudentTimetableAdminAPI(APIView):
         reason = (request.GET.get("reason") or "").strip()
         if not reason:
             return self.error("삭제 이유를 입력하세요.")
+        # 앞으로 예정돼 있던 수업도 같이 정리한다. 안 하면 시간표는 지웠는데 수업 인스턴스만 남아
+        # '오늘 운영'에 유령 수업으로 계속 뜬다(패턴이 지워지면 소속만 비고 인스턴스는 그대로라서).
+        # 지난 수업과 실제 기록(등원·결석·비고·수업일지·연결된 보강)이 있는 수업은 이력이므로 보존.
+        today = (now() + timedelta(hours=9)).date()
+        upcoming = list(LessonOccurrence.objects.filter(
+            source_timetable=slot, date__gte=today, is_makeup=False))
+        rec_ids = _occ_record_ids(upcoming)
+        removed = 0
+        for occ in upcoming:
+            if occ.id in rec_ids or occ.time_change_reason:
+                continue
+            occ.delete()
+            removed += 1
         TimetableChange.objects.create(
             student=slot.student, actor=request.user, action="DELETE", reason=reason,
-            detail=f"{_WD[slot.weekday]} {str(slot.start_time)[:5]} {slot.subject or ''} 삭제".strip())
+            detail=(f"{_WD[slot.weekday]} {str(slot.start_time)[:5]} {slot.subject or ''} 삭제"
+                    + (f" (예정 수업 {removed}건 정리)" if removed else "")).strip())
         slot.delete()
         return self.success("Deleted")
 
@@ -3353,6 +3367,24 @@ def _link_target_kind(occ_status, note_tag):
     return None
 
 
+def _occ_record_ids(occs):
+    """'실제로 뭔가 있었던 수업'의 id 집합 — 등원·결석/휴원·비고·수업일지·연결된 보강.
+    시간표가 바뀌거나 삭제돼도 이건 사실이므로 지우지 않고 남긴다."""
+    ids = [o.id for o in occs]
+    if not ids:
+        return set()
+    att = set(DailyAttendance.objects.filter(
+        student_id__in={o.student_id for o in occs}, date__in={o.date for o in occs},
+        check_in_at__isnull=False).values_list("student_id", "date"))
+    prog = set(LessonProgress.objects.filter(occurrence_id__in=ids, is_hidden=False)
+               .values_list("occurrence_id", flat=True))
+    mk = set(LessonOccurrence.objects.filter(makeup_for_id__in=ids)
+             .values_list("makeup_for_id", flat=True))
+    return {o.id for o in occs
+            if ((o.student_id, o.date) in att or o.id in prog or o.id in mk
+                or bool(o.note) or o.status != OccurrenceStatus.SCHEDULED)}
+
+
 def _reconcile_slot_occurrences(slot, occ_qs):
     """시간표 패턴이 바뀌었을 때, 이미 만들어져 있던 수업 인스턴스를 그 패턴에 맞게 정리한다.
     - 패턴이 담당하는 날짜(같은 요일·유효기간 안): 소속을 이 패턴으로 맞추고, 그날만 따로 손본 적이
@@ -3364,18 +3396,10 @@ def _reconcile_slot_occurrences(slot, occ_qs):
     occs = list(occ_qs)
     if not occs:
         return 0, 0, 0
-    ids = [o.id for o in occs]
-    att_dates = set(DailyAttendance.objects.filter(
-        student_id=slot.student_id, date__in=[o.date for o in occs],
-        check_in_at__isnull=False).values_list("date", flat=True))
-    prog_ids = set(LessonProgress.objects.filter(occurrence_id__in=ids, is_hidden=False)
-                   .values_list("occurrence_id", flat=True))
-    mk_ids = set(LessonOccurrence.objects.filter(makeup_for_id__in=ids)
-                 .values_list("makeup_for_id", flat=True))
+    rec_ids = _occ_record_ids(occs)
     updated = dropped = kept = 0
     for occ in occs:
-        has_record = (occ.date in att_dates or bool(occ.note) or occ.id in prog_ids or occ.id in mk_ids
-                      or occ.status in (OccurrenceStatus.ABSENT, OccurrenceStatus.LEAVE))
+        has_record = occ.id in rec_ids
         overridden = bool(occ.time_change_reason)  # 그날만 개별 수정한 수업
         if occ.date.weekday() != slot.weekday or not _slot_active_on(slot, occ.date):
             if not overridden and not has_record:
@@ -3978,10 +4002,13 @@ class TimetableCalendarAPI(APIView):
                               "linked": _linked_for(ov),
                               "att": att_map.get((s.student_id, str(cur)), {"in": "", "out": "", "note_tag": "", "note": ""}),
                               "progress": (prog_by_occ.get(ov["id"]) if ov else None)})
-            # 보강(makeup) 인스턴스도 포함
+            # 보강(makeup) 인스턴스 + 시간표가 삭제돼 소속이 없어진 수업(지난 등원 이력)도 포함.
+            # 후자를 빼면 시간표를 지운 순간 그 학생의 지난 수업이 달력에서만 통째로 사라져
+            # '오늘 운영'·출결기록과 안 맞는다.
             mk = LessonOccurrence.objects.select_related(
                 "student", "student__student_profile", "instructor", "makeup_for").filter(
-                date=cur, is_makeup=True)
+                date=cur).filter(Q(is_makeup=True) | Q(source_timetable__isnull=True))\
+                .exclude(status=OccurrenceStatus.CANCELLED)
             if sid:
                 mk = mk.filter(student_id=sid)
             if view is not None:
@@ -3999,7 +4026,8 @@ class TimetableCalendarAPI(APIView):
                 o_sp = getattr(o.student, "student_profile", None)
                 items.append({"timetable_id": None, "start_time": str(o.start_time)[:5], "date": str(cur),
                               "duration_minutes": o.duration_minutes,
-                              "subject": (o.subject or "보강"), "program": o.program or "", "makeup": True,
+                              "subject": (o.subject or ("보강" if o.is_makeup else "미지정")),
+                              "program": o.program or "", "makeup": o.is_makeup,
                               "student_id": o.student_id, "student_name": _name_of(o.student),
                               "school_type": (o_sp.school_type if o_sp else ""),
                               "school_name": (o_sp.school_name if o_sp else ""),
