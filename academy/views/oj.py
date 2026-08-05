@@ -981,6 +981,23 @@ class KioskBoardAPI(APIView):
         return self.success({"rows": rows})
 
 
+class KioskPinEntryAPI(CSRFExemptAPIView):
+    """무로그인 포털 첫 화면: 키오스크 PIN(6자리)로 지점 확인 후 접속 정보 반환.
+    아무나 지점을 눌러 기기 등록 신청을 남발하는 걸 막는 1차 관문(실제 조회·체크는
+    여전히 관리자의 기기 승인이 있어야 가능). POST {pin}"""
+    def post(self, request):
+        pin = "".join(ch for ch in (request.data.get("pin") or "") if ch.isdigit())
+        if len(pin) != 6:
+            return self.error("6자리 번호를 입력하세요.")
+        branch = Branch.objects.filter(kiosk_pin=pin, is_active=True).first()
+        if not branch:
+            return self.error("등록되지 않은 번호입니다. 관리자에게 확인하세요.")
+        if not branch.kiosk_token:
+            branch.kiosk_token = rand_str(24)
+            branch.save(update_fields=["kiosk_token"])
+        return self.success({"b": branch.id, "t": branch.kiosk_token, "branch_name": branch.name})
+
+
 class KioskLookupAPI(APIView):
     """무로그인 출결 키오스크(학원 입구 태블릿): 보호자 연락처 뒤 4자리로 학생 조회.
     GET ?b=지점id&t=키오스크토큰&last4=1234"""

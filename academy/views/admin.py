@@ -3833,6 +3833,35 @@ class KioskDeviceListAPI(APIView):
         return self.success(rows)
 
 
+class KioskPinAdminAPI(APIView):
+    """키오스크 진입 PIN(6자리) 조회/설정. 원장 이상 + 그 지점 관리자만.
+    포털 첫 화면에서 이 PIN을 누르면 지점이 자동 선택돼 기기 등록 신청으로 이어진다."""
+    @admin_role_required
+    def get(self, request):
+        branch = Branch.objects.filter(id=request.GET.get("branch_id")).first()
+        if not branch:
+            return self.error("지점을 찾을 수 없습니다.")
+        if not _is_director_up(request.user) or not can_manage_branch(request.user, branch.id):
+            return self.error("권한이 없습니다.")
+        return self.success({"pin": branch.kiosk_pin})
+
+    @admin_role_required
+    def post(self, request):
+        branch = Branch.objects.filter(id=request.data.get("branch_id")).first()
+        if not branch:
+            return self.error("지점을 찾을 수 없습니다.")
+        if not _is_director_up(request.user) or not can_manage_branch(request.user, branch.id):
+            return self.error("권한이 없습니다.")
+        pin = "".join(ch for ch in (request.data.get("pin") or "") if ch.isdigit())
+        if pin and len(pin) != 6:
+            return self.error("PIN은 숫자 6자리로 입력하세요.")
+        if pin and Branch.objects.filter(kiosk_pin=pin).exclude(id=branch.id).exists():
+            return self.error("다른 지점이 쓰고 있는 PIN입니다. 다른 번호로 지정하세요.")
+        branch.kiosk_pin = pin
+        branch.save(update_fields=["kiosk_pin"])
+        return self.success({"pin": branch.kiosk_pin})
+
+
 class KioskDeviceActionAPI(APIView):
     @admin_role_required
     def post(self, request):

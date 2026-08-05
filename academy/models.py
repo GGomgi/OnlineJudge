@@ -8,6 +8,7 @@ class Branch(models.Model):
     name = models.CharField(max_length=64)
     is_active = models.BooleanField(default=True)
     kiosk_token = models.CharField(max_length=32, blank=True, default="")  # 출결 키오스크 접속 토큰(무로그인)
+    kiosk_pin = models.CharField(max_length=6, blank=True, default="")      # 키오스크 진입 PIN(6자리, 포털 첫 화면에서 지점 자동 선택)
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:
