@@ -666,6 +666,11 @@
         <div class="bg-white rounded-xl shadow-lg p-4 w-72">
           <div class="text-sm font-semibold mb-1">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} {{ attEditPop.cur }}</div>
           <div class="text-xs text-slate-400 mb-3">이미 체크된 기록입니다. 무엇을 하시겠어요?</div>
+          <button v-if="attEditPop.kind==='out' && attOnTimeOut()" @click="attSetOnTime"
+                  class="w-full mb-3 px-2 py-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs hover:bg-indigo-100 leading-tight">
+            ⏱ 정시 하원 <b class="font-mono">{{ attOnTimeOut() }}</b>
+            <span class="block text-[10px] text-indigo-400 mt-0.5">등원 {{ attEditPop.l.att.in }} + 수업 {{ attOnTimeMins() }}분 (누른 뒤 ± 로 조정)</span>
+          </button>
           <div class="flex items-center justify-center gap-1.5 mb-3">
             <button @click="attStepTime(-5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-5</button>
             <button @click="attStepTime(-1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-1</button>
@@ -839,10 +844,10 @@
             <div class="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 space-y-1.5">
               <div class="text-xs font-semibold text-indigo-700">키오스크 진입 번호 (6자리)</div>
               <p class="text-[11px] text-slate-500">포털 첫 화면 <b>출결 키오스크</b>에서 이 번호를 누르면 지점이 자동 선택되고 기기 등록 신청으로 이어집니다. 태블릿을 초기화했을 때 링크 없이 바로 재설정할 수 있습니다.</p>
-              <div class="flex items-center gap-2">
-                <input :value="kioskDevicePin" @input="kioskDevicePin=$event.target.value.replace(/\D/g,'').slice(0,6)" inputmode="numeric" placeholder="예: 480215" maxlength="6" class="input py-1 w-32 text-center font-mono tracking-widest" />
-                <button @click="saveKioskPin" class="btn-primary text-xs">저장</button>
-                <span class="text-[11px] text-slate-400">비우고 저장하면 번호 사용 중지</span>
+              <div class="flex items-center gap-2 whitespace-nowrap">
+                <input :value="kioskDevicePin" @input="kioskDevicePin=$event.target.value.replace(/\D/g,'').slice(0,6)" inputmode="numeric" placeholder="480215" maxlength="6" class="input py-1 w-24 shrink-0 text-center font-mono tracking-widest" />
+                <button @click="saveKioskPin" class="btn-primary text-xs px-3 shrink-0">저장</button>
+                <span class="text-[11px] text-slate-400 shrink-0">비우면 사용 중지</span>
               </div>
             </div>
             <div>
@@ -5912,6 +5917,19 @@ const app = createApp({
         for (const x of this.dashData.lessons){ if (x.student_id===l.student_id) x.att = { in:r.in, out:r.out }; }
       } catch(e){ this.notify(e.message,false); }
     },
+    // 하원 미체크로 그냥 간 학생을 나중에 처리할 때: 등원 시각 + 그날 수업시간 합계로 한 번에 세팅
+    attOnTimeMins(){
+      const p = this.attEditPop; if (!p || !p.l) return 0;
+      const sibs = (this.dashData.lessons||[]).filter(o=>o.student_id===p.l.student_id && o.occ_id
+                     && !this.isAbsent(o) && !this.isLeave(o));
+      if (sibs.length) return sibs.reduce((a,o)=>a+(o.duration_minutes||60), 0);
+      return p.l.duration_minutes||60;
+    },
+    attOnTimeOut(){
+      const p = this.attEditPop; if (!p || !p.l || !p.l.att || !p.l.att.in) return '';
+      return this.shiftHM(p.l.att.in, this.attOnTimeMins());
+    },
+    attSetOnTime(){ const t = this.attOnTimeOut(); if (t) this.attEditPop.time = t; },
     attStepTime(delta){
       const p = this.attEditPop;
       const [h,m] = p.time.split(':').map(Number);
