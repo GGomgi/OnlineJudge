@@ -1823,15 +1823,18 @@ class StudentListAdminAPI(APIView):
             if not viewable_branch_ids(request.user):
                 return self.error("No branch scope assigned")
             qs = qs.filter(branch_id__in=(viewable_branch_ids(request.user) or []))
-        counts = dict(StudentTimetable.objects.exclude(status="ENDED")
-                      .values("student_id").annotate(c=Count("id"))
+        # 지금 적용중인 시간표만 집계('적용 시작일' 분할로 남은 지난 이력 행 제외)
+        today_kst = (now() + timedelta(hours=9)).date()
+        active_tt = StudentTimetable.objects.exclude(status="ENDED").filter(
+            Q(active_until__isnull=True) | Q(active_until__gte=today_kst))
+        counts = dict(active_tt.values("student_id").annotate(c=Count("id"))
                       .values_list("student_id", "c"))
         # 보호자 수 집계
         gcounts = dict(GuardianStudent.objects.values("student_id")
                        .annotate(c=Count("id")).values_list("student_id", "c"))
         # 수강 중(미종료) 과목명 집계
         subj_map = {}
-        for sid, subj in StudentTimetable.objects.exclude(status="ENDED").values_list("student_id", "subject"):
+        for sid, subj in active_tt.values_list("student_id", "subject"):
             if subj:
                 subj_map.setdefault(sid, [])
                 if subj not in subj_map[sid]:
@@ -2793,7 +2796,7 @@ class StudentStatusAdminAPI(APIView):
         else:
             return ""
         if to_status in (EnrollmentStatus.ON_LEAVE, EnrollmentStatus.WITHDRAWN):
-            today = _kst_today()
+            today = (now() + timedelta(hours=9)).date()
             LessonOccurrence.objects.filter(
                 student=student, date__gte=today, is_makeup=False, source_timetable__isnull=False,
             ).exclude(status__in=(OccurrenceStatus.ABSENT, OccurrenceStatus.CANCELLED)).update(

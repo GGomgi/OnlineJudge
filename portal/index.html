@@ -2353,7 +2353,7 @@
                     </div>
                   </div>
                   <div v-if="stuCanEdit && stuTtEditMode" class="flex justify-end pt-0.5">
-                    <button @click="saveAllStuTt" :class="['text-xs px-3 py-1.5 rounded', stuTtDirtyCount ? 'bg-amber-500 text-white hover:bg-amber-600 font-bold' : 'bg-slate-100 text-slate-400']">변경사항 저장{{ stuTtDirtyCount ? ' ('+stuTtDirtyCount+'건)' : '' }}</button>
+                    <button @click="saveAllStuTt" :class="['text-xs px-3 py-1.5 rounded', stuTtDirtyCount() ? 'bg-amber-500 text-white hover:bg-amber-600 font-bold' : 'bg-slate-100 text-slate-400']">변경사항 저장{{ stuTtDirtyCount() ? ' ('+stuTtDirtyCount()+'건)' : '' }}</button>
                   </div>
                 </div>
                 <div v-else class="text-xs text-rose-400">시간표 미정</div>
@@ -6597,7 +6597,8 @@ const app = createApp({
           program:t.program||'', instr:(t.instructor?t.instructor.id:null), frequency:t.frequency, language };
         return row;
       });
-      if (this.stuForm) this.stuForm.weekly_sessions = this.stuTimetables.length;
+      // 주 교육 회수 = 지금 적용중인 시간표만(지난 이력·종료 행 제외)
+      if (this.stuForm) this.stuForm.weekly_sessions = this.stuTimetables.filter(s=>this.stuTtIsCurrent(s)).length;
     },
     // 시간표 개수가 곧 주 교육 회수라, 시간표 칸을 새로 추가/삭제하는 방식으로 회수를 조정
     addStuTtRow(){
