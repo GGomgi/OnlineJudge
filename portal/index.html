@@ -5837,7 +5837,7 @@ const app = createApp({
       if (l.att.in){
         const diff = this.hmMin(l.att.in) - this.hmMin(this.lateRefStart(l));
         if (diff > this.lateThreshold) return {label:diff+'분 지각', cls:'bg-amber-100 text-amber-700'};
-        if (diff < -this.lateThreshold) return {label:(-diff)+'분 일찍', cls:'bg-sky-100 text-sky-700'};
+        if (diff < -this.lateThreshold) return {label:(-diff)+'분 일찍', cls:'bg-emerald-100 text-emerald-700'};
         return null;
       }
       if (!l.att.out && this.dashIsToday && this.nowMin > startM) return {label:'미등원', cls:'bg-rose-100 text-rose-600'};
@@ -6490,7 +6490,7 @@ const app = createApp({
       if (row.att.in){
         const diff = this.hmMin(row.att.in) - this.hmMin(this.lateRefStart(row));
         if (diff > this.lateThreshold) return { label:diff+'분 지각', cls:'bg-amber-100 text-amber-700' };
-        if (diff < -this.lateThreshold) return { label:(-diff)+'분 일찍', cls:'bg-sky-100 text-sky-700' };
+        if (diff < -this.lateThreshold) return { label:(-diff)+'분 일찍', cls:'bg-emerald-100 text-emerald-700' };
       }
       if (row.att.in && row.att.out) return { label:'완료', cls:'bg-cyan-100 text-cyan-700' };
       if (row.att.in) return { label:'수업중', cls:'bg-emerald-100 text-emerald-700' };

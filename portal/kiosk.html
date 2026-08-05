@@ -62,7 +62,7 @@ createApp({
     };
   },
   computed: {
-    dots(){ const arr=['','','','']; for(let i=0;i<this.digits.length;i++) arr[i]='●'; return arr; },
+    dots(){ const arr=['','','','']; for(let i=0;i<this.digits.length;i++) arr[i]=this.digits[i]; return arr; },
     checkedInCount(){ return this.board.filter(r=>r.att && r.att.in).length; },
     checkedOutCount(){ return this.board.filter(r=>r.att && r.att.out).length; },
   },
@@ -104,7 +104,7 @@ createApp({
         const refStart = this.lateRefStart(row);
         const diff = this.hmMin(row.att.in) - this.hmMin(refStart);
         if (diff > 5) return { label:diff+'분 지각', cls:'text-amber-400' };
-        if (diff < -5) return { label:(-diff)+'분 일찍', cls:'text-sky-400' };
+        if (diff < -5) return { label:(-diff)+'분 일찍', cls:'text-emerald-300' };
         return null;
       }
       if (this.hmMin(row.start_time) < this.nowMin) return { label:'미등원', cls:'text-rose-300' };
