@@ -938,7 +938,7 @@ class KioskBoardAPI(APIView):
         d = _kst_today()
         ensure_occurrences(d, [branch.id])
         occ = LessonOccurrence.objects.select_related("student", "student__userprofile", "makeup_for").filter(
-            date=d, branch_id=branch.id).exclude(status=OccurrenceStatus.CANCELLED).order_by("start_time")
+            date=d, branch_id=branch.id).exclude(status=OccurrenceStatus.CANCELLED).order_by("start_time", "id")
         sids = [o.student_id for o in occ]
         att = {}
         for a in DailyAttendance.objects.filter(date=d, student_id__in=sids):

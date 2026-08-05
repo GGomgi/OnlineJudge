@@ -3450,7 +3450,7 @@ class DashboardAdminAPI(APIView):
         bid = request.GET.get("branch_id")
         if bid:
             occ = occ.filter(branch_id=bid)
-        occ = occ.order_by("start_time")
+        occ = occ.order_by("start_time", "id")  # 동시간대 2차 기준 고정(키오스크와 순서 일치)
 
         lessons = []
         sids = set()
