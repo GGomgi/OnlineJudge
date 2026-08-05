@@ -1826,7 +1826,8 @@ class StudentListAdminAPI(APIView):
         # 지금 적용중인 시간표만 집계('적용 시작일' 분할로 남은 지난 이력 행 제외)
         today_kst = (now() + timedelta(hours=9)).date()
         active_tt = StudentTimetable.objects.exclude(status="ENDED").filter(
-            Q(active_until__isnull=True) | Q(active_until__gte=today_kst))
+            Q(active_until__isnull=True) | Q(active_until__gte=today_kst)).filter(
+            Q(active_from__isnull=True) | Q(active_from__lte=today_kst))
         counts = dict(active_tt.values("student_id").annotate(c=Count("id"))
                       .values_list("student_id", "c"))
         # 보호자 수 집계

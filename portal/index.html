@@ -2321,9 +2321,10 @@
                   </div>
                 </div>
                 <div v-if="stuTimetables.length" class="space-y-2">
-                  <div v-for="s in stuTtVisibleRows()" :key="s.id || s._tmpId" :class="['rounded-lg border px-2 py-1.5 overflow-x-auto', s.status==='PAUSED' ? 'bg-amber-50' : '', !stuTtIsCurrent(s) ? 'opacity-60' : '', (s.id && ttRowDirty(s)) ? 'ring-1 ring-amber-300' : '', !s.id ? 'ring-1 ring-indigo-300 bg-indigo-50/30' : '']">
-                    <div v-if="s.id" class="text-[10px] mb-0.5" :class="stuTtIsCurrent(s) ? 'text-emerald-600' : 'text-slate-400'">
-                      <template v-if="stuTtIsCurrent(s)">✓ 적용중{{ s.active_from ? ' · '+s.active_from+' ~' : '' }}</template>
+                  <div v-for="s in stuTtVisibleRows()" :key="s.id || s._tmpId" :class="['rounded-lg border px-2 py-1.5 overflow-x-auto', s.status==='PAUSED' ? 'bg-amber-50' : '', stuTtPhase(s)==='past' ? 'opacity-60' : '', (s.id && ttRowDirty(s)) ? 'ring-1 ring-amber-300' : '', !s.id ? 'ring-1 ring-indigo-300 bg-indigo-50/30' : '']">
+                    <div v-if="s.id" class="text-[10px] mb-0.5" :class="{'text-emerald-600':stuTtPhase(s)==='current','text-indigo-500':stuTtPhase(s)==='upcoming','text-slate-400':stuTtPhase(s)==='past'}">
+                      <template v-if="stuTtPhase(s)==='current'">✓ 적용중{{ s.active_from ? ' · '+s.active_from : '' }} ~ {{ s.active_until ? s.active_until+'까지 (이후 아래 예정 시간표로 변경)' : '' }}</template>
+                      <template v-else-if="stuTtPhase(s)==='upcoming'">🕓 예정 · {{ s.active_from }}부터 적용</template>
                       <template v-else>지난 시간표 · {{ s.active_from||'~' }} ~ {{ s.active_until }}</template>
                     </div>
                     <div class="flex items-center gap-1 text-xs whitespace-nowrap">
@@ -4767,19 +4768,27 @@ const app = createApp({
       return this.ttShowPre;
     },
     // 학생 인적사항의 과목·시간표 목록: 기본은 지금 실제 사용 중인 것만, "과거 이력 보기" 체크 시 전부
-    stuTtIsCurrent(s){
-      if (s.status === 'ENDED') return false;
-      if (s.active_until && s.active_until < this.todayStr) return false;
-      return true;
+    // 시간표 행의 상태: 지난 / 적용중 / 예정(적용 시작일이 아직 안 온 것).
+    // '내일부터 변경'처럼 적용일을 미래로 잡으면 옛 행(오늘까지)과 새 행(내일부터)이 함께 있는데,
+    // 둘 다 '적용중'으로 보이면 복제된 것처럼 보이므로 예정을 따로 구분한다.
+    stuTtPhase(s){
+      if (!s.id) return 'current';                                   // 아직 저장 안 한 새 행
+      if (s.status === 'ENDED') return 'past';
+      if (s.active_until && s.active_until < this.todayStr) return 'past';
+      if (s.active_from && s.active_from > this.todayStr) return 'upcoming';
+      return 'current';
     },
+    stuTtIsCurrent(s){ return this.stuTtPhase(s) === 'current'; },
     stuTtVisibleRows(){
-      const rows = this.stuTtShowHistory ? this.stuTimetables.slice() : this.stuTimetables.filter(s=>this.stuTtIsCurrent(s));
-      // 적용중이 위, 지난 시간표가 아래. 적용중은 요일·시간순, 지난 건 최근 종료순.
+      const rows = this.stuTtShowHistory ? this.stuTimetables.slice()
+                                         : this.stuTimetables.filter(s=>this.stuTtPhase(s)!=='past');
+      // 적용중 → 예정 → 지난 순. 같은 그룹 안에서는 요일·시간순(지난 건 최근 종료순).
+      const rank = { current:0, upcoming:1, past:2 };
       return rows.sort((a,b)=>{
-        const ca=this.stuTtIsCurrent(a)?0:1, cb=this.stuTtIsCurrent(b)?0:1;
-        if (ca!==cb) return ca-cb;
-        if (!a.id !== !b.id) return !a.id ? 1 : -1;  // 신규 추가(미저장) 행은 적용중 그룹 맨 아래
-        if (ca===1) return String(b.active_until||'').localeCompare(String(a.active_until||''));
+        const ra=rank[this.stuTtPhase(a)], rb=rank[this.stuTtPhase(b)];
+        if (ra!==rb) return ra-rb;
+        if (!a.id !== !b.id) return !a.id ? 1 : -1;  // 신규 추가(미저장) 행은 그룹 맨 아래
+        if (ra===2) return String(b.active_until||'').localeCompare(String(a.active_until||''));
         return (a.weekday-b.weekday) || String(a.start_time||'').localeCompare(String(b.start_time||''));
       });
     },
@@ -6600,8 +6609,13 @@ const app = createApp({
           program:t.program||'', instr:(t.instructor?t.instructor.id:null), frequency:t.frequency, language };
         return row;
       });
-      // 주 교육 회수 = 지금 적용중인 시간표만(지난 이력·종료 행 제외)
-      if (this.stuForm) this.stuForm.weekly_sessions = this.stuTimetables.filter(s=>this.stuTtIsCurrent(s)).length;
+      // 주 교육 회수 = 지금 적용중인 시간표만(지난 이력·종료 행 제외).
+      // 전부 미래 적용 예정이면(오늘부터가 아니라 내일부터 변경 등) 그 예정 행 수를 쓴다.
+      if (this.stuForm){
+        const cur = this.stuTimetables.filter(s=>this.stuTtPhase(s)==='current');
+        const up = this.stuTimetables.filter(s=>this.stuTtPhase(s)==='upcoming');
+        this.stuForm.weekly_sessions = (cur.length ? cur : up).length;
+      }
     },
     // 시간표 개수가 곧 주 교육 회수라, 시간표 칸을 새로 추가/삭제하는 방식으로 회수를 조정
     addStuTtRow(){
