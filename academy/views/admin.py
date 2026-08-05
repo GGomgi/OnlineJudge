@@ -2413,26 +2413,37 @@ class StudentTimetableAdminAPI(APIView):
             new_kwargs["instructor"] = slot.instructor
         new_slot = StudentTimetable.objects.create(**new_kwargs)
 
-        # 이미 찍힌 미래 스냅샷 정리(개별 수정된 것·이미 등원한 날짜는 보존)
+        # 이미 찍혀 있던 적용일 이후 스냅샷 정리.
+        # 새 시간표가 담당하는 날짜(같은 요일·유효기간 내)의 인스턴스는 반드시 새 시간표로 소속을
+        # 옮긴다 — 안 옮기면 그 날짜를 아무도 담당하지 않는 것으로 보여 새 시간표가 인스턴스를 하나
+        # 더 만들고, 결국 같은 날에 옛 수업과 새 수업이 중복으로 뜬다(수정이 아니라 추가처럼 보임).
+        # 값(시각·강사·과정)까지 새 시간표에 맞추는 건 그날만 따로 손본 적 없는 인스턴스만.
+        # 등원 기록이 있어도 시각은 새 시간표 기준이 맞다(실제 등원 시각은 DailyAttendance에 따로 있음).
         att_dates = set(DailyAttendance.objects.filter(
             student=slot.student, date__gte=eff, check_in_at__isnull=False).values_list("date", flat=True))
-        reconciled, dropped = 0, 0
-        for occ in LessonOccurrence.objects.filter(source_timetable=slot, date__gte=eff, is_makeup=False,
-                                                    time_change_reason="").exclude(status=OccurrenceStatus.ABSENT):
-            if occ.date in att_dates:
-                continue
+        reconciled, dropped, kept = 0, 0, 0
+        for occ in LessonOccurrence.objects.filter(source_timetable=slot, date__gte=eff, is_makeup=False):
+            overridden = bool(occ.time_change_reason)  # 그날만 개별 수정한 수업
+            has_record = (occ.date in att_dates) or occ.status in (
+                OccurrenceStatus.ABSENT, OccurrenceStatus.LEAVE)
             if occ.date.weekday() != new_slot.weekday or not _slot_active_on(new_slot, occ.date):
-                occ.delete()
-                dropped += 1
+                # 새 시간표가 안 맡는 날: 실제 기록(등원·결석)이나 개별 수정이 있으면 사실이므로 그대로 두고,
+                # 아무 일도 없던 예정뿐이면 지운다.
+                if not overridden and not has_record:
+                    occ.delete()
+                    dropped += 1
                 continue
             occ.source_timetable = new_slot
-            occ.start_time = new_slot.start_time
-            occ.duration_minutes = new_slot.duration_minutes
-            occ.program = new_slot.program
-            occ.subject = new_slot.subject
-            occ.instructor_id = new_slot.instructor_id
+            if overridden:
+                kept += 1
+            else:
+                occ.start_time = new_slot.start_time
+                occ.duration_minutes = new_slot.duration_minutes
+                occ.program = new_slot.program
+                occ.subject = new_slot.subject
+                occ.instructor_id = new_slot.instructor_id
+                reconciled += 1
             occ.save()
-            reconciled += 1
 
         labels = {"weekday": "요일", "start_time": "시각", "duration_minutes": "수업길이",
                   "program": "과정", "frequency": "반복"}
