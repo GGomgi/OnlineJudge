@@ -2623,7 +2623,9 @@ class StudentDetailAdminAPI(APIView):
                                "subject": s.subject or resolve_program_label(s.program) or "미지정",
                                "instructor": ({"id": s.instructor_id, "name": _name_of(s.instructor)} if s.instructor_id else None),
                                "frequency": s.frequency, "branch": ({"id": s.branch_id, "name": s.branch.name} if s.branch_id else None),
-                               "status": s.status})
+                               "status": s.status,
+                               "active_from": str(s.active_from) if s.active_from else "",
+                               "active_until": str(s.active_until) if s.active_until else ""})
         return self.success({
             "id": u.id, "username": u.username, "real_name": _name_of(u),
             "branch": (prof.branch.name if prof and prof.branch_id else ""),

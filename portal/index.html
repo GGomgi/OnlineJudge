@@ -2322,7 +2322,10 @@
                 </div>
                 <div v-if="stuTimetables.length" class="space-y-2">
                   <div v-for="s in stuTtVisibleRows()" :key="s.id || s._tmpId" :class="['rounded-lg border px-2 py-1.5 overflow-x-auto', s.status==='PAUSED' ? 'bg-amber-50' : '', !stuTtIsCurrent(s) ? 'opacity-60' : '', (s.id && ttRowDirty(s)) ? 'ring-1 ring-amber-300' : '', !s.id ? 'ring-1 ring-indigo-300 bg-indigo-50/30' : '']">
-                    <div v-if="!stuTtIsCurrent(s)" class="text-[10px] text-slate-400 mb-0.5">{{ s.active_from||'~' }} ~ {{ s.active_until }} 사용됨</div>
+                    <div v-if="s.id" class="text-[10px] mb-0.5" :class="stuTtIsCurrent(s) ? 'text-emerald-600' : 'text-slate-400'">
+                      <template v-if="stuTtIsCurrent(s)">✓ 적용중{{ s.active_from ? ' · '+s.active_from+' ~' : '' }}</template>
+                      <template v-else>지난 시간표 · {{ s.active_from||'~' }} ~ {{ s.active_until }}</template>
+                    </div>
                     <div class="flex items-center gap-1 text-xs whitespace-nowrap">
                       <div class="w-12 shrink-0"><select v-model.number="s.weekday" :disabled="!stuTtEditMode" :class="ttCls(s,'weekday','py-1 !pl-1 !pr-0')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
                       <div class="w-20 shrink-0"><input v-model="s.start_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :readonly="!stuTtEditMode" :class="ttCls(s,'start_time','py-1 !pl-1 !pr-0 text-center font-mono')" /></div>
@@ -2342,13 +2345,15 @@
                             <label class="text-[10px] text-slate-400 inline-flex items-center gap-0.5 mr-1" title="처음부터 잘못 입력된 데이터라 이력을 나누지 않고 이 행 자체를 바로 수정"><input type="checkbox" v-model="s._fullEdit" class="w-3 h-3" />전체수정</label>
                             <input v-if="!s._fullEdit" v-model="s.effective_date" type="date" title="적용 시작일(기본 오늘)" class="input py-0.5 px-1 text-[11px] w-32" />
                           </template>
-                          <button v-if="stuCanEdit && stuTtEditMode" @click="saveStuTt(s)" :class="['hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">수정</button>
                           <button v-if="stuCanEdit && stuTtEditMode && ttRowDirty(s)" @click="revertTt(s)" class="text-slate-400 hover:underline">취소</button>
                           <button v-if="stuCanEdit && stuTtEditMode" @click="delStuTt(s)" class="text-rose-500 hover:underline">삭제</button>
                           <button @mouseenter="openTtHistory(s,$event)" @mouseleave="scheduleCloseTt" class="text-slate-500 hover:underline">이력</button>
                         </template>
                       </span>
                     </div>
+                  </div>
+                  <div v-if="stuCanEdit && stuTtEditMode" class="flex justify-end pt-0.5">
+                    <button @click="saveAllStuTt" :class="['text-xs px-3 py-1.5 rounded', stuTtDirtyCount ? 'bg-amber-500 text-white hover:bg-amber-600 font-bold' : 'bg-slate-100 text-slate-400']">변경사항 저장{{ stuTtDirtyCount ? ' ('+stuTtDirtyCount+'건)' : '' }}</button>
                   </div>
                 </div>
                 <div v-else class="text-xs text-rose-400">시간표 미정</div>
@@ -4768,8 +4773,17 @@ const app = createApp({
       return true;
     },
     stuTtVisibleRows(){
-      return this.stuTtShowHistory ? this.stuTimetables : this.stuTimetables.filter(s=>this.stuTtIsCurrent(s));
+      const rows = this.stuTtShowHistory ? this.stuTimetables.slice() : this.stuTimetables.filter(s=>this.stuTtIsCurrent(s));
+      // 적용중이 위, 지난 시간표가 아래. 적용중은 요일·시간순, 지난 건 최근 종료순.
+      return rows.sort((a,b)=>{
+        const ca=this.stuTtIsCurrent(a)?0:1, cb=this.stuTtIsCurrent(b)?0:1;
+        if (ca!==cb) return ca-cb;
+        if (!a.id !== !b.id) return !a.id ? 1 : -1;  // 신규 추가(미저장) 행은 적용중 그룹 맨 아래
+        if (ca===1) return String(b.active_until||'').localeCompare(String(a.active_until||''));
+        return (a.weekday-b.weekday) || String(a.start_time||'').localeCompare(String(b.start_time||''));
+      });
     },
+    stuTtDirtyCount(){ return this.stuTimetables.filter(s=>s.id && this.ttRowDirty(s)).length; },
     truncate(s,n){ s=s||''; return s.length>n ? s.slice(0,n)+'...' : s; },
     showCalResv(rv,date,e){ this.resvPop={ show:true, at:(date+' '+rv.time+' · '+(rv.student_name||'')), note:rv.note, by:'', created:'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
     instrColor(instructorId){
@@ -6610,6 +6624,26 @@ const app = createApp({
         this.notify('삭제되었습니다.');
         await this.refreshStuDetail(); this.buildStuTimetables(this.stuDetail); this.loadStudents();
       } catch(e){ this.notify(e.message,false); }
+    },
+    // 여러 행을 한 번에 저장: 사유는 한 번만 물어 전체에 기록, 저장 후 새로고침도 한 번만
+    // (행마다 저장→새로고침하면 나머지 행의 미저장 변경이 날아가므로 요청 본문을 먼저 다 만들어둔다)
+    async saveAllStuTt(){
+      const rows = this.stuTimetables.filter(s=>s.id && this.ttRowDirty(s));
+      if (!rows.length) return this.notify('변경된 내용이 없습니다.', false);
+      for (const s of rows){ if (!s._fullEdit && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false); }
+      const reason = window.prompt('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침'+(rows.length>1 ? '\n(변경된 '+rows.length+'건에 함께 기록됩니다)' : ''));
+      if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
+      const bodies = rows.map(s=>{
+        const b = { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes,
+                    instructor_id:s._instructor_id||null, program:s.program, subject:this.rowSubject(s), frequency:s.frequency, reason };
+        if (!s._fullEdit) b.effective_date = s.effective_date;
+        return b;
+      });
+      try {
+        for (const b of bodies) await api('PUT','/api/admin/academy/student_timetable', b);
+        this.notify(rows.length+'건 수정되었습니다.');
+      } catch(e){ this.notify(e.message,false); }
+      await this.refreshStuDetail(); this.buildStuTimetables(this.stuDetail); this.loadStudents();
     },
     async saveStuTt(s){
       if (!this.ttRowDirty(s)) return this.notify('변경된 내용이 없습니다.', false);
