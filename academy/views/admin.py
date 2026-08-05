@@ -2338,6 +2338,11 @@ class StudentTimetableAdminAPI(APIView):
         if "instructor_id" in data:
             slot.instructor = User.objects.filter(id=data["instructor_id"]).first() if data["instructor_id"] else None
         slot.save()
+        # 전체수정("처음부터 잘못 입력") — 이력을 나누지 않으므로 이미 만들어져 있던 수업 인스턴스도
+        # 전부 새 값에 맞춘다. 안 그러면 요일을 바꿨을 때 옛 요일 수업이 남은 채 새 요일 수업이 따로
+        # 생겨 두 요일이 섞여 보인다. 실제 기록(등원·결석·비고·수업일지·연결된 보강)은 보존.
+        _reconcile_slot_occurrences(
+            slot, LessonOccurrence.objects.filter(source_timetable=slot, is_makeup=False))
         # 변경 항목 요약 (기존값 → 변경값)
         labels = {"weekday": "요일", "start_time": "시각", "duration_minutes": "수업길이",
                   "program": "과정", "frequency": "반복", "instructor_id": "강사"}
@@ -2413,37 +2418,9 @@ class StudentTimetableAdminAPI(APIView):
             new_kwargs["instructor"] = slot.instructor
         new_slot = StudentTimetable.objects.create(**new_kwargs)
 
-        # 이미 찍혀 있던 적용일 이후 스냅샷 정리.
-        # 새 시간표가 담당하는 날짜(같은 요일·유효기간 내)의 인스턴스는 반드시 새 시간표로 소속을
-        # 옮긴다 — 안 옮기면 그 날짜를 아무도 담당하지 않는 것으로 보여 새 시간표가 인스턴스를 하나
-        # 더 만들고, 결국 같은 날에 옛 수업과 새 수업이 중복으로 뜬다(수정이 아니라 추가처럼 보임).
-        # 값(시각·강사·과정)까지 새 시간표에 맞추는 건 그날만 따로 손본 적 없는 인스턴스만.
-        # 등원 기록이 있어도 시각은 새 시간표 기준이 맞다(실제 등원 시각은 DailyAttendance에 따로 있음).
-        att_dates = set(DailyAttendance.objects.filter(
-            student=slot.student, date__gte=eff, check_in_at__isnull=False).values_list("date", flat=True))
-        reconciled, dropped, kept = 0, 0, 0
-        for occ in LessonOccurrence.objects.filter(source_timetable=slot, date__gte=eff, is_makeup=False):
-            overridden = bool(occ.time_change_reason)  # 그날만 개별 수정한 수업
-            has_record = (occ.date in att_dates) or occ.status in (
-                OccurrenceStatus.ABSENT, OccurrenceStatus.LEAVE)
-            if occ.date.weekday() != new_slot.weekday or not _slot_active_on(new_slot, occ.date):
-                # 새 시간표가 안 맡는 날: 실제 기록(등원·결석)이나 개별 수정이 있으면 사실이므로 그대로 두고,
-                # 아무 일도 없던 예정뿐이면 지운다.
-                if not overridden and not has_record:
-                    occ.delete()
-                    dropped += 1
-                continue
-            occ.source_timetable = new_slot
-            if overridden:
-                kept += 1
-            else:
-                occ.start_time = new_slot.start_time
-                occ.duration_minutes = new_slot.duration_minutes
-                occ.program = new_slot.program
-                occ.subject = new_slot.subject
-                occ.instructor_id = new_slot.instructor_id
-                reconciled += 1
-            occ.save()
+        # 적용일 이후 이미 찍혀 있던 스냅샷을 새 시간표에 맞게 정리(적용일 이전은 옛 시간표 그대로).
+        _reconcile_slot_occurrences(
+            new_slot, LessonOccurrence.objects.filter(source_timetable=slot, date__gte=eff, is_makeup=False))
 
         labels = {"weekday": "요일", "start_time": "시각", "duration_minutes": "수업길이",
                   "program": "과정", "frequency": "반복"}
@@ -3374,6 +3351,51 @@ def _link_target_kind(occ_status, note_tag):
     if occ_status == OccurrenceStatus.SCHEDULED and note_tag == EARLY_LEAVE_TAG:
         return "early_leave"
     return None
+
+
+def _reconcile_slot_occurrences(slot, occ_qs):
+    """시간표 패턴이 바뀌었을 때, 이미 만들어져 있던 수업 인스턴스를 그 패턴에 맞게 정리한다.
+    - 패턴이 담당하는 날짜(같은 요일·유효기간 안): 소속을 이 패턴으로 맞추고, 그날만 따로 손본 적이
+      없으면 시각·수업시간·강사·과정도 패턴 값으로 갱신. 소속을 안 맞추면 그 날짜를 아무도 담당하지
+      않는 것으로 보여 나중에 같은 날 인스턴스가 하나 더 생기고 수업이 중복으로 뜬다.
+    - 담당하지 않는 날짜(요일이 바뀐 경우 등): 실제로 뭔가 있었던 수업(등원·결석/휴원·비고·수업일지·
+      연결된 보강)은 사실이므로 그대로 두고, 아무 일도 없던 예정만 삭제한다.
+    반환: (갱신, 삭제, 보존) 건수."""
+    occs = list(occ_qs)
+    if not occs:
+        return 0, 0, 0
+    ids = [o.id for o in occs]
+    att_dates = set(DailyAttendance.objects.filter(
+        student_id=slot.student_id, date__in=[o.date for o in occs],
+        check_in_at__isnull=False).values_list("date", flat=True))
+    prog_ids = set(LessonProgress.objects.filter(occurrence_id__in=ids, is_hidden=False)
+                   .values_list("occurrence_id", flat=True))
+    mk_ids = set(LessonOccurrence.objects.filter(makeup_for_id__in=ids)
+                 .values_list("makeup_for_id", flat=True))
+    updated = dropped = kept = 0
+    for occ in occs:
+        has_record = (occ.date in att_dates or bool(occ.note) or occ.id in prog_ids or occ.id in mk_ids
+                      or occ.status in (OccurrenceStatus.ABSENT, OccurrenceStatus.LEAVE))
+        overridden = bool(occ.time_change_reason)  # 그날만 개별 수정한 수업
+        if occ.date.weekday() != slot.weekday or not _slot_active_on(slot, occ.date):
+            if not overridden and not has_record:
+                occ.delete()
+                dropped += 1
+            else:
+                kept += 1
+            continue
+        occ.source_timetable = slot
+        if overridden:
+            kept += 1
+        else:
+            occ.start_time = slot.start_time
+            occ.duration_minutes = slot.duration_minutes
+            occ.program = slot.program
+            occ.subject = slot.subject
+            occ.instructor_id = slot.instructor_id
+            updated += 1
+        occ.save()
+    return updated, dropped, kept
 
 
 def _slot_active_on(s, d):
