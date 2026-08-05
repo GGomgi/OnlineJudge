@@ -3646,11 +3646,16 @@ class AttendanceCheckAdminAPI(APIView):
             setattr(a, field, now())
         a.save()
         new = _hm_kst(getattr(a, field))
-        # 시각 수정(기존값 있고 명시적 time/clear)은 이력 기록
-        if (tm or clear) and old:
+        # 발생 경로까지 포함해 모든 변경을 이력에 기록(키오스크 체크와 구분 — 누가 눌렀는지 추적용)
+        if old != new:
+            if clear:
+                detail = "%s 체크 취소 (%s → -) (포털 수동)" % (label, old or "-")
+            elif old:
+                detail = "%s %s → %s (포털 수동)" % (label, old, new)
+            else:
+                detail = "%s 체크 %s (포털 수동)" % (label, new)
             AttendanceChange.objects.create(
-                attendance=a, actor=request.user,
-                detail="%s %s → %s" % (label, old or "-", new or "-"),
+                attendance=a, actor=request.user, detail=detail,
                 reason=(data.get("reason") or "").strip())
         return self.success({"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)})
 

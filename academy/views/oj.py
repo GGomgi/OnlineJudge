@@ -16,7 +16,7 @@ from ..models import (StudentTimetable, GuardianStudent, StaffProfile, STAFF_ROL
                       HRNotice, StaffDocument, StaffProfileHistory)
 from ..models import DevRequest, DevRequestComment, Notification, Message
 from ..models import StudentProfile, DailyAttendance, EnrollmentStatus, LessonOccurrence, OccurrenceStatus
-from ..models import KioskDevice, KioskDeviceStatus
+from ..models import KioskDevice, KioskDeviceStatus, AttendanceChange
 from .admin import ensure_occurrences, _adhoc_lesson_rows
 
 
@@ -1030,13 +1030,20 @@ class KioskCheckAPI(CSRFExemptAPIView):
         d = _kst_today()
         a, _created = DailyAttendance.objects.get_or_create(student=u, date=d, defaults={"branch": branch})
         name = _name_of(u)
+        # 발생 경로 이력: 어느 키오스크 기기에서 눌렀는지 기록(수동 체크와 구분)
+        dev = KioskDevice.objects.filter(branch=branch, device_id=(data.get("device_id") or "").strip()).first()
+        dev_label = (dev.label if dev and dev.label else (dev.device_id[:8] if dev else "?"))
         if not a.check_in_at:
             a.check_in_at = now()
             a.save(update_fields=["check_in_at"])
+            AttendanceChange.objects.create(attendance=a, actor=None,
+                detail="등원 체크 %s (키오스크: %s)" % (_hm_kst(a.check_in_at), dev_label))
             return self.success({"action": "in", "name": name, "time": _hm_kst(a.check_in_at)})
         if not a.check_out_at:
             a.check_out_at = now()
             a.save(update_fields=["check_out_at"])
+            AttendanceChange.objects.create(attendance=a, actor=None,
+                detail="하원 체크 %s (키오스크: %s)" % (_hm_kst(a.check_out_at), dev_label))
             return self.success({"action": "out", "name": name, "time": _hm_kst(a.check_out_at)})
         return self.success({"action": "done", "name": name,
                              "in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)})
