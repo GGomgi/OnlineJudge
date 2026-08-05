@@ -907,7 +907,7 @@ def _kiosk_device_error(branch, device_id):
 class KioskDeviceRequestAPI(CSRFExemptAPIView):
     """무로그인 출결 키오스크: 새 기기(브라우저) 등록 요청/상태 확인. 요청할 때마다 최신 상태를
     돌려주므로 키오스크 화면에서 주기적으로 이 API를 폴링해 승인 여부를 확인한다.
-    POST {b:지점id, t:키오스크토큰, device_id, user_agent?}"""
+    POST {b:지점id, t:키오스크토큰, device_id, user_agent?, label?(최초 등록 신청 시 사용자가 입력한 기기 이름)}"""
     def post(self, request):
         data = request.data
         branch = Branch.objects.filter(id=data.get("b")).first()
@@ -919,7 +919,8 @@ class KioskDeviceRequestAPI(CSRFExemptAPIView):
             return self.error("기기 식별자가 없습니다.")
         d, _created = KioskDevice.objects.get_or_create(
             branch=branch, device_id=device_id,
-            defaults={"user_agent": (data.get("user_agent") or "")[:255]})
+            defaults={"user_agent": (data.get("user_agent") or "")[:255],
+                      "label": (data.get("label") or "").strip()[:64]})
         return self.success({"status": d.status})
 
 

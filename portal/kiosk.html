@@ -57,7 +57,8 @@ createApp({
       leftZoom: parseInt(localStorage.getItem('kiosk_left_zoom')) || 100,
       rightZoom: parseInt(localStorage.getItem('kiosk_right_zoom')) || 100,
       ratioSettingsOpen: false,
-      deviceId: '', deviceStatus: 'checking',  // checking | PENDING | APPROVED | REVOKED | badlink
+      deviceId: '', deviceStatus: 'checking',  // checking | confirm | PENDING | APPROVED | REVOKED | badlink
+      deviceNameInput: '',
     };
   },
   computed: {
@@ -178,13 +179,21 @@ createApp({
     async requestDevice(){
       const wasApproved = this.deviceStatus === 'APPROVED';
       try {
-        const d = await kioskApi('POST', '/api/academy/kiosk_device_request', { b:this.b, t:this.t, device_id:this.deviceId, user_agent:navigator.userAgent });
+        const d = await kioskApi('POST', '/api/academy/kiosk_device_request', { b:this.b, t:this.t, device_id:this.deviceId, user_agent:navigator.userAgent, label:this.deviceNameInput });
         this.deviceStatus = d.status;
         if (!wasApproved && this.deviceStatus === 'APPROVED'){
           this.loadBoard();
           if (!this._boardInterval) this._boardInterval = setInterval(this.loadBoard, 25000);
         }
       } catch(e){ this.deviceStatus = 'badlink'; this.resultSub = e.message || ''; }
+    },
+    // 이 기기 최초 접속: 자동 신청 대신 이름을 입력받아 확인 후 등록 신청
+    async confirmDeviceRequest(){
+      this.deviceId = (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(16).slice(2)));
+      localStorage.setItem('kiosk_device_id', this.deviceId);
+      this.deviceStatus = 'checking';
+      await this.requestDevice();
+      if (!this._pollInterval) this._pollInterval = setInterval(()=>{ if (this.deviceStatus!=='APPROVED') this.requestDevice(); }, 5000);
     },
     press(n){
       if (this.stage !== 'keypad' || this.busy) return;
@@ -312,14 +321,15 @@ createApp({
       this.resultSub = '관리자에게 링크를 다시 요청하세요.';
       return;
     }
-    // 이 브라우저(기기)의 식별자 — 최초 1회 생성해 localStorage에 저장, 이후 계속 재사용
+    // 이 브라우저(기기)의 식별자 — 최초 1회 생성해 localStorage에 저장, 이후 계속 재사용.
+    // 아직 한 번도 등록 신청한 적 없는 새 기기면 바로 자동 신청하지 않고 먼저 물어본다(confirmDeviceRequest).
     this.deviceId = localStorage.getItem('kiosk_device_id') || '';
     if (!this.deviceId){
-      this.deviceId = (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(16).slice(2)));
-      localStorage.setItem('kiosk_device_id', this.deviceId);
+      this.deviceStatus = 'confirm';
+      return;
     }
     await this.requestDevice();
-    setInterval(()=>{ if (this.deviceStatus!=='APPROVED') this.requestDevice(); }, 5000);
+    this._pollInterval = setInterval(()=>{ if (this.deviceStatus!=='APPROVED') this.requestDevice(); }, 5000);
   },
   template: `
     <div class="fixed top-2 right-2 z-50 flex items-center gap-1.5">
@@ -365,6 +375,13 @@ createApp({
       <div class="text-center max-w-md">
         <template v-if="deviceStatus==='checking'">
           <div class="text-lg text-slate-400">확인 중...</div>
+        </template>
+        <template v-else-if="deviceStatus==='confirm'">
+          <div class="text-5xl mb-4">🖥️</div>
+          <div class="text-2xl font-bold mb-2">이 기기를 출결 키오스크로 등록할까요?</div>
+          <p class="text-slate-400 leading-relaxed mb-4">등록 신청 후 관리자 승인이 필요합니다.<br>기기 이름을 지정해두면 승인 화면에서 어떤 기기인지 바로 알아볼 수 있어요.</p>
+          <input v-model="deviceNameInput" placeholder="기기 이름(예: 1층 태블릿)" class="w-full max-w-xs mx-auto block px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-center text-slate-100 mb-4" @keyup.enter="confirmDeviceRequest" />
+          <button @click="confirmDeviceRequest" class="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold">등록 신청</button>
         </template>
         <template v-else-if="deviceStatus==='PENDING'">
           <div class="text-5xl mb-4">🔒</div>

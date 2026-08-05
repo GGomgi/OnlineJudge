@@ -857,6 +857,7 @@
               <ul class="space-y-1">
                 <li v-for="d in kioskRevokedDevices" :key="d.id" class="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 text-sm opacity-60">
                   <span class="text-xs">{{ d.label || d.device_id }}</span>
+                  <span class="text-[10px] text-slate-400">요청 {{ d.requested_at }}</span>
                   <button @click="approveKioskDevice(d)" class="ml-auto text-xs text-indigo-500 hover:underline shrink-0">다시 승인</button>
                 </li>
               </ul>
@@ -3956,6 +3957,7 @@ const app = createApp({
     },
     dashLessons(){
       const f=this.dashFilter; const q=(f.q||'').trim().toLowerCase();
+      console.log('[debounce-diag] dashLessons computed with q=', JSON.stringify(q));
       return (this.dashData.lessons||[]).filter(l=>{
         if (f.subject && l.subject!==f.subject) return false;
         if (f.instructor && l.instructor!==f.instructor) return false;
@@ -4279,22 +4281,6 @@ const app = createApp({
       if (this.isParent) return [ {key:'children',label:'자녀'}, {key:'lead',label:'상담 신청'}, {key:'me',label:'내 정보'} ];
       return [ {key:'timetable',label:'내 시간표'}, {key:'attendance',label:'내 출결'}, {key:'me',label:'내 정보'} ];
     },
-  },
-  // 검색창들: 입력창은 즉시 반영, 실제 검색어(목록 필터링에 쓰는 값)는 타이핑이 잠깐
-  // 멈췄을 때만 갱신(한글 조합 중 다른 사람 결과가 잠깐 섞여 보이는 문제 완화).
-  watch: {
-    'dashFilter.qRaw'(v){ this._debounce('dashFilter.q', ()=>{ this.dashFilter.q = v; }); },
-    studentModalFilterRaw(v){ this._debounce('studentModalFilter', ()=>{ this.studentModalFilter = v; }); },
-    mkPendingSearchRaw(v){ this._debounce('mkPendingSearch', ()=>{ this.mkPendingSearch = v; }); },
-    'mkSearch.queryRaw'(v){ this._debounce('mkSearch.query', ()=>{ this.mkSearch.query = v; }); },
-    leadSearchRaw(v){ this._debounce('leadSearch', ()=>{ this.leadSearch = v; }); },
-    leadSearch2Raw(v){ this._debounce('leadSearch2', ()=>{ this.leadSearch2 = v; }); },
-    stuSearchRaw(v){ this._debounce('stuSearch', ()=>{ this.stuSearch = v; }); },
-    stuSearch2Raw(v){ this._debounce('stuSearch2', ()=>{ this.stuSearch2 = v; }); },
-    staffFilterRaw(v){ this._debounce('staffFilter', ()=>{ this.staffFilter = v; }); },
-    msgSearchRaw(v){ this._debounce('msgSearch', ()=>{ this.msgSearch = v; }); },
-    msgStuQRaw(v){ this._debounce('msgStuQ', ()=>{ this.msgStuQ = v; }); },
-    tplPreviewStuQRaw(v){ this._debounce('tplPreviewStuQ', ()=>{ this.tplPreviewStuQ = v; }); },
   },
   methods: {
     notify(msg, ok=true){ this.flash = { msg, ok }; setTimeout(()=>{ if(this.flash.msg===msg) this.flash.msg=''; }, ok ? 3000 : 5000); },
@@ -7249,6 +7235,26 @@ const app = createApp({
   },
   mounted(){
     this.boot();
+    // 검색창들: 입력창(Raw)은 즉시 반영, 실제 검색어(목록 필터링에 쓰는 값)는 타이핑이 잠깐
+    // 멈췄을 때만 갱신(한글 조합 중 다른 사람 결과가 잠깐 섞여 보이는 문제 완화).
+    // $watch(getter, handler) 형태로 직접 등록 — options의 'a.b' 문자열 watch보다 확실히 동작.
+    [['dashFilter.qRaw','dashFilter.q'], ['studentModalFilterRaw','studentModalFilter'],
+     ['mkPendingSearchRaw','mkPendingSearch'], ['mkSearch.queryRaw','mkSearch.query'],
+     ['leadSearchRaw','leadSearch'], ['leadSearch2Raw','leadSearch2'],
+     ['stuSearchRaw','stuSearch'], ['stuSearch2Raw','stuSearch2'],
+     ['staffFilterRaw','staffFilter'], ['msgSearchRaw','msgSearch'],
+     ['msgStuQRaw','msgStuQ'], ['tplPreviewStuQRaw','tplPreviewStuQ']].forEach(([rawPath, realPath])=>{
+      const rawParts = rawPath.split('.'), realParts = realPath.split('.');
+      this.$watch(() => rawParts.reduce((o,k)=>o&&o[k], this), (v)=>{
+        console.log('[debounce-diag] raw changed', rawPath, '->', v);
+        this._debounce(realPath, ()=>{
+          let obj = this;
+          for (let i=0;i<realParts.length-1;i++) obj = obj[realParts[i]];
+          obj[realParts[realParts.length-1]] = v;
+          console.log('[debounce-diag] applied', realPath, '=', v);
+        });
+      });
+    });
     setInterval(()=>{ this.clockNow = Date.now(); }, 1000);  // 실시간 시계/경과시간
     // 오늘 운영 탭이 오늘 날짜를 보고 있을 때, 키오스크 등 다른 화면에서의 등원/하원 변경을 반영
     setInterval(()=>{ if (this.tab==='dashboard' && this.dashIsToday && !this.attModal) this.loadDashboard(); }, 5000);
