@@ -5821,10 +5821,13 @@ const app = createApp({
       if (siblings.length > 1){
         siblings.sort((a,b)=>this.hmMin(a.start_time)-this.hmMin(b.start_time));
         let remaining = totalMins;
-        for (const o of siblings){
+        for (let i=0; i<siblings.length; i++){
+          const o = siblings[i];
           const odur = o.duration_minutes||60;
-          const share = Math.min(remaining, odur);
-          if (o.occ_id===l.occ_id) return { mins:share, dur, over:share>dur, done:!!l.att.out };
+          // 마지막 수업은 남은 시간을 그대로 받는다(자르면 아직 하원 안 했는데도 초과가 안 보임)
+          const isLast = (i === siblings.length-1);
+          const share = isLast ? remaining : Math.min(remaining, odur);
+          if (o===l || (o.occ_id && o.occ_id===l.occ_id)) return { mins:share, dur, over:share>dur, done:!!l.att.out };
           remaining = Math.max(0, remaining - odur);
         }
       }

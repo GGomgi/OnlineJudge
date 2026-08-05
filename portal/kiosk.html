@@ -93,8 +93,23 @@ createApp({
       if (!row.att.in) return '';
       const start = this.hmMin(row.att.in);
       const end = row.att.out ? this.hmMin(row.att.out) : this.nowMin;
-      const mins = Math.max(0, end-start);
-      return mins+'분 / '+(row.duration_minutes||60)+'분';
+      const total = Math.max(0, end-start);
+      const dur = row.duration_minutes||60;
+      // 같은 학생이 등원/하원을 공유하는 수업이 여러 개면(연속 타임 등) 앞 수업부터 채워 나눠 배분.
+      // 마지막 수업은 남은 시간을 그대로 받아 초과분이 드러나게 한다(오늘 운영과 동일 규칙).
+      const sib = this.board.filter(o=>o.student_id && o.student_id===row.student_id
+                                      && o.status!=='ABSENT' && o.att && o.att.in);
+      if (sib.length > 1){
+        sib.sort((a,b)=>this.hmMin(a.start_time)-this.hmMin(b.start_time));
+        let remaining = total;
+        for (let i=0; i<sib.length; i++){
+          const o = sib[i], odur = o.duration_minutes||60;
+          const share = (i===sib.length-1) ? remaining : Math.min(remaining, odur);
+          if (o===row) return share+'분 / '+dur+'분';
+          remaining = Math.max(0, remaining - odur);
+        }
+      }
+      return total+'분 / '+dur+'분';
     },
     statusInfo(row){
       if (row.status==='ABSENT') return { label:'결석'+this.stuAbsenceSuffix(row), cls:'text-rose-400' };
