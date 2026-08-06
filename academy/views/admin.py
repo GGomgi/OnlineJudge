@@ -3766,17 +3766,20 @@ class AttendanceNoteAdminAPI(APIView):
         except (TypeError, ValueError):
             d = now().date()
         a = DailyAttendance.objects.filter(student=u, date=d).first()
+        # 같은 분에 여러 건이 몰리면(두 사람이 거의 동시에 조작) 순서를 알 수 없어 초까지 표시한다.
+        def _sec(dt):
+            return str(dt + timedelta(hours=9))[:19] if dt else ""
         out = []
         if a:
             for c in a.changes.select_related("actor"):
                 out.append({"detail": c.detail, "reason": c.reason,
                             "actor": _name_of(c.actor) if c.actor_id else "",
-                            "time": _kst_dt_str(c.create_time)})
+                            "time": _sec(c.create_time)})
         # 그 날짜 수업(정규 하루/보강) 시각·강사·과정 변경 및 보강 생성 이력도 같이 표시
         for c in TimetableChange.objects.filter(student=u, detail__startswith=str(d)).select_related("actor"):
             out.append({"detail": c.detail, "reason": c.reason,
                         "actor": _name_of(c.actor) if c.actor_id else "",
-                        "time": _kst_dt_str(c.create_time)})
+                        "time": _sec(c.create_time)})
         out.sort(key=lambda x: x["time"], reverse=True)  # 최신이 위로
         return self.success(out)
 
@@ -4162,7 +4165,9 @@ class LessonStatusAdminAPI(APIView):
         if st == OccurrenceStatus.CANCELLED:
             TimetableChange.objects.create(student=o.student, actor=request.user, action="DELETE",
                 reason=(data.get("reason") or ""),
-                detail=("%s 보강 취소: %s %s분" % (str(o.date), str(o.start_time)[:5], o.duration_minutes))[:255])
+                detail=("%s 보강 취소: %s %s분 %s%s" % (
+                    str(o.date), str(o.start_time)[:5], o.duration_minutes, o.subject or "",
+                    (" · " + _name_of(o.instructor)) if o.instructor_id else ""))[:255])
         return self.success({"status": o.status, "note": o.note, "no_makeup": o.no_makeup})
 
 
@@ -4487,6 +4492,15 @@ class MakeupAddAdminAPI(APIView):
             target = LessonOccurrence.objects.filter(id=data.get("makeup_for"), student_id=u.id).first()
             if not target:
                 return self.error("연결할 수업을 찾을 수 없습니다.")
+            # 같은 결석에 이미 보강이 잡혀 있으면 막는다. 두 사람이 거의 동시에 각자 보강을 잡아
+            # 같은 날 중복 수업이 생기는 사고를 방지(수정 경로에는 있던 검사가 생성 경로엔 없었음).
+            dup = LessonOccurrence.objects.filter(is_makeup=True, makeup_for_id=target.id)\
+                .exclude(status=OccurrenceStatus.CANCELLED).first()
+            if dup:
+                return self.error(
+                    "이미 이 건에 연결된 보강이 있습니다(%s %s). 다른 선생님이 먼저 잡았을 수 있으니 "
+                    "화면을 새로고침해 확인하세요. 바꾸려면 기존 보강을 취소한 뒤 다시 잡아주세요."
+                    % (str(dup.date), str(dup.start_time)[:5]))
         src = StudentTimetable.objects.filter(id=data.get("source_timetable_id")).first()
         # 과목·수업시간·담당강사: 명시 입력 > 정규수업(source_timetable_id) > 연결 대상 수업(target) > 기본값
         dur = data.get("duration") or (src.duration_minutes if src else (target.duration_minutes if target else 60))
