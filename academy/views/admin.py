@@ -2294,6 +2294,11 @@ class StudentTimetableAdminAPI(APIView):
                                            start_time=data["start_time"], program=prog
                                            ).exclude(status="ENDED").exists():
             return self.error("같은 요일·시각에 같은 과정 수업이 이미 있습니다.")
+        dur_new = data.get("duration_minutes") or 60
+        conf = _find_slot_conflict(student.id, data["weekday"], data["start_time"], dur_new, None, None)
+        if conf:
+            return self.error(_conflict_msg(_name_of(student), "%s요일" % _WD[conf.weekday],
+                                            conf.start_time, conf.duration_minutes, "정규수업"))
         slot = StudentTimetable.objects.create(
             student=student, branch=branch,
             class_type=data.get("class_type") or LessonType.PRIVATE,
@@ -2338,6 +2343,11 @@ class StudentTimetableAdminAPI(APIView):
                 slot.subject = resolve_program_label(slot.program)
         if "instructor_id" in data:
             slot.instructor = User.objects.filter(id=data["instructor_id"]).first() if data["instructor_id"] else None
+        conf = _find_slot_conflict(slot.student_id, slot.weekday, slot.start_time, slot.duration_minutes,
+                                   slot.active_from, slot.active_until, exclude_id=slot.id)
+        if conf:
+            return self.error(_conflict_msg(_name_of(slot.student), "%s요일" % _WD[conf.weekday],
+                                            conf.start_time, conf.duration_minutes, "정규수업"))
         slot.save()
         # 전체수정("처음부터 잘못 입력") — 이력을 나누지 않으므로 이미 만들어져 있던 수업 인스턴스도
         # 전부 새 값에 맞춘다. 안 그러면 요일을 바꿨을 때 옛 요일 수업이 남은 채 새 요일 수업이 따로
@@ -2396,6 +2406,13 @@ class StudentTimetableAdminAPI(APIView):
             except ValueError:
                 return self.error("적용 시작일 형식이 올바르지 않습니다.")
         old_weekday = slot.weekday
+        # 새 값이 이 학생의 다른 시간표와 겹치면 막는다(옛 행은 eff 전날로 끝나므로 자기 자신과는 안 겹침)
+        conf = _find_slot_conflict(
+            slot.student_id, data.get("weekday", slot.weekday), data.get("start_time", slot.start_time),
+            data.get("duration_minutes", slot.duration_minutes), eff, None, exclude_id=slot.id)
+        if conf:
+            return self.error(_conflict_msg(_name_of(slot.student), "%s요일" % _WD[conf.weekday],
+                                            conf.start_time, conf.duration_minutes, "정규수업"))
         # 기존 시간표는 그 전날까지만 유효
         slot.active_until = eff - timedelta(days=1)
         slot.save(update_fields=["active_until"])
@@ -3366,6 +3383,77 @@ def _link_target_kind(occ_status, note_tag):
     if occ_status == OccurrenceStatus.SCHEDULED and note_tag == EARLY_LEAVE_TAG:
         return "early_leave"
     return None
+
+
+def _t2m(t):
+    """time 또는 'HH:MM' 문자열 → 분(자정 기준).
+    시리얼라이저를 거친 값은 문자열로 들어오므로 둘 다 받는다."""
+    if isinstance(t, str):
+        hh, mm = t.split(":")[:2]
+        return int(hh) * 60 + int(mm)
+    return t.hour * 60 + t.minute
+
+
+def _time_overlaps(a_start, a_dur, b_start, b_dur):
+    """두 수업이 실제로 겹치는지. 앞 수업이 끝나는 시각에 뒤 수업이 시작하는 '연속 수업'은 겹침 아님."""
+    a0 = _t2m(a_start); a1 = a0 + (a_dur or 60)
+    b0 = _t2m(b_start); b1 = b0 + (b_dur or 60)
+    return a0 < b1 and b0 < a1
+
+
+def _period_overlaps(af1, au1, af2, au2):
+    """두 시간표 패턴의 유효기간(active_from~active_until)이 겹치는지. 없으면 무한대로 본다."""
+    if au1 and af2 and au1 < af2:
+        return False
+    if au2 and af1 and au2 < af1:
+        return False
+    return True
+
+
+def _find_slot_conflict(student_id, weekday, start_time, duration, active_from, active_until, exclude_id=None):
+    """같은 학생의 다른 정규 시간표와 요일·시간·유효기간이 겹치는 것을 찾는다."""
+    qs = StudentTimetable.objects.filter(student_id=student_id, weekday=weekday).exclude(status="ENDED")
+    if exclude_id:
+        qs = qs.exclude(id=exclude_id)
+    for s in qs:
+        if not _period_overlaps(active_from, active_until, s.active_from, s.active_until):
+            continue
+        if _time_overlaps(start_time, duration, s.start_time, s.duration_minutes):
+            return s
+    return None
+
+
+def _find_day_conflict(student_id, d, start_time, duration, exclude_occ_id=None):
+    """그 날짜에 이 학생이 이미 잡혀 있는 수업과 겹치는지.
+    이미 만들어진 인스턴스뿐 아니라 '아직 안 만들어진 정규 시간표'까지 함께 본다
+    (달력을 안 열어본 날짜는 인스턴스가 없어서, 인스턴스만 보면 겹침을 놓친다).
+    반환: (시작 time, 길이, 라벨) 또는 None."""
+    busy, covered = [], set()
+    occs = LessonOccurrence.objects.filter(student_id=student_id, date=d)\
+        .exclude(status=OccurrenceStatus.CANCELLED)
+    if exclude_occ_id:
+        occs = occs.exclude(id=exclude_occ_id)
+    for o in occs:
+        busy.append((o.start_time, o.duration_minutes, "보강" if o.is_makeup else "수업"))
+        if o.source_timetable_id:
+            covered.add(o.source_timetable_id)
+    for s in StudentTimetable.objects.filter(student_id=student_id, weekday=d.weekday()).exclude(status="ENDED"):
+        if s.id in covered or not _slot_active_on(s, d):
+            continue
+        busy.append((s.start_time, s.duration_minutes, "정규수업"))
+    for st, du, label in busy:
+        if _time_overlaps(start_time, duration, st, du):
+            return (st, du, label)
+    return None
+
+
+def _conflict_msg(name, when, start_time, duration, label):
+    """겹침 안내 문구. 언제·무엇과 겹치는지 알려줘야 바로 고칠 수 있다."""
+    a0 = _t2m(start_time); a1 = a0 + (duration or 60)
+    fmt = lambda m: "%02d:%02d" % (m // 60, m % 60)
+    return ("%s 학생은 %s에 이미 %s이 있습니다(%s~%s). 시간이 겹쳐서 추가할 수 없습니다 — "
+            "다른 시간을 고르거나 기존 수업을 먼저 정리해주세요."
+            % (name, when, label, fmt(a0), fmt(a1)))
 
 
 def _occ_record_ids(occs):
@@ -4355,6 +4443,10 @@ class LessonEditAdminAPI(APIView):
                 changes.append("과정 %s → %s" % (old_subj, new_subj))
                 o.program = newp
                 o.subject = new_subj
+        # 바뀐 값 기준으로 그 날 다른 수업과 겹치는지 확인(자기 자신은 제외)
+        conf = _find_day_conflict(o.student_id, o.date, o.start_time, o.duration_minutes, exclude_occ_id=o.id)
+        if conf:
+            return self.error(_conflict_msg(_name_of(o.student), str(o.date), conf[0], conf[1], conf[2]))
         instr_u = User.objects.filter(id=o.instructor_id).first() if o.instructor_id else None
         instr_name = _name_of(instr_u) if instr_u else "미배정"
         if not changes:
@@ -4504,6 +4596,10 @@ class MakeupAddAdminAPI(APIView):
         src = StudentTimetable.objects.filter(id=data.get("source_timetable_id")).first()
         # 과목·수업시간·담당강사: 명시 입력 > 정규수업(source_timetable_id) > 연결 대상 수업(target) > 기본값
         dur = data.get("duration") or (src.duration_minutes if src else (target.duration_minutes if target else 60))
+        # 그 날 이미 있는 수업과 시간이 겹치면 막는다(같은 학생이 동시에 두 수업에 있을 수 없음)
+        conf = _find_day_conflict(u.id, d, st_time, dur)
+        if conf:
+            return self.error(_conflict_msg(_name_of(u), str(d), conf[0], conf[1], conf[2]))
         prog = data.get("program") or (src.program if src else (target.program if target else ""))
         # 과목: 명시 입력 > 정규수업(src)/연결 대상(target)의 실제 과목(언어 등 세부 포함) > 과정 코드의 일반 라벨.
         # 순서를 뒤집으면(과정라벨을 먼저 쓰면) LANG 과정이 항상 '프로그래밍언어'로만 나오고
