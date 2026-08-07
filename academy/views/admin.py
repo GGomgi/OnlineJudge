@@ -3773,6 +3773,34 @@ class DashboardAdminAPI(APIView):
                     kind = _link_target_kind(tstatus, target_att_tag.get((tsid, tdate))) or "absence"
                 l["linked"] = {"kind": kind, "occ_id": tid, "date": l["_absence_date"], "start_time": l["_absence_time"]}
             del l["_absence_date"], l["_absence_time"], l["_absence_occid"]
+        # 임시휴원 중인 학생 — 기간이 끝나면 자동 복귀라 잊기 쉬워서 남은 일정을 같이 보여준다
+        tl_q = LessonOccurrence.objects.filter(
+            date__gte=d, status=OccurrenceStatus.LEAVE, is_makeup=False
+        ).select_related("student", "student__userprofile")
+        if view is not None:
+            tl_q = tl_q.filter(branch_id__in=view)
+        if bid:
+            tl_q = tl_q.filter(branch_id=bid)
+        tl = {}
+        for o in tl_q:
+            cur = tl.setdefault(o.student_id, {"student_id": o.student_id, "name": _name_of(o.student),
+                                               "last": o.date, "note": o.note or ""})
+            if o.date > cur["last"]:
+                cur["last"] = o.date
+                cur["note"] = o.note or cur["note"]
+        temp_leaves = []
+        for v in tl.values():
+            nxt = LessonOccurrence.objects.filter(
+                student_id=v["student_id"], date__gt=v["last"], is_makeup=False
+            ).exclude(status__in=(OccurrenceStatus.CANCELLED, OccurrenceStatus.LEAVE)).order_by("date").first()
+            temp_leaves.append({
+                "student_id": v["student_id"], "name": v["name"], "note": v["note"],
+                "last_date": str(v["last"]), "days_left": (v["last"] - d).days,
+                "back_date": str(nxt.date) if nxt else "",
+                "back_in": (nxt.date - d).days if nxt else None,
+            })
+        temp_leaves.sort(key=lambda x: x["last_date"])
+
         # 수업외 등원(오늘 수업 없는데 등원 체크된 학생) 합성 행 추가
         adhoc_branch_ids = [int(bid)] if bid else view
         lessons.extend(_adhoc_lesson_rows(d, adhoc_branch_ids))
@@ -3820,7 +3848,7 @@ class DashboardAdminAPI(APIView):
         WD = ["월", "화", "수", "목", "금", "토", "일"]
         return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
                              "total": len(lessons), "present": len(att), "reservations": reservations,
-                             "enrolled_leads": enrolled})
+                             "enrolled_leads": enrolled, "temp_leaves": temp_leaves})
 
 
 def _kst_to_utc(d, hm):
