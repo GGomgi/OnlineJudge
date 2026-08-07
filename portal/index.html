@@ -1050,7 +1050,7 @@
 
     <!-- 보강 추가 모달 — 탭과 무관하게 항상 렌더링(오늘 운영·학생 상세 출결기록 어디서든 사용) -->
     <div v-if="makeupOpen" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="makeupOpen=false">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
         <div class="flex items-center justify-between px-5 py-3 border-b">
           <div class="font-bold">보강 추가</div>
           <button @click="makeupOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
