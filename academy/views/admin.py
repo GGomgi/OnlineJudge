@@ -2823,52 +2823,94 @@ class StudentStatusAdminAPI(APIView):
             reason=reason, effective_date=data.get("effective_date") or None, actor=request.user)
 
         # 등록상태에 따라 개별 시간표 자동 처리(+이력)
-        tt_msg = self._sync_timetables(u, to_status, request.user, reason)
+        tt_msg = self._sync_timetables(u, to_status, request.user, reason, data.get("effective_date"))
         return self.success({"timetable": tt_msg})
 
     @staticmethod
-    def _sync_timetables(student, to_status, actor, reason):
-        """휴원→일시중지(PAUSED), 재원→복원(ACTIVE), 퇴원→종료(ENDED). 변경 이력 기록.
-        휴원·퇴원 시 오늘 포함 이후로 이미 만들어져 있던(스냅샷) 정규 수업 인스턴스는
-        취소 처리해 오늘 운영·시간표 캘린더에서 오늘부터 안 보이게 함(이전 날짜 기록은 그대로 유지)."""
+    def _sync_timetables(student, to_status, actor, reason, effective_date=None):
+        """등록상태에 따라 개별 시간표를 정리한다.
+
+        시간표를 지우거나 숨기는 대신 '유효기간(active_until)'을 적용일 전날로 끊는 방식이다.
+        그래야 적용일 이전 기록(수업·등원 이력)은 그대로 남아 나중에 확인할 수 있고,
+        적용일 이후로는 시간표가 자동으로 안 잡힌다. 이미 만들어져 있던 적용일 이후 수업 중
+        실제 기록(등원·결석·비고·수업일지·연결된 보강)이 없는 것만 지운다.
+
+        - 휴원: 유효기간 끊고 PAUSED. 재등록 시 그 시점부터 새 기간으로 되살림.
+        - 퇴원: 유효기간 끊고 ENDED. 재등록해도 되살아나지 않아 새로 등록해야 함.
+        - 재등록: PAUSED 시간표를 복제해 적용일부터 새로 시작하는 시간표를 만든다.
+          (원본은 지난 기간 기록으로 그대로 남는다)
+        """
         from ..models import TimetableStatus
+        eff = effective_date
+        if isinstance(eff, str):
+            try:
+                eff = datetime.strptime(eff, "%Y-%m-%d").date()
+            except ValueError:
+                eff = None
+        if not eff:
+            eff = (now() + timedelta(hours=9)).date()
         slots = StudentTimetable.objects.filter(student=student)
-        changed = 0
+
+        if to_status == EnrollmentStatus.ENROLLED:
+            paused = list(slots.filter(status=TimetableStatus.PAUSED))
+            if not paused:
+                return "되살릴 시간표가 없습니다 — 시간표를 새로 등록해주세요."
+            made = 0
+            for s0 in paused:
+                # 적용일부터 다시 시작하는 새 시간표(원본은 지난 기간으로 보존)
+                if _find_slot_conflict(student.id, s0.weekday, s0.start_time, s0.duration_minutes,
+                                       eff, None, exclude_id=s0.id):
+                    continue
+                StudentTimetable.objects.create(
+                    student=student, branch=s0.branch, class_type=s0.class_type,
+                    weekday=s0.weekday, start_time=s0.start_time, duration_minutes=s0.duration_minutes,
+                    instructor=s0.instructor, program=s0.program, subject=s0.subject,
+                    frequency=s0.frequency, room=s0.room, status=TimetableStatus.ACTIVE,
+                    active_from=eff, active_until=None)
+                made += 1
+            label = "재등록 — %s부터 시간표 복원" % eff
+            TimetableChange.objects.create(
+                student=student, actor=actor, action="UPDATE",
+                reason=reason or "등록상태 변경 자동 처리",
+                detail=("%s (%d건)" % (label, made))[:255])
+            return "%s %d건" % (label, made)
+
         if to_status == EnrollmentStatus.ON_LEAVE:
             qs = slots.filter(status=TimetableStatus.ACTIVE)
-            changed = qs.count()
-            qs.update(status=TimetableStatus.PAUSED)
-            action, label = "UPDATE", "휴원 처리 — 시간표 일시중지"
-        elif to_status == EnrollmentStatus.ENROLLED:
-            qs = slots.filter(status=TimetableStatus.PAUSED)
-            changed = qs.count()
-            qs.update(status=TimetableStatus.ACTIVE)
-            action, label = "UPDATE", "재등록 — 시간표 복원"
-            # 휴원 때 취소해 둔 오늘 이후 수업을 되살린다. 이미 인스턴스가 있는 날짜는
-            # ensure_occurrences가 새로 만들지 않기 때문에, 여기서 복원하지 않으면 시간표는
-            # 살아났는데 정작 수업이 하나도 안 뜨는 상태가 된다.
-            today = (now() + timedelta(hours=9)).date()
-            LessonOccurrence.objects.filter(
-                student=student, date__gte=today, is_makeup=False, source_timetable__isnull=False,
-                status=OccurrenceStatus.CANCELLED).update(status=OccurrenceStatus.SCHEDULED)
+            new_status, label = TimetableStatus.PAUSED, "휴원 처리 — %s부터 시간표 중지" % eff
+            action = "UPDATE"
         elif to_status == EnrollmentStatus.WITHDRAWN:
             qs = slots.exclude(status=TimetableStatus.ENDED)
-            changed = qs.count()
-            qs.update(status=TimetableStatus.ENDED)
-            action, label = "DELETE", "퇴원 처리 — 시간표 종료"
+            new_status, label = TimetableStatus.ENDED, "퇴원 처리 — %s부터 시간표 종료" % eff
+            action = "DELETE"
         else:
             return ""
-        if to_status in (EnrollmentStatus.ON_LEAVE, EnrollmentStatus.WITHDRAWN):
-            today = (now() + timedelta(hours=9)).date()
-            LessonOccurrence.objects.filter(
-                student=student, date__gte=today, is_makeup=False, source_timetable__isnull=False,
-            ).exclude(status__in=(OccurrenceStatus.ABSENT, OccurrenceStatus.CANCELLED)).update(
-                status=OccurrenceStatus.CANCELLED)
-        if changed:
+
+        until = eff - timedelta(days=1)
+        changed = 0
+        for s0 in qs:
+            s0.status = new_status
+            # 적용일 이전부터 쓰던 시간표만 기간을 끊는다(적용일 이후 시작 예정이면 통째로 끝난 것으로 본다)
+            s0.active_until = until if (not s0.active_from or s0.active_from <= until) else s0.active_from
+            s0.save(update_fields=["status", "active_until"])
+            changed += 1
+
+        # 적용일 이후로 이미 만들어져 있던 수업 정리 — 실제 기록이 있는 건 사실이므로 남긴다
+        upcoming = list(LessonOccurrence.objects.filter(
+            student=student, date__gte=eff, is_makeup=False, source_timetable__isnull=False))
+        rec_ids = _occ_record_ids(upcoming)
+        removed = 0
+        for occ in upcoming:
+            if occ.id in rec_ids or occ.time_change_reason:
+                continue
+            occ.delete()
+            removed += 1
+        if changed or removed:
             TimetableChange.objects.create(
                 student=student, actor=actor, action=action,
                 reason=reason or "등록상태 변경 자동 처리",
-                detail=("%s (%d건)" % (label, changed))[:255])
+                detail=("%s (시간표 %d건%s)" % (label, changed,
+                        (", 예정 수업 %d건 정리" % removed) if removed else ""))[:255])
         return "%s %d건" % (label, changed) if changed else ""
 
 
