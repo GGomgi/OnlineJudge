@@ -364,7 +364,8 @@ createApp({
       </label>
       <div class="relative">
         <button @click="ratioSettingsOpen=!ratioSettingsOpen" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">⚙️ 화면 설정</button>
-        <div v-if="ratioSettingsOpen" class="absolute right-0 mt-1 w-72 bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-3 text-xs text-slate-300 space-y-3">
+        <div v-if="ratioSettingsOpen" @click="ratioSettingsOpen=false" class="fixed inset-0 z-40"></div>
+        <div v-if="ratioSettingsOpen" class="absolute right-0 mt-1 w-72 bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-3 text-xs text-slate-300 space-y-3 z-50">
           <div>
             <div class="flex items-center justify-between mb-1">
               <span>출결현황</span>

@@ -159,6 +159,7 @@
               <span class="text-lg leading-none">🔔</span>
               <span v-if="notiUnread>0" class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-[10px] leading-4 text-center">{{ notiUnread>99?'99+':notiUnread }}</span>
             </button>
+            <div v-if="notiOpen" @click="notiOpen=false" class="fixed inset-0 z-40"></div>
             <div v-if="notiOpen" class="absolute right-0 mt-1 w-80 max-h-96 overflow-auto bg-white text-slate-700 rounded-lg shadow-xl border z-50">
               <div class="flex items-center justify-between px-3 py-2 border-b text-xs">
                 <span class="font-semibold">알림</span>
@@ -178,6 +179,7 @@
             <button @click="settingsOpen=!settingsOpen" class="relative px-2 py-1 rounded hover:bg-slate-700" title="설정">
               <span class="text-lg leading-none">⚙️</span>
             </button>
+            <div v-if="settingsOpen" @click="settingsOpen=false" class="fixed inset-0 z-40"></div>
             <div v-if="settingsOpen" class="absolute right-0 mt-1 w-64 bg-white text-slate-700 rounded-lg shadow-xl border z-50 p-3 text-xs">
               <div class="font-semibold mb-2">화면 설정</div>
               <div class="flex items-center justify-between">
