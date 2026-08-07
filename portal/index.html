@@ -2143,8 +2143,11 @@
               <li>문제없으면 <b>확정 등록</b>으로 정상 행만 생성합니다.</li>
             </ol>
             <div class="flex flex-wrap gap-2 items-center">
-              <button @click="downloadBulkTemplate" class="btn-secondary text-sm">⬇ 양식 다운로드</button>
-              <input ref="bulkFile" type="file" accept=".xlsx,.xls,.csv" @change="onBulkFile" class="text-xs" />
+              <label class="btn-primary text-sm cursor-pointer">📂 파일 선택
+                <input ref="bulkFile" type="file" accept=".xlsx,.xls,.csv" @change="onBulkFile" class="hidden" />
+              </label>
+              <span v-if="bulkFileName" class="text-xs text-slate-500">{{ bulkFileName }}</span>
+              <button @click="downloadBulkTemplate" class="text-xs text-indigo-600 hover:underline">⬇ 양식 다운로드</button>
               <button v-if="bulkRows.length" @click="convertBulkRows" class="btn-secondary text-sm">🔄 변환</button>
               <button v-if="bulkRows.length" @click="downloadBulkReview" class="btn-secondary text-sm">⬇ 검토 데이터 다운로드</button>
               <span v-if="bulkConverted" class="text-xs text-emerald-600">✓ 변환됨 — 노란 칸이 바뀐 값입니다.</span>
@@ -3768,7 +3771,7 @@ const app = createApp({
       myClasses: [], myInd: [], myAtt: [],
       docPreview: { show:false, url:'', x:0, y:0 },
       students: [], stuSearch: '', stuSearch2: '', stuSearchRaw: '', stuSearch2Raw: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
-      bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false, bulkConverted: false,
+      bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false, bulkConverted: false, bulkFileName: '',
       enrollMode: false, enrollToken: '', enrollPrefill: null, enrollError: '', enrollDone: false,
       enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', memo:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       enrollHasPw: false,
@@ -6178,7 +6181,7 @@ const app = createApp({
     // ── 학생 관리 ──
     async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
     // ── 엑셀 일괄등록 ──
-    openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; this.bulkConverted=false; if(!(this.options.program||[]).length||!(this.options.program_language||[]).length) this.loadOptions(); if(!this.branches.length) this.loadBranches(); if(!this.ttInstructors.length) this.loadTtInstructors(); if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
+    openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; this.bulkConverted=false; this.bulkFileName=''; if(!(this.options.program||[]).length||!(this.options.program_language||[]).length) this.loadOptions(); if(!this.branches.length) this.loadBranches(); if(!this.ttInstructors.length) this.loadTtInstructors(); if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
     bulkTtSlots(){ return 4; },
     bulkColumns(){
       const cols = ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','보호자관계','등하원알림','기타보호자연락처','기타보호자관계','학생연락처','우편번호','주소','상세주소','등록과정','주횟수'];
@@ -6387,6 +6390,7 @@ const app = createApp({
     },
     onBulkFile(e){
       const file=e.target.files&&e.target.files[0]; if(!file) return;
+      this.bulkFileName = file.name;
       if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
       const reader=new FileReader();
       reader.onload=(ev)=>{

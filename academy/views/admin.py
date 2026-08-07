@@ -2051,6 +2051,22 @@ def _bulk_resolve_row(actor, row, branches, seen_ids):
                 tt_warns.append("담당 선생님을 찾을 수 없음(미배정으로 진행): '%s'" % nm)
         else:
             it["instructor_id"] = None
+    # 같은 학생 안에서 회차끼리 시간이 겹치는지 검사(주 2회 이상 + 수업시간 조합에서 자주 발생).
+    # 수업시간을 안 적었으면 학교급·주횟수 기본값으로 계산해 같은 기준으로 본다.
+    _def_dur = lesson_duration(r.get("school_type", ""), len(tt_items) or 1)
+    for i in range(len(tt_items)):
+        for j in range(i + 1, len(tt_items)):
+            a, b = tt_items[i], tt_items[j]
+            if a["weekday"] != b["weekday"]:
+                continue
+            if _time_overlaps(a["start_time"], a.get("duration") or _def_dur,
+                              b["start_time"], b.get("duration") or _def_dur):
+                res["error"] = ("%d회차와 %d회차 수업 시간이 겹칩니다: %s %s(%d분) ↔ %s(%d분)"
+                                % (i + 1, j + 1, _WD[a["weekday"]],
+                                   a["start_time"], a.get("duration") or _def_dur,
+                                   b["start_time"], b.get("duration") or _def_dur))
+                res["warnings"] = tt_warns
+                return res
     res["warnings"] = tt_warns
     res["timetable_preview"] = [
         "%s %s %s%s%s" % (_WD[it["weekday"]], it["start_time"], it["subject"],
