@@ -408,6 +408,7 @@ class StudentProfile(models.Model):
     school_type = models.CharField(max_length=16, blank=True, default="")
     school_name = models.CharField(max_length=64, blank=True, default="")
     grade = models.CharField(max_length=16, blank=True, default="")
+    legacy_url = models.CharField(max_length=500, blank=True, default="")  # 기존 관리 시트 등 이전 기록 링크
     enrollment_date = models.DateField(null=True, blank=True)
     enrollment_status = models.CharField(max_length=16, default=EnrollmentStatus.ENROLLED)
     lesson_start_date = models.DateField(null=True, blank=True)  # 수업 시작일(시간표 표시 기준)

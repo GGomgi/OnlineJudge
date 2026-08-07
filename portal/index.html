@@ -313,7 +313,17 @@
 
   <!-- 대시보드 학생 호버 팝오버 -->
   <div v-if="dashPop.show" @mouseenter="keepDashPop" @mouseleave="hideDashPop" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
-    <div class="font-bold text-sm mb-1 text-indigo-600 cursor-pointer hover:underline" @click="goStudentAttendFromDashPop">{{ dashPop.l.student_name }}</div>
+    <div class="font-bold text-sm mb-1 flex items-center gap-1">
+      <span class="text-indigo-600 cursor-pointer hover:underline" @click="goStudentAttendFromDashPop">{{ dashPop.l.student_name }}</span>
+      <a v-if="dashPop.l.legacy_url" :href="dashPop.l.legacy_url" target="_blank" rel="noopener"
+         class="text-[11px] font-normal px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">(구)</a>
+      <button v-else @click="editLegacyUrl(dashPop.l.student_id, '')"
+              class="text-[11px] font-normal px-1.5 py-0.5 rounded border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50">+ 구기록</button>
+    </div>
+    <div v-if="dashPop.l.legacy_url" class="mb-1 text-[10px] text-slate-400 break-all">
+      {{ dashPop.l.legacy_url }}
+      <button @click="editLegacyUrl(dashPop.l.student_id, dashPop.l.legacy_url)" class="ml-1 text-indigo-500 hover:underline">수정</button>
+    </div>
     <div class="text-slate-500">{{ dashPop.l.school_name }}{{ schoolSuffix(dashPop.l.school_type) }} {{ dashPop.l.grade ? dashPop.l.grade+'학년' : '' }}</div>
     <div class="mt-1.5 flex items-center gap-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span> <call-btn :phone="dashPop.l.parent_phone"></call-btn><sms-btn :phone="dashPop.l.parent_phone"></sms-btn></div>
     <div class="mt-1.5 flex items-center gap-1">학생: <call-btn :phone="dashPop.l.student_phone"></call-btn><sms-btn :phone="dashPop.l.student_phone"></sms-btn> <span class="text-slate-600">{{ dashPop.l.student_phone || '-' }}</span></div>
@@ -2274,11 +2284,29 @@
       <div v-if="stuDetail" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="closeStudent">
         <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
-            <div class="font-bold">{{ stuDetail.real_name || stuDetail.username }}
+            <button @click="goStudentNav(-1)" :disabled="!stuNavHas(-1)" :title="stuNavLabel(-1)"
+                    :class="['px-2 py-1 rounded text-lg leading-none shrink-0', stuNavHas(-1) ? 'text-slate-500 hover:bg-slate-100' : 'text-slate-200 cursor-not-allowed']">‹</button>
+            <div class="font-bold flex-1 min-w-0">{{ stuDetail.real_name || stuDetail.username }}
               <span class="text-xs font-normal text-slate-400">{{ stuDetail.username }} · {{ stuDetail.branch }}</span>
               <span :class="['ml-2 px-2 py-0.5 rounded text-xs', stuStatusBadge(stuDetail.enrollment_status).cls]">{{ stuStatusBadge(stuDetail.enrollment_status).label }}</span>
+              <!-- 기존 관리 시트 바로가기(포털 전환 기간용) -->
+              <span class="relative inline-block align-middle ml-2" @mouseenter="legacyPopFor=stuDetail.id" @mouseleave="legacyPopFor=null">
+                <a v-if="stuLegacyUrl" :href="stuLegacyUrl" target="_blank" rel="noopener"
+                   class="text-xs font-normal px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">(이전기록)</a>
+                <button v-else-if="stuCanEdit" @click="editLegacyUrl(stuDetail.id, '')"
+                        class="text-xs font-normal px-1.5 py-0.5 rounded border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50">+ 이전기록 등록</button>
+                <span v-if="legacyPopFor===stuDetail.id && stuLegacyUrl"
+                      class="absolute left-0 top-full mt-1 z-50 w-72 bg-white border rounded-lg shadow-xl p-2 text-[11px] font-normal text-slate-600 break-all">
+                  {{ stuLegacyUrl }}
+                  <span v-if="stuCanEdit" class="block mt-1 text-right">
+                    <button @click.prevent="editLegacyUrl(stuDetail.id, stuLegacyUrl)" class="text-indigo-600 hover:underline">수정</button>
+                  </span>
+                </span>
+              </span>
             </div>
-            <button @click="closeStudent" class="text-slate-400 hover:text-slate-600">✕</button>
+            <button @click="goStudentNav(1)" :disabled="!stuNavHas(1)" :title="stuNavLabel(1)"
+                    :class="['px-2 py-1 rounded text-lg leading-none shrink-0', stuNavHas(1) ? 'text-slate-500 hover:bg-slate-100' : 'text-slate-200 cursor-not-allowed']">›</button>
+            <button @click="closeStudent" class="text-slate-400 hover:text-slate-600 shrink-0">✕</button>
           </div>
           <!-- 서브탭 -->
           <div class="flex gap-1 px-5 pt-3 border-b text-sm">
@@ -3797,6 +3825,7 @@ const app = createApp({
       stuAttSelected: [], stuAttBulkForm: { note_tag:'', note:'', no_makeup:false, start_time:'' }, stuAttBulkMode: false,
       stuProgress: [], stuProgForm: { date:'', content:'', homework:'', feedback:'' },
       stuProgView: 'cal', stuProgCalMonth: '', stuProgCalDays: {},
+      legacyPopFor: null,
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
       stuTtShowHistory: false, stuTtEditMode: false,
@@ -4830,7 +4859,48 @@ const app = createApp({
         return (a.weekday-b.weekday) || String(a.start_time||'').localeCompare(String(b.start_time||''));
       });
     },
+    stuLegacyUrl(){ return (this.stuDetail && this.stuDetail.profile && this.stuDetail.profile.legacy_url) || ''; },
     stuTtDirtyCount(){ return this.stuTimetables.filter(s=>s.id && this.ttRowDirty(s)).length; },
+    // 학생 상세: 목록에 보이는 순서(기본 원번순) 그대로 이전/다음 학생으로 이동
+    stuNavList(){ return this.filteredStudents || []; },
+    stuNavIndex(){
+      if (!this.stuDetail) return -1;
+      return this.stuNavList().findIndex(x=>x.id===this.stuDetail.id);
+    },
+    stuNavHas(delta){
+      const i = this.stuNavIndex();
+      return i >= 0 && !!this.stuNavList()[i+delta];
+    },
+    stuNavLabel(delta){
+      const i = this.stuNavIndex(); const t = i>=0 ? this.stuNavList()[i+delta] : null;
+      if (!t) return delta<0 ? '첫 학생입니다' : '마지막 학생입니다';
+      return (delta<0?'이전: ':'다음: ') + (t.real_name||t.username) + (t.enroll_no ? ' ('+t.enroll_no+')' : '');
+    },
+    async goStudentNav(delta){
+      const i = this.stuNavIndex(); if (i < 0) return;
+      const t = this.stuNavList()[i+delta];
+      if (!t) return this.notify(delta<0 ? '첫 학생입니다.' : '마지막 학생입니다.', false);
+      const keep = this.stuTab;   // 보고 있던 탭 유지 — 학생만 바뀌게
+      await this.openStudent(t);
+      if (keep && keep !== 'info') this.selectStuTab(keep);
+    },
+    // 기존 관리 시트 링크(포털 전환 기간용 바로가기)
+    async editLegacyUrl(studentId, cur){
+      const v = window.prompt('이전 기록 링크 주소 (비우면 삭제)\nhttp:// 또는 https:// 로 시작해야 합니다.', cur||'');
+      if (v === null) return;
+      const url = v.trim();
+      if (url && !/^https?:\/\//i.test(url)) return this.notify('주소는 http:// 또는 https:// 로 시작해야 합니다.', false);
+      try {
+        await api('POST','/api/admin/academy/student_legacy_url', { student_id:studentId, url });
+        this.notify(url ? '이전 기록 링크가 저장되었습니다.' : '이전 기록 링크를 삭제했습니다.');
+        if (this.stuDetail && this.stuDetail.id===studentId){
+          await this.refreshStuDetail();
+          if (this.stuForm) this.stuForm.legacy_url = url;
+        }
+        if (this.dashPop && this.dashPop.l && this.dashPop.l.student_id===studentId) this.dashPop.l.legacy_url = url;
+        if (this.tab==='dashboard') this.loadDashboard();
+      } catch(e){ this.notify(e.message,false); }
+    },
     truncate(s,n){ s=s||''; return s.length>n ? s.slice(0,n)+'...' : s; },
     showCalResv(rv,date,e){ this.resvPop={ show:true, at:(date+' '+rv.time+' · '+(rv.student_name||'')), note:rv.note, by:'', created:'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
     instrColor(instructorId){

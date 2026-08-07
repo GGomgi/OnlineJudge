@@ -2610,6 +2610,7 @@ def _student_profile_dict(sp):
         "gender": sp.gender or "",
         "zipcode": sp.zipcode or "", "address": sp.address or "", "address_detail": sp.address_detail or "",
         "student_phone": sp.student_phone or "",
+        "legacy_url": sp.legacy_url or "",
         "parent_name": sp.parent_name or "", "parent_phone": sp.parent_phone or "",
         "parent_relation": sp.parent_relation or "", "notify_optin": sp.notify_optin,
         "guardian2_phone": sp.guardian2_phone or "", "guardian2_relation": sp.guardian2_relation or "",
@@ -3608,7 +3609,7 @@ def _adhoc_lesson_rows(d, branch_ids):
             "biweekly": False, "is_makeup": False, "status": "SCHEDULED", "lesson_note": "", "no_makeup": False,
             "school_type": (sp.school_type if sp else ""), "school_name": (sp.school_name if sp else ""),
             "grade": (sp.grade if sp else ""), "parent_phone": (sp.parent_phone if sp else ""),
-            "student_phone": (sp.student_phone if sp else ""),
+            "student_phone": (sp.student_phone if sp else ""), "legacy_url": (sp.legacy_url if sp else ""),
             "att": {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at),
                     "note_tag": a.note_tag, "note": a.note},
             "progress": None,
@@ -3666,6 +3667,7 @@ class DashboardAdminAPI(APIView):
                 "grade": (sp.grade if sp else ""),
                 "parent_phone": (sp.parent_phone if sp else ""),
                 "student_phone": (sp.student_phone if sp else ""),
+                "legacy_url": (sp.legacy_url if sp else ""),
             })
         att = {}
         for a in DailyAttendance.objects.filter(date=d, student_id__in=sids):
@@ -4670,6 +4672,29 @@ class MakeupAddAdminAPI(APIView):
                     str(d), tm, dur, subj or "보강",
                     (" · " + _name_of(instr_u)) if instr_u else ""))[:255])
         return self.success({"occ_id": occ.id})
+
+
+class StudentLegacyUrlAPI(APIView):
+    """학생별 '이전 기록 링크'(기존 관리 스프레드시트 등) 저장/삭제.
+    포털 전환 기간에 예전 시트를 같이 보느라 왔다갔다 하는 수고를 줄이기 위한 바로가기."""
+    @admin_role_required
+    def post(self, request):
+        u = User.objects.filter(id=request.data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        sp = getattr(u, "student_profile", None)
+        if not sp:
+            return self.error("등록 정보가 없습니다.")
+        url = (request.data.get("url") or "").strip()
+        # 링크로 그대로 열리는 값이라 javascript: 같은 스킴이 들어가지 않도록 http(s)만 허용
+        if url and not (url.startswith("http://") or url.startswith("https://")):
+            return self.error("주소는 http:// 또는 https:// 로 시작해야 합니다.")
+        sp.legacy_url = url[:500]
+        sp.save(update_fields=["legacy_url"])
+        return self.success({"legacy_url": sp.legacy_url})
 
 
 class StudentLessonCandidatesAPI(APIView):

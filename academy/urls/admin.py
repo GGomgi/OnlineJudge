@@ -22,7 +22,7 @@ from ..views.admin import (AssignRoleAPI, StaffAdminAPI, InstructorListAPI, Staf
                            LessonEditAdminAPI, PendingMakeupAPI, LessonAbsenceAPI,
                            LessonProgressAdminAPI, MsgTemplateGroupAdminAPI, MsgTemplateAdminAPI,
                            FixedTemplateAdminAPI, KioskUrlAdminAPI, KioskDeviceListAPI, KioskPinAdminAPI, KioskDeviceActionAPI,
-                           StudentLessonCandidatesAPI, AdhocMakeupLinkAPI, EnsureOccurrenceAdminAPI,
+                           StudentLessonCandidatesAPI, StudentLegacyUrlAPI, AdhocMakeupLinkAPI, EnsureOccurrenceAdminAPI,
                            StudentAttendanceHistoryAPI, StudentTempLeaveAPI)
 
 urlpatterns = [
@@ -88,6 +88,7 @@ urlpatterns = [
     url(r"^academy/lesson_edit/?$", LessonEditAdminAPI.as_view(), name="academy_lesson_edit"),
     url(r"^academy/pending_makeup/?$", PendingMakeupAPI.as_view(), name="academy_pending_makeup"),
     url(r"^academy/student_lesson_candidates/?$", StudentLessonCandidatesAPI.as_view(), name="academy_student_lesson_candidates"),
+    url(r"^academy/student_legacy_url/?$", StudentLegacyUrlAPI.as_view(), name="academy_student_legacy_url"),
     url(r"^academy/student_attendance_history/?$", StudentAttendanceHistoryAPI.as_view(), name="academy_student_attendance_history"),
     url(r"^academy/student_temp_leave/?$", StudentTempLeaveAPI.as_view(), name="academy_student_temp_leave"),
     url(r"^academy/adhoc_makeup_link/?$", AdhocMakeupLinkAPI.as_view(), name="academy_adhoc_makeup_link"),
