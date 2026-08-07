@@ -3655,7 +3655,7 @@ def _adhoc_lesson_rows(d, branch_ids):
             "instructor": _name_of(tt.instructor) if (tt and tt.instructor_id) else "미배정",
             "branch": (prof.branch.name if prof and prof.branch_id else ""),
             "branch_id": (prof.branch_id if prof else None),
-            "biweekly": False, "is_makeup": False, "status": "SCHEDULED", "lesson_note": "", "no_makeup": False,
+            "biweekly": False, "is_makeup": False, "status": "SCHEDULED", "lesson_note": "", "no_makeup": False, "no_makeup_kind": "",
             "school_type": (sp.school_type if sp else ""), "school_name": (sp.school_name if sp else ""),
             "grade": (sp.grade if sp else ""), "parent_phone": (sp.parent_phone if sp else ""),
             "student_phone": (sp.student_phone if sp else ""), "legacy_url": (sp.legacy_url if sp else ""),
@@ -3708,6 +3708,7 @@ class DashboardAdminAPI(APIView):
                 "branch": (o.branch.name if o.branch_id else ""),
                 "biweekly": biweekly, "is_makeup": o.is_makeup,
                 "status": o.status, "lesson_note": o.note, "no_makeup": o.no_makeup,
+                "no_makeup_kind": o.no_makeup_kind,
                 "_absence_date": (str(o.makeup_for.date) if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
                 "_absence_time": (str(o.makeup_for.start_time)[:5] if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
                 "_absence_occid": (o.makeup_for_id if (o.is_makeup and o.makeup_for_id) else None),
@@ -4151,7 +4152,7 @@ class TimetableCalendarAPI(APIView):
         if sid:
             occ_q = occ_q.filter(student_id=sid)
         overlay = {}
-        for o in occ_q.values("source_timetable_id", "date", "status", "id", "note", "no_makeup",
+        for o in occ_q.values("source_timetable_id", "date", "status", "id", "note", "no_makeup", "no_makeup_kind",
                                "start_time", "duration_minutes", "instructor_id", "program", "subject", "student_id"):
             overlay[(o["source_timetable_id"], str(o["date"]))] = o
         ov_instr_ids = {o["instructor_id"] for o in overlay.values() if o["instructor_id"]}
@@ -4234,6 +4235,7 @@ class TimetableCalendarAPI(APIView):
                               "occ_id": (ov["id"] if ov else None),
                               "lesson_note": (ov["note"] if ov else ""),
                               "no_makeup": bool(ov["no_makeup"]) if ov else False,
+                              "no_makeup_kind": (ov["no_makeup_kind"] if ov else ""),
                               "linked": _linked_for(ov),
                               "att": att_map.get((s.student_id, str(cur)), {"in": "", "out": "", "note_tag": "", "note": ""}),
                               "progress": (prog_by_occ.get(ov["id"]) if ov else None)})
@@ -4358,13 +4360,14 @@ class LessonStatusAdminAPI(APIView):
             return self.error("상태 값이 올바르지 않습니다.")
         if st == OccurrenceStatus.CANCELLED and not o.is_makeup:
             return self.error("보강 건만 취소할 수 있습니다.")
-        prev_status = o.status
+        prev_status, prev_nm, prev_kind = o.status, o.no_makeup, o.no_makeup_kind
         o.status = st
         if "note" in data:
             o.note = (data.get("note") or "").strip()
         if "no_makeup" in data:
             # 명시적으로 넘어온 값을 우선(조퇴예정 등 SCHEDULED 상태에서도 "보강 안 함" 지정 가능하도록)
             o.no_makeup = bool(data.get("no_makeup"))
+            o.no_makeup_kind = (data.get("no_makeup_kind") or "") if o.no_makeup else ""
         elif st in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.LEAVE):
             o.no_makeup = False
         if st == OccurrenceStatus.CANCELLED:
@@ -4378,17 +4381,22 @@ class LessonStatusAdminAPI(APIView):
                 detail=("%s 보강 취소: %s %s분 %s%s" % (
                     str(o.date), str(o.start_time)[:5], o.duration_minutes, o.subject or "",
                     (" · " + _name_of(o.instructor)) if o.instructor_id else ""))[:255])
-        elif prev_status != st:
-            # 결석·임시휴원·예정 복원도 누가 언제 했는지 남긴다(예전엔 보강 취소만 기록돼 추적 불가였음)
+        elif prev_status != st or (prev_nm, prev_kind) != (o.no_makeup, o.no_makeup_kind):
+            # 결석·임시휴원·예정 복원과 보강 처리 변경도 누가 언제 했는지 남긴다
+            # (예전엔 보강 취소만 기록돼 추적 불가였음)
             _lbl = {OccurrenceStatus.ABSENT: "결석 처리", OccurrenceStatus.LEAVE: "임시휴원 처리",
                     OccurrenceStatus.SCHEDULED: "예정으로 복원"}.get(st, st)
-            if st == OccurrenceStatus.ABSENT and o.no_makeup:
-                _lbl += "(보강없음/숙제대체)"
+            if prev_status == st:
+                _lbl = "결석 보강 처리 변경" if st == OccurrenceStatus.ABSENT else "%s(수정)" % _lbl
+            if st == OccurrenceStatus.ABSENT:
+                _lbl += ("(보강없음/숙제대체)" if o.no_makeup_kind == "HOMEWORK"
+                         else ("(보강없음/숙제없음)" if o.no_makeup else "(보강 예정·미정)"))
             TimetableChange.objects.create(student=o.student, actor=request.user, action="UPDATE",
                 reason=(data.get("reason") or o.note or ""),
                 detail=("%s %s: %s %s분 %s" % (str(o.date), _lbl, str(o.start_time)[:5],
                                                o.duration_minutes, o.subject or ""))[:255])
-        return self.success({"status": o.status, "note": o.note, "no_makeup": o.no_makeup})
+        return self.success({"status": o.status, "note": o.note, "no_makeup": o.no_makeup,
+                             "no_makeup_kind": o.no_makeup_kind})
 
 
 class LessonAbsenceAPI(APIView):
@@ -4990,7 +4998,8 @@ class StudentAttendanceHistoryAPI(APIView):
                   "program": o.program or "", "duration_minutes": o.duration_minutes,
                   "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
                   "instructor_id": o.instructor_id,
-                  "status": o.status, "is_makeup": o.is_makeup, "no_makeup": o.no_makeup, "lesson_note": o.note,
+                  "status": o.status, "is_makeup": o.is_makeup, "no_makeup": o.no_makeup,
+                  "no_makeup_kind": o.no_makeup_kind, "lesson_note": o.note,
                   "time_changed": time_changed,
                   "orig_time": (str(o.source_timetable.start_time)[:5] if (time_changed and o.source_timetable) else ""),
                   "time_change_reason": (o.time_change_reason if time_changed else ""),
