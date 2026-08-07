@@ -3774,33 +3774,43 @@ class DashboardAdminAPI(APIView):
                     kind = _link_target_kind(tstatus, target_att_tag.get((tsid, tdate))) or "absence"
                 l["linked"] = {"kind": kind, "occ_id": tid, "date": l["_absence_date"], "start_time": l["_absence_time"]}
             del l["_absence_date"], l["_absence_time"], l["_absence_occid"]
-        # 임시휴원 중인 학생 — 기간이 끝나면 자동 복귀라 잊기 쉬워서 남은 일정을 같이 보여준다
-        tl_q = LessonOccurrence.objects.filter(
-            date__gte=d, status=OccurrenceStatus.LEAVE, is_makeup=False
-        ).select_related("student", "student__userprofile")
+        # 임시휴원 — 기간이 끝나면 자동 복귀라 잊기 쉬워서 남은 일정을 같이 보여준다.
+        # '연속된 한 구간'만 본다: 그 학생의 수업을 날짜순으로 훑다가 중간에 정상 수업이 끼면 거기서 끊는다
+        # (하루씩 띄엄띄엄 쉬는 걸 하나로 묶으면 실제보다 길게 쉬는 것처럼 보임).
+        # 아직 시작 전이면 시작 10일 전부터만 예고한다(주 1회 오는 학생도 등원 전에 미리 알 수 있게).
+        TL_LEAD_DAYS = 10
+        tl_q = LessonOccurrence.objects.filter(date__gte=d, is_makeup=False)\
+            .exclude(status=OccurrenceStatus.CANCELLED).select_related("student", "student__userprofile")
         if view is not None:
             tl_q = tl_q.filter(branch_id__in=view)
         if bid:
             tl_q = tl_q.filter(branch_id=bid)
-        tl = {}
+        by_student = {}
         for o in tl_q:
-            cur = tl.setdefault(o.student_id, {"student_id": o.student_id, "name": _name_of(o.student),
-                                               "last": o.date, "note": o.note or ""})
-            if o.date > cur["last"]:
-                cur["last"] = o.date
-                cur["note"] = o.note or cur["note"]
+            by_student.setdefault(o.student_id, []).append(o)
         temp_leaves = []
-        for v in tl.values():
-            nxt = LessonOccurrence.objects.filter(
-                student_id=v["student_id"], date__gt=v["last"], is_makeup=False
-            ).exclude(status__in=(OccurrenceStatus.CANCELLED, OccurrenceStatus.LEAVE)).order_by("date").first()
+        for sid, occs in by_student.items():
+            occs.sort(key=lambda x: (x.date, x.start_time))
+            first = next((k for k, o in enumerate(occs) if o.status == OccurrenceStatus.LEAVE), None)
+            if first is None:
+                continue
+            start = occs[first].date
+            if (start - d).days > TL_LEAD_DAYS:
+                continue
+            end = first
+            while end + 1 < len(occs) and occs[end + 1].status == OccurrenceStatus.LEAVE:
+                end += 1
+            nxt = occs[end + 1] if end + 1 < len(occs) else None
+            note = next((o.note for o in occs[first:end + 1] if o.note), "")
             temp_leaves.append({
-                "student_id": v["student_id"], "name": v["name"], "note": v["note"],
-                "last_date": str(v["last"]), "days_left": (v["last"] - d).days,
+                "student_id": sid, "name": _name_of(occs[first].student), "note": note,
+                "start_date": str(start), "starts_in": (start - d).days, "upcoming": start > d,
+                "last_date": str(occs[end].date), "days_left": (occs[end].date - d).days,
+                "count": end - first + 1,
                 "back_date": str(nxt.date) if nxt else "",
                 "back_in": (nxt.date - d).days if nxt else None,
             })
-        temp_leaves.sort(key=lambda x: x["last_date"])
+        temp_leaves.sort(key=lambda x: (x["upcoming"], x["last_date"]))
 
         # 수업외 등원(오늘 수업 없는데 등원 체크된 학생) 합성 행 추가
         adhoc_branch_ids = [int(bid)] if bid else view
