@@ -311,18 +311,29 @@
     <div v-if="progPop.feedback" class="mt-1 pt-1 border-t text-slate-500">피드백: {{ progPop.feedback }}</div>
   </div>
 
+  <!-- 이전/다음 학생 버튼 안내 팝오버(브라우저 기본 툴팁은 느려서 직접 표시) -->
+  <div v-if="navTip.show" class="fixed z-[70] px-2 py-1 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
+       :style="{ left: navTip.x+'px', top: navTip.y+'px' }">{{ navTip.text }}</div>
+
   <!-- 대시보드 학생 호버 팝오버 -->
   <div v-if="dashPop.show" @mouseenter="keepDashPop" @mouseleave="hideDashPop" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
     <div class="font-bold text-sm mb-1 flex items-center gap-1">
       <span class="text-indigo-600 cursor-pointer hover:underline" @click="goStudentAttendFromDashPop">{{ dashPop.l.student_name }}</span>
       <a v-if="dashPop.l.legacy_url" :href="dashPop.l.legacy_url" target="_blank" rel="noopener"
-         class="text-[11px] font-normal px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">(구)</a>
-      <button v-else @click="editLegacyUrl(dashPop.l.student_id, '')"
-              class="text-[11px] font-normal px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 hover:bg-slate-200">(구)</button>
+         class="text-[11px] font-normal px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">(이전기록)</a>
+      <span v-else class="text-[11px] font-normal px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">(이전기록없음)</span>
     </div>
-    <div v-if="dashPop.l.legacy_url" class="mb-1 text-[10px] text-slate-400 break-all">
-      {{ dashPop.l.legacy_url }}
-      <button @click="editLegacyUrl(dashPop.l.student_id, dashPop.l.legacy_url)" class="ml-1 text-indigo-500 hover:underline">수정</button>
+    <div v-if="legacyEdit.id===dashPop.l.student_id" class="mb-1">
+      <input v-model="legacyEdit.url" @keyup.enter="saveLegacyEdit" placeholder="https://..." class="input py-1 text-[11px] w-full" />
+      <div class="mt-1 text-right">
+        <button @click="saveLegacyEdit" class="text-indigo-600 hover:underline mr-2">저장</button>
+        <button @click="cancelLegacyEdit" class="text-slate-400 hover:underline">취소</button>
+      </div>
+      <div class="text-[10px] text-slate-400">비우고 저장하면 삭제됩니다.</div>
+    </div>
+    <div v-else class="mb-1 text-[10px] text-slate-400 break-all">
+      {{ dashPop.l.legacy_url || '등록된 이전기록 링크가 없습니다.' }}
+      <button @click="startLegacyEdit(dashPop.l.student_id, dashPop.l.legacy_url||'')" class="ml-1 text-indigo-500 hover:underline">{{ dashPop.l.legacy_url ? '수정' : '등록' }}</button>
     </div>
     <div class="text-slate-500">{{ dashPop.l.school_name }}{{ schoolSuffix(dashPop.l.school_type) }} {{ dashPop.l.grade ? dashPop.l.grade+'학년' : '' }}</div>
     <div class="mt-1.5 flex items-center gap-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span> <call-btn :phone="dashPop.l.parent_phone"></call-btn><sms-btn :phone="dashPop.l.parent_phone"></sms-btn></div>
@@ -2284,7 +2295,8 @@
       <div v-if="stuDetail" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="closeStudent">
         <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
-            <button @click="goStudentNav(-1)" :disabled="!stuNavHas(-1)" :title="stuNavLabel(-1)"
+            <button @click="goStudentNav(-1)" :disabled="!stuNavHas(-1)"
+                    @mouseenter="showNavTip(stuNavLabel(-1),$event)" @mouseleave="hideNavTip"
                     :class="['flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg border text-xs shrink-0',
                              stuNavHas(-1) ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-slate-100 text-slate-300 cursor-not-allowed']">
               <span class="text-base leading-none">‹</span>이전</button>
@@ -2296,17 +2308,28 @@
                 <a v-if="stuLegacyUrl()" :href="stuLegacyUrl()" target="_blank" rel="noopener"
                    class="text-xs font-normal px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">(이전기록)</a>
                 <span v-else class="text-xs font-normal px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 cursor-default">(이전기록)</span>
-                <span v-if="legacyPopFor===stuDetail.id" class="absolute left-0 top-full pt-1 z-50 w-72 block">
+                <span v-if="legacyPopFor===stuDetail.id || legacyEdit.id===stuDetail.id" class="absolute left-0 top-full pt-1 z-50 w-80 block">
                   <span class="block bg-white border rounded-lg shadow-xl p-2 text-[11px] font-normal text-slate-600 break-all">
-                    {{ stuLegacyUrl() || '등록된 링크가 없습니다.' }}
-                    <span v-if="stuCanEdit" class="block mt-1 text-right">
-                      <button @click.prevent="editLegacyUrl(stuDetail.id, stuLegacyUrl())" class="text-indigo-600 hover:underline">{{ stuLegacyUrl() ? '수정' : '등록' }}</button>
-                    </span>
+                    <template v-if="legacyEdit.id===stuDetail.id">
+                      <input v-model="legacyEdit.url" @keyup.enter="saveLegacyEdit" placeholder="https://..." class="input py-1 text-[11px] w-full" />
+                      <span class="block mt-1 text-right">
+                        <button @click.prevent="saveLegacyEdit" class="text-indigo-600 hover:underline mr-2">저장</button>
+                        <button @click.prevent="cancelLegacyEdit" class="text-slate-400 hover:underline">취소</button>
+                      </span>
+                      <span class="block text-slate-400 mt-0.5">비우고 저장하면 삭제됩니다.</span>
+                    </template>
+                    <template v-else>
+                      {{ stuLegacyUrl() || '등록된 링크가 없습니다.' }}
+                      <span v-if="stuCanEdit" class="block mt-1 text-right">
+                        <button @click.prevent="startLegacyEdit(stuDetail.id, stuLegacyUrl())" class="text-indigo-600 hover:underline">{{ stuLegacyUrl() ? '수정' : '등록' }}</button>
+                      </span>
+                    </template>
                   </span>
                 </span>
               </span>
             </div>
-            <button @click="goStudentNav(1)" :disabled="!stuNavHas(1)" :title="stuNavLabel(1)"
+            <button @click="goStudentNav(1)" :disabled="!stuNavHas(1)"
+                    @mouseenter="showNavTip(stuNavLabel(1),$event)" @mouseleave="hideNavTip"
                     :class="['flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg border text-xs shrink-0',
                              stuNavHas(1) ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-slate-100 text-slate-300 cursor-not-allowed']">
               다음<span class="text-base leading-none">›</span></button>
@@ -3829,7 +3852,8 @@ const app = createApp({
       stuAttSelected: [], stuAttBulkForm: { note_tag:'', note:'', no_makeup:false, start_time:'' }, stuAttBulkMode: false,
       stuProgress: [], stuProgForm: { date:'', content:'', homework:'', feedback:'' },
       stuProgView: 'cal', stuProgCalMonth: '', stuProgCalDays: {},
-      legacyPopFor: null, _legacyPopTimer: null,
+      legacyPopFor: null, _legacyPopTimer: null, legacyEdit: { id:null, url:'' },
+      navTip: { show:false, x:0, y:0, text:'' },
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
       stuTtShowHistory: false, stuTtEditMode: false,
@@ -4865,7 +4889,28 @@ const app = createApp({
     },
     stuLegacyUrl(){ return (this.stuDetail && this.stuDetail.profile && this.stuDetail.profile.legacy_url) || ''; },
     legacyPopEnter(id){ clearTimeout(this._legacyPopTimer); this.legacyPopFor = id; },
-    legacyPopLeave(){ clearTimeout(this._legacyPopTimer); this._legacyPopTimer = setTimeout(()=>{ this.legacyPopFor = null; }, 250); },
+    legacyPopLeave(){
+      clearTimeout(this._legacyPopTimer);
+      // 편집 중이면 마우스가 벗어나도 닫지 않는다(입력 도중 사라지면 못 씀)
+      this._legacyPopTimer = setTimeout(()=>{ if (!this.legacyEdit.id) this.legacyPopFor = null; }, 250);
+    },
+    showNavTip(text, e){ this.navTip = { show:true, text, x:Math.min(e.clientX+10, window.innerWidth-220), y:e.clientY+18 }; },
+    hideNavTip(){ this.navTip.show = false; },
+    startLegacyEdit(id, cur){ this.legacyEdit = { id, url: cur||'' }; this.legacyPopFor = id; clearTimeout(this._dashPopTimer); },
+    cancelLegacyEdit(){ this.legacyEdit = { id:null, url:'' }; },
+    async saveLegacyEdit(){
+      const id = this.legacyEdit.id; if (!id) return;
+      const url = (this.legacyEdit.url||'').trim();
+      if (url && !/^https?:\/\//i.test(url)) return this.notify('주소는 http:// 또는 https:// 로 시작해야 합니다.', false);
+      try {
+        await api('POST','/api/admin/academy/student_legacy_url', { student_id:id, url });
+        this.notify(url ? '이전 기록 링크가 저장되었습니다.' : '이전 기록 링크를 삭제했습니다.');
+        this.legacyEdit = { id:null, url:'' };
+        if (this.stuDetail && this.stuDetail.id===id) await this.refreshStuDetail();
+        if (this.dashPop && this.dashPop.l && this.dashPop.l.student_id===id) this.dashPop.l.legacy_url = url;
+        if (this.tab==='dashboard') this.loadDashboard();
+      } catch(e){ this.notify(e.message,false); }
+    },
     stuTtDirtyCount(){ return this.stuTimetables.filter(s=>s.id && this.ttRowDirty(s)).length; },
     // 학생 상세: 목록에 보이는 순서(기본 원번순) 그대로 이전/다음 학생으로 이동
     stuNavList(){ return this.filteredStudents || []; },
@@ -4889,23 +4934,6 @@ const app = createApp({
       const keep = this.stuTab;   // 보고 있던 탭 유지 — 학생만 바뀌게
       await this.openStudent(t);
       if (keep && keep !== 'info') this.selectStuTab(keep);
-    },
-    // 기존 관리 시트 링크(포털 전환 기간용 바로가기)
-    async editLegacyUrl(studentId, cur){
-      const v = window.prompt('이전 기록 링크 주소 (비우면 삭제)\nhttp:// 또는 https:// 로 시작해야 합니다.', cur||'');
-      if (v === null) return;
-      const url = v.trim();
-      if (url && !/^https?:\/\//i.test(url)) return this.notify('주소는 http:// 또는 https:// 로 시작해야 합니다.', false);
-      try {
-        await api('POST','/api/admin/academy/student_legacy_url', { student_id:studentId, url });
-        this.notify(url ? '이전 기록 링크가 저장되었습니다.' : '이전 기록 링크를 삭제했습니다.');
-        if (this.stuDetail && this.stuDetail.id===studentId){
-          await this.refreshStuDetail();
-          if (this.stuForm) this.stuForm.legacy_url = url;
-        }
-        if (this.dashPop && this.dashPop.l && this.dashPop.l.student_id===studentId) this.dashPop.l.legacy_url = url;
-        if (this.tab==='dashboard') this.loadDashboard();
-      } catch(e){ this.notify(e.message,false); }
     },
     truncate(s,n){ s=s||''; return s.length>n ? s.slice(0,n)+'...' : s; },
     showCalResv(rv,date,e){ this.resvPop={ show:true, at:(date+' '+rv.time+' · '+(rv.student_name||'')), note:rv.note, by:'', created:'', x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-140) }; },
@@ -5784,7 +5812,7 @@ const app = createApp({
     attShiftOut(delta){ if(!this.attForm.out) return; this.attForm.out=this.shiftHM(this.attForm.out,delta); },
     showDashPop(l,e){ clearTimeout(this._dashPopTimer); this.dashPop={ show:true, l, x:Math.min(e.clientX+8,window.innerWidth-280), y:Math.min(e.clientY+8,window.innerHeight-180) }; },
     keepDashPop(){ clearTimeout(this._dashPopTimer); },
-    hideDashPop(){ clearTimeout(this._dashPopTimer); this._dashPopTimer=setTimeout(()=>{ this.dashPop.show=false; }, 250); },
+    hideDashPop(){ clearTimeout(this._dashPopTimer); this._dashPopTimer=setTimeout(()=>{ if (!this.legacyEdit.id) this.dashPop.show=false; }, 250); },
     async goStudentAttend(studentId){
       if (!studentId) return;
       this.go('students');
