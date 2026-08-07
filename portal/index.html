@@ -3805,7 +3805,7 @@
       </div>
 
       <!-- 아직 준비 중인 메뉴 -->
-      <div v-if="hrTab==='attend' || hrTab==='payroll' || hrTab==='doc'" class="bg-white rounded-xl shadow-sm p-10 text-center text-sm text-slate-400">
+      <div v-if="hrTab==='todo' || hrTab==='attend' || hrTab==='payroll' || hrTab==='doc'" class="bg-white rounded-xl shadow-sm p-10 text-center text-sm text-slate-400">
         준비 중인 기능입니다.
       </div>
     </section>
@@ -3908,8 +3908,9 @@ const app = createApp({
       legacyPopFor: null, _legacyPopTimer: null, legacyEdit: { id:null, url:'' },
       navTip: { show:false, x:0, y:0, text:'' },
       hrTab: 'me',
-      hrTabs: [ {k:'me',l:'내 정보'}, {k:'hrinfo',l:'인사 정보'}, {k:'attend',l:'근태 관리'},
-                {k:'payroll',l:'급여 명세'}, {k:'doc',l:'서류함'}, {k:'activity',l:'사용 이력'} ],
+      hrTabs: [ {k:'me',l:'내 정보'}, {k:'hrinfo',l:'인사 정보'}, {k:'todo',l:'할 일'},
+                {k:'attend',l:'근태 관리'}, {k:'payroll',l:'급여 명세'}, {k:'doc',l:'서류함'},
+                {k:'activity',l:'사용 이력'} ],
       actLog: { rows:[], people:[], truncated:false, user_name:'', from:'', to:'' },
       actFilter: { user_id:null, from:'', to:'', q:'', qRaw:'' },
       actLoading: false,
