@@ -5743,6 +5743,8 @@ const app = createApp({
     linkedChoose(v){ const p=this.linkedPrompt; this.linkedPrompt=null; if (p) p.resolve(v); },
     async openAtt(l){
       this.attModal = l;
+      // 이전에 열었던 학생의 이력이 잠깐 남아 보이다 사라지는 걸 막는다(비동기로 다시 불러오므로)
+      this.attHist = [];
       const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.status==='LEAVE' ? 'TEMP_LEAVE' : (l.att.note_tag||''));
       const lang0 = (l.program==='LANG') ? this.parseRowLanguage(l.subject) : '';
       const mkDate0 = l.is_makeup ? (l.date||'') : '';
