@@ -2844,6 +2844,13 @@ class StudentStatusAdminAPI(APIView):
             changed = qs.count()
             qs.update(status=TimetableStatus.ACTIVE)
             action, label = "UPDATE", "재등록 — 시간표 복원"
+            # 휴원 때 취소해 둔 오늘 이후 수업을 되살린다. 이미 인스턴스가 있는 날짜는
+            # ensure_occurrences가 새로 만들지 않기 때문에, 여기서 복원하지 않으면 시간표는
+            # 살아났는데 정작 수업이 하나도 안 뜨는 상태가 된다.
+            today = (now() + timedelta(hours=9)).date()
+            LessonOccurrence.objects.filter(
+                student=student, date__gte=today, is_makeup=False, source_timetable__isnull=False,
+                status=OccurrenceStatus.CANCELLED).update(status=OccurrenceStatus.SCHEDULED)
         elif to_status == EnrollmentStatus.WITHDRAWN:
             qs = slots.exclude(status=TimetableStatus.ENDED)
             changed = qs.count()
@@ -4281,6 +4288,7 @@ class LessonStatusAdminAPI(APIView):
             return self.error("상태 값이 올바르지 않습니다.")
         if st == OccurrenceStatus.CANCELLED and not o.is_makeup:
             return self.error("보강 건만 취소할 수 있습니다.")
+        prev_status = o.status
         o.status = st
         if "note" in data:
             o.note = (data.get("note") or "").strip()
@@ -4300,6 +4308,16 @@ class LessonStatusAdminAPI(APIView):
                 detail=("%s 보강 취소: %s %s분 %s%s" % (
                     str(o.date), str(o.start_time)[:5], o.duration_minutes, o.subject or "",
                     (" · " + _name_of(o.instructor)) if o.instructor_id else ""))[:255])
+        elif prev_status != st:
+            # 결석·임시휴원·예정 복원도 누가 언제 했는지 남긴다(예전엔 보강 취소만 기록돼 추적 불가였음)
+            _lbl = {OccurrenceStatus.ABSENT: "결석 처리", OccurrenceStatus.LEAVE: "임시휴원 처리",
+                    OccurrenceStatus.SCHEDULED: "예정으로 복원"}.get(st, st)
+            if st == OccurrenceStatus.ABSENT and o.no_makeup:
+                _lbl += "(보강없음/숙제대체)"
+            TimetableChange.objects.create(student=o.student, actor=request.user, action="UPDATE",
+                reason=(data.get("reason") or o.note or ""),
+                detail=("%s %s: %s %s분 %s" % (str(o.date), _lbl, str(o.start_time)[:5],
+                                               o.duration_minutes, o.subject or ""))[:255])
         return self.success({"status": o.status, "note": o.note, "no_makeup": o.no_makeup})
 
 
