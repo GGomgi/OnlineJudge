@@ -3618,9 +3618,15 @@
     </section>
 
     <!-- ============ 직원: 인사 정보 등록 ============ -->
-    <section v-if="tab==='hr'" class="max-w-2xl mx-auto">
+    <section v-if="tab==='hr'" :class="hrTab==='activity' ? 'max-w-5xl mx-auto' : 'max-w-2xl mx-auto'">
+      <!-- 서브탭(학생 관리 상세와 같은 방식) -->
+      <div class="flex gap-1 mb-3 border-b text-sm bg-white rounded-t-xl px-2 pt-2">
+        <button v-for="t in hrTabs" :key="t.k" @click="selectHrTab(t.k)"
+          :class="['px-3 py-2 border-b-2 -mb-px whitespace-nowrap', hrTab===t.k ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500']">{{ t.l }}</button>
+      </div>
+
       <!-- 내 계정 정보 -->
-      <div class="bg-white rounded-xl shadow-sm p-5 mb-4" v-if="me">
+      <div v-if="hrTab==='me' && me" class="bg-white rounded-xl shadow-sm p-5 mb-4">
         <div class="text-sm font-semibold text-slate-700 border-b pb-1 mb-2">내 정보</div>
         <dl class="text-sm space-y-1">
           <div class="flex justify-between"><dt class="text-slate-400">아이디</dt><dd>{{ me.user.username }}</dd></div>
@@ -3641,7 +3647,7 @@
         </div>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div v-if="hrTab==='hrinfo'" class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
           <div class="font-bold">인사 정보</div>
           <span v-if="staffProfile" :class="['text-xs px-2 py-0.5 rounded', staffProfile.completed ? 'bg-emerald-500' : 'bg-amber-500']">{{ staffProfile.completed ? '등록 완료' : '미완료' }}</span>
@@ -3757,6 +3763,51 @@
           </div>
         </div>
       </div>
+
+      <!-- 사용 이력 -->
+      <div v-if="hrTab==='activity'" class="bg-white rounded-xl shadow-sm p-4 space-y-3">
+        <div class="flex flex-wrap items-end gap-2">
+          <div v-if="(actLog.people||[]).length">
+            <label class="lbl">대상</label>
+            <select v-model="actFilter.user_id" @change="loadActivity" class="input py-1 w-48">
+              <option :value="null">나 ({{ me ? (me.real_name||me.user.username) : '' }})</option>
+              <option v-for="p in actLog.people" :key="p.id" :value="p.id">{{ p.name }} · {{ roleLabel(p.role) }}{{ p.branch ? ' · '+p.branch : '' }}</option>
+            </select>
+          </div>
+          <div><label class="lbl">시작</label><input v-model="actFilter.from" @change="loadActivity" type="date" class="input py-1 w-36" /></div>
+          <div><label class="lbl">종료</label><input v-model="actFilter.to" @change="loadActivity" type="date" class="input py-1 w-36" /></div>
+          <div class="flex gap-1">
+            <button v-for="p in actPresets" :key="p.d" @click="applyActPreset(p.d)" class="px-2 py-1.5 rounded border border-slate-200 text-xs hover:bg-slate-50">{{ p.l }}</button>
+          </div>
+          <div class="flex-1 min-w-[10rem]">
+            <label class="lbl">검색</label>
+            <input :value="actFilter.qRaw" @input="actFilter.qRaw=$event.target.value" placeholder="학생명·내용·사유" class="input py-1" />
+          </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-slate-400">
+          <span><b class="text-slate-600">{{ actLog.user_name }}</b> · {{ actLog.from }} ~ {{ actLog.to }}</span>
+          <span class="ml-auto">{{ actRows().length }}건<span v-if="actLog.truncated" class="text-amber-600"> (500건까지만 표시 — 기간을 좁혀주세요)</span></span>
+        </div>
+        <div v-if="actLoading" class="py-10 text-center text-sm text-slate-400">불러오는 중…</div>
+        <div v-else-if="actRows().length===0" class="py-10 text-center text-sm text-slate-400">해당 기간에 기록이 없습니다.</div>
+        <div v-else class="max-h-[60vh] overflow-y-auto border rounded-lg">
+          <div v-for="g in actGrouped()" :key="g.date">
+            <div class="sticky top-0 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 border-b">{{ g.date }} ({{ wdOf(g.date) }}) · {{ g.rows.length }}건</div>
+            <div v-for="(r,i) in g.rows" :key="i" class="px-3 py-2 border-b last:border-b-0 text-xs flex gap-2">
+              <span class="font-mono text-slate-400 shrink-0">{{ r.time.slice(11) }}</span>
+              <span :class="['px-1.5 py-0.5 rounded shrink-0 h-fit', actKindCls(r.kind)]">{{ r.kind }}</span>
+              <span v-if="r.target" class="font-medium text-slate-700 shrink-0">{{ r.target }}</span>
+              <span class="text-slate-600 break-all">{{ r.detail }}<span v-if="r.reason" class="text-slate-400"> — {{ r.reason }}</span></span>
+            </div>
+          </div>
+        </div>
+        <p class="text-[11px] text-slate-400">시간표·보강, 출결, 등록상태, 직원관리, 인사정보, 상담기록 변경 이력을 모아서 보여줍니다.</p>
+      </div>
+
+      <!-- 아직 준비 중인 메뉴 -->
+      <div v-if="hrTab==='attend' || hrTab==='payroll' || hrTab==='doc'" class="bg-white rounded-xl shadow-sm p-10 text-center text-sm text-slate-400">
+        준비 중인 기능입니다.
+      </div>
     </section>
 
     <!-- ============ 내 정보 ============ -->
@@ -3856,6 +3907,13 @@ const app = createApp({
       stuProgView: 'cal', stuProgCalMonth: '', stuProgCalDays: {},
       legacyPopFor: null, _legacyPopTimer: null, legacyEdit: { id:null, url:'' },
       navTip: { show:false, x:0, y:0, text:'' },
+      hrTab: 'me',
+      hrTabs: [ {k:'me',l:'내 정보'}, {k:'hrinfo',l:'인사 정보'}, {k:'attend',l:'근태 관리'},
+                {k:'payroll',l:'급여 명세'}, {k:'doc',l:'서류함'}, {k:'activity',l:'사용 이력'} ],
+      actLog: { rows:[], people:[], truncated:false, user_name:'', from:'', to:'' },
+      actFilter: { user_id:null, from:'', to:'', q:'', qRaw:'' },
+      actLoading: false,
+      actPresets: [ {d:7,l:'최근 7일'}, {d:30,l:'1개월'}, {d:90,l:'3개월'}, {d:365,l:'1년'} ],
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
       stuTtShowHistory: false, stuTtEditMode: false,
@@ -4895,6 +4953,47 @@ const app = createApp({
       clearTimeout(this._legacyPopTimer);
       // 편집 중이면 마우스가 벗어나도 닫지 않는다(입력 도중 사라지면 못 씀)
       this._legacyPopTimer = setTimeout(()=>{ if (!this.legacyEdit.id) this.legacyPopFor = null; }, 250);
+    },
+    selectHrTab(k){
+      this.hrTab = k;
+      if (k==='activity' && !this.actLog.rows.length){
+        if (!this.actFilter.from) this.applyActPreset(30); else this.loadActivity();
+      }
+    },
+    applyActPreset(days){
+      const p=x=>String(x).padStart(2,'0');
+      const to=new Date(), from=new Date(Date.now()-days*86400000);
+      const fmt=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+      this.actFilter.from=fmt(from); this.actFilter.to=fmt(to); this.loadActivity();
+    },
+    async loadActivity(){
+      this.actLoading = true;
+      const f=this.actFilter;
+      const qs=['from='+encodeURIComponent(f.from||''),'to='+encodeURIComponent(f.to||'')];
+      if (f.user_id) qs.push('user_id='+encodeURIComponent(f.user_id));
+      try { this.actLog = await api('GET','/api/admin/academy/activity_log?'+qs.join('&')); }
+      catch(e){ this.notify(e.message,false); this.actLog={ rows:[], people:this.actLog.people||[], truncated:false, user_name:'', from:'', to:'' }; }
+      finally { this.actLoading = false; }
+    },
+    actRows(){
+      const q=(this.actFilter.q||'').trim().toLowerCase();
+      const rows=this.actLog.rows||[];
+      if (!q) return rows;
+      return rows.filter(r=>(r.kind+' '+r.target+' '+r.detail+' '+r.reason).toLowerCase().includes(q));
+    },
+    actGrouped(){
+      const out=[], m=new Map();
+      this.actRows().forEach(r=>{
+        const d=r.time.slice(0,10);
+        if(!m.has(d)){ m.set(d,{date:d, rows:[]}); out.push(m.get(d)); }
+        m.get(d).rows.push(r);
+      });
+      return out;
+    },
+    actKindCls(k){
+      return ({'시간표·보강':'bg-blue-50 text-blue-700','출결':'bg-emerald-50 text-emerald-700',
+               '등록상태':'bg-amber-50 text-amber-700','직원관리':'bg-violet-50 text-violet-700',
+               '인사정보':'bg-slate-100 text-slate-600','상담기록':'bg-rose-50 text-rose-600'})[k] || 'bg-slate-100 text-slate-600';
     },
     showNavTip(text, e){ this.navTip = { show:true, text, x:Math.min(e.clientX+10, window.innerWidth-220), y:e.clientY+18 }; },
     hideNavTip(){ this.navTip.show = false; },
@@ -7539,7 +7638,8 @@ const app = createApp({
      ['leadSearchRaw','leadSearch'], ['leadSearch2Raw','leadSearch2'],
      ['stuSearchRaw','stuSearch'], ['stuSearch2Raw','stuSearch2'],
      ['staffFilterRaw','staffFilter'], ['msgSearchRaw','msgSearch'],
-     ['msgStuQRaw','msgStuQ'], ['tplPreviewStuQRaw','tplPreviewStuQ']].forEach(([rawPath, realPath])=>{
+     ['msgStuQRaw','msgStuQ'], ['tplPreviewStuQRaw','tplPreviewStuQ'],
+     ['actFilter.qRaw','actFilter.q']].forEach(([rawPath, realPath])=>{
       const rawParts = rawPath.split('.'), realParts = realPath.split('.');
       this.$watch(() => rawParts.reduce((o,k)=>o&&o[k], this), (v)=>{
         this._debounce(realPath, ()=>{

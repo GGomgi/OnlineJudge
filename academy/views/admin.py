@@ -4674,6 +4674,91 @@ class MakeupAddAdminAPI(APIView):
         return self.success({"occ_id": occ.id})
 
 
+class ActivityLogAPI(APIView):
+    """포털 사용 이력 — '누가 무엇을 했는지'를 한 화면에서 본다.
+    기록을 새로 쌓는 게 아니라, 이미 각 기능이 남기고 있는 이력들(시간표/보강, 출결,
+    등록상태, 직원관리, 인사정보, 상담기록 수정)을 행위자 기준으로 합쳐서 보여준다.
+    GET ?user_id=(원장 이상만 타인 조회)&from=YYYY-MM-DD&to=YYYY-MM-DD&q=검색어"""
+    @admin_role_required
+    def get(self, request):
+        target_id = request.GET.get("user_id")
+        me = request.user
+        if target_id and str(target_id) != str(me.id):
+            if not _is_director_up(me):
+                return self.error("다른 사람의 사용 이력은 원장 이상만 볼 수 있습니다.")
+            target = User.objects.filter(id=target_id).first()
+            if not target:
+                return self.error("사용자를 찾을 수 없습니다.")
+            tp = getattr(target, "academy_profile", None)
+            if tp and not can_view_branch(me, tp.branch_id):
+                return self.error("이 지점 인원이 아닙니다.")
+        else:
+            target = me
+        today = (now() + timedelta(hours=9)).date()
+        try:
+            d0 = datetime.strptime(request.GET.get("from"), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            d0 = today - timedelta(days=30)
+        try:
+            d1 = datetime.strptime(request.GET.get("to"), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            d1 = today
+        lo = _kst_to_utc(d0, "00:00")
+        hi = _kst_to_utc(d1 + timedelta(days=1), "00:00")
+        q = (request.GET.get("q") or "").strip()
+
+        rows = []
+
+        def add(dt, kind, target_name, detail, reason=""):
+            rows.append({"time": str(dt + timedelta(hours=9))[:19], "kind": kind,
+                         "target": target_name or "", "detail": detail or "", "reason": reason or ""})
+
+        base = dict(actor=target, create_time__gte=lo, create_time__lt=hi)
+        for c in TimetableChange.objects.filter(**base).select_related("student", "student__userprofile")[:1000]:
+            add(c.create_time, "시간표·보강", _name_of(c.student), c.detail, c.reason)
+        for c in AttendanceChange.objects.filter(**base).select_related(
+                "attendance", "attendance__student", "attendance__student__userprofile")[:1000]:
+            a = c.attendance
+            add(c.create_time, "출결", "%s %s" % (_name_of(a.student) if a else "", str(a.date) if a else ""),
+                c.detail, c.reason)
+        for c in StudentStatusChange.objects.filter(**base).select_related("student", "student__userprofile")[:1000]:
+            add(c.create_time, "등록상태", _name_of(c.student),
+                "%s → %s%s" % (c.from_status, c.to_status,
+                               (" (적용 %s)" % c.effective_date) if c.effective_date else ""), c.reason)
+        for c in StaffChangeLog.objects.filter(**base).select_related("staff", "staff__userprofile")[:1000]:
+            add(c.create_time, "직원관리", _name_of(c.staff), "%s %s" % (c.change_type, c.detail), c.reason)
+        for c in StaffProfileHistory.objects.filter(**base).select_related("user", "user__userprofile")[:1000]:
+            add(c.create_time, "인사정보", _name_of(c.user),
+                "%s: %s → %s" % (c.field, c.old_value or "-", c.new_value or "-"))
+        for c in CounselingLogEdit.objects.filter(**base).select_related("log")[:1000]:
+            add(c.create_time, "상담기록", "", "상담 기록 수정(이전 내용: %s)" % (c.old_summary or "")[:80])
+
+        if q:
+            ql = q.lower()
+            rows = [r for r in rows
+                    if ql in r["target"].lower() or ql in r["detail"].lower()
+                    or ql in r["reason"].lower() or ql in r["kind"].lower()]
+        rows.sort(key=lambda r: r["time"], reverse=True)
+        truncated = len(rows) > 500
+        rows = rows[:500]
+
+        # 원장 이상은 지점 인원을 골라서 볼 수 있게 목록을 함께 내려준다
+        people = []
+        if _is_director_up(me):
+            view = viewable_branch_ids(me)
+            qs = AcademyProfile.objects.filter(role__in=STAFF_ROLES, is_deleted=False)\
+                .select_related("user", "user__userprofile", "branch")
+            if view is not None:
+                qs = qs.filter(branch_id__in=view)
+            for p in qs:
+                people.append({"id": p.user_id, "name": _name_of(p.user),
+                               "role": p.role, "branch": p.branch.name if p.branch_id else ""})
+            people.sort(key=lambda x: (x["branch"], x["name"] or ""))
+        return self.success({"rows": rows, "truncated": truncated, "people": people,
+                             "user_id": target.id, "user_name": _name_of(target),
+                             "from": str(d0), "to": str(d1)})
+
+
 class StudentLegacyUrlAPI(APIView):
     """학생별 '이전 기록 링크'(기존 관리 스프레드시트 등) 저장/삭제.
     포털 전환 기간에 예전 시트를 같이 보느라 왔다갔다 하는 수고를 줄이기 위한 바로가기."""
