@@ -318,7 +318,7 @@
       <a v-if="dashPop.l.legacy_url" :href="dashPop.l.legacy_url" target="_blank" rel="noopener"
          class="text-[11px] font-normal px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">(구)</a>
       <button v-else @click="editLegacyUrl(dashPop.l.student_id, '')"
-              class="text-[11px] font-normal px-1.5 py-0.5 rounded border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50">+ 구기록</button>
+              class="text-[11px] font-normal px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 hover:bg-slate-200">(연결없음)</button>
     </div>
     <div v-if="dashPop.l.legacy_url" class="mb-1 text-[10px] text-slate-400 break-all">
       {{ dashPop.l.legacy_url }}
@@ -2285,28 +2285,32 @@
         <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
             <button @click="goStudentNav(-1)" :disabled="!stuNavHas(-1)" :title="stuNavLabel(-1)"
-                    :class="['px-2 py-1 rounded text-lg leading-none shrink-0', stuNavHas(-1) ? 'text-slate-500 hover:bg-slate-100' : 'text-slate-200 cursor-not-allowed']">‹</button>
+                    :class="['flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg border text-xs shrink-0',
+                             stuNavHas(-1) ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-slate-100 text-slate-300 cursor-not-allowed']">
+              <span class="text-base leading-none">‹</span>이전</button>
             <div class="font-bold flex-1 min-w-0">{{ stuDetail.real_name || stuDetail.username }}
               <span class="text-xs font-normal text-slate-400">{{ stuDetail.username }} · {{ stuDetail.branch }}</span>
               <span :class="['ml-2 px-2 py-0.5 rounded text-xs', stuStatusBadge(stuDetail.enrollment_status).cls]">{{ stuStatusBadge(stuDetail.enrollment_status).label }}</span>
-              <!-- 기존 관리 시트 바로가기(포털 전환 기간용) -->
-              <span class="relative inline-block align-middle ml-2" @mouseenter="legacyPopFor=stuDetail.id" @mouseleave="legacyPopFor=null">
-                <a v-if="stuLegacyUrl" :href="stuLegacyUrl" target="_blank" rel="noopener"
+              <!-- 기존 관리 시트 바로가기(포털 전환 기간용). 칩과 호버창이 붙어 있어야 마우스가 지나가도 안 닫힘 -->
+              <span class="relative inline-block align-middle ml-2" @mouseenter="legacyPopEnter(stuDetail.id)" @mouseleave="legacyPopLeave">
+                <a v-if="stuLegacyUrl()" :href="stuLegacyUrl()" target="_blank" rel="noopener"
                    class="text-xs font-normal px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">(이전기록)</a>
-                <button v-else-if="stuCanEdit" @click="editLegacyUrl(stuDetail.id, '')"
-                        class="text-xs font-normal px-1.5 py-0.5 rounded border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50">+ 이전기록 등록</button>
-                <span v-if="legacyPopFor===stuDetail.id && stuLegacyUrl"
-                      class="absolute left-0 top-full mt-1 z-50 w-72 bg-white border rounded-lg shadow-xl p-2 text-[11px] font-normal text-slate-600 break-all">
-                  {{ stuLegacyUrl }}
-                  <span v-if="stuCanEdit" class="block mt-1 text-right">
-                    <button @click.prevent="editLegacyUrl(stuDetail.id, stuLegacyUrl)" class="text-indigo-600 hover:underline">수정</button>
+                <span v-else class="text-xs font-normal px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 cursor-default">(연결없음)</span>
+                <span v-if="legacyPopFor===stuDetail.id" class="absolute left-0 top-full pt-1 z-50 w-72 block">
+                  <span class="block bg-white border rounded-lg shadow-xl p-2 text-[11px] font-normal text-slate-600 break-all">
+                    {{ stuLegacyUrl() || '등록된 링크가 없습니다.' }}
+                    <span v-if="stuCanEdit" class="block mt-1 text-right">
+                      <button @click.prevent="editLegacyUrl(stuDetail.id, stuLegacyUrl())" class="text-indigo-600 hover:underline">{{ stuLegacyUrl() ? '수정' : '등록' }}</button>
+                    </span>
                   </span>
                 </span>
               </span>
             </div>
             <button @click="goStudentNav(1)" :disabled="!stuNavHas(1)" :title="stuNavLabel(1)"
-                    :class="['px-2 py-1 rounded text-lg leading-none shrink-0', stuNavHas(1) ? 'text-slate-500 hover:bg-slate-100' : 'text-slate-200 cursor-not-allowed']">›</button>
-            <button @click="closeStudent" class="text-slate-400 hover:text-slate-600 shrink-0">✕</button>
+                    :class="['flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg border text-xs shrink-0',
+                             stuNavHas(1) ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-slate-100 text-slate-300 cursor-not-allowed']">
+              다음<span class="text-base leading-none">›</span></button>
+            <button @click="closeStudent" class="text-slate-400 hover:text-slate-600 shrink-0 ml-1">✕</button>
           </div>
           <!-- 서브탭 -->
           <div class="flex gap-1 px-5 pt-3 border-b text-sm">
@@ -3825,7 +3829,7 @@ const app = createApp({
       stuAttSelected: [], stuAttBulkForm: { note_tag:'', note:'', no_makeup:false, start_time:'' }, stuAttBulkMode: false,
       stuProgress: [], stuProgForm: { date:'', content:'', homework:'', feedback:'' },
       stuProgView: 'cal', stuProgCalMonth: '', stuProgCalDays: {},
-      legacyPopFor: null,
+      legacyPopFor: null, _legacyPopTimer: null,
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
       stuTtShowHistory: false, stuTtEditMode: false,
@@ -4860,6 +4864,8 @@ const app = createApp({
       });
     },
     stuLegacyUrl(){ return (this.stuDetail && this.stuDetail.profile && this.stuDetail.profile.legacy_url) || ''; },
+    legacyPopEnter(id){ clearTimeout(this._legacyPopTimer); this.legacyPopFor = id; },
+    legacyPopLeave(){ clearTimeout(this._legacyPopTimer); this._legacyPopTimer = setTimeout(()=>{ this.legacyPopFor = null; }, 250); },
     stuTtDirtyCount(){ return this.stuTimetables.filter(s=>s.id && this.ttRowDirty(s)).length; },
     // 학생 상세: 목록에 보이는 순서(기본 원번순) 그대로 이전/다음 학생으로 이동
     stuNavList(){ return this.filteredStudents || []; },
