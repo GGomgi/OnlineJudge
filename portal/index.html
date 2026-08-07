@@ -743,7 +743,10 @@
             <span v-if="t.upcoming" class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">
               {{ t.start_date.slice(5) }}({{ wdOf(t.start_date) }})부터 D-{{ t.starts_in }}
             </span>
-            <span class="text-slate-500">{{ t.upcoming ? '' : '~' }}{{ t.last_date.slice(5) }}까지 {{ t.count }}회</span>
+            <span class="text-slate-500">
+              <template v-if="t.upcoming">{{ t.last_date.slice(5) }}까지 {{ t.count }}회</template>
+              <template v-else>{{ t.start_date.slice(5) }}~{{ t.last_date.slice(5) }} {{ t.count }}회</template>
+            </span>
             <span v-if="t.back_date" :class="['px-1.5 py-0.5 rounded', (!t.upcoming && t.back_in<=7) ? 'bg-amber-100 text-amber-700 font-semibold' : 'bg-white text-purple-600']">
               복귀 {{ t.back_date.slice(5) }}({{ wdOf(t.back_date) }}) D-{{ t.back_in }}
             </span>
