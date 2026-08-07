@@ -694,6 +694,11 @@
             ⏱ 정시 하원 <b class="font-mono">{{ attOnTimeOut() }}</b>
             <span class="block text-[10px] text-indigo-400 mt-0.5">등원 {{ attEditPop.l.att.in }} + 수업 {{ attOnTimeMins() }}분 (누른 뒤 ± 로 조정)</span>
           </button>
+          <button v-if="attEditPop.kind==='in' && attOnTimeIn()" @click="attSetOnTimeIn"
+                  class="w-full mb-3 px-2 py-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs hover:bg-indigo-100 leading-tight">
+            ⏱ 정시 등원 <b class="font-mono">{{ attOnTimeIn() }}</b>
+            <span class="block text-[10px] text-indigo-400 mt-0.5">수업 시작 시각 (누른 뒤 ± 로 조정)</span>
+          </button>
           <div class="flex items-center justify-center gap-1.5 mb-3">
             <button @click="attStepTime(-5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-5</button>
             <button @click="attStepTime(-1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-1</button>
@@ -6222,6 +6227,11 @@ const app = createApp({
       return this.shiftHM(p.l.att.in, this.attOnTimeMins());
     },
     attSetOnTime(){ const t = this.attOnTimeOut(); if (t) this.attEditPop.time = t; },
+    attOnTimeIn(){
+      const p = this.attEditPop; if (!p || !p.l) return '';
+      return this.lateRefStart(p.l) || p.l.start_time || '';
+    },
+    attSetOnTimeIn(){ const t = this.attOnTimeIn(); if (t) this.attEditPop.time = t; },
     attStepTime(delta){
       const p = this.attEditPop;
       const [h,m] = p.time.split(':').map(Number);
