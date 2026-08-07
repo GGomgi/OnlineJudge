@@ -331,9 +331,11 @@
       </div>
       <div class="text-[10px] text-slate-400">비우고 저장하면 삭제됩니다.</div>
     </div>
-    <div v-else class="mb-1 text-[10px] text-slate-400 break-all">
-      {{ dashPop.l.legacy_url || '등록된 이전기록 링크가 없습니다.' }}
-      <button @click="startLegacyEdit(dashPop.l.student_id, dashPop.l.legacy_url||'')" class="ml-1 text-indigo-500 hover:underline">{{ dashPop.l.legacy_url ? '수정' : '등록' }}</button>
+    <!-- 링크가 있으면 위의 (이전기록) 칩만 두고 주소·수정은 감춘다(주소 확인·수정은 학생 관리에서).
+         없을 때만 안내와 등록 버튼을 보여줌 -->
+    <div v-else-if="!dashPop.l.legacy_url" class="mb-1 text-[10px] text-slate-400">
+      등록된 이전기록 링크가 없습니다.
+      <button @click="startLegacyEdit(dashPop.l.student_id, '')" class="ml-1 text-indigo-500 hover:underline">등록</button>
     </div>
     <div class="text-slate-500">{{ dashPop.l.school_name }}{{ schoolSuffix(dashPop.l.school_type) }} {{ dashPop.l.grade ? dashPop.l.grade+'학년' : '' }}</div>
     <div class="mt-1.5 flex items-center gap-1">보호자: <span class="text-slate-600">{{ dashPop.l.parent_phone || '-' }}</span> <call-btn :phone="dashPop.l.parent_phone"></call-btn><sms-btn :phone="dashPop.l.parent_phone"></sms-btn></div>
@@ -1079,7 +1081,7 @@
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div><label class="lbl">보강 할 날짜</label><input v-model="mkForm.date" type="date" class="input py-1" @click="$event.target.showPicker && $event.target.showPicker()" /></div>
-              <div><label class="lbl">보강 할 시간</label><input v-model="mkForm.time" type="time" class="input py-1" @click="$event.target.showPicker && $event.target.showPicker()" @change="$event.target.blur()" /></div>
+              <div><label class="lbl">보강 할 시간</label><input v-model="mkForm.time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
             </div>
             <div v-if="mkForm.pair" class="text-xs px-3 py-2 rounded bg-blue-50 text-blue-700">연속 2타임 결석 보강 — 두번째 타임은 {{ mkPairSecondTime() }}부터 이어서 자동으로 함께 잡힙니다.</div>
             <div><label class="lbl">사유</label><input v-model="mkForm.note" placeholder="예: 6/22 결석 보강" class="input py-1" /></div>
@@ -1207,7 +1209,7 @@
           <div v-for="it in bulkMakeupItems" :key="it.occ_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-2">
             <span class="text-xs text-slate-400 w-32 shrink-0">{{ it.date }}({{ wdOf(it.date) }}) 결석</span>
             <input v-model="it.mk_date" type="date" class="input py-1" />
-            <input v-model="it.mk_time" type="time" class="input py-1 w-28" />
+            <input v-model="it.mk_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" />
           </div>
         </div>
         <div class="px-5 py-3 border-t flex justify-end">
@@ -2064,8 +2066,8 @@
         <div class="flex flex-wrap items-end gap-2">
         <div><label class="lbl">학생</label><input v-model="ttFilter.name" placeholder="이름/아이디" class="input w-28" /></div>
         <div><label class="lbl">요일</label><select v-model="ttFilter.weekday" class="input w-20"><option value="">전체</option><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
-        <div><label class="lbl">시작 이상</label><input v-model="ttFilter.from" @change="onFilterFrom" type="time" class="input w-28" /></div>
-        <div><label class="lbl">종료 이하</label><input v-model="ttFilter.to" type="time" class="input w-28" /></div>
+        <div><label class="lbl">시작 이상</label><input v-model="ttFilter.from" @change="onFilterFrom" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" /></div>
+        <div><label class="lbl">종료 이하</label><input v-model="ttFilter.to" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" /></div>
         <div class="relative">
           <label class="lbl">강사</label>
           <button type="button" @click="ttInstrDropdown=!ttInstrDropdown" class="input w-32 text-left flex items-center justify-between">
@@ -2855,8 +2857,8 @@
               </ul>
               <div class="flex flex-wrap gap-2 items-end">
                 <select v-model.number="slotForm.day_of_week" class="input w-20"><option v-for="(d,i) in days" :value="i">{{ d }}</option></select>
-                <input v-model="slotForm.start_time" type="time" class="input w-28" />
-                <input v-model="slotForm.end_time" type="time" class="input w-28" />
+                <input v-model="slotForm.start_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" />
+                <input v-model="slotForm.end_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" />
                 <input v-model="slotForm.room" placeholder="강의실" class="input w-24" />
                 <button @click="addSlot" class="btn-primary text-sm">추가</button>
               </div>
