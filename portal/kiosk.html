@@ -53,9 +53,19 @@ createApp({
       isFullscreen: false,
       keepAwake: localStorage.getItem('kiosk_keep_awake') === '1',
       _wakeLock: null,
-      leftRatio: parseInt(localStorage.getItem('kiosk_left_ratio')) || 58,
-      leftZoom: parseInt(localStorage.getItem('kiosk_left_zoom')) || 100,
-      rightZoom: parseInt(localStorage.getItem('kiosk_right_zoom')) || 100,
+      // 화면 설정 기본값(2026-08): 좌우 58%/42%, 출결현황 120%, 키오스크 150%.
+      // 이미 쓰던 기기도 한 번은 이 값으로 맞춰지고, 그 뒤 기기에서 바꾼 값은 계속 유지된다.
+      leftRatio: (function(){
+        if (!localStorage.getItem('kiosk_view_defaults_v2')){
+          localStorage.setItem('kiosk_left_ratio', 58);
+          localStorage.setItem('kiosk_left_zoom', 120);
+          localStorage.setItem('kiosk_right_zoom', 150);
+          localStorage.setItem('kiosk_view_defaults_v2', '1');
+        }
+        return parseInt(localStorage.getItem('kiosk_left_ratio')) || 58;
+      })(),
+      leftZoom: parseInt(localStorage.getItem('kiosk_left_zoom')) || 120,
+      rightZoom: parseInt(localStorage.getItem('kiosk_right_zoom')) || 150,
       ratioSettingsOpen: false,
       deviceId: '', deviceStatus: 'checking',  // checking | confirm | PENDING | APPROVED | REVOKED | badlink
       deviceNameInput: '',
@@ -81,7 +91,7 @@ createApp({
       return '(결석 '+row.linked.date.slice(5)+'('+this.wdOf(row.linked.date)+'))';
     },
     stuAbsenceSuffix(row){
-      if (row.no_makeup) return '(보강안함)';
+      if (row.no_makeup) return '(보강없음/숙제대체)';
       const lk = row.linked;
       if (!lk) return '(보강미정)';
       const md = lk.date.slice(5)+'('+this.wdOf(lk.date)+')';

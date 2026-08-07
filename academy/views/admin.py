@@ -4244,7 +4244,14 @@ class EnsureOccurrenceAdminAPI(APIView):
 
 def _clear_attendance_for_absence(student, d, actor, note):
     """결석 처리된 날짜에 이미 등원/하원 기록이 있으면 지우고(소프트) 이력 남김.
-    등원한 기록이 남아있는데 결석으로 표시되면 앞뒤가 안 맞아서 — 프론트에서 확인창을 띄운 뒤 호출한다."""
+    등원한 기록이 남아있는데 결석으로 표시되면 앞뒤가 안 맞아서 — 프론트에서 확인창을 띄운 뒤 호출한다.
+    단, 그 날 다른 수업이 아직 남아 있으면(연속 2타임 중 뒤 타임만 결석 등) 등원/하원은 남은 수업의
+    기록이므로 지우지 않는다. 등원/하원은 수업별이 아니라 학생·날짜 단위로 하나뿐이기 때문."""
+    still = LessonOccurrence.objects.filter(student=student, date=d)\
+        .exclude(status__in=(OccurrenceStatus.ABSENT, OccurrenceStatus.CANCELLED, OccurrenceStatus.LEAVE))\
+        .exists()
+    if still:
+        return
     a = DailyAttendance.objects.filter(student=student, date=d).first()
     if not a or (not a.check_in_at and not a.check_out_at):
         return
