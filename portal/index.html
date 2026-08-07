@@ -732,13 +732,9 @@
         <span class="text-rose-500">결석 <b>{{ dashAbsentCount }}</b>명</span>
         <span class="text-emerald-600">등원 <b>{{ dashCheckedIn }}</b>명</span>
         <span class="text-indigo-600">하원 <b>{{ dashCheckedOut }}</b>명</span>
-        <button v-if="(dashData.temp_leaves||[]).length" @click="tempLeaveListOpen=!tempLeaveListOpen"
-                class="ml-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 hover:bg-purple-200">
-          🏖 임시휴원 <b>{{ dashData.temp_leaves.length }}</b>명 {{ tempLeaveListOpen ? '▲' : '▼' }}
-        </button>
       </div>
       <!-- 임시휴원 중인 학생 — 기간이 끝나면 자동 복귀라 놓치기 쉬워서 복귀일을 함께 표시 -->
-      <div v-if="tempLeaveListOpen && (dashData.temp_leaves||[]).length" class="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 mb-3 text-xs">
+      <div v-if="(dashData.temp_leaves||[]).length" class="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 mb-3 text-xs">
         <div class="font-semibold text-purple-700 mb-1">🏖 임시휴원 ({{ dashData.temp_leaves.length }}명) <span class="font-normal text-purple-400">— 시작 10일 전부터 미리 표시</span></div>
         <div class="flex flex-wrap gap-x-4 gap-y-1">
           <div v-for="t in dashData.temp_leaves" :key="t.student_id" class="flex items-center gap-1.5">
@@ -3942,7 +3938,7 @@ const app = createApp({
       notePop: { show:false, x:0, y:0, tag:'', note:'', tagStyle:{} },
       tcPop: { show:false, x:0, y:0, orig:'', now:'', reason:'' },
       progPop: { show:false, x:0, y:0, content:'', homework:'', feedback:'' },
-      dashFilter: { q:'', qRaw:'', subject:'', instructor:'', branch:'' }, tempLeaveListOpen: true, dashPop: { show:false, x:0, y:0, l:{att:{}} },
+      dashFilter: { q:'', qRaw:'', subject:'', instructor:'', branch:'' }, dashPop: { show:false, x:0, y:0, l:{att:{}} },
       mkgList: [], mkgGroupBy: 'student', mkgBranchId: '', mkgLoading: false,
       dashShowDone: true,
       kioskDevicesOpen: false, kioskDevices: [], kioskDeviceBranchId: null,
@@ -4251,7 +4247,8 @@ const app = createApp({
     dashBranches(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.branch).filter(Boolean))]; },
     // 수업·결석·등원·하원 모두 '명' 기준(같은 학생이 정규+보강처럼 여러 건이어도 한 명)
     dashStudentCount(){ return new Set(this.dashLessons.map(l=>l.student_id)).size; },
-    dashAbsentCount(){ return new Set(this.dashLessons.filter(l=>this.isAbsent(l)).map(l=>l.student_id)).size; },
+    // 임시휴원도 그날 수업을 안 한 것이므로 결석 수에 함께 센다
+    dashAbsentCount(){ return new Set(this.dashLessons.filter(l=>this.isAbsent(l)||this.isLeave(l)).map(l=>l.student_id)).size; },
     dashCheckedIn(){ const ids=new Set(this.dashLessons.filter(l=>l.att.in).map(l=>l.student_id)); return ids.size; },
     dashCheckedOut(){ const ids=new Set(this.dashLessons.filter(l=>l.att.out).map(l=>l.student_id)); return ids.size; },
     dashReservationsAll(){ const f=this.dashFilter; return (this.dashData.reservations||[]).filter(rv => !f.branch || rv.branch===f.branch); },
