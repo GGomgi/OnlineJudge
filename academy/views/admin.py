@@ -1448,6 +1448,25 @@ def _create_student_from_lead(request, lead, data):
             schedule = []
         if not data.get("schedule_pending"):
             default_dur = lesson_duration(lead.school_type, data.get("weekly_sessions"))
+            # 회차끼리 시간이 겹치면(시각이 달라도 수업시간 때문에 물리는 경우 포함) 등록 자체를 막는다.
+            # 격주 번갈아 수강은 같은 자리에 두 슬롯을 두는 정상 케이스라 제외.
+            _chk = []
+            for row in schedule:
+                try:
+                    _wd = int(row.get("day")); _tm = (row.get("time") or "").strip()
+                    _du = int(row.get("duration") or 0) or default_dur
+                except (AttributeError, TypeError, ValueError):
+                    continue
+                if 0 <= _wd <= 6 and _tm:
+                    _chk.append((_wd, _tm, _du, (row.get("frequency") or "WEEKLY") == "BIWEEKLY"))
+            for _i in range(len(_chk)):
+                for _j in range(_i + 1, len(_chk)):
+                    a, b = _chk[_i], _chk[_j]
+                    if a[0] != b[0] or (a[3] and b[3]):
+                        continue
+                    if _time_overlaps(a[1], a[2], b[1], b[2]):
+                        return self.error("%d회차와 %d회차 수업 시간이 겹칩니다: %s %s(%d분) ↔ %s(%d분)"
+                                          % (_i + 1, _j + 1, _WD[a[0]], a[1], a[2], b[1], b[2]))
             for row in schedule:
                 try:
                     wd = int(row.get("day"))

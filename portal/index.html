@@ -2148,7 +2148,7 @@
               </label>
               <span v-if="bulkFileName" class="text-xs text-slate-500">{{ bulkFileName }}</span>
               <button @click="downloadBulkTemplate" class="text-xs text-indigo-600 hover:underline">⬇ 양식 다운로드</button>
-              <button v-if="bulkRows.length" @click="convertBulkRows" class="btn-secondary text-sm">🔄 변환</button>
+              <button v-if="bulkRows.length" @click="convertBulkRows()" class="btn-secondary text-sm">🔄 변환</button>
               <button v-if="bulkRows.length" @click="downloadBulkReview" class="btn-secondary text-sm">⬇ 검토 데이터 다운로드</button>
               <span v-if="bulkConverted" class="text-xs text-emerald-600">✓ 변환됨 — 노란 칸이 바뀐 값입니다.</span>
             </div>
@@ -6257,7 +6257,7 @@ const app = createApp({
       const r = R[schoolTypeLabel];
       return !r || (g>=r[0] && g<=r[1]);
     },
-    convertBulkRows(){
+    convertBulkRows(silent){
       const FIELDS = this.bulkAutoFields();
       let changedCount = 0;
       this.bulkRows.forEach(row=>{
@@ -6275,7 +6275,8 @@ const app = createApp({
       });
       this.bulkConverted = true;
       this.bulkValidated = null;
-      this.notify(changedCount+'개 값이 자동 변환되었습니다. 표에서 확인·수정 후 [검증]을 눌러주세요.');
+      // 업로드 직후 자동 실행일 때는 안내를 한 번만 띄우도록 여기선 생략
+      if (!silent) this.notify(changedCount+'개 값이 자동 변환되었습니다. 표에서 확인·수정 후 [검증]을 눌러주세요.');
     },
     bulkRowError(idx){
       if (!this.bulkValidated || !this.bulkValidated.results) return null;
@@ -6414,7 +6415,11 @@ const app = createApp({
           }).filter(r=>r.student_name);
           this.bulkConverted = false;
           this.bulkValidated=null;
-          this.notify(this.bulkRows.length+'행을 읽었습니다. [변환]으로 형식을 자동 정리한 뒤 [검증]을 눌러주세요.');
+          // 업로드 직후 자동으로 형식 변환까지 해준다(사람이 매번 [변환]을 누를 필요 없게).
+          // 이후 표에서 손으로 고치다 형식이 어긋날 수 있어 [변환] 버튼은 그대로 남겨둠.
+          const n = this.bulkRows.length;
+          this.convertBulkRows(true);
+          this.notify(n+'행을 읽고 형식을 자동 변환했습니다. 노란 칸을 확인한 뒤 [검증]을 눌러주세요.');
         } catch(err){ this.notify('파일을 읽지 못했습니다: '+err.message, false); }
       };
       reader.readAsArrayBuffer(file);
@@ -7273,6 +7278,21 @@ const app = createApp({
         for (const s of f.schedule){ const k=s.day+'@'+this.to24(s.hour,s.min);
           if (seen[k] && !(seen[k].biweekly && s.biweekly)) return this.failConvert('같은 요일·시각이 중복되었습니다. (격주 번갈아 수강이면 양쪽 모두 격주 체크)');
           seen[k]=s; }
+        // 시각이 달라도 수업시간 때문에 겹치는 경우 차단(예: 월 16:00 90분 + 월 17:00).
+        // 앞 수업이 끝나는 시각에 시작하는 연속 수업은 정상이므로 허용. 격주 번갈아끼리는 제외.
+        for (let i=0; i<f.schedule.length; i++){
+          for (let j=i+1; j<f.schedule.length; j++){
+            const a=f.schedule[i], b=f.schedule[j];
+            if (a.day!==b.day) continue;
+            if (a.biweekly && b.biweekly) continue;
+            const a0=this.hmMin(this.to24(a.hour,a.min)), a1=a0+(a.duration||this.lessonDurationMin);
+            const b0=this.hmMin(this.to24(b.hour,b.min)), b1=b0+(b.duration||this.lessonDurationMin);
+            if (a0 < b1 && b0 < a1)
+              return this.failConvert((i+1)+'회차와 '+(j+1)+'회차 수업 시간이 겹칩니다: '
+                + this.days[a.day]+' '+this.to24(a.hour,a.min)+'('+(a.duration||this.lessonDurationMin)+'분) ↔ '
+                + this.to24(b.hour,b.min)+'('+(b.duration||this.lessonDurationMin)+'분)');
+          }
+        }
         // 격주 번갈아: 두 과정이 반드시 달라야 함(격주의 의미)
         for (const s of f.schedule){
           if (s.biweekly){
