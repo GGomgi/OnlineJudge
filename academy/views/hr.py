@@ -174,6 +174,13 @@ class HolidayAdminAPI(APIView):
         bid = data.get("branch_id") or None
         if bid and not can_manage_branch(request.user, int(bid)):
             return self.error("이 지점을 관리할 권한이 없습니다.")
+        if not bid:
+            # 전 지점 휴무일은 전지점 역할(본부·인사)만. 원장은 자기 지점으로 한정한다
+            # (지점 하나를 맡은 사람이 회사 전체를 쉬게 할 수 있으면 안 됨).
+            if editable_branch_ids(request.user) is not None:
+                bid = my_branch_id(request.user)
+                if not bid:
+                    return self.error("지점을 선택하세요.")
         made, skipped, applied = [], [], 0
         with transaction.atomic():
             for it in items:

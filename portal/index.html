@@ -4387,9 +4387,7 @@ const app = createApp({
       navTip: { show:false, x:0, y:0, text:'' },
       hrTab: 'me',
       // ── 학원 관리(휴무일·근무 기준) ──
-      acadTab: 'options',
-      acadTabs: [ {k:'options',l:'선택 목록'}, {k:'branch',l:'지점'}, {k:'holiday',l:'휴무일'},
-                  {k:'work',l:'근무 기준'}, {k:'notice',l:'공지'} ],
+      acadTab: '',
       holidays: [], hdKinds: [], hdYear: new Date().getFullYear(),
       hdForm: { date:'', dateTo:'', name:'', kind:'PUBLIC', branch_id:'' },
       workSchedules: [], wsViewStaff: '',
@@ -4750,6 +4748,13 @@ const app = createApp({
     // 수업중 = 등원했고 아직 하원하지 않은 학생(연속수업이어도 하원 전까지 한 명)
     dashInClass(){ const out=new Set(this.dashLessons.filter(l=>l.att.out).map(l=>l.student_id));
       return new Set(this.dashLessons.filter(l=>l.att.in && !out.has(l.student_id)).map(l=>l.student_id)).size; },
+    // 학원 관리 서브탭 — 선택 목록·지점은 본부(전지점)만, 휴무일·근무 기준은 원장 이상도 관리
+    acadTabs(){
+      const t = [];
+      if (this.canManageOptions) t.push({k:'options',l:'선택 목록'}, {k:'branch',l:'지점'});
+      if (this.isDirectorUp) t.push({k:'holiday',l:'휴무일'}, {k:'work',l:'근무 기준'}, {k:'notice',l:'공지'});
+      return t;
+    },
     hrGridDays(){ const p=(this.hrAtt.people||[])[0]; return p ? p.days : []; },
     myAttDays(){ return (this.myAtt.days||[]).slice().reverse(); },
     hdCanPickBranch(){ return this.mkgBranchOptions().length > 1 || (this.me && this.me.user.admin_type==='Super Admin'); },
@@ -5003,7 +5008,7 @@ const app = createApp({
         const t = [ {key:'dashboard',label:'오늘 운영'}, {key:'leadmgr',label:'신규 상담·등록'}, {key:'students',label:'학생 관리'}, {key:'indtt',label:'시간표'}, {key:'makeup',label:'보강 관리'}, {key:'classes',label:'그룹·특강'} ];
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
         t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ❗' : '')});
-        if (this.canManageOptions) t.push({key:'options',label:'학원 관리'});
+        if (this.acadTabs.length) t.push({key:'options',label:'학원 관리'});
         t.push({key:'msgtpl',label:'문자 템플릿'});
         t.push({key:'devboard',label:'개발 요청'});
         if (this.me.user.admin_type === 'Super Admin') t.push({key:'devlog',label:'개발일지'});
@@ -5083,7 +5088,13 @@ const app = createApp({
       else if (key==='leadmgr') this.loadLeads();
       else if (key==='classes') this.loadClasses();
       else if (key==='staff') this.loadStaff();
-      else if (key==='options'){ this.loadOptionAdmin(); this.loadBranchAdmin(); }
+      else if (key==='options'){
+        // 역할에 따라 첫 서브탭이 달라진다(본부는 선택 목록, 원장은 휴무일부터)
+        if (!this.acadTab || !this.acadTabs.some(t=>t.k===this.acadTab))
+          this.acadTab = (this.acadTabs[0] || {}).k || '';
+        if (this.canManageOptions){ this.loadOptionAdmin(); this.loadBranchAdmin(); }
+        this.selectAcadTab(this.acadTab);
+      }
       else if (key==='devlog') this.loadDevlog(true);
       else if (key==='devboard') this.loadDevBoard();
       else if (key==='msgtpl') this.loadMsgtpl();
@@ -5507,7 +5518,12 @@ const app = createApp({
     // ───────────── 학원 관리: 휴무일 · 근무 기준 ─────────────
     selectAcadTab(k){
       this.acadTab = k;
-      if (k==='holiday') this.loadHolidays();
+      if (k==='holiday'){
+        // 전지점 역할이 아니면 자기 지점으로 고정(전 지점 휴무는 본부만 등록 가능)
+        if (!this.canManageOptions && !this.hdForm.branch_id)
+          this.hdForm.branch_id = (this.myProfile && this.myProfile.branch && this.myProfile.branch.id) || '';
+        this.loadHolidays();
+      }
       if (k==='work'){
         if (!this.wsForm.branch_id) this.wsForm.branch_id = (this.myProfile && this.myProfile.branch_id) || '';
         if (!this.ttInstructors.length) this.loadTtInstructors();
