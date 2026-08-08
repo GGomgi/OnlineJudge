@@ -318,6 +318,81 @@
   <div v-if="navTip.show" class="fixed z-[70] px-2 py-1 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
        :style="{ left: navTip.x+'px', top: navTip.y+'px' }">{{ navTip.text }}</div>
 
+  <!-- 근태 월 그리드 호버 상세(클릭 없이 바로 보이게) -->
+  <div v-if="hrPop.show" class="fixed z-[70] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
+       :style="{ left: hrPop.x+'px', top: hrPop.y+'px' }">
+    <div class="font-bold text-slate-700 mb-0.5">{{ hrPop.name }} · {{ hrPop.date }}({{ hrPop.wd }})</div>
+    <div v-if="hrPop.leave" class="text-purple-600">{{ hrPop.leave }}<span v-if="hrPop.leaveReason" class="text-slate-400"> · {{ hrPop.leaveReason }}</span></div>
+    <template v-else>
+      <div v-if="hrPop.sch" class="text-slate-400">정규 {{ hrPop.sch }}</div>
+      <div v-if="hrPop.in || hrPop.out">
+        출근 <b class="font-mono">{{ hrPop.in || '--:--' }}</b>
+        <span v-if="hrPop.late" class="text-amber-600">({{ hrPop.late }}분 지각)</span>
+        · 퇴근 <b class="font-mono">{{ hrPop.out || '--:--' }}</b>
+      </div>
+      <div v-else-if="hrPop.scheduled" class="text-rose-500">기록 없음</div>
+      <div v-else class="text-slate-400">근무일 아님</div>
+      <div v-if="hrPop.minutes" class="text-slate-500">근무 {{ hrPop.minutesLabel }} <span class="text-slate-300">(휴게 차감)</span></div>
+      <div v-if="hrPop.note" class="text-slate-500 mt-0.5">비고: {{ hrPop.note }}</div>
+      <div v-if="hrPop.source" class="text-slate-300 mt-0.5">{{ hrPop.source }}</div>
+    </template>
+  </div>
+
+  <!-- 연차·휴가 등록 -->
+  <div v-if="leaveForm" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="leaveForm=null">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-5 py-3 border-b">
+        <div class="font-bold">연차·휴가 등록</div>
+        <button @click="leaveForm=null" class="text-slate-400 hover:text-slate-600">✕</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <div>
+          <label class="lbl">직원</label>
+          <select v-model.number="leaveForm.staff_id" class="input py-1">
+            <option :value="null">선택</option>
+            <option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="lbl">시작일</label><input v-model="leaveForm.date" type="date" class="input py-1" /></div>
+          <div><label class="lbl">종료일 <span class="text-slate-400">(하루면 비움)</span></label><input v-model="leaveForm.date_to" type="date" class="input py-1" /></div>
+        </div>
+        <div>
+          <label class="lbl">유형</label>
+          <select v-model="leaveForm.kind" class="input py-1">
+            <option v-for="k in leaveKinds" :key="k.value" :value="k.value">{{ k.label }}</option>
+          </select>
+        </div>
+        <div><label class="lbl">사유</label><input v-model="leaveForm.reason" placeholder="선택" class="input py-1" /></div>
+        <div class="flex justify-end gap-2">
+          <button @click="leaveForm=null" class="btn-secondary text-sm">취소</button>
+          <button @click="saveLeave" class="btn-primary text-sm">등록</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 근태 시각 수정 요청 -->
+  <div v-if="attEditForm" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="attEditForm=null">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-5 py-3 border-b">
+        <div class="font-bold">{{ attEditForm.fieldLabel }} 시각 수정 {{ attEditForm.canDirect ? '' : '요청' }}</div>
+        <button @click="attEditForm=null" class="text-slate-400 hover:text-slate-600">✕</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <div class="text-sm text-slate-500">{{ attEditForm.date }} · 현재 <b class="font-mono">{{ attEditForm.old || '(없음)' }}</b></div>
+        <div><label class="lbl">바꿀 시각 <span class="text-slate-400">(24시간제 · 비우면 기록 삭제)</span></label>
+          <input v-model="attEditForm.value" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-28 text-center font-mono" /></div>
+        <div><label class="lbl">사유 <span class="text-rose-500">*</span></label><input v-model="attEditForm.reason" placeholder="예: 키오스크를 못 찍었습니다" class="input py-1" /></div>
+        <p v-if="!attEditForm.canDirect" class="text-[11px] text-slate-400">요청은 원장 승인 후 반영됩니다.</p>
+        <div class="flex justify-end gap-2">
+          <button @click="attEditForm=null" class="btn-secondary text-sm">취소</button>
+          <button @click="saveAttEdit" class="btn-primary text-sm">{{ attEditForm.canDirect ? '수정' : '요청' }}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 대시보드 학생 호버 팝오버 -->
   <div v-if="dashPop.show" @mouseenter="keepDashPop" @mouseleave="hideDashPop" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
     <div class="font-bold text-sm mb-1 flex items-center gap-1">
@@ -352,6 +427,7 @@
     <div class="text-slate-500">{{ calPop.date }} {{ calPop.it.start_time }} · {{ calPop.it.subject }}<template v-if="calPop.it.makeup"> (보강)</template></div>
     <div v-if="calPop.it.status==='ABSENT'" class="mt-1 text-rose-500">결석</div>
     <div v-else-if="calPop.it.status==='LEAVE'" class="mt-1 text-purple-600">임시휴원<span v-if="calPop.it.lesson_note"> · {{ calPop.it.lesson_note }}</span></div>
+    <div v-else-if="calPop.it.status==='HOLIDAY'" class="mt-1 text-slate-500">🏖 학원 휴무일</div>
     <div class="mt-2 pt-2 border-t">
       <div class="text-indigo-600 font-semibold">📝 진도</div>
       <template v-if="calPop.it.progress && calPop.it.progress.content">
@@ -735,6 +811,10 @@
         <span class="text-indigo-600">하원 <b>{{ dashCheckedOut }}</b>명</span>
         <span class="text-amber-600">수업중 <b>{{ dashInClass }}</b>명</span>
       </div>
+      <!-- 그날이 휴무일이면 맨 위에 사유를 띄운다 -->
+      <div v-if="(dashData.holidays||[]).length" class="bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 mb-3 text-sm">
+        🏖 <b class="text-slate-700">{{ dashData.holidays.join(' · ') }}</b> <span class="text-slate-500">— 학원 휴무일입니다. 이날 수업은 휴무로 처리되어 결석에 들어가지 않습니다.</span>
+      </div>
       <!-- 임시휴원 중인 학생 — 기간이 끝나면 자동 복귀라 놓치기 쉬워서 복귀일을 함께 표시 -->
       <div v-if="(dashData.temp_leaves||[]).length" class="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 mb-3 text-xs">
         <div class="font-semibold text-purple-700 mb-1">🏖 임시휴원 ({{ dashData.temp_leaves.length }}명) <span class="font-normal text-purple-400">— 시작 10일 전부터 미리 표시</span></div>
@@ -853,6 +933,7 @@
                       <button @click="checkAtt(l,'out')" :disabled="!l.att.in" :class="['text-xs px-2 py-1 rounded text-center', l.att.out ? 'bg-indigo-100 text-indigo-700' : (l.att.in ? 'bg-slate-100 text-slate-500 hover:bg-indigo-50' : 'bg-slate-50 text-slate-300 cursor-not-allowed')]" :title="!l.att.in ? '등원 후 하원 가능' : ''">{{ l.att.out ? '하원 '+l.att.out : '하원' }}</button>
                     </template>
                     <span v-else-if="isLeave(l)" class="text-xs text-violet-500">임시휴원</span>
+                    <span v-else-if="isHoliday(l)" class="text-xs text-slate-400">휴무</span>
                     <span v-else class="text-xs text-rose-500">결석{{ stuAbsenceSuffix(l) }}</span>
                   </div>
                 </td>
@@ -865,6 +946,7 @@
                   <template v-else>
                     <span v-if="isAbsent(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-rose-100 text-rose-600 whitespace-nowrap">결석{{ stuAbsenceSuffix(l) }}</span>
                     <span v-else-if="isLeave(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-violet-100 text-violet-600">임시휴원</span>
+                    <span v-else-if="isHoliday(l)" class="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 text-slate-500">휴무</span>
                     <span v-else-if="isEarlyLeavePending(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer whitespace-nowrap" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}{{ stuAbsenceSuffix(l) }}</span>
                     <span v-else-if="l.att.note_tag" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
                     <span v-else @click="openAtt(l)" class="text-[11px] text-slate-300 hover:text-indigo-500 cursor-pointer">비고+</span>
@@ -2998,7 +3080,108 @@
 
     <!-- ============ 관리자: 직원 관리 ============ -->
     <section v-if="tab==='staff'">
-      <div class="grid md:grid-cols-4 gap-4">
+      <!-- 서브탭: 명단 / 근태 -->
+      <div class="flex gap-1 mb-3 border-b text-sm bg-white rounded-t-xl px-2 pt-2">
+        <button v-for="t in staffTabs" :key="t.k" @click="selectStaffTab(t.k)"
+          :class="['px-3 py-2 border-b-2 -mb-px whitespace-nowrap', staffTab===t.k ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500']">
+          {{ t.l }}<span v-if="t.k==='attend' && hrPending.length" class="ml-1 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px]">{{ hrPending.length }}</span>
+        </button>
+      </div>
+
+      <!-- ===== 직원 근태 ===== -->
+      <div v-if="staffTab==='attend'" class="space-y-3">
+        <!-- 오늘 현황 -->
+        <div class="bg-white rounded-xl shadow-sm p-3">
+          <div class="flex items-center gap-3 text-sm flex-wrap mb-2">
+            <span class="font-semibold">오늘 출근 현황</span>
+            <span class="text-emerald-600">근무중 <b>{{ (hrToday.summary||{}).working || 0 }}</b>명</span>
+            <span class="text-indigo-600">퇴근 <b>{{ (hrToday.summary||{}).done || 0 }}</b>명</span>
+            <span class="text-rose-500">미출근 <b>{{ (hrToday.summary||{}).absent || 0 }}</b>명</span>
+            <span class="text-purple-600">휴가 <b>{{ (hrToday.summary||{}).leave || 0 }}</b>명</span>
+          </div>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <span v-for="(p,i) in (hrToday.people||[])" :key="p.name+i" class="flex items-center gap-1.5">
+              <span v-if="i>0" class="text-slate-300 select-none -ml-2 mr-0.5">|</span>
+              <b class="text-slate-700">{{ p.name }}</b>
+              <span v-if="p.leave_label" class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">{{ p.leave_label }}</span>
+              <template v-else-if="p.in">
+                <span class="font-mono text-emerald-600">{{ p.in }}</span>
+                <span v-if="p.late" class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{{ p.late }}분</span>
+                <span v-if="p.out" class="font-mono text-indigo-500">~ {{ p.out }}</span>
+              </template>
+              <span v-else-if="p.scheduled" class="text-rose-400">미출근</span>
+              <span v-else class="text-slate-300">근무일 아님</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- 수정 요청 승인 -->
+        <div v-if="hrPending.length" class="bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <div class="text-sm font-semibold text-amber-800 mb-2">근태 수정 요청 ({{ hrPending.length }})</div>
+          <div v-for="c in hrPending" :key="c.id" class="flex items-center gap-2 text-xs py-1 border-t border-amber-100 first:border-0">
+            <b class="text-slate-700">{{ c.staff }}</b>
+            <span class="font-mono">{{ c.date }}</span>
+            <span>{{ c.field_label }}</span>
+            <span class="font-mono text-slate-400">{{ c.old || '(없음)' }}</span>
+            <span class="text-slate-400">→</span>
+            <span class="font-mono text-indigo-600 font-semibold">{{ c.new }}</span>
+            <span class="text-slate-500">{{ c.reason }}</span>
+            <span class="ml-auto flex gap-2 shrink-0">
+              <button @click="approveHr(c,'APPROVE')" class="text-emerald-600 hover:underline">승인</button>
+              <button @click="approveHr(c,'REJECT')" class="text-rose-500 hover:underline">반려</button>
+            </span>
+          </div>
+        </div>
+
+        <!-- 월 그리드 -->
+        <div class="bg-white rounded-xl shadow-sm p-3 overflow-x-auto">
+          <div class="flex items-center gap-2 mb-2 text-sm flex-wrap">
+            <button @click="shiftHrMonth(-1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">◀</button>
+            <span class="font-semibold">{{ hrMonth }}</span>
+            <button @click="shiftHrMonth(1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">▶</button>
+            <button @click="openLeaveForm" class="ml-auto btn-secondary text-sm">+ 연차·휴가 등록</button>
+          </div>
+          <table class="text-xs border-collapse">
+            <thead>
+              <tr>
+                <th class="sticky left-0 bg-white px-2 py-1 text-left border-b w-24">직원</th>
+                <th v-for="d in hrGridDays" :key="d.date" class="px-0 py-1 border-b text-center w-6"
+                    :class="d.wd==='일' ? 'text-rose-400' : (d.wd==='토' ? 'text-blue-400' : 'text-slate-400')">
+                  <div>{{ Number(d.date.slice(8)) }}</div><div class="text-[9px]">{{ d.wd }}</div>
+                </th>
+                <th class="px-2 py-1 border-b text-center w-16">근무</th>
+                <th class="px-2 py-1 border-b text-center w-16">지각</th>
+                <th v-if="hrAtt.show_total" class="px-2 py-1 border-b text-center w-20">시간</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in (hrAtt.people||[])" :key="p.staff_id" class="border-b">
+                <td class="sticky left-0 bg-white px-2 py-1 whitespace-nowrap">
+                  <span class="font-medium">{{ p.name }}</span>
+                </td>
+                <td v-for="d in p.days" :key="d.date" class="p-0 text-center"
+                    @mouseenter="hrCellEnter(p,d,$event)" @mouseleave="hrCellLeave">
+                  <div :class="['h-6 w-6 mx-auto flex items-center justify-center cursor-default', hrCellCls(d)]">{{ hrCellMark(d) }}</div>
+                </td>
+                <td class="px-2 py-1 text-center">{{ p.work_days }}</td>
+                <td class="px-2 py-1 text-center" :class="p.late_days ? 'text-amber-600 font-semibold' : 'text-slate-300'">{{ p.late_days }}</td>
+                <td v-if="hrAtt.show_total" class="px-2 py-1 text-center font-mono">{{ hmOf(p.total_minutes) }}</td>
+              </tr>
+              <tr v-if="!(hrAtt.people||[]).length"><td :colspan="hrGridDays.length+4" class="px-3 py-6 text-center text-xs text-slate-400">직원이 없습니다.</td></tr>
+            </tbody>
+          </table>
+          <div class="flex flex-wrap gap-3 mt-2 text-[11px] text-slate-400">
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-100 inline-block"></span>정상</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-200 inline-block"></span>지각</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-rose-100 inline-block"></span>미출근</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-purple-100 inline-block"></span>휴가</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-slate-100 inline-block"></span>근무일 아님</span>
+            <span>· 칸에 마우스를 올리면 상세가 보입니다</span>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="staffTab==='list'" class="grid md:grid-cols-4 gap-4">
         <!-- 직원 생성 -->
         <div class="md:col-span-1">
           <div class="bg-white rounded-xl shadow-sm p-4">
@@ -3156,10 +3339,16 @@
       </div>
     </section>
 
-    <!-- ============ 관리자: 선택 목록 관리 ============ -->
+    <!-- ============ 관리자: 학원 관리(선택 목록·지점·휴무일·근무 기준) ============ -->
     <section v-if="tab==='options'">
+      <!-- 서브탭 — 메뉴 개수를 늘리지 않고 관리성 화면을 한곳에 모음 -->
+      <div class="flex gap-1 mb-3 border-b text-sm bg-white rounded-t-xl px-2 pt-2">
+        <button v-for="t in acadTabs" :key="t.k" @click="selectAcadTab(t.k)"
+          :class="['px-3 py-2 border-b-2 -mb-px whitespace-nowrap', acadTab===t.k ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500']">{{ t.l }}</button>
+      </div>
+
       <!-- 지점 관리 -->
-      <div class="bg-white rounded-xl shadow-sm p-4 mb-5">
+      <div v-if="acadTab==='branch'" class="bg-white rounded-xl shadow-sm p-4 mb-5">
         <h2 class="text-lg font-bold mb-1">지점 관리</h2>
         <p class="text-xs text-slate-400 mb-3">지점 코드는 자동 생성(B0NN)되며 사번·소속·권한 스코프에 연결됩니다. 삭제 대신 <b>비활성</b>(폐점)으로 처리하세요.</p>
         <div class="flex items-end gap-2 mb-3">
@@ -3197,14 +3386,14 @@
         </div>
       </div>
 
-      <div class="flex items-center gap-2 mb-3 flex-wrap">
+      <div v-if="acadTab==='options'" class="flex items-center gap-2 mb-3 flex-wrap">
         <h2 class="text-lg font-bold">선택 목록 관리</h2>
         <select v-model="optCategory" @change="loadOptionAdmin" class="input w-48">
           <option v-for="c in optionCategories" :key="c.v" :value="c.v">{{ c.l }}</option>
         </select>
       </div>
-      <p class="text-xs text-slate-400 mb-3">입회원/상담 신청서의 드롭다운 목록입니다. 값(코드)은 저장된 기록 보호를 위해 변경할 수 없습니다. <b>자유입력</b>을 켜면 그 항목 선택 시 직접 입력란이 나타납니다(예: 개인맞춤·직접 입력).</p>
-      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+      <p v-if="acadTab==='options'" class="text-xs text-slate-400 mb-3">입회원/상담 신청서의 드롭다운 목록입니다. 값(코드)은 저장된 기록 보호를 위해 변경할 수 없습니다. <b>자유입력</b>을 켜면 그 항목 선택 시 직접 입력란이 나타납니다(예: 개인맞춤·직접 입력).</p>
+      <div v-if="acadTab==='options'" class="bg-white rounded-xl shadow-sm overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
@@ -3255,6 +3444,134 @@
             </tr>
           </tfoot>
         </table>
+      </div>
+
+      <!-- ===== 휴무일 ===== -->
+      <div v-if="acadTab==='holiday'">
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <h2 class="text-lg font-bold mb-1">학원 휴무일</h2>
+          <p class="text-xs text-slate-400 mb-3">등록하면 그날 수업이 <b>휴무</b>로 바뀌어 결석률에서 빠지고, 시간표·출결기록에 사유가 함께 보입니다. 이미 등원 기록이 있는 수업은 그대로 둡니다(그날 실제로 수업을 한 것이므로).</p>
+          <div class="flex flex-wrap items-end gap-2">
+            <div><label class="lbl">날짜</label><input v-model="hdForm.date" type="date" class="input py-1 w-40" /></div>
+            <div><label class="lbl">종료일 <span class="text-slate-400">(방학처럼 여러 날)</span></label><input v-model="hdForm.dateTo" type="date" class="input py-1 w-40" /></div>
+            <div><label class="lbl">이름</label><input v-model="hdForm.name" placeholder="예: 광복절" class="input py-1 w-40" /></div>
+            <div><label class="lbl">유형</label>
+              <select v-model="hdForm.kind" class="input py-1 w-32">
+                <option v-for="k in hdKinds" :key="k.value" :value="k.value">{{ k.label }}</option>
+              </select>
+            </div>
+            <div v-if="hdCanPickBranch"><label class="lbl">지점</label>
+              <select v-model="hdForm.branch_id" class="input py-1 w-36">
+                <option :value="''">전 지점</option>
+                <option v-for="b in mkgBranchOptions()" :key="b.id" :value="b.id">{{ b.name }}</option>
+              </select>
+            </div>
+            <button @click="addHoliday" class="btn-primary text-sm">+ 휴무일 등록</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-3">
+          <div class="flex items-center gap-2 mb-2 text-sm flex-wrap">
+            <span class="font-semibold">{{ hdYear }}년 휴무일</span>
+            <span class="text-xs text-slate-400">{{ holidays.length }}일</span>
+            <span class="ml-auto flex items-center gap-1">
+              <button @click="shiftHdYear(-1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">◀ {{ hdYear-1 }}</button>
+              <button @click="shiftHdYear(1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">{{ hdYear+1 }} ▶</button>
+            </span>
+          </div>
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs">
+              <tr><th class="px-3 py-2 text-left w-36">날짜</th><th class="px-3 py-2 text-left">이름</th><th class="px-3 py-2 text-left w-28">유형</th><th class="px-3 py-2 text-left w-32">지점</th><th class="px-3 py-2 text-left w-36">등록</th><th class="px-3 py-2 w-16"></th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="h in holidays" :key="h.id" class="border-t">
+                <td class="px-3 py-2 font-mono">{{ h.date }} <span class="text-slate-400">({{ h.wd }})</span></td>
+                <td class="px-3 py-2">{{ h.name }}</td>
+                <td class="px-3 py-2 text-slate-500">{{ h.kind_label }}</td>
+                <td class="px-3 py-2 text-slate-500">{{ h.branch }}</td>
+                <td class="px-3 py-2 text-xs text-slate-400">{{ h.created_by }}</td>
+                <td class="px-3 py-2 text-right"><button @click="deleteHoliday(h)" class="text-xs text-rose-500 hover:underline">삭제</button></td>
+              </tr>
+              <tr v-if="!holidays.length"><td colspan="6" class="px-3 py-6 text-center text-xs text-slate-400">등록된 휴무일이 없습니다.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== 근무 기준 ===== -->
+      <div v-if="acadTab==='work'">
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <h2 class="text-lg font-bold mb-1">근무 기준</h2>
+          <p class="text-xs text-slate-400 mb-3">학생 시간표와 같은 <b>적용 시작일</b> 방식입니다. 바꾸면 이전 기준은 전날로 끝나고 새 줄이 생겨 과거 기록이 그대로 남습니다. 직원별로 지정하면 지점 기본값보다 우선합니다.</p>
+          <div class="flex flex-wrap items-end gap-2">
+            <div><label class="lbl">적용 시작일</label><input v-model="wsForm.active_from" type="date" class="input py-1 w-40" /></div>
+            <div><label class="lbl">출근</label><input v-model="wsForm.start_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
+            <div><label class="lbl">퇴근</label><input v-model="wsForm.end_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
+            <div>
+              <label class="lbl">근무 요일</label>
+              <div class="flex gap-1">
+                <button v-for="(w,i) in ['월','화','수','목','금','토','일']" :key="i" @click="toggleWsDay(i)"
+                  :class="['w-8 h-8 rounded border text-xs', wsForm.workdays.includes(String(i)) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200']">{{ w }}</button>
+              </div>
+            </div>
+            <div><label class="lbl">휴게</label>
+              <div class="flex items-center gap-1 text-xs text-slate-500">
+                <input v-model.number="wsForm.break_per_hours" type="number" min="0" max="12" class="input py-1 w-14 text-center" />시간마다
+                <input v-model.number="wsForm.break_minutes" type="number" min="0" max="120" class="input py-1 w-14 text-center" />분
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-end gap-2 mt-2">
+            <div class="flex-1 min-w-[16rem]"><label class="lbl">변경 사유 <span class="text-rose-500">*</span></label><input v-model="wsForm.reason" placeholder="예: 학생 서류 시간 확보" class="input py-1" /></div>
+            <div v-if="hdCanPickBranch"><label class="lbl">지점</label>
+              <select v-model="wsForm.branch_id" class="input py-1 w-36">
+                <option v-for="b in mkgBranchOptions()" :key="b.id" :value="b.id">{{ b.name }}</option>
+              </select>
+            </div>
+            <button @click="saveWorkSchedule" class="btn-primary text-sm">근무 기준 변경</button>
+          </div>
+          <!-- 직원별 개별 지정 -->
+          <div class="mt-3 pt-3 border-t">
+            <label class="lbl">직원별 개별 지정 <span class="text-slate-400 font-normal">(선택 — 체크한 직원에게만 적용, 비우면 위 지점 기본값)</span></label>
+            <div class="flex flex-wrap gap-1 mt-1">
+              <label v-for="t in ttInstructors" :key="t.user_id" class="flex items-center gap-1 px-2 py-1 rounded border text-xs cursor-pointer select-none"
+                     :class="wsForm.staff_ids.includes(t.user_id) ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500'">
+                <input type="checkbox" :value="t.user_id" v-model="wsForm.staff_ids" class="w-3 h-3" />{{ t.real_name || t.staff_no }}
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-3">
+          <div class="flex items-center gap-2 mb-2 text-sm flex-wrap">
+            <span class="font-semibold">적용 이력</span>
+            <select v-model="wsViewStaff" @change="loadWorkSchedules" class="input py-1 text-xs w-40 ml-auto">
+              <option :value="''">지점 기본값</option>
+              <option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }} 개별</option>
+            </select>
+          </div>
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs">
+              <tr><th class="px-3 py-2 text-left w-24">적용</th><th class="px-3 py-2 text-left w-52">기간</th><th class="px-3 py-2 text-left w-32">근무 시각</th><th class="px-3 py-2 text-left w-28">요일</th><th class="px-3 py-2 text-left w-28">휴게</th><th class="px-3 py-2 text-left">사유</th><th class="px-3 py-2 text-left w-24">변경자</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="w in workSchedules" :key="w.id" class="border-t" :class="w.current ? '' : 'text-slate-400'">
+                <td class="px-3 py-2"><span v-if="w.current" class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[11px]">적용중</span><span v-else class="text-[11px]">지난 기간</span></td>
+                <td class="px-3 py-2 font-mono text-xs">{{ w.active_from }} ~ {{ w.active_until || '' }}</td>
+                <td class="px-3 py-2 font-mono">{{ w.start_time }} ~ {{ w.end_time }}</td>
+                <td class="px-3 py-2">{{ w.workdays_label }}</td>
+                <td class="px-3 py-2 text-xs">{{ w.break_per_hours }}시간마다 {{ w.break_minutes }}분</td>
+                <td class="px-3 py-2 text-xs">{{ w.reason }}</td>
+                <td class="px-3 py-2 text-xs">{{ w.created_by }}</td>
+              </tr>
+              <tr v-if="!workSchedules.length"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">등록된 근무 기준이 없습니다.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div v-if="acadTab==='notice'" class="bg-white rounded-xl shadow-sm p-10 text-center text-sm text-slate-400">
+        준비 중인 기능입니다.<br><span class="text-xs">로그인 첫 화면에 뜨는 한 줄 공지를 등록하는 곳입니다.</span>
       </div>
     </section>
 
@@ -3872,8 +4189,76 @@
       </div>
 
       <!-- 아직 준비 중인 메뉴 -->
-      <div v-if="hrTab==='todo' || hrTab==='attend' || hrTab==='payroll'" class="bg-white rounded-xl shadow-sm p-10 text-center text-sm text-slate-400">
+      <div v-if="hrTab==='todo' || hrTab==='payroll'" class="bg-white rounded-xl shadow-sm p-10 text-center text-sm text-slate-400">
         준비 중인 기능입니다.
+      </div>
+
+      <!-- ===== 내 근태 ===== -->
+      <div v-if="hrTab==='attend'" class="space-y-3">
+        <!-- 오늘 출퇴근 -->
+        <div class="bg-white rounded-xl shadow-sm p-4">
+          <div class="flex items-center gap-3 flex-wrap">
+            <div class="text-sm">
+              <div class="font-semibold text-slate-700">오늘 {{ hrToday.today }}</div>
+              <div class="text-xs text-slate-400" v-if="hrToday.mine && hrToday.mine.sch_start">정규 {{ hrToday.mine.sch_start }} ~ {{ hrToday.mine.sch_end }}</div>
+            </div>
+            <div class="flex items-center gap-2 text-sm">
+              <span class="px-2 py-1 rounded" :class="hrToday.mine && hrToday.mine.in ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'">
+                출근 <b class="font-mono">{{ (hrToday.mine && hrToday.mine.in) || '--:--' }}</b>
+              </span>
+              <span v-if="hrToday.mine && hrToday.mine.late" class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-xs">{{ hrToday.mine.late }}분 지각</span>
+              <span class="px-2 py-1 rounded" :class="hrToday.mine && hrToday.mine.out ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-400'">
+                퇴근 <b class="font-mono">{{ (hrToday.mine && hrToday.mine.out) || '--:--' }}</b>
+              </span>
+              <span v-if="hrToday.mine && hrToday.mine.leave_label" class="px-2 py-1 rounded bg-purple-100 text-purple-700 text-xs">{{ hrToday.mine.leave_label }}</span>
+            </div>
+            <div class="ml-auto flex items-center gap-2">
+              <button v-if="hrToday.mine && !hrToday.mine.in" @click="myCheck('IN')" class="btn-primary text-sm">출근</button>
+              <button v-else-if="hrToday.mine && !hrToday.mine.out" @click="myCheck('OUT')" class="btn-primary text-sm">퇴근</button>
+              <span v-else class="text-xs text-slate-400">오늘 근무가 끝났습니다</span>
+              <button v-if="hrToday.mine && (hrToday.mine.in || hrToday.mine.out)" @click="myCheck('UNDO')" class="text-xs text-slate-400 hover:underline">방금 잘못 찍었어요</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 월별 기록 -->
+        <div class="bg-white rounded-xl shadow-sm p-3">
+          <div class="flex items-center gap-2 mb-2 text-sm flex-wrap">
+            <button @click="shiftAttMonth(-1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">◀</button>
+            <span class="font-semibold">{{ myAttMonth }}</span>
+            <button @click="shiftAttMonth(1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">▶</button>
+            <span class="text-xs text-slate-400 ml-2">근무 {{ myAtt.work_days }}일 · 지각 {{ myAtt.late_days }}일 · 휴가 {{ myAtt.leave_days }}일</span>
+          </div>
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs">
+              <tr><th class="px-3 py-2 text-left w-32">날짜</th><th class="px-3 py-2 text-left w-24">출근</th><th class="px-3 py-2 text-left w-24">퇴근</th><th class="px-3 py-2 text-left w-24">지각</th><th class="px-3 py-2 text-left">비고</th><th class="px-3 py-2 text-left w-28">상태</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="d in myAttDays" :key="d.date" class="border-t" :class="d.scheduled ? '' : 'bg-slate-50/60 text-slate-400'">
+                <td class="px-3 py-2 font-mono">{{ d.date.slice(5) }} <span class="text-slate-400">({{ d.wd }})</span></td>
+                <td class="px-3 py-2 font-mono">
+                  <button @click="editMyTime(d,'IN')" class="hover:underline" :class="d.in ? '' : 'text-slate-300'">{{ d.in || '--:--' }}</button>
+                </td>
+                <td class="px-3 py-2 font-mono">
+                  <button @click="editMyTime(d,'OUT')" class="hover:underline" :class="d.out ? '' : 'text-slate-300'">{{ d.out || '--:--' }}</button>
+                </td>
+                <td class="px-3 py-2"><span v-if="d.late" class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-xs">{{ d.late }}분</span></td>
+                <td class="px-3 py-2 text-xs">
+                  <input :value="d.note" @change="saveMyNote(d,$event.target.value)" placeholder="—" class="input py-0.5 text-xs" />
+                </td>
+                <td class="px-3 py-2 text-xs">
+                  <span v-if="d.leave_label" class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">{{ d.leave_label }}</span>
+                  <span v-else-if="d.state==='DONE'" class="text-emerald-600">정상</span>
+                  <span v-else-if="d.state==='WORKING'" class="text-amber-600">근무중</span>
+                  <span v-else-if="d.state==='MISSING' && d.scheduled" class="text-rose-500">기록 없음</span>
+                  <span v-else class="text-slate-300">—</span>
+                </td>
+              </tr>
+              <tr v-if="!myAttDays.length"><td colspan="6" class="px-3 py-6 text-center text-xs text-slate-400">기록이 없습니다.</td></tr>
+            </tbody>
+          </table>
+          <p class="text-[11px] text-slate-400 mt-2">시각을 누르면 수정을 요청할 수 있습니다. 요청은 원장 승인 후 반영되며, 비고는 승인 없이 바로 저장됩니다.</p>
+        </div>
       </div>
       <div v-if="hrTab==='doc'" class="bg-white rounded-xl shadow-sm p-8 text-sm text-slate-500">
         <div class="text-center text-slate-400 mb-4">준비 중인 기능입니다.</div>
@@ -4001,6 +4386,24 @@ const app = createApp({
       legacyPopFor: null, _legacyPopTimer: null, legacyEdit: { id:null, url:'' },
       navTip: { show:false, x:0, y:0, text:'' },
       hrTab: 'me',
+      // ── 학원 관리(휴무일·근무 기준) ──
+      acadTab: 'options',
+      acadTabs: [ {k:'options',l:'선택 목록'}, {k:'branch',l:'지점'}, {k:'holiday',l:'휴무일'},
+                  {k:'work',l:'근무 기준'}, {k:'notice',l:'공지'} ],
+      holidays: [], hdKinds: [], hdYear: new Date().getFullYear(),
+      hdForm: { date:'', dateTo:'', name:'', kind:'PUBLIC', branch_id:'' },
+      workSchedules: [], wsViewStaff: '',
+      wsForm: { active_from:'', start_time:'', end_time:'', workdays:'012345',
+                break_per_hours:4, break_minutes:30, reason:'', branch_id:'', staff_ids:[] },
+      // ── 직원 근태 ──
+      staffTab: 'list',
+      staffTabs: [ {k:'list',l:'직원 명단'}, {k:'attend',l:'근태'} ],
+      hrToday: { today:'', mine:null, summary:null, people:[] },
+      hrAtt: { people:[], show_total:false }, hrMonth: '',
+      hrPending: [], leaveKinds: [], leaveForm: null, attEditForm: null,
+      myAtt: { days:[], work_days:0, late_days:0, leave_days:0 }, myAttMonth: '',
+      hrPop: { show:false, x:0, y:0, name:'', date:'', wd:'', in:'', out:'', late:0,
+               sch:'', note:'', leave:'', leaveReason:'', scheduled:false, minutes:0, minutesLabel:'', source:'' },
       hrTabs: [ {k:'me',l:'내 정보'}, {k:'hrinfo',l:'인사 정보'}, {k:'todo',l:'할 일'},
                 {k:'attend',l:'근태 관리'}, {k:'payroll',l:'급여 명세'}, {k:'doc',l:'서류함'},
                 {k:'activity',l:'사용 이력'} ],
@@ -4339,7 +4742,7 @@ const app = createApp({
     dashInstructors(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.instructor))]; },
     dashBranches(){ return [...new Set((this.dashData.lessons||[]).map(l=>l.branch).filter(Boolean))]; },
     // 수업·결석·등원·하원 모두 '명' 기준(같은 학생이 정규+보강처럼 여러 건이어도 한 명)
-    dashStudentCount(){ return new Set(this.dashLessons.map(l=>l.student_id)).size; },
+    dashStudentCount(){ return new Set(this.dashLessons.filter(l=>!this.isHoliday(l)).map(l=>l.student_id)).size; },
     // 임시휴원도 그날 수업을 안 한 것이므로 결석 수에 함께 센다
     dashAbsentCount(){ return new Set(this.dashLessons.filter(l=>this.isAbsent(l)||this.isLeave(l)).map(l=>l.student_id)).size; },
     dashCheckedIn(){ const ids=new Set(this.dashLessons.filter(l=>l.att.in).map(l=>l.student_id)); return ids.size; },
@@ -4347,6 +4750,9 @@ const app = createApp({
     // 수업중 = 등원했고 아직 하원하지 않은 학생(연속수업이어도 하원 전까지 한 명)
     dashInClass(){ const out=new Set(this.dashLessons.filter(l=>l.att.out).map(l=>l.student_id));
       return new Set(this.dashLessons.filter(l=>l.att.in && !out.has(l.student_id)).map(l=>l.student_id)).size; },
+    hrGridDays(){ const p=(this.hrAtt.people||[])[0]; return p ? p.days : []; },
+    myAttDays(){ return (this.myAtt.days||[]).slice().reverse(); },
+    hdCanPickBranch(){ return this.mkgBranchOptions().length > 1 || (this.me && this.me.user.admin_type==='Super Admin'); },
     tempLeavesNow(){ return (this.dashData.temp_leaves||[]).filter(t=>!t.upcoming); },
     tempLeavesSoon(){ return (this.dashData.temp_leaves||[]).filter(t=>t.upcoming); },
     // 수업 시각 + 수업시간으로 끝나는 시각을 계산(HH:MM, 24시간제)
@@ -4597,7 +5003,7 @@ const app = createApp({
         const t = [ {key:'dashboard',label:'오늘 운영'}, {key:'leadmgr',label:'신규 상담·등록'}, {key:'students',label:'학생 관리'}, {key:'indtt',label:'시간표'}, {key:'makeup',label:'보강 관리'}, {key:'classes',label:'그룹·특강'} ];
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
         t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ❗' : '')});
-        if (this.canManageOptions) t.push({key:'options',label:'선택 목록'});
+        if (this.canManageOptions) t.push({key:'options',label:'학원 관리'});
         t.push({key:'msgtpl',label:'문자 템플릿'});
         t.push({key:'devboard',label:'개발 요청'});
         if (this.me.user.admin_type === 'Super Admin') t.push({key:'devlog',label:'개발일지'});
@@ -5092,6 +5498,224 @@ const app = createApp({
       if (k==='activity' && !this.actLog.rows.length){
         if (!this.actFilter.from) this.applyActPreset(30); else this.loadActivity();
       }
+      if (k==='attend'){
+        if (!this.myAttMonth) this.myAttMonth = this.todayStr.slice(0,7);
+        this.loadHrToday(); this.loadMyAtt();
+      }
+    },
+
+    // ───────────── 학원 관리: 휴무일 · 근무 기준 ─────────────
+    selectAcadTab(k){
+      this.acadTab = k;
+      if (k==='holiday') this.loadHolidays();
+      if (k==='work'){
+        if (!this.wsForm.branch_id) this.wsForm.branch_id = (this.myProfile && this.myProfile.branch_id) || '';
+        if (!this.ttInstructors.length) this.loadTtInstructors();
+        this.loadWorkSchedules();
+      }
+    },
+    hdRange(){ return { from: this.hdYear+'-01-01', to: this.hdYear+'-12-31' }; },
+    async loadHolidays(){
+      const r = this.hdRange();
+      try {
+        const d = await api('GET','/api/admin/academy/holiday?from='+r.from+'&to='+r.to);
+        this.holidays = d.rows || []; this.hdKinds = d.kinds || [];
+      } catch(e){ this.holidays=[]; this.notify(e.message,false); }
+    },
+    shiftHdYear(n){ this.hdYear += n; this.loadHolidays(); },
+    async addHoliday(){
+      const f = this.hdForm;
+      if (!f.date) return this.notify('날짜를 선택하세요.', false);
+      if (!(f.name||'').trim()) return this.notify('휴무일 이름을 입력하세요.', false);
+      // 종료일을 주면 그 사이 날짜를 모두 등록(방학처럼 연속된 휴무)
+      const items = [];
+      const end = f.dateTo || f.date;
+      let cur = new Date(f.date+'T00:00:00'), last = new Date(end+'T00:00:00');
+      if (last < cur) return this.notify('종료일이 시작일보다 빠릅니다.', false);
+      const p=x=>String(x).padStart(2,'0');
+      while (cur <= last){
+        items.push({ date: cur.getFullYear()+'-'+p(cur.getMonth()+1)+'-'+p(cur.getDate()), name:f.name.trim(), kind:f.kind });
+        cur.setDate(cur.getDate()+1);
+      }
+      try {
+        const d = await api('POST','/api/admin/academy/holiday', { items, branch_id: f.branch_id || null, kind:f.kind });
+        this.hdForm = { date:'', dateTo:'', name:'', kind:'PUBLIC', branch_id:f.branch_id };
+        let msg = d.created.length+'일 등록되었습니다.';
+        if (d.lessons) msg += ' 수업 '+d.lessons+'건이 휴무 처리되었습니다.';
+        if (d.skipped.length) msg += ' (이미 등록: '+d.skipped.join(', ')+')';
+        this.notify(msg); this.loadHolidays();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async deleteHoliday(h){
+      try {
+        const d = await api('DELETE','/api/admin/academy/holiday?id='+h.id);
+        this.notify('삭제되었습니다.'+(d.reverted ? ' 수업 '+d.reverted+'건이 예정으로 돌아갔습니다.' : ''));
+        this.loadHolidays();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async loadWorkSchedules(){
+      let qs = this.wsViewStaff ? ('?staff_id='+this.wsViewStaff)
+                                : ('?branch_id='+(this.wsForm.branch_id||''));
+      try { this.workSchedules = await api('GET','/api/admin/academy/work_schedule'+qs) || []; }
+      catch(e){ this.workSchedules=[]; }
+    },
+    toggleWsDay(i){
+      const k = String(i), w = this.wsForm.workdays;
+      this.wsForm.workdays = w.includes(k) ? w.split('').filter(c=>c!==k).join('')
+                                           : (w+k).split('').sort().join('');
+    },
+    async saveWorkSchedule(){
+      const f = this.wsForm;
+      if (!f.active_from) return this.notify('적용 시작일을 입력하세요.', false);
+      if (!/^\d{1,2}:\d{2}$/.test(f.start_time||'') || !/^\d{1,2}:\d{2}$/.test(f.end_time||''))
+        return this.notify('근무 시각을 HH:MM 으로 입력하세요.', false);
+      if (!(f.reason||'').trim()) return this.notify('변경 사유를 입력하세요.', false);
+      try {
+        await api('POST','/api/admin/academy/work_schedule', {
+          active_from:f.active_from, start_time:f.start_time, end_time:f.end_time,
+          workdays:f.workdays, break_per_hours:f.break_per_hours, break_minutes:f.break_minutes,
+          reason:f.reason, branch_id:f.branch_id || null,
+          staff_ids: f.staff_ids.length ? f.staff_ids : null });
+        this.notify('근무 기준이 변경되었습니다.');
+        this.wsForm.reason=''; this.wsForm.staff_ids=[];
+        this.loadWorkSchedules();
+      } catch(e){ this.notify(e.message,false); }
+    },
+
+    // ───────────── 직원 근태 ─────────────
+    selectStaffTab(k){
+      this.staffTab = k;
+      if (k==='attend'){
+        if (!this.hrMonth) this.hrMonth = this.todayStr.slice(0,7);
+        if (!this.ttInstructors.length) this.loadTtInstructors();
+        this.loadHrToday(); this.loadHrAtt(); this.loadHrPending();
+      }
+    },
+    monthRange(ym){
+      const [y,m] = ym.split('-').map(Number);
+      const p=x=>String(x).padStart(2,'0');
+      const last = new Date(y, m, 0).getDate();
+      return { from: y+'-'+p(m)+'-01', to: y+'-'+p(m)+'-'+p(last) };
+    },
+    shiftMonth(ym, n){
+      const [y,m] = ym.split('-').map(Number);
+      const d = new Date(y, m-1+n, 1);
+      return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    },
+    async loadHrToday(){
+      try { this.hrToday = await api('GET','/api/admin/academy/hr_today'); }
+      catch(e){ this.hrToday = { today:'', mine:null, summary:null, people:[] }; }
+    },
+    async loadHrAtt(){
+      const r = this.monthRange(this.hrMonth);
+      try { this.hrAtt = await api('GET','/api/admin/academy/staff_attendance?all=1&from='+r.from+'&to='+r.to); }
+      catch(e){ this.hrAtt = { people:[], show_total:false }; this.notify(e.message,false); }
+    },
+    shiftHrMonth(n){ this.hrMonth = this.shiftMonth(this.hrMonth, n); this.loadHrAtt(); },
+    async loadHrPending(){
+      try { this.hrPending = await api('GET','/api/admin/academy/staff_attendance/approve') || []; }
+      catch(e){ this.hrPending = []; }
+    },
+    async approveHr(c, action){
+      let reason = '';
+      if (action==='REJECT'){
+        reason = (this.attRejectReason||'').trim();
+      }
+      try {
+        await api('POST','/api/admin/academy/staff_attendance/approve', { id:c.id, action, reason });
+        this.notify(action==='APPROVE' ? '승인되었습니다.' : '반려되었습니다.');
+        this.loadHrPending(); this.loadHrAtt();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    hrCellCls(d){
+      if (d.leave_kind) return 'bg-purple-100 text-purple-700 rounded';
+      if (d.late) return 'bg-amber-200 text-amber-800 rounded font-semibold';
+      if (d.in) return 'bg-emerald-100 text-emerald-700 rounded';
+      if (d.scheduled && d.state==='MISSING') return 'bg-rose-100 text-rose-600 rounded';
+      return 'bg-slate-100 text-slate-300 rounded';
+    },
+    hrCellMark(d){
+      if (d.leave_kind) return '휴';
+      if (d.late) return '지';
+      if (d.in && d.out) return '●';
+      if (d.in) return '◐';
+      if (d.scheduled && d.state==='MISSING') return '✕';
+      return '';
+    },
+    hmOf(min){
+      if (!min) return '0:00';
+      return Math.floor(min/60)+':'+String(min%60).padStart(2,'0');
+    },
+    hrCellEnter(p, d, e){
+      const src = [d.in_source, d.out_source].filter(Boolean);
+      this.hrPop = { show:true, name:p.name, date:d.date.slice(5), wd:d.wd,
+        in:d.in, out:d.out, late:d.late, sch:(d.sch_start ? d.sch_start+' ~ '+d.sch_end : ''),
+        note:d.note, leave:d.leave_label, leaveReason:d.leave_reason, scheduled:d.scheduled,
+        minutes:d.minutes||0, minutesLabel:this.hmOf(d.minutes||0),
+        source: src.length ? ('기록: '+[...new Set(src)].map(x=>x==='KIOSK'?'키오스크':'포털').join('·')) : '',
+        x:Math.min(e.clientX+12, window.innerWidth-280), y:Math.min(e.clientY+12, window.innerHeight-160) };
+    },
+    hrCellLeave(){ this.hrPop.show = false; },
+    openLeaveForm(){
+      if (!this.leaveKinds.length) this.loadLeaveKinds();
+      this.leaveForm = { staff_id:null, date:this.todayStr, date_to:'', kind:'ANNUAL', reason:'' };
+    },
+    async loadLeaveKinds(){
+      try { const d = await api('GET','/api/admin/academy/staff_leave'); this.leaveKinds = d.kinds || []; }
+      catch(e){ this.leaveKinds = []; }
+    },
+    async saveLeave(){
+      const f = this.leaveForm;
+      if (!f.staff_id) return this.notify('직원을 선택하세요.', false);
+      if (!f.date) return this.notify('날짜를 선택하세요.', false);
+      try {
+        const d = await api('POST','/api/admin/academy/staff_leave', f);
+        this.notify(d.created.length+'일 등록되었습니다.'+(d.skipped.length ? ' (이미 등록: '+d.skipped.join(', ')+')' : ''));
+        this.leaveForm = null; this.loadHrAtt(); this.loadHrToday();
+      } catch(e){ this.notify(e.message,false); }
+    },
+
+    // ───────────── 내 근태 ─────────────
+    async loadMyAtt(){
+      const r = this.monthRange(this.myAttMonth);
+      try {
+        const d = await api('GET','/api/admin/academy/staff_attendance?from='+r.from+'&to='+r.to);
+        this.myAtt = (d.people && d.people[0]) || { days:[], work_days:0, late_days:0, leave_days:0 };
+      } catch(e){ this.myAtt = { days:[], work_days:0, late_days:0, leave_days:0 }; }
+    },
+    shiftAttMonth(n){ this.myAttMonth = this.shiftMonth(this.myAttMonth, n); this.loadMyAtt(); },
+    async myCheck(action){
+      try {
+        const d = await api('POST','/api/admin/academy/staff_attendance/check', { action });
+        const L = { IN:'출근', OUT:'퇴근', UNDO:'취소' };
+        this.notify((L[d.action]||'')+' 처리되었습니다.'+(d.time ? ' ('+d.time+')' : ''));
+        this.loadHrToday(); this.loadMyAtt();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    editMyTime(d, field){
+      this.attEditForm = { att_id:d.id, staff_id:null, date:d.date, field,
+        fieldLabel:(field==='IN'?'출근':'퇴근'), old:(field==='IN'?d.in:d.out),
+        value:(field==='IN'?d.in:d.out), reason:'', canDirect:!!(this.hrToday && this.hrToday.can_manage) };
+    },
+    async saveAttEdit(){
+      const f = this.attEditForm;
+      if (!(f.reason||'').trim()) return this.notify('수정 사유를 입력하세요.', false);
+      try {
+        const body = { field:f.field, value:f.value, reason:f.reason };
+        if (f.att_id) body.att_id = f.att_id; else { body.staff_id = f.staff_id; body.date = f.date; }
+        const d = await api('POST','/api/admin/academy/staff_attendance/edit', body);
+        this.notify(d.requested ? '수정 요청이 접수되었습니다. 원장 승인 후 반영됩니다.' : '수정되었습니다.');
+        this.attEditForm = null; this.loadMyAtt(); this.loadHrToday(); this.loadHrPending();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async saveMyNote(d, value){
+      if ((d.note||'') === (value||'')) return;
+      try {
+        const body = { field:'NOTE', value };
+        if (d.id) body.att_id = d.id; else { body.staff_id = this.me.user.id; body.date = d.date; }
+        await api('POST','/api/admin/academy/staff_attendance/edit', body);
+        d.note = value; this.loadMyAtt();
+      } catch(e){ this.notify(e.message,false); }
     },
     applyActPreset(days){
       const p=x=>String(x).padStart(2,'0');
@@ -6028,6 +6652,7 @@ const app = createApp({
     },
     isAbsent(l){ return l.status==='ABSENT'; },
     isLeave(l){ return l.status==='LEAVE'; },
+    isHoliday(l){ return l.status==='HOLIDAY'; },
     isEarlyLeavePending(l){ return !!(l && l.att && l.att.note_tag===EARLY_LEAVE_TAG); },
     calBadge(it){
       if (this.isLeave(it)) return { label:'임시휴원', style:{backgroundColor:'#f3e8ff',color:'#9333ea'} };
@@ -6974,6 +7599,7 @@ const app = createApp({
     stuAttStatusInfo(row){
       if (row.status==='ABSENT') return { label:'결석'+this.stuAbsenceSuffix(row), cls:'bg-rose-100 text-rose-600' };
       if (row.status==='LEAVE') return { label:'임시휴원', cls:'bg-purple-100 text-purple-600' };
+      if (row.status==='HOLIDAY') return { label:'휴무', cls:'bg-slate-100 text-slate-500' };
       if (row.is_makeup) return { label:'보강'+this.mkAbsenceRefSuffix(row), cls:'bg-blue-100 text-blue-700' };
       if (this.isEarlyLeavePending(row)) return { label:'조퇴예정'+this.stuAbsenceSuffix(row), cls:'bg-orange-100 text-orange-700' };
       if (row.att.in){

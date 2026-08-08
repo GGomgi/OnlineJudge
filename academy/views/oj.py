@@ -1026,6 +1026,77 @@ class KioskLookupAPI(APIView):
         return self.success({"matches": matches})
 
 
+class KioskStaffLookupAPI(CSRFExemptAPIView):
+    """무로그인 키오스크 직원 출퇴근 1단계: 사번으로 직원 조회.
+    습관적으로 눌러 남의 것을 찍는 사고를 막기 위해, 조회 후 이름을 한 번 더 고르게 한다.
+    본인 지점 직원만 보이되, 타 지점 출강이 허용된 직원과 전지점 소속(본부·지부장)은 예외.
+    POST {b, t, staff_no}"""
+    def post(self, request):
+        from ..views.hr import kst_today, kst_hm, name_of as _hr_name
+        from ..models import StaffAttendance, StaffLeave, ALL_BRANCH_ROLES
+        data = request.data
+        branch = Branch.objects.filter(id=data.get("b")).first()
+        token = (data.get("t") or "").strip()
+        if not branch or not branch.kiosk_token or branch.kiosk_token != token:
+            return self.error("잘못된 접근입니다.")
+        dev_err = _kiosk_device_error(branch, data.get("device_id"))
+        if dev_err:
+            return self.error(dev_err)
+        sabun = "".join(ch for ch in (data.get("staff_no") or "") if ch.isdigit())
+        if len(sabun) < 4:
+            return self.error("사번을 입력하세요.")
+        d = kst_today()
+        out = []
+        for p in AcademyProfile.objects.filter(staff_no=sabun, role__in=STAFF_ROLES,
+                                               is_deleted=False).select_related("user", "user__userprofile"):
+            # 전지점 역할은 어느 지점에서나 찍을 수 있고, 그 외는 소속 지점에서만.
+            if p.role not in ALL_BRANCH_ROLES and p.branch_id != branch.id:
+                continue
+            a = StaffAttendance.objects.filter(staff_id=p.user_id, date=d).first()
+            lv = StaffLeave.objects.filter(staff_id=p.user_id, date=d, is_deleted=False).first()
+            if a and a.check_in_at and a.check_out_at:
+                nxt = "done"
+            elif a and a.check_in_at:
+                nxt = "out"
+            else:
+                nxt = "in"
+            out.append({"staff_id": p.user_id, "name": _hr_name(p.user), "staff_no": p.staff_no,
+                        "next": nxt, "in": kst_hm(a.check_in_at) if a else "",
+                        "out": kst_hm(a.check_out_at) if a else "",
+                        "on_leave": bool(lv)})
+        if not out:
+            return self.error("등록된 사번이 아닙니다. 관리자에게 확인하세요.")
+        return self.success({"matches": out})
+
+
+class KioskStaffCheckAPI(CSRFExemptAPIView):
+    """무로그인 키오스크 직원 출퇴근 2단계: 이름을 고르면 출근/퇴근 기록.
+    POST {b, t, staff_id, action: IN|OUT|UNDO}"""
+    def post(self, request):
+        from ..views.hr import staff_check
+        data = request.data
+        branch = Branch.objects.filter(id=data.get("b")).first()
+        token = (data.get("t") or "").strip()
+        if not branch or not branch.kiosk_token or branch.kiosk_token != token:
+            return self.error("잘못된 접근입니다.")
+        dev_err = _kiosk_device_error(branch, data.get("device_id"))
+        if dev_err:
+            return self.error(dev_err)
+        u = User.objects.filter(id=data.get("staff_id")).first()
+        p = getattr(u, "academy_profile", None) if u else None
+        if not u or not p or p.role not in STAFF_ROLES or p.is_deleted:
+            return self.error("직원을 찾을 수 없습니다.")
+        from ..models import ALL_BRANCH_ROLES
+        if p.role not in ALL_BRANCH_ROLES and p.branch_id != branch.id:
+            return self.error("이 지점에서 찍을 수 없는 직원입니다.")
+        act = (data.get("action") or "").upper()
+        # 키오스크는 무로그인이라 actor 를 남길 수 없다. 찍은 사람이 곧 본인이므로 본인으로 기록.
+        res = staff_check(u, act, "KIOSK", branch.id, u)
+        if isinstance(res, dict) and "__ok" in res:
+            return self.success(res["data"]) if res["__ok"] else self.error(res["msg"])
+        return res
+
+
 class KioskCheckAPI(CSRFExemptAPIView):
     """무로그인 출결 키오스크: 학생 선택 시 등원/하원 자동 판별 처리.
     POST {b:지점id, t:키오스크토큰, student_id}"""

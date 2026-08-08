@@ -710,6 +710,7 @@ class OccurrenceStatus(object):
     ABSENT = "ABSENT"         # 결석
     CANCELLED = "CANCELLED"   # 취소
     LEAVE = "LEAVE"           # 임시휴원(기간/날짜 지정 — 결석과 달리 애초에 수업 대상이 아니었음)
+    HOLIDAY = "HOLIDAY"       # 학원 휴무일(공휴일·방학 등 — 학원이 쉰 날이라 결석률에서 제외)
 
 
 class LessonOccurrence(models.Model):
@@ -920,3 +921,161 @@ class OptionItem(models.Model):
 
     def __str__(self):
         return f"{self.category}:{self.value}"
+
+
+# ── 학원 휴무일 / 직원 근태 ──
+
+class HolidayKind(object):
+    PUBLIC = "PUBLIC"            # 공휴일
+    SUBSTITUTE = "SUBSTITUTE"    # 대체공휴일
+    VACATION = "VACATION"        # 학원 방학
+    FOUNDATION = "FOUNDATION"    # 개원기념일
+    TEMP = "TEMP"                # 임시휴무
+
+
+HOLIDAY_KIND_CHOICES = [
+    (HolidayKind.PUBLIC, "공휴일"),
+    (HolidayKind.SUBSTITUTE, "대체공휴일"),
+    (HolidayKind.VACATION, "학원 방학"),
+    (HolidayKind.FOUNDATION, "개원기념일"),
+    (HolidayKind.TEMP, "임시휴무"),
+]
+
+
+class Holiday(models.Model):
+    """학원 휴무일. 등록하면 그날 수업이 자동으로 '휴무' 상태가 되고, 삭제하면 되돌린다.
+    branch 가 비어 있으면 전 지점 공통(공휴일 등), 지정하면 그 지점만 쉰다."""
+    date = models.DateField()
+    name = models.CharField(max_length=64)                       # 광복절, 여름방학 등
+    kind = models.CharField(max_length=16, default=HolidayKind.PUBLIC)
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="holidays")
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    # 소프트삭제(모든 삭제는 기록을 남긴다)
+    is_deleted = models.BooleanField(default=False)
+    deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    delete_reason = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_holiday"
+        ordering = ["date", "id"]
+
+
+class WorkSchedule(models.Model):
+    """정규 근무 기준. 학생 시간표와 같은 '적용 시작일' 방식 — 바꾸면 이전 것은 전날로
+    끝나고 새 줄이 생겨 과거 기록이 그대로 남는다.
+    staff 가 있으면 그 직원 개별 기준(지점 기본값보다 우선), 없으면 branch 의 기본값."""
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="work_schedules")
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.CASCADE, related_name="work_schedules")
+    active_from = models.DateField()
+    active_until = models.DateField(null=True, blank=True)   # 비어 있으면 계속 적용
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    workdays = models.CharField(max_length=16, default="012345")  # 0=월 … 6=일
+    break_per_hours = models.PositiveSmallIntegerField(default=4)   # N시간마다
+    break_minutes = models.PositiveSmallIntegerField(default=30)    # M분 휴게
+    reason = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_work_schedule"
+        ordering = ["-active_from", "-id"]
+
+
+class StaffAttendance(models.Model):
+    """직원 출퇴근. 하루 1건(사번으로 키오스크에서 찍거나 포털에서 기록)."""
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                              related_name="staff_attendance")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="staff_attendance")   # 찍은 지점(타 지점 출강 대비)
+    date = models.DateField()
+    check_in_at = models.DateTimeField(null=True, blank=True)
+    check_out_at = models.DateTimeField(null=True, blank=True)
+    in_source = models.CharField(max_length=16, blank=True, default="")   # KIOSK / PORTAL
+    out_source = models.CharField(max_length=16, blank=True, default="")
+    note = models.CharField(max_length=255, blank=True, default="")       # 본인이 쓰는 비고
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_staff_attendance"
+        unique_together = ("staff", "date")
+        ordering = ["-date", "-id"]
+
+
+class StaffAttendanceChange(models.Model):
+    """출퇴근 기록의 모든 변경. 본인이 시각을 고치려면 승인 요청으로 남고,
+    원장 이상이 직접 고치면 DIRECT 로 바로 반영된다."""
+    REQUESTED = "REQUESTED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    DIRECT = "DIRECT"
+    CANCELLED = "CANCELLED"
+
+    attendance = models.ForeignKey(StaffAttendance, on_delete=models.CASCADE, related_name="changes")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    field = models.CharField(max_length=16)      # IN / OUT / NOTE / CHECK / CANCEL
+    old_value = models.CharField(max_length=64, blank=True, default="")
+    new_value = models.CharField(max_length=64, blank=True, default="")
+    reason = models.CharField(max_length=255, blank=True, default="")
+    status = models.CharField(max_length=16, default=DIRECT)
+    approver = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                 on_delete=models.SET_NULL, related_name="+")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    reject_reason = models.CharField(max_length=255, blank=True, default="")
+    source = models.CharField(max_length=16, blank=True, default="")   # KIOSK / PORTAL
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_staff_attendance_change"
+        ordering = ["-create_time", "-id"]
+
+
+class LeaveKind(object):
+    ANNUAL = "ANNUAL"        # 연차
+    HALF_AM = "HALF_AM"      # 반차(오전)
+    HALF_PM = "HALF_PM"      # 반차(오후)
+    SICK = "SICK"            # 병가
+    OFFICIAL = "OFFICIAL"    # 공가
+    UNPAID = "UNPAID"        # 무급휴가
+
+
+LEAVE_KIND_CHOICES = [
+    (LeaveKind.ANNUAL, "연차"),
+    (LeaveKind.HALF_AM, "반차(오전)"),
+    (LeaveKind.HALF_PM, "반차(오후)"),
+    (LeaveKind.SICK, "병가"),
+    (LeaveKind.OFFICIAL, "공가"),
+    (LeaveKind.UNPAID, "무급휴가"),
+]
+
+
+class StaffLeave(models.Model):
+    """연차·휴가. 지금은 '누가 언제 무엇으로 쉬었나' 기록만 하고 잔여일수는 관리하지 않는다."""
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                              related_name="staff_leaves")
+    date = models.DateField()
+    kind = models.CharField(max_length=16, default=LeaveKind.ANNUAL)
+    reason = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    is_deleted = models.BooleanField(default=False)
+    deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    delete_reason = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_staff_leave"
+        ordering = ["-date", "-id"]

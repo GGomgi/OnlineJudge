@@ -47,7 +47,8 @@ createApp({
     return {
       b: getParam('b'), t: getParam('t'),
       clock: '', digits: '',
-      stage: 'keypad',       // keypad | matches | result | error
+      stage: 'keypad',       // keypad | matches | result | error | staffpad | staffpick | staffconfirm
+      staffDigits: '', staffMatches: [], staffPick: null, staffAction: '',
       matches: [], resultMsg: '', resultSub: '', busy: false,
       board: [], nowMin: 0,
       isFullscreen: false,
@@ -70,6 +71,8 @@ createApp({
     };
   },
   computed: {
+    staffDots(){ const arr=['','','','','']; for(let i=0;i<this.staffDigits.length;i++) arr[i]=this.staffDigits[i]; return arr; },
+    undoWindowMsg(){ return '5분 이내 출퇴근은 취소할 수 있습니다.'; },
     dots(){ const arr=['','','','']; for(let i=0;i<this.digits.length;i++) arr[i]=this.digits[i]; return arr; },
     // 화면에 그릴 행 정보를 '한 번에' 계산해 캐시한다.
     // 예전엔 행마다 boardOrdered()·statusInfo()·elapsed()를 다시 호출해서, 인원이 늘면
@@ -260,7 +263,64 @@ createApp({
         setTimeout(()=>this.reset(), 2500);
       } finally { this.busy = false; }
     },
-    reset(){ this.digits=''; this.matches=[]; this.resultMsg=''; this.resultSub=''; this.stage='keypad'; },
+    reset(){ this.digits=''; this.matches=[]; this.resultMsg=''; this.resultSub=''; this.stage='keypad';
+             this.staffDigits=''; this.staffMatches=[]; this.staffPick=null; this.staffAction=''; },
+
+    // ── 직원 출퇴근 ──
+    openStaffPad(){ this.staffDigits=''; this.staffMatches=[]; this.staffPick=null; this.stage='staffpad'; },
+    staffPress(n){
+      if (this.stage!=='staffpad' || this.busy) return;
+      if (this.staffDigits.length >= 5) return;
+      this.staffDigits += String(n);
+      if (this.staffDigits.length === 5) this.staffLookup();
+    },
+    staffBackspace(){ if (this.stage==='staffpad') this.staffDigits = this.staffDigits.slice(0,-1); },
+    async staffLookup(){
+      this.busy = true;
+      try {
+        const d = await kioskApi('POST','/api/academy/kiosk_staff_lookup',
+          { b:this.b, t:this.t, device_id:this.deviceId, staff_no:this.staffDigits });
+        this.staffMatches = d.matches || [];
+        if (this.staffMatches.length === 1) this.staffChoose(this.staffMatches[0]);
+        else this.stage = 'staffpick';
+      } catch(e){
+        this.resultMsg = '확인할 수 없습니다.';
+        this.resultSub = e.message || '';
+        this.stage = 'error';
+        setTimeout(()=>this.reset(), 2500);
+      } finally { this.busy = false; }
+    },
+    staffChoose(m){
+      this.staffPick = m;
+      if (m.next === 'done'){
+        // 오늘 출퇴근이 끝난 상태 — 잘못 찍었을 때만 취소로 들어갈 수 있게 한다
+        this.staffAction = 'UNDO';
+      } else {
+        this.staffAction = (m.next === 'out') ? 'OUT' : 'IN';
+      }
+      this.stage = 'staffconfirm';
+    },
+    async staffSubmit(){
+      this.busy = true;
+      try {
+        const d = await kioskApi('POST','/api/academy/kiosk_staff_check',
+          { b:this.b, t:this.t, device_id:this.deviceId, staff_id:this.staffPick.staff_id, action:this.staffAction });
+        if (d.action === 'UNDO'){
+          this.resultMsg = d.name+'님 '+(d.field==='OUT'?'퇴근':'출근')+' 기록이 취소되었습니다.';
+          this.resultSub = '다시 찍어주세요.';
+        } else {
+          this.resultMsg = d.name+'님 '+(d.action==='IN'?'출근':'퇴근')+' 완료';
+          this.resultSub = d.time;
+        }
+        this.stage = 'result';
+        setTimeout(()=>this.reset(), 2600);
+      } catch(e){
+        this.resultMsg = '처리할 수 없습니다.';
+        this.resultSub = e.message || '';
+        this.stage = 'error';
+        setTimeout(()=>this.reset(), 3000);
+      } finally { this.busy = false; }
+    },
     toggleFullscreen(){
       if (!document.fullscreenElement){ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
       else { document.exitFullscreen && document.exitFullscreen(); }
@@ -418,6 +478,7 @@ createApp({
         <div class="font-mono text-2xl font-bold mb-6 tracking-wider">{{ clock }}</div>
 
         <template v-if="stage==='keypad'">
+          <button @click="openStaffPad" class="w-full mb-3 h-10 rounded-xl border border-slate-600 text-slate-300 text-sm hover:bg-slate-800">👤 직원 출퇴근</button>
           <div class="text-sm text-slate-300 mb-3">보호자 연락처 뒤 4자리를 입력하세요</div>
           <div class="flex justify-center gap-2.5 mb-6">
             <div v-for="(d,i) in dots" :key="i" class="w-10 h-12 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-xl">{{ d }}</div>
@@ -428,6 +489,59 @@ createApp({
             <button @click="reset" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm text-slate-300">전체지움</button>
             <button @click="press(0)" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-xl font-semibold">0</button>
             <button @click="backspace" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm text-slate-300">◀ 지우기</button>
+          </div>
+        </template>
+
+        <!-- 직원 출퇴근 1단계: 사번 -->
+        <template v-else-if="stage==='staffpad'">
+          <div class="text-sm text-slate-300 mb-3">사번 5자리를 입력하세요</div>
+          <div class="flex justify-center gap-2 mb-6">
+            <div v-for="(d,i) in staffDots" :key="i" class="w-9 h-12 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-xl">{{ d }}</div>
+          </div>
+          <div class="grid grid-cols-3 gap-2.5">
+            <button v-for="n in [1,2,3,4,5,6,7,8,9]" :key="n" @click="staffPress(n)"
+                    class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-xl font-semibold">{{ n }}</button>
+            <button @click="reset" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm text-slate-300">취소</button>
+            <button @click="staffPress(0)" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-xl font-semibold">0</button>
+            <button @click="staffBackspace" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm text-slate-300">◀ 지우기</button>
+          </div>
+        </template>
+
+        <!-- 직원 출퇴근 2단계: 이름 확인(습관적으로 눌러 남의 것을 찍는 사고 방지) -->
+        <template v-else-if="stage==='staffpick'">
+          <div class="text-sm text-slate-300 mb-4">본인 이름을 선택하세요</div>
+          <div class="flex flex-col gap-2.5">
+            <button v-for="m in staffMatches" :key="m.staff_id" @click="staffChoose(m)"
+                    class="h-16 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold flex flex-col items-center justify-center">
+              <span class="text-lg">{{ m.name }}</span>
+              <span class="text-xs font-normal text-indigo-200">
+                <template v-if="m.on_leave">오늘 휴가</template>
+                <template v-else-if="m.next==='in'">출근 전</template>
+                <template v-else-if="m.next==='out'">출근 {{ m.in }} · 퇴근 찍기</template>
+                <template v-else>출근 {{ m.in }} · 퇴근 {{ m.out }}</template>
+              </span>
+            </button>
+            <button @click="reset" class="mt-2 text-sm text-slate-400">취소</button>
+          </div>
+        </template>
+
+        <!-- 직원 출퇴근 3단계: 확인 -->
+        <template v-else-if="stage==='staffconfirm'">
+          <div class="text-lg font-bold mb-1">{{ staffPick && staffPick.name }}</div>
+          <div class="text-sm text-slate-300 mb-4" v-if="staffAction==='UNDO'">
+            {{ undoWindowMsg }}<br>취소하시겠습니까?
+          </div>
+          <div class="text-sm text-slate-300 mb-4" v-else>
+            {{ staffAction==='IN' ? '출근' : '퇴근' }}으로 기록합니다.<br>
+            <span class="text-xs text-slate-400">이후 수정은 원장 승인이 필요합니다.</span>
+          </div>
+          <div class="flex flex-col gap-2.5">
+            <button @click="staffSubmit" class="h-14 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-lg font-semibold">
+              {{ staffAction==='UNDO' ? '취소하기' : (staffAction==='IN' ? '출근' : '퇴근') }}
+            </button>
+            <button v-if="staffAction!=='UNDO' && staffPick && (staffPick.in || staffPick.out)" @click="staffAction='UNDO'"
+                    class="h-11 rounded-xl border border-slate-600 text-slate-300 text-sm">방금 잘못 찍었어요</button>
+            <button @click="reset" class="mt-1 text-sm text-slate-400">돌아가기</button>
           </div>
         </template>
 

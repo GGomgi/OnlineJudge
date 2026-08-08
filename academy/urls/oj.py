@@ -4,7 +4,7 @@ from ..views.oj import (BranchListAPI, OptionListAPI, LeadCreateAPI, MyTimetable
                         MyAttendanceAPI, MyAcademyProfileAPI, MyChildrenAPI, GuardianMeAPI,
                         StaffProfileAPI, StaffProfileUploadAPI, ChangePasswordAPI, StaffNameHintAPI,
                         DevRequestAPI, DevCommentAPI, NotificationAPI, MessageAPI, EnrollAPI,
-                        KioskLookupAPI, KioskPinEntryAPI, KioskCheckAPI, KioskBoardAPI, KioskDeviceRequestAPI)
+                        KioskLookupAPI, KioskPinEntryAPI, KioskCheckAPI, KioskStaffLookupAPI, KioskStaffCheckAPI, KioskBoardAPI, KioskDeviceRequestAPI)
 
 urlpatterns = [
     url(r"^academy/branches/?$", BranchListAPI.as_view(), name="academy_branch_list"),
@@ -23,6 +23,8 @@ urlpatterns = [
     url(r"^academy/kiosk_lookup/?$", KioskLookupAPI.as_view(), name="academy_kiosk_lookup"),
     url(r"^academy/kiosk_pin_entry/?$", KioskPinEntryAPI.as_view(), name="academy_kiosk_pin_entry"),
     url(r"^academy/kiosk_check/?$", KioskCheckAPI.as_view(), name="academy_kiosk_check"),
+    url(r"^academy/kiosk_staff_lookup/?$", KioskStaffLookupAPI.as_view(), name="academy_kiosk_staff_lookup"),
+    url(r"^academy/kiosk_staff_check/?$", KioskStaffCheckAPI.as_view(), name="academy_kiosk_staff_check"),
     url(r"^academy/my_timetable/?$", MyTimetableAPI.as_view(), name="academy_my_timetable"),
     url(r"^academy/my_attendance/?$", MyAttendanceAPI.as_view(), name="academy_my_attendance"),
     url(r"^academy/dev_request/?$", DevRequestAPI.as_view(), name="academy_dev_request"),

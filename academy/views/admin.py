@@ -3678,6 +3678,12 @@ class DashboardAdminAPI(APIView):
         wd = d.weekday()
         view = viewable_branch_ids(request.user)  # None=전체
         ensure_occurrences(d, view)
+        # 그날이 휴무일이면 이름을 함께 내려 화면 위에 사유를 띄운다("왜 수업이 없지?" 방지)
+        from ..models import Holiday
+        hq = Holiday.objects.filter(date=d, is_deleted=False)
+        if view is not None:
+            hq = hq.filter(Q(branch_id=None) | Q(branch_id__in=view))
+        holiday_names = sorted({h.name for h in hq})
         occ = LessonOccurrence.objects.select_related(
             "student", "instructor", "branch", "source_timetable", "makeup_for").filter(
             date=d).exclude(status=OccurrenceStatus.CANCELLED)
@@ -3859,7 +3865,8 @@ class DashboardAdminAPI(APIView):
         WD = ["월", "화", "수", "목", "금", "토", "일"]
         return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
                              "total": len(lessons), "present": len(att), "reservations": reservations,
-                             "enrolled_leads": enrolled, "temp_leaves": temp_leaves})
+                             "enrolled_leads": enrolled, "temp_leaves": temp_leaves,
+                             "holidays": holiday_names})
 
 
 def _kst_to_utc(d, hm):
@@ -4337,7 +4344,8 @@ def _clear_attendance_for_absence(student, d, actor, note):
     단, 그 날 다른 수업이 아직 남아 있으면(연속 2타임 중 뒤 타임만 결석 등) 등원/하원은 남은 수업의
     기록이므로 지우지 않는다. 등원/하원은 수업별이 아니라 학생·날짜 단위로 하나뿐이기 때문."""
     still = LessonOccurrence.objects.filter(student=student, date=d)\
-        .exclude(status__in=(OccurrenceStatus.ABSENT, OccurrenceStatus.CANCELLED, OccurrenceStatus.LEAVE))\
+        .exclude(status__in=(OccurrenceStatus.ABSENT, OccurrenceStatus.CANCELLED,
+                             OccurrenceStatus.LEAVE, OccurrenceStatus.HOLIDAY))\
         .exists()
     if still:
         return

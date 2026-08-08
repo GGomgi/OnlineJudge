@@ -1,5 +1,10 @@
 from django.conf.urls import url
 
+from ..views.hr import (HolidayAdminAPI, WorkScheduleAdminAPI, StaffAttendanceAPI,
+                        StaffAttendanceCheckAPI, StaffAttendanceEditAPI,
+                        StaffAttendanceApproveAPI, StaffAttendanceHistoryAPI,
+                        StaffLeaveAPI, HRTodayAPI)
+
 from ..views.admin import (AssignRoleAPI, StaffAdminAPI, InstructorListAPI, StaffStatusAPI, StaffDeleteAPI,
                            StaffReissueSabunAPI, StaffHistoryAPI, HRNoticeAdminAPI,
                            LeadDeleteAdminAPI, PrefsAdminAPI,
@@ -98,4 +103,14 @@ urlpatterns = [
     url(r"^academy/msg_group/?$", MsgTemplateGroupAdminAPI.as_view(), name="academy_msg_group"),
     url(r"^academy/msg_template/?$", MsgTemplateAdminAPI.as_view(), name="academy_msg_template"),
     url(r"^academy/fixed_template/?$", FixedTemplateAdminAPI.as_view(), name="academy_fixed_template"),
+    # 학원 관리 · 직원 근태
+    url(r"^academy/holiday/?$", HolidayAdminAPI.as_view(), name="academy_holiday"),
+    url(r"^academy/work_schedule/?$", WorkScheduleAdminAPI.as_view(), name="academy_work_schedule"),
+    url(r"^academy/staff_attendance/?$", StaffAttendanceAPI.as_view(), name="academy_staff_attendance"),
+    url(r"^academy/staff_attendance/check/?$", StaffAttendanceCheckAPI.as_view(), name="academy_staff_attendance_check"),
+    url(r"^academy/staff_attendance/edit/?$", StaffAttendanceEditAPI.as_view(), name="academy_staff_attendance_edit"),
+    url(r"^academy/staff_attendance/approve/?$", StaffAttendanceApproveAPI.as_view(), name="academy_staff_attendance_approve"),
+    url(r"^academy/staff_attendance/history/?$", StaffAttendanceHistoryAPI.as_view(), name="academy_staff_attendance_history"),
+    url(r"^academy/staff_leave/?$", StaffLeaveAPI.as_view(), name="academy_staff_leave"),
+    url(r"^academy/hr_today/?$", HRTodayAPI.as_view(), name="academy_hr_today"),
 ]
