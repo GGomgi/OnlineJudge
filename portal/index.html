@@ -961,7 +961,7 @@
                   <template v-else>
                     <span v-if="isAbsent(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-rose-100 text-rose-600 whitespace-nowrap">결석{{ stuAbsenceSuffix(l) }}</span>
                     <span v-else-if="isLeave(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-violet-100 text-violet-600">임시휴원</span>
-                    <span v-else-if="isHoliday(l)" class="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 text-slate-500">휴무</span>
+                    <span v-else-if="isHoliday(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-slate-100 text-slate-500">휴무</span>
                     <span v-else-if="isEarlyLeavePending(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer whitespace-nowrap" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}{{ stuAbsenceSuffix(l) }}</span>
                     <span v-else-if="l.att.note_tag" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
                     <span v-else @click="openAtt(l)" class="text-[11px] text-slate-300 hover:text-indigo-500 cursor-pointer">비고+</span>

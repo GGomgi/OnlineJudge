@@ -166,6 +166,8 @@ createApp({
     statusFor(row, prevPartner){
       if (row.status==='ABSENT') return { label:'결석'+this.stuAbsenceSuffix(row), cls:'text-rose-400' };
       if (row.status==='LEAVE') return { label:'임시휴원', cls:'text-purple-400' };
+      // 휴무일은 안 오는 게 정상이라 미등원 경고를 띄우지 않는다(오면 등원 시각만 표시)
+      if (row.status==='HOLIDAY' && !row.att.in) return { label:'휴무', cls:'text-slate-400' };
       if (row.is_makeup) return { label:'보강'+this.mkAbsenceRefSuffix(row), cls:'text-blue-400' };
       if (row.att.in){
         // 연속수업이면 지각/일찍 기준은 앞 타임 시작시각
@@ -179,7 +181,7 @@ createApp({
       return null;
     },
     nameCls(row){
-      if (row.status==='ABSENT' || row.status==='LEAVE') return 'line-through';
+      if (row.status==='ABSENT' || row.status==='LEAVE' || row.status==='HOLIDAY') return 'line-through';
       if (!row.att.in && this.hmMin(row.start_time) < this.nowMin) return 'text-red-500';
       return '';
     },
