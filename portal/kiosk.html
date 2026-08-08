@@ -51,8 +51,6 @@ createApp({
       matches: [], resultMsg: '', resultSub: '', busy: false,
       board: [], nowMin: 0,
       isFullscreen: false,
-      keepAwake: localStorage.getItem('kiosk_keep_awake') === '1',
-      _wakeLock: null,
       // 화면 설정 기본값(2026-08): 좌우 58%/42%, 출결현황 120%, 키오스크 150%.
       // 이미 쓰던 기기도 한 번은 이 값으로 맞춰지고, 그 뒤 기기에서 바꾼 값은 계속 유지된다.
       leftRatio: (function(){
@@ -73,6 +71,68 @@ createApp({
   },
   computed: {
     dots(){ const arr=['','','','']; for(let i=0;i<this.digits.length;i++) arr[i]=this.digits[i]; return arr; },
+    // 화면에 그릴 행 정보를 '한 번에' 계산해 캐시한다.
+    // 예전엔 행마다 boardOrdered()·statusInfo()·elapsed()를 다시 호출해서, 인원이 늘면
+    // 계산량이 세제곱으로 커졌다(1초마다 시계가 갱신돼 매초 반복). 44명 기준 태블릿에서
+    // 눈에 띄게 버벅였음. 아래처럼 한 번만 계산하면 인원이 늘어도 부담이 없다.
+    boardRows(){
+      const mn = t => this.hmMin(t);
+      // 시간순으로 먼저 정렬해 둔다(서버 순서에 기대면 연속수업 위/아래가 뒤집힐 수 있음)
+      const list = this.board.slice().sort((a,b)=>mn(a.start_time)-mn(b.start_time));
+      // 같은 학생의 이어지는 수업 짝 찾기(앞→뒤)
+      const byStudent = new Map();
+      list.forEach(it=>{ if(it.student_id) (byStudent.get(it.student_id) || byStudent.set(it.student_id,[]).get(it.student_id)).push(it); });
+      const nextOf = new Map(), prevOf = new Map();
+      byStudent.forEach(arr=>{
+        arr.forEach(a=>{
+          const end = mn(a.start_time) + (a.duration_minutes||60);
+          const nxt = arr.find(b=>b!==a && mn(b.start_time)===end);
+          if (nxt){ nextOf.set(a,nxt); prevOf.set(nxt,a); }
+        });
+      });
+      // 연속수업은 시간순 정렬을 깨더라도 서로 붙여서 배치
+      const emitted = new Set(), ordered = [];
+      list.forEach(it=>{
+        if (emitted.has(it)) return;
+        ordered.push(it); emitted.add(it);
+        const nxt = nextOf.get(it);
+        if (nxt && !emitted.has(nxt)){ ordered.push(nxt); emitted.add(nxt); }
+      });
+      // 등원/하원을 공유하는 수업끼리 경과시간 나눠 배분(마지막 수업이 초과분을 받음)
+      const shareOf = new Map();
+      byStudent.forEach(arr=>{
+        const sib = arr.filter(o=>o.status!=='ABSENT' && o.att && o.att.in)
+                       .sort((a,b)=>mn(a.start_time)-mn(b.start_time));
+        if (!sib.length) return;
+        const start = mn(sib[0].att.in);
+        const end = sib[0].att.out ? mn(sib[0].att.out) : this.nowMin;
+        let remaining = Math.max(0, end - start);
+        sib.forEach((o,k)=>{
+          const dur = o.duration_minutes||60;
+          const share = (k===sib.length-1) ? remaining : Math.min(remaining, dur);
+          shareOf.set(o, share);
+          remaining = Math.max(0, remaining - dur);
+        });
+      });
+      const rows = ordered.map((r,i)=>{
+        const partner = nextOf.get(r) || prevOf.get(r) || null;
+        let role = null;
+        if (partner){
+          if (ordered[i+1]===partner) role = 'first';
+          else if (ordered[i-1]===partner) role = 'second';
+        }
+        const dur = r.duration_minutes||60;
+        const share = shareOf.get(r);
+        return { r, role, hasPartner: !!partner,
+                 elapsed: (share===undefined) ? '' : (share+'분 / '+dur+'분'),
+                 status: this.statusFor(r, prevOf.get(r) || null),
+                 nameCls: this.nameCls(r) };
+      });
+      // 이미 시작된 마지막 수업 바로 다음 위치(붙여배치로 순서가 섞이므로 뒤에서부터)
+      let nowIdx = 0;
+      for (let i=rows.length-1;i>=0;i--){ if (mn(rows[i].r.start_time) <= this.nowMin){ nowIdx = i+1; break; } }
+      return { rows, nowIdx };
+    },
     checkedInCount(){ return this.board.filter(r=>r.att && r.att.in).length; },
     checkedOutCount(){ return this.board.filter(r=>r.att && r.att.out).length; },
   },
@@ -99,34 +159,13 @@ createApp({
       if (lk.done) return '(보강 '+md+' 완료)';
       return '(보강 '+md+' 예정)';
     },
-    elapsed(row){
-      if (!row.att.in) return '';
-      const start = this.hmMin(row.att.in);
-      const end = row.att.out ? this.hmMin(row.att.out) : this.nowMin;
-      const total = Math.max(0, end-start);
-      const dur = row.duration_minutes||60;
-      // 같은 학생이 등원/하원을 공유하는 수업이 여러 개면(연속 타임 등) 앞 수업부터 채워 나눠 배분.
-      // 마지막 수업은 남은 시간을 그대로 받아 초과분이 드러나게 한다(오늘 운영과 동일 규칙).
-      const sib = this.board.filter(o=>o.student_id && o.student_id===row.student_id
-                                      && o.status!=='ABSENT' && o.att && o.att.in);
-      if (sib.length > 1){
-        sib.sort((a,b)=>this.hmMin(a.start_time)-this.hmMin(b.start_time));
-        let remaining = total;
-        for (let i=0; i<sib.length; i++){
-          const o = sib[i], odur = o.duration_minutes||60;
-          const share = (i===sib.length-1) ? remaining : Math.min(remaining, odur);
-          if (o===row) return share+'분 / '+dur+'분';
-          remaining = Math.max(0, remaining - odur);
-        }
-      }
-      return total+'분 / '+dur+'분';
-    },
-    statusInfo(row){
+    statusFor(row, prevPartner){
       if (row.status==='ABSENT') return { label:'결석'+this.stuAbsenceSuffix(row), cls:'text-rose-400' };
       if (row.status==='LEAVE') return { label:'임시휴원', cls:'text-purple-400' };
       if (row.is_makeup) return { label:'보강'+this.mkAbsenceRefSuffix(row), cls:'text-blue-400' };
       if (row.att.in){
-        const refStart = this.lateRefStart(row);
+        // 연속수업이면 지각/일찍 기준은 앞 타임 시작시각
+        const refStart = prevPartner ? prevPartner.start_time : row.start_time;
         const diff = this.hmMin(row.att.in) - this.hmMin(refStart);
         if (diff > 5) return { label:diff+'분 지각', cls:'text-amber-400' };
         if (diff < -5) return { label:(-diff)+'분 일찍', cls:'text-emerald-300' };
@@ -141,52 +180,6 @@ createApp({
       return '';
     },
     // 같은 학생의 바로 이어지는 연속 수업(뒤 수업 시작=앞 수업 종료) 파트너 찾기 — 포털 오늘 운영과 동일 규칙
-    findContPartner(row){
-      const s = this.hmMin(row.start_time), e = s + (row.duration_minutes||60);
-      return this.board.find(o=>o!==row && row.student_id && o.student_id===row.student_id &&
-        (this.hmMin(o.start_time)+(o.duration_minutes||60)===s || e===this.hmMin(o.start_time))) || null;
-    },
-    // 연속수업(등원/하원 공유)이면 지각/일찍 기준은 항상 앞 타임 시작시각으로 계산
-    lateRefStart(row){
-      const partner = this.findContPartner(row);
-      if (partner && this.hmMin(partner.start_time) < this.hmMin(row.start_time)) return partner.start_time;
-      return row.start_time;
-    },
-    // 연속수업은 시간순 정렬을 깨더라도 서로 붙여서 보여줌(포털 오늘 운영과 동일)
-    boardOrdered(){
-      const list = this.board;
-      const partnerOf = new Map();
-      list.forEach(it=>{
-        if (!it.student_id) return;
-        const s = this.hmMin(it.start_time), e = s + (it.duration_minutes||60);
-        const nxt = list.find(o=>o!==it && o.student_id===it.student_id && this.hmMin(o.start_time)===e);
-        if (nxt) partnerOf.set(it, nxt);
-      });
-      const emitted = new Set(); const out = [];
-      list.forEach(it=>{
-        if (emitted.has(it)) return;
-        out.push(it); emitted.add(it);
-        const nxt = partnerOf.get(it);
-        if (nxt && !emitted.has(nxt)){ out.push(nxt); emitted.add(nxt); }
-      });
-      return out;
-    },
-    // 연속수업 짝의 위/아래 역할(포털 캘린더의 rounded-t/rounded-b 붙임과 같은 개념을
-    // 표 행에서는 두 행 사이 구분선을 없애고 배경을 이어서 하나로 묶어 보여줌)
-    contRole(r,i){
-      const partner = this.findContPartner(r);
-      if (!partner) return null;
-      const ls = this.boardOrdered();
-      if (ls[i+1]===partner) return 'first';
-      if (ls[i-1]===partner) return 'second';
-      return null;
-    },
-    nowLineIndex(){
-      // 이미 시작된 마지막 수업 바로 다음 인덱스(연속수업 붙여배치로 순서가 섞일 수 있어 뒤에서부터 훑음)
-      const ls=this.boardOrdered();
-      for (let i=ls.length-1;i>=0;i--){ if (this.hmMin(ls[i].start_time) <= this.nowMin) return i+1; }
-      return 0;
-    },
     scrollToNow(){
       this.$nextTick(()=>{
         const el = this.$refs.nowRow;
@@ -272,47 +265,6 @@ createApp({
       if (!document.fullscreenElement){ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
       else { document.exitFullscreen && document.exitFullscreen(); }
     },
-    async requestWakeLock(){
-      // 표준 Wake Lock API(HTTPS 등 보안 컨텍스트 필요) — 되면 이걸로 충분함
-      if ('wakeLock' in navigator){
-        try {
-          this._wakeLock = await navigator.wakeLock.request('screen');
-          this._wakeLock.addEventListener('release', ()=>{ this._wakeLock = null; });
-        } catch(e){ /* 지원 안 하거나 거부됨 — 아래 대체 방식으로 처리 */ }
-      }
-      // 대체 방식: HTTP 등 Wake Lock API를 못 쓰는 환경에서도 동작하도록, 화면에 안 보이는
-      // 1x1 캔버스를 영상으로 계속 재생시켜 모바일 브라우저의 화면 꺼짐을 억제(널리 쓰이는 방법)
-      this._startNoSleepFallback();
-    },
-    releaseWakeLock(){
-      if (this._wakeLock){ this._wakeLock.release(); this._wakeLock = null; }
-      this._stopNoSleepFallback();
-    },
-    _startNoSleepFallback(){
-      if (this._noSleepVideo) return;
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 2; canvas.height = 2;
-        canvas.getContext('2d').fillRect(0, 0, 2, 2);
-        const stream = canvas.captureStream(1);
-        const v = document.createElement('video');
-        v.muted = true; v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('autoplay', '');
-        v.srcObject = stream;
-        v.style.cssText = 'position:fixed;left:-1px;top:-1px;width:1px;height:1px;opacity:0;pointer-events:none;';
-        document.body.appendChild(v);
-        v.play().catch(()=>{});
-        this._noSleepVideo = v; this._noSleepStream = stream;
-      } catch(e){ /* 미지원 브라우저면 조용히 무시 */ }
-    },
-    _stopNoSleepFallback(){
-      if (this._noSleepVideo){ this._noSleepVideo.pause(); this._noSleepVideo.remove(); this._noSleepVideo = null; }
-      if (this._noSleepStream){ this._noSleepStream.getTracks().forEach(t=>t.stop()); this._noSleepStream = null; }
-    },
-    toggleKeepAwake(){
-      this.keepAwake = !this.keepAwake;
-      localStorage.setItem('kiosk_keep_awake', this.keepAwake ? '1' : '0');
-      if (this.keepAwake) this.requestWakeLock(); else this.releaseWakeLock();
-    },
     setLeftRatio(v){
       const n = Math.max(20, Math.min(80, parseInt(v) || 58));
       this.leftRatio = n;
@@ -333,14 +285,6 @@ createApp({
     this.tickClock();
     setInterval(this.tickClock, 1000);
     document.addEventListener('fullscreenchange', ()=>{ this.isFullscreen = !!document.fullscreenElement; });
-    if (this.keepAwake) this.requestWakeLock();
-    // 화면 꺼짐 방지는 탭이 백그라운드로 가면 자동 해제되므로, 다시 보일 때 켜져 있으면 재요청
-    document.addEventListener('visibilitychange', ()=>{
-      if (document.visibilityState === 'visible' && this.keepAwake){
-        this.requestWakeLock();
-        if (this._noSleepVideo) this._noSleepVideo.play().catch(()=>{});
-      }
-    });
     if (!this.b || !this.t){
       this.deviceStatus = 'badlink';
       this.resultSub = '관리자에게 링크를 다시 요청하세요.';
@@ -358,10 +302,6 @@ createApp({
   },
   template: `
     <div class="fixed top-2 right-2 z-50 flex items-center gap-1.5">
-      <label class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600 cursor-pointer select-none">
-        <input type="checkbox" :checked="keepAwake" @change="toggleKeepAwake" class="w-3.5 h-3.5" />
-        {{ keepAwake ? '🔆 계속 켜짐' : '화면 꺼짐 방지' }}
-      </label>
       <div class="relative">
         <button @click="ratioSettingsOpen=!ratioSettingsOpen" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">⚙️ 화면 설정</button>
         <div v-if="ratioSettingsOpen" @click="ratioSettingsOpen=false" class="fixed inset-0 z-40"></div>
@@ -449,20 +389,20 @@ createApp({
           </tr>
         </thead>
         <tbody>
-          <template v-for="(r,i) in boardOrdered()" :key="i">
-            <tr v-if="i===nowLineIndex()" ref="nowRow" class="bg-rose-500/10">
+          <template v-for="(x,i) in boardRows.rows" :key="i">
+            <tr v-if="i===boardRows.nowIdx" ref="nowRow" class="bg-rose-500/10">
               <td colspan="6" class="py-0.5 text-[11px] text-rose-400 font-medium border-y border-rose-500/40">▶ 현재 {{ clock.slice(0,5) }}</td>
             </tr>
-            <tr :class="['border-slate-800', contRole(r,i)==='first' ? 'border-b-0 bg-indigo-500/10' : (contRole(r,i)==='second' ? 'border-b bg-indigo-500/10' : 'border-b')]">
-              <td class="py-1.5 pr-2 font-mono text-slate-300">{{ r.start_time }}</td>
-              <td class="py-1.5 pr-2 font-medium" :class="nameCls(r)">{{ r.student_name }}<span v-if="findContPartner(r)" class="ml-0.5 opacity-60" title="연속 수업(이어짐)">🔗</span><span v-if="r.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">수업외</span></td>
-              <td class="py-1.5 pr-2" :class="r.att.in ? 'text-emerald-400' : 'text-slate-600'">{{ r.att.in || '-' }}</td>
-              <td class="py-1.5 pr-2" :class="r.att.out ? 'text-indigo-400' : 'text-slate-600'">{{ r.att.out || '-' }}</td>
-              <td class="py-1.5 pr-2 text-xs whitespace-nowrap" :class="(statusInfo(r)||{}).cls || 'text-slate-700'">{{ statusInfo(r) ? statusInfo(r).label : '' }}</td>
-              <td class="py-1.5 pr-2 text-right text-xs" :class="elapsed(r) ? 'text-slate-400' : 'text-slate-600'">{{ elapsed(r) || (r.status!=='ABSENT' ? '/ '+(r.duration_minutes||60)+'분' : '') }}</td>
+            <tr :class="['border-slate-800', x.role==='first' ? 'border-b-0 bg-indigo-500/10' : (x.role==='second' ? 'border-b bg-indigo-500/10' : 'border-b')]">
+              <td class="py-1.5 pr-2 font-mono text-slate-300">{{ x.r.start_time }}</td>
+              <td class="py-1.5 pr-2 font-medium" :class="x.nameCls">{{ x.r.student_name }}<span v-if="x.hasPartner" class="ml-0.5 opacity-60" title="연속 수업(이어짐)">🔗</span><span v-if="x.r.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">수업외</span></td>
+              <td class="py-1.5 pr-2" :class="x.r.att.in ? 'text-emerald-400' : 'text-slate-600'">{{ x.r.att.in || '-' }}</td>
+              <td class="py-1.5 pr-2" :class="x.r.att.out ? 'text-indigo-400' : 'text-slate-600'">{{ x.r.att.out || '-' }}</td>
+              <td class="py-1.5 pr-2 text-xs whitespace-nowrap" :class="(x.status||{}).cls || 'text-slate-700'">{{ x.status ? x.status.label : '' }}</td>
+              <td class="py-1.5 pr-2 text-right text-xs" :class="x.elapsed ? 'text-slate-400' : 'text-slate-600'">{{ x.elapsed || (x.r.status!=='ABSENT' ? '/ '+(x.r.duration_minutes||60)+'분' : '') }}</td>
             </tr>
           </template>
-          <tr v-if="board.length && nowLineIndex()===board.length" ref="nowRow" class="bg-rose-500/10">
+          <tr v-if="board.length && boardRows.nowIdx===boardRows.rows.length" ref="nowRow" class="bg-rose-500/10">
             <td colspan="6" class="py-0.5 text-[11px] text-rose-400 font-medium border-y border-rose-500/40">▶ 현재 {{ clock.slice(0,5) }}</td>
           </tr>
           <tr v-if="board.length===0"><td colspan="6" class="py-8 text-center text-slate-500">오늘 수업이 없습니다.</td></tr>
