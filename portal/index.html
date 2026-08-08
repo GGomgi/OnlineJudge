@@ -1794,6 +1794,13 @@
               보강일
               <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="mkgShowPending" class="w-3 h-3" />미정 <span class="text-slate-400">{{ mkgPendingCount }}</span></label>
               <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="mkgShowFixed" class="w-3 h-3" />확정 <span class="text-slate-400">{{ mkgFixedCount }}</span></label>
+              <!-- 확정의 하위 구분 — 확정을 꺼두면 흐리게 -->
+              <span :class="['flex items-center gap-2 pl-2 border-l border-slate-200', mkgShowFixed ? '' : 'opacity-40']">
+                <span class="text-slate-300">└</span>
+                <label v-for="st in mkStates" :key="st.k" class="flex items-center gap-1 select-none" :class="mkgShowFixed ? 'cursor-pointer' : 'cursor-not-allowed'">
+                  <input type="checkbox" v-model="mkgSub[st.k]" :disabled="!mkgShowFixed" class="w-3 h-3" />{{ st.l }} <span class="text-slate-400">{{ mkgStateCounts[st.k] }}</span>
+                </label>
+              </span>
             </span>
             <select v-if="mkgCanPickBranch" v-model="mkgBranchId" @change="loadMkgPending" class="input py-1 text-xs w-32 shrink-0">
               <option value="">지점 전체</option>
@@ -1814,6 +1821,7 @@
             <span class="text-xs text-slate-400">{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
             <span :class="['text-[11px] px-1.5 py-0.5 rounded shrink-0', mkgDaysCls(p.date)]">D+{{ mkgDaysAgo(p.date) }}</span>
             <span v-if="p.makeup_date" class="text-[11px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">보강 {{ p.makeup_date.slice(5) }}({{ wdOf(p.makeup_date) }}) {{ p.makeup_time }}</span>
+            <span v-if="mkStateInfo(p.mk_state)" :class="['text-[11px] px-1.5 py-0.5 rounded shrink-0', mkStateInfo(p.mk_state).cls]">{{ mkStateInfo(p.mk_state).l }}</span>
             <span class="ml-auto flex gap-2 shrink-0">
               <template v-if="!p.makeup_date">
                 <button @click="openMakeupFor(p)" class="text-xs text-indigo-600 hover:underline">일정잡기</button>
@@ -1836,6 +1844,7 @@
               <span>{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
               <span :class="['px-1.5 py-0.5 rounded shrink-0', mkgDaysCls(p.date)]">D+{{ mkgDaysAgo(p.date) }}</span>
               <span v-if="p.makeup_date" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">보강 {{ p.makeup_date.slice(5) }}({{ wdOf(p.makeup_date) }}) {{ p.makeup_time }}</span>
+              <span v-if="mkStateInfo(p.mk_state)" :class="['px-1.5 py-0.5 rounded shrink-0', mkStateInfo(p.mk_state).cls]">{{ mkStateInfo(p.mk_state).l }}</span>
               <span class="ml-auto flex gap-2 shrink-0">
                 <template v-if="!p.makeup_date">
                   <button @click="openMakeupFor(p)" class="text-indigo-600 hover:underline">일정잡기</button>
@@ -2720,12 +2729,19 @@
                     보강일
                     <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="stuMkShowPending" class="w-3 h-3" />미정 <span class="text-slate-400">{{ stuMkPendingCount }}</span></label>
                     <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="stuMkShowFixed" class="w-3 h-3" />확정 <span class="text-slate-400">{{ stuMkFixedCount }}</span></label>
+                    <span :class="['flex items-center gap-2 pl-2 border-l border-blue-200', stuMkShowFixed ? '' : 'opacity-40']">
+                      <span class="text-slate-300">└</span>
+                      <label v-for="st in mkStates" :key="st.k" class="flex items-center gap-1 select-none" :class="stuMkShowFixed ? 'cursor-pointer' : 'cursor-not-allowed'">
+                        <input type="checkbox" v-model="stuMkSub[st.k]" :disabled="!stuMkShowFixed" class="w-3 h-3" />{{ st.l }} <span class="text-slate-400">{{ stuMkStateCounts[st.k] }}</span>
+                      </label>
+                    </span>
                   </span>
                 </div>
                 <div v-for="p in stuMkList" :key="p.occ_id" class="flex items-center gap-2 text-xs text-slate-600 py-0.5">
                   <span>{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
                   <span :class="['px-1.5 py-0.5 rounded shrink-0', mkgDaysCls(p.date)]">D+{{ mkgDaysAgo(p.date) }}</span>
                   <span v-if="p.makeup_date" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">보강 {{ p.makeup_date.slice(5) }}({{ wdOf(p.makeup_date) }}) {{ p.makeup_time }}</span>
+                  <span v-if="mkStateInfo(p.mk_state)" :class="['px-1.5 py-0.5 rounded shrink-0', mkStateInfo(p.mk_state).cls]">{{ mkStateInfo(p.mk_state).l }}</span>
                   <span class="ml-auto flex gap-2 shrink-0">
                     <template v-if="!p.makeup_date">
                       <button @click="openMakeupFor(p)" class="text-indigo-600 hover:underline">일정잡기</button>
@@ -3976,6 +3992,7 @@ const app = createApp({
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'progress',l:'수업일지'},{k:'attend',l:'출결기록'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
       stuAttHist: { rows:[], from:'', to:'', fwdDays:0 },
       stuMkAll: [], stuMkShowPending: true, stuMkShowFixed: true,
+      stuMkSub: { planned:true, done:true, missed:true },
       // 출결기록 조회 범위 기본값(오늘 이후 며칠까지). 기기별로 저장해 다음에도 그대로 열림
       stuAttFwdDefault: Number(localStorage.getItem('stu_att_fwd_days')||0),
       stuAttSelected: [], stuAttBulkForm: { note_tag:'', note:'', no_makeup:false, start_time:'' }, stuAttBulkMode: false,
@@ -4009,8 +4026,13 @@ const app = createApp({
       progPop: { show:false, x:0, y:0, content:'', homework:'', feedback:'', memo:'' },
       dashFilter: { q:'', qRaw:'', subject:'', instructor:'', branch:'' }, dashPop: { show:false, x:0, y:0, l:{att:{}} },
       mkgAll: [], mkgGroupBy: 'student', mkgBranchId: '', mkgLoading: false,
-      // 보강일 필터: 기본은 아직 날짜를 못 잡은 '미정'만 — 처리해야 할 일만 보이게
+      // 보강일 필터: 기본은 아직 날짜를 못 잡은 '미정'만 — 처리해야 할 일만 보이게.
+      // 확정 건은 그 아래에서 예정/완료/미이수로 다시 나눈다(미정은 완료가 될 수 없어 축이 겹치지 않음).
       mkgShowPending: true, mkgShowFixed: false,
+      mkgSub: { planned:true, done:true, missed:true },
+      mkStates: [ {k:'planned', l:'예정', cls:'bg-slate-100 text-slate-600'},
+                  {k:'done',    l:'완료', cls:'bg-emerald-100 text-emerald-700'},
+                  {k:'missed',  l:'미이수', cls:'bg-orange-100 text-orange-700'} ],
       dashShowDone: true,
       kioskDevicesOpen: false, kioskDevices: [], kioskDeviceBranchId: null,
       makeupOpen: false, mkMode: 'pending', mkStep: 'pick', mkPending: [], mkPendingSearch: '', mkPendingSearchRaw: '',
@@ -4327,8 +4349,6 @@ const app = createApp({
       return new Set(this.dashLessons.filter(l=>l.att.in && !out.has(l.student_id)).map(l=>l.student_id)).size; },
     tempLeavesNow(){ return (this.dashData.temp_leaves||[]).filter(t=>!t.upcoming); },
     tempLeavesSoon(){ return (this.dashData.temp_leaves||[]).filter(t=>t.upcoming); },
-    // 보강 현황 목록: 미정/확정 체크박스로 걸러낸 결과
-    mkgList(){ return this.mkgAll.filter(p => p.makeup_date ? this.mkgShowFixed : this.mkgShowPending); },
     // 수업 시각 + 수업시간으로 끝나는 시각을 계산(HH:MM, 24시간제)
     attEndTime(){
       const t = (this.attForm.lessonTime||'').trim();
@@ -4339,22 +4359,17 @@ const app = createApp({
       const p = x => String(x).padStart(2,'0');
       return p(Math.floor(tot/60)%24)+':'+p(tot%60);
     },
-    stuMkList(){ return this.stuMkAll.filter(p => p.makeup_date ? this.stuMkShowFixed : this.stuMkShowPending); },
-    stuMkPendingCount(){ return this.stuMkAll.filter(p=>!p.makeup_date).length; },
-    stuMkFixedCount(){ return this.stuMkAll.filter(p=>!!p.makeup_date).length; },
-    stuMkEmptyMsg(){
-      if (!this.stuMkShowPending && !this.stuMkShowFixed) return '보고 싶은 보강일(미정/확정)을 선택하세요.';
-      if (this.stuMkAll.length) return '선택한 조건에 맞는 보강이 없습니다.';
-      return '보강 대상이 없습니다.';
-    },
-    mkgPendingCount(){ return this.mkgAll.filter(p=>!p.makeup_date).length; },
-    mkgEmptyMsg(){
-      if (!this.mkgShowPending && !this.mkgShowFixed) return '보고 싶은 보강일(미정/확정)을 선택하세요.';
-      if (this.mkgShowPending && !this.mkgShowFixed) return '보강일 미정인 건이 없습니다.';
-      if (!this.mkgShowPending && this.mkgShowFixed) return '보강일 확정된 건이 없습니다.';
-      return '보강 대상이 없습니다.';
-    },
-    mkgFixedCount(){ return this.mkgAll.filter(p=>!!p.makeup_date).length; },
+    // 보강 현황: 미정은 그 자체로, 확정은 하위 상태(예정/완료/미이수)까지 보고 걸러낸다
+    mkgList(){ return this.mkgAll.filter(p=>this.mkFilterPass(p)); },
+    mkgPendingCount(){ return this.mkgAll.filter(p=>p.mk_state==='none').length; },
+    mkgFixedCount(){ return this.mkgAll.filter(p=>p.mk_state!=='none').length; },
+    mkgStateCounts(){ return this.mkCountStates(this.mkgAll); },
+    mkgEmptyMsg(){ return this.mkEmptyMsg(this.mkgShowPending, this.mkgShowFixed, this.mkgSub, this.mkgAll); },
+    stuMkList(){ return this.stuMkAll.filter(p=>this.mkFilterPass(p, true)); },
+    stuMkPendingCount(){ return this.stuMkAll.filter(p=>p.mk_state==='none').length; },
+    stuMkFixedCount(){ return this.stuMkAll.filter(p=>p.mk_state!=='none').length; },
+    stuMkStateCounts(){ return this.mkCountStates(this.stuMkAll); },
+    stuMkEmptyMsg(){ return this.mkEmptyMsg(this.stuMkShowPending, this.stuMkShowFixed, this.stuMkSub, this.stuMkAll); },
     dashReservationsAll(){ const f=this.dashFilter; return (this.dashData.reservations||[]).filter(rv => !f.branch || rv.branch===f.branch); },
     dashReservations(){ return this.dashReservationsAll.filter(rv => this.dashShowDone || rv.status!=='DONE'); },
     dashEnrolled(){ const f=this.dashFilter; return (this.dashData.enrolled_leads||[]).filter(l => !f.branch || l.branch===f.branch); },
@@ -6924,6 +6939,26 @@ const app = createApp({
         const d = await api('GET','/api/admin/academy/student_attendance_history?student_id='+this.stuDetail.id+'&fwd_days='+(fwdDays||0));
         this.stuAttHist = { rows:d.rows, from:d.from, to:d.to, fwdDays:d.fwd_days };
       } catch(e){ this.notify(e.message,false); }
+    },
+    // 미정 / (확정 → 예정·완료·미이수) 두 단계 필터. stu=true면 학생 상세 패널 상태를 쓴다
+    mkFilterPass(p, stu){
+      const showPending = stu ? this.stuMkShowPending : this.mkgShowPending;
+      const showFixed   = stu ? this.stuMkShowFixed   : this.mkgShowFixed;
+      const sub         = stu ? this.stuMkSub         : this.mkgSub;
+      if (p.mk_state==='none') return showPending;
+      return showFixed && !!sub[p.mk_state];
+    },
+    mkCountStates(list){
+      const c = { planned:0, done:0, missed:0 };
+      list.forEach(p=>{ if (c[p.mk_state]!==undefined) c[p.mk_state]++; });
+      return c;
+    },
+    mkStateInfo(k){ return this.mkStates.find(x=>x.k===k) || null; },
+    mkEmptyMsg(showPending, showFixed, sub, all){
+      if (!showPending && !showFixed) return '보고 싶은 보강일(미정/확정)을 선택하세요.';
+      if (showFixed && !showPending && !sub.planned && !sub.done && !sub.missed) return '확정 건에서 볼 상태(예정/완료/미이수)를 선택하세요.';
+      if (all.length) return '선택한 조건에 맞는 보강이 없습니다.';
+      return '보강 대상이 없습니다.';
     },
     async loadStuMakeups(){
       if (!this.stuDetail) { this.stuMkAll=[]; return; }

@@ -4445,8 +4445,8 @@ class PendingMakeupAPI(APIView):
     @admin_role_required
     def get(self, request):
         """보강 현황: 결석(ABSENT) 또는 조퇴예정 표시된 수업 중 '보강 안 함'이 아닌 것.
-        보강일이 잡힌 건은 makeup_date/makeup_time을 함께 내려 화면에서 미정/확정을
-        구분해 걸러 볼 수 있게 한다. branch_id·student_id로 좁힐 수 있고, 오래된 것부터."""
+        보강일이 잡힌 건은 makeup_date/makeup_time과 진행 상태(mk_state: none 미정 /
+        planned 예정 / done 완료 / missed 미이수)를 함께 내려 화면에서 걸러 볼 수 있게 한다. branch_id·student_id로 좁힐 수 있고, 오래된 것부터."""
         view = viewable_branch_ids(request.user)
         bid = request.GET.get("branch_id")
         sid = request.GET.get("student_id")
@@ -4479,11 +4479,35 @@ class PendingMakeupAPI(APIView):
             if sid:
                 el_qs = el_qs.filter(student_id=sid)
 
+        cands = [(o, "absence") for o in qs.order_by("date", "start_time")[:300]] + \
+                [(o, "early_leave") for o in el_qs.order_by("date", "start_time")[:300]]
+
+        # 보강 수업이 실제로 이루어졌는지는 그날 등원 기록으로 판정한다. 필요한 날짜만 모아 한 번에 조회.
+        mk_list = [made[o.id] for o, _ in cands if o.id in made]
+        checked_in = set()
+        if mk_list:
+            checked_in = set(DailyAttendance.objects.filter(
+                student_id__in={m.student_id for m in mk_list},
+                date__in={m.date for m in mk_list},
+                check_in_at__isnull=False,
+            ).values_list("student_id", "date"))
+        today = (now() + timedelta(hours=9)).date()
+
         out = []
-        for o, kind in [(o, "absence") for o in qs.order_by("date", "start_time")[:300]] + \
-                        [(o, "early_leave") for o in el_qs.order_by("date", "start_time")[:300]]:
+        for o, kind in cands:
             prof = getattr(o.student, "student_profile", None)
             mk = made.get(o.id)
+            if not mk:
+                state = "none"          # 보강일 미정
+            elif mk.status == OccurrenceStatus.ABSENT:
+                # 보강일에 또 결석. 그날 다른 수업으로 등원했을 수 있으므로 등원 기록보다 먼저 본다.
+                state = "missed"
+            elif (mk.student_id, mk.date) in checked_in:
+                state = "done"          # 완료 — 보강일에 등원 기록이 있음
+            elif mk.date < today:
+                state = "missed"        # 미이수 — 날짜가 지났는데 등원 기록이 없음
+            else:
+                state = "planned"       # 예정 — 보강일이 아직 오지 않음
             out.append({"occ_id": o.id, "student_id": o.student_id, "student_name": _name_of(o.student),
                         "date": str(o.date), "start_time": str(o.start_time)[:5],
                         "duration_minutes": o.duration_minutes, "kind": kind,
@@ -4491,6 +4515,7 @@ class PendingMakeupAPI(APIView):
                         "makeup_occ_id": (mk.id if mk else None),
                         "makeup_date": (str(mk.date) if mk else ""),
                         "makeup_time": (str(mk.start_time)[:5] if mk else ""),
+                        "mk_state": state,
                         "parent_phone": (prof.parent_phone if prof else ""),
                         "student_phone": (prof.student_phone if prof else "")})
         out.sort(key=lambda r: (r["date"], r["start_time"]))
