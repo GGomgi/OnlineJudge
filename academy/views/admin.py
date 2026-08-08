@@ -3727,7 +3727,7 @@ class DashboardAdminAPI(APIView):
         prog = {}
         occ_ids = [l["occ_id"] for l in lessons]
         for p in LessonProgress.objects.filter(occurrence_id__in=occ_ids, is_hidden=False):
-            prog[p.occurrence_id] = {"content": p.content, "homework": p.homework, "feedback": p.feedback}
+            prog[p.occurrence_id] = {"content": p.content, "homework": p.homework, "feedback": p.feedback, "memo": p.memo}
         for l in lessons:
             l["att"] = att.get(l["student_id"], {"in": "", "out": "", "note_tag": "", "note": ""})
             l["progress"] = prog.get(l["occ_id"])
@@ -4205,8 +4205,8 @@ class TimetableCalendarAPI(APIView):
             occurrence__date__gte=d0, occurrence__date__lte=d1, is_hidden=False)
         if sid:
             prog_q = prog_q.filter(student_id=sid)
-        prog_by_occ = {p["occurrence_id"]: {"content": p["content"], "homework": p["homework"], "feedback": p["feedback"]}
-                       for p in prog_q.values("occurrence_id", "content", "homework", "feedback")}
+        prog_by_occ = {p["occurrence_id"]: {"content": p["content"], "homework": p["homework"], "feedback": p["feedback"], "memo": p["memo"]}
+                       for p in prog_q.values("occurrence_id", "content", "homework", "feedback", "memo")}
         days = {}
         cur = d0
         while cur <= d1:
@@ -4444,12 +4444,15 @@ class LessonAbsenceAPI(APIView):
 class PendingMakeupAPI(APIView):
     @admin_role_required
     def get(self, request):
-        """보강 필요 리스트: 결석(ABSENT) 또는 조퇴예정 표시된 수업 중 보강 미배정·보강 안 함
-        아닌 것. branch_id 주면 해당 지점만. 오래된 것부터(날짜 오름차순)."""
+        """보강 현황: 결석(ABSENT) 또는 조퇴예정 표시된 수업 중 '보강 안 함'이 아닌 것.
+        보강일이 잡힌 건은 makeup_date/makeup_time을 함께 내려 화면에서 미정/확정을
+        구분해 걸러 볼 수 있게 한다. branch_id·student_id로 좁힐 수 있고, 오래된 것부터."""
         view = viewable_branch_ids(request.user)
         bid = request.GET.get("branch_id")
-        made = set(LessonOccurrence.objects.filter(is_makeup=True, makeup_for__isnull=False)
-                   .values_list("makeup_for_id", flat=True))
+        sid = request.GET.get("student_id")
+        made = {}
+        for m in LessonOccurrence.objects.filter(is_makeup=True, makeup_for__isnull=False):
+            made[m.makeup_for_id] = m
 
         qs = LessonOccurrence.objects.select_related("student", "student__student_profile", "branch").filter(
             status=OccurrenceStatus.ABSENT, is_makeup=False, no_makeup=False)
@@ -4457,6 +4460,8 @@ class PendingMakeupAPI(APIView):
             qs = qs.filter(branch_id__in=view)
         if bid:
             qs = qs.filter(branch_id=bid)
+        if sid:
+            qs = qs.filter(student_id=sid)
 
         # 조퇴예정 태그가 붙은 날짜의 수업도 후보에 포함
         el_pairs = list(DailyAttendance.objects.filter(note_tag=EARLY_LEAVE_TAG).values_list("student_id", "date"))
@@ -4471,17 +4476,21 @@ class PendingMakeupAPI(APIView):
                 el_qs = el_qs.filter(branch_id__in=view)
             if bid:
                 el_qs = el_qs.filter(branch_id=bid)
+            if sid:
+                el_qs = el_qs.filter(student_id=sid)
 
         out = []
         for o, kind in [(o, "absence") for o in qs.order_by("date", "start_time")[:300]] + \
                         [(o, "early_leave") for o in el_qs.order_by("date", "start_time")[:300]]:
-            if o.id in made:
-                continue
             prof = getattr(o.student, "student_profile", None)
+            mk = made.get(o.id)
             out.append({"occ_id": o.id, "student_id": o.student_id, "student_name": _name_of(o.student),
                         "date": str(o.date), "start_time": str(o.start_time)[:5],
                         "duration_minutes": o.duration_minutes, "kind": kind,
                         "subject": o.subject or "미지정", "branch": (o.branch.name if o.branch_id else ""),
+                        "makeup_occ_id": (mk.id if mk else None),
+                        "makeup_date": (str(mk.date) if mk else ""),
+                        "makeup_time": (str(mk.start_time)[:5] if mk else ""),
                         "parent_phone": (prof.parent_phone if prof else ""),
                         "student_phone": (prof.student_phone if prof else "")})
         out.sort(key=lambda r: (r["date"], r["start_time"]))
@@ -4624,7 +4633,7 @@ class LessonProgressAdminAPI(APIView):
             if not p:
                 return self.success(None)
             return self.success({"id": p.id, "date": str(p.date), "content": p.content,
-                                 "homework": p.homework, "feedback": p.feedback,
+                                 "homework": p.homework, "feedback": p.feedback, "memo": p.memo,
                                  "author": _name_of(p.author) if p.author_id else "",
                                  "time": _kst_dt_str(p.update_time)})
         sid = request.GET.get("student_id")
@@ -4638,7 +4647,7 @@ class LessonProgressAdminAPI(APIView):
         for p in LessonProgress.objects.select_related("author", "occurrence").filter(
                 student=u, is_hidden=False).order_by("-date", "-id")[:200]:
             out.append({"id": p.id, "date": str(p.date), "content": p.content, "homework": p.homework,
-                        "feedback": p.feedback,
+                        "feedback": p.feedback, "memo": p.memo,
                         "subject": (p.occurrence.subject if p.occurrence_id else ""),
                         "author": _name_of(p.author) if p.author_id else "",
                         "time": _kst_dt_str(p.update_time)})
@@ -4652,6 +4661,7 @@ class LessonProgressAdminAPI(APIView):
         content = (data.get("content") or "").strip()
         homework = (data.get("homework") or "").strip()
         feedback = (data.get("feedback") or "").strip()
+        memo = (data.get("memo") or "").strip()
         occ_id = data.get("occ_id")
         if occ_id:
             o = LessonOccurrence.objects.select_related("branch").filter(id=occ_id).first()
@@ -4685,6 +4695,7 @@ class LessonProgressAdminAPI(APIView):
         p.content = content
         p.homework = homework
         p.feedback = feedback
+        p.memo = memo
         p.author = request.user
         p.save()
         return self.success({"id": p.id})
@@ -4943,7 +4954,7 @@ class StudentLessonCandidatesAPI(APIView):
 class StudentAttendanceHistoryAPI(APIView):
     @admin_role_required
     def get(self, request):
-        """학생 상세의 출결기록 탭. 수업시작일(없으면 등록일)~오늘 기본, fwd_months로
+        """학생 상세의 출결기록 탭. 수업시작일(없으면 등록일)~오늘 기본, fwd_days로
         오늘 이후 범위를 늘릴 수 있음(결석 예정·시간표 변경 등 미리 안내받은 내용 확인용).
         최신순(날짜 내림차순)으로 반환 — 프론트에서 월 단위로 묶어 표시."""
         u = User.objects.filter(id=request.GET.get("student_id")).first()
@@ -4955,11 +4966,18 @@ class StudentAttendanceHistoryAPI(APIView):
         sp = getattr(u, "student_profile", None)
         today = (now() + timedelta(hours=9)).date()
         d0 = (sp.lesson_start_date if sp else None) or (sp.enrollment_date if sp else None) or today
+        # 조회 범위는 일 단위(fwd_days). 예전 fwd_months 호출도 그대로 받아준다.
         try:
-            fwd_months = max(0, min(24, int(request.GET.get("fwd_months") or 0)))
+            fwd_days = int(request.GET.get("fwd_days") or 0)
         except (TypeError, ValueError):
-            fwd_months = 0
-        d1 = today + timedelta(days=30 * fwd_months)
+            fwd_days = 0
+        if not fwd_days:
+            try:
+                fwd_days = 30 * int(request.GET.get("fwd_months") or 0)
+            except (TypeError, ValueError):
+                fwd_days = 0
+        fwd_days = max(0, min(730, fwd_days))
+        d1 = today + timedelta(days=fwd_days)
         if d1 < d0:
             d1 = d0
         # 학생 시간표 패턴 기준으로만 인스턴스를 만든다(지점 전체 스캔 없이 이 학생만 — 기간이
@@ -4995,9 +5013,9 @@ class StudentAttendanceHistoryAPI(APIView):
         occ_ids = [o.id for o in occ]
         makeup_of = {m.makeup_for_id: m for m in
                     LessonOccurrence.objects.filter(is_makeup=True, makeup_for_id__in=occ_ids)}
-        prog_by_occ = {p["occurrence_id"]: {"content": p["content"], "homework": p["homework"], "feedback": p["feedback"]}
+        prog_by_occ = {p["occurrence_id"]: {"content": p["content"], "homework": p["homework"], "feedback": p["feedback"], "memo": p["memo"]}
                       for p in LessonProgress.objects.filter(
-                          occurrence_id__in=occ_ids, is_hidden=False).values("occurrence_id", "content", "homework", "feedback")}
+                          occurrence_id__in=occ_ids, is_hidden=False).values("occurrence_id", "content", "homework", "feedback", "memo")}
         rows = []
         for o in occ:
             a = att_map.get(o.date)
@@ -5029,7 +5047,7 @@ class StudentAttendanceHistoryAPI(APIView):
                 t_kind = _link_target_kind(t.status, t_att.note_tag if t_att else "") or "absence"
                 row["linked"] = {"kind": t_kind, "occ_id": t.id, "date": str(t.date), "start_time": str(t.start_time)[:5]}
             rows.append(row)
-        return self.success({"from": str(d0), "to": str(d1), "fwd_months": fwd_months, "rows": rows})
+        return self.success({"from": str(d0), "to": str(d1), "fwd_days": fwd_days, "rows": rows})
 
 
 class StudentTempLeaveAPI(APIView):
