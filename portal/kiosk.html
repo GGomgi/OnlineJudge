@@ -71,6 +71,7 @@ createApp({
     };
   },
   computed: {
+    isStaffStage(){ return this.stage==='staffpad' || this.stage==='staffpick' || this.stage==='staffconfirm'; },
     staffDots(){ const arr=['','','','','']; for(let i=0;i<this.staffDigits.length;i++) arr[i]=this.staffDigits[i]; return arr; },
     undoWindowMsg(){ return '5분 이내 출퇴근은 취소할 수 있습니다.'; },
     dots(){ const arr=['','','','']; for(let i=0;i<this.digits.length;i++) arr[i]=this.digits[i]; return arr; },
@@ -362,6 +363,8 @@ createApp({
   },
   template: `
     <div class="fixed top-2 right-2 z-50 flex items-center gap-1.5">
+      <!-- 직원은 몇 명뿐이라 작게 두고, 학생 화면으로 돌아가는 쪽을 크게 만든다 -->
+      <button v-if="!isStaffStage" @click="openStaffPad" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">👤 직원 출퇴근</button>
       <div class="relative">
         <button @click="ratioSettingsOpen=!ratioSettingsOpen" class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-600">⚙️ 화면 설정</button>
         <div v-if="ratioSettingsOpen" @click="ratioSettingsOpen=false" class="fixed inset-0 z-40"></div>
@@ -478,7 +481,6 @@ createApp({
         <div class="font-mono text-2xl font-bold mb-6 tracking-wider">{{ clock }}</div>
 
         <template v-if="stage==='keypad'">
-          <button @click="openStaffPad" class="w-full mb-3 h-10 rounded-xl border border-slate-600 text-slate-300 text-sm hover:bg-slate-800">👤 직원 출퇴근</button>
           <div class="text-sm text-slate-300 mb-3">보호자 연락처 뒤 4자리를 입력하세요</div>
           <div class="flex justify-center gap-2.5 mb-6">
             <div v-for="(d,i) in dots" :key="i" class="w-10 h-12 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-xl">{{ d }}</div>
@@ -494,6 +496,7 @@ createApp({
 
         <!-- 직원 출퇴근 1단계: 사번 -->
         <template v-else-if="stage==='staffpad'">
+          <button @click="reset" class="w-full mb-3 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-base font-semibold">🎒 학생 등하원으로</button>
           <div class="text-sm text-slate-300 mb-3">사번 5자리를 입력하세요</div>
           <div class="flex justify-center gap-2 mb-6">
             <div v-for="(d,i) in staffDots" :key="i" class="w-9 h-12 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-xl">{{ d }}</div>
@@ -501,7 +504,7 @@ createApp({
           <div class="grid grid-cols-3 gap-2.5">
             <button v-for="n in [1,2,3,4,5,6,7,8,9]" :key="n" @click="staffPress(n)"
                     class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-xl font-semibold">{{ n }}</button>
-            <button @click="reset" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm text-slate-300">취소</button>
+            <button @click="staffDigits=''" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm text-slate-300">전체지움</button>
             <button @click="staffPress(0)" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-xl font-semibold">0</button>
             <button @click="staffBackspace" class="h-14 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm text-slate-300">◀ 지우기</button>
           </div>
@@ -509,6 +512,7 @@ createApp({
 
         <!-- 직원 출퇴근 2단계: 이름 확인(습관적으로 눌러 남의 것을 찍는 사고 방지) -->
         <template v-else-if="stage==='staffpick'">
+          <button @click="reset" class="w-full mb-3 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-base font-semibold">🎒 학생 등하원으로</button>
           <div class="text-sm text-slate-300 mb-4">본인 이름을 선택하세요</div>
           <div class="flex flex-col gap-2.5">
             <button v-for="m in staffMatches" :key="m.staff_id" @click="staffChoose(m)"
@@ -521,12 +525,12 @@ createApp({
                 <template v-else>출근 {{ m.in }} · 퇴근 {{ m.out }}</template>
               </span>
             </button>
-            <button @click="reset" class="mt-2 text-sm text-slate-400">취소</button>
           </div>
         </template>
 
         <!-- 직원 출퇴근 3단계: 확인 -->
         <template v-else-if="stage==='staffconfirm'">
+          <button @click="reset" class="w-full mb-3 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-base font-semibold">🎒 학생 등하원으로</button>
           <div class="text-lg font-bold mb-1">{{ staffPick && staffPick.name }}</div>
           <div class="text-sm text-slate-300 mb-4" v-if="staffAction==='UNDO'">
             {{ undoWindowMsg }}<br>취소하시겠습니까?
@@ -541,7 +545,7 @@ createApp({
             </button>
             <button v-if="staffAction!=='UNDO' && staffPick && (staffPick.in || staffPick.out)" @click="staffAction='UNDO'"
                     class="h-11 rounded-xl border border-slate-600 text-slate-300 text-sm">방금 잘못 찍었어요</button>
-            <button @click="reset" class="mt-1 text-sm text-slate-400">돌아가기</button>
+            <button v-if="staffAction==='UNDO'" @click="staffPick && staffPick.next!=='done' ? staffChoose(staffPick) : reset()" class="mt-1 text-sm text-slate-400">뒤로</button>
           </div>
         </template>
 
