@@ -4245,7 +4245,8 @@
             <button @click="shiftAttMonth(-1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">◀</button>
             <span class="font-semibold">{{ myAttMonth }}</span>
             <button @click="shiftAttMonth(1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">▶</button>
-            <span class="text-xs text-slate-400 ml-2">근무 {{ myAtt.work_days }}일 · 지각 {{ myAtt.late_days }}일 · 휴가 {{ myAtt.leave_days }}일</span>
+            <!-- 휴가는 연차 제도를 쓰기 시작해 실제 기록이 생기면 그때부터 보인다 -->
+            <span class="text-xs text-slate-400 ml-2">근무 {{ myAtt.work_days }}일 · 지각 {{ myAtt.late_days }}일<span v-if="myAtt.leave_days"> · 휴가 {{ myAtt.leave_days }}일</span></span>
           </div>
           <table class="w-full text-sm">
             <thead class="bg-slate-50 text-slate-500 text-xs">

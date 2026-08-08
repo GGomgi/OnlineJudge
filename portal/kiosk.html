@@ -496,7 +496,9 @@ createApp({
 
         <!-- 직원 출퇴근 1단계: 사번 -->
         <template v-else-if="stage==='staffpad'">
-          <button @click="reset" class="w-full mb-3 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-base font-semibold">🎒 학생 등하원으로</button>
+          <button @click="reset" class="w-full mb-3 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-base font-semibold flex items-center justify-center gap-2">
+            <span>✕ 취소</span><span class="text-emerald-200 font-normal">/</span><span class="font-normal">🎒 학생 등하원으로</span>
+          </button>
           <div class="text-sm text-slate-300 mb-3">사번 5자리를 입력하세요</div>
           <div class="flex justify-center gap-2 mb-6">
             <div v-for="(d,i) in staffDots" :key="i" class="w-9 h-12 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-xl">{{ d }}</div>
@@ -512,7 +514,9 @@ createApp({
 
         <!-- 직원 출퇴근 2단계: 이름 확인(습관적으로 눌러 남의 것을 찍는 사고 방지) -->
         <template v-else-if="stage==='staffpick'">
-          <button @click="reset" class="w-full mb-3 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-base font-semibold">🎒 학생 등하원으로</button>
+          <button @click="reset" class="w-full mb-3 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-base font-semibold flex items-center justify-center gap-2">
+            <span>✕ 취소</span><span class="text-emerald-200 font-normal">/</span><span class="font-normal">🎒 학생 등하원으로</span>
+          </button>
           <div class="text-sm text-slate-300 mb-4">본인 이름을 선택하세요</div>
           <div class="flex flex-col gap-2.5">
             <button v-for="m in staffMatches" :key="m.staff_id" @click="staffChoose(m)"
@@ -530,7 +534,9 @@ createApp({
 
         <!-- 직원 출퇴근 3단계: 확인 -->
         <template v-else-if="stage==='staffconfirm'">
-          <button @click="reset" class="w-full mb-3 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-base font-semibold">🎒 학생 등하원으로</button>
+          <button @click="reset" class="w-full mb-3 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-base font-semibold flex items-center justify-center gap-2">
+            <span>✕ 취소</span><span class="text-emerald-200 font-normal">/</span><span class="font-normal">🎒 학생 등하원으로</span>
+          </button>
           <div class="text-lg font-bold mb-1">{{ staffPick && staffPick.name }}</div>
           <div class="text-sm text-slate-300 mb-4" v-if="staffAction==='UNDO'">
             {{ undoWindowMsg }}<br>취소하시겠습니까?
