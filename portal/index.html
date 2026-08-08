@@ -318,6 +318,58 @@
   <div v-if="navTip.show" class="fixed z-[70] px-2 py-1 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
        :style="{ left: navTip.x+'px', top: navTip.y+'px' }">{{ navTip.text }}</div>
 
+  <!-- 등원/하원 이미 체크됨 → 시간변경/취소 팝업(시간 조정 후 바로 적용) -->
+  <div v-if="attEditPop.show" class="fixed inset-0 z-40 flex items-center justify-center bg-black/20" @click.self="attEditPop.show=false">
+    <div class="bg-white rounded-xl shadow-lg p-4 w-72">
+      <div class="text-sm font-semibold mb-1">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} {{ attEditPop.cur }}</div>
+      <div class="text-xs text-slate-400 mb-3">
+        <span v-if="attEditPop.from==='stu'" class="text-slate-500 font-medium">{{ attEditPop.date }}</span>
+        <span v-if="attEditPop.cur">{{ attEditPop.from==='stu' ? ' · ' : '' }}이미 체크된 기록입니다. 무엇을 하시겠어요?</span>
+        <span v-else>{{ attEditPop.from==='stu' ? ' · ' : '' }}기록이 없습니다. 시각을 정해 기록할 수 있습니다.</span>
+      </div>
+      <button v-if="attEditPop.kind==='out' && attOnTimeOut()" @click="attSetOnTime"
+              class="w-full mb-3 px-2 py-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs hover:bg-indigo-100 leading-tight">
+        ⏱ 정시 하원 <b class="font-mono">{{ attOnTimeOut() }}</b>
+        <span class="block text-[10px] text-indigo-400 mt-0.5">등원 {{ attEditPop.l.att.in }} + 수업 {{ attOnTimeMins() }}분 (누른 뒤 ± 로 조정)</span>
+      </button>
+      <button v-if="attEditPop.kind==='in' && attOnTimeIn()" @click="attSetOnTimeIn"
+              class="w-full mb-3 px-2 py-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs hover:bg-indigo-100 leading-tight">
+        ⏱ 정시 등원 <b class="font-mono">{{ attOnTimeIn() }}</b>
+        <span class="block text-[10px] text-indigo-400 mt-0.5">수업 시작 시각 (누른 뒤 ± 로 조정)</span>
+      </button>
+      <div class="flex items-center justify-center gap-1.5 mb-3">
+        <button @click="attStepTime(-5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-5</button>
+        <button @click="attStepTime(-1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-1</button>
+        <input v-model="attEditPop.time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="font-mono text-2xl font-bold w-24 text-center border-0 focus:ring-2 focus:ring-indigo-300 rounded" />
+        <button @click="attStepTime(1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+1</button>
+        <button @click="attStepTime(5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+5</button>
+      </div>
+      <div class="flex flex-col gap-2">
+        <button @click="attSaveTime" class="btn-primary text-sm">🕐 {{ attEditPop.time }}로 {{ attEditPop.cur ? '시간 변경' : '기록' }}</button>
+        <template v-if="attEditPop.cur">
+          <!-- 취소 사유는 화면 안에서 받는다(브라우저 기본 입력창 대신) -->
+          <template v-if="attEditPop.cancelMode">
+            <input v-model="attEditPop.cancelReason" :placeholder="(attEditPop.kind==='in'?'등원':'하원')+' 취소 사유(선택)'" class="input py-1 text-xs" @keyup.enter="attPopCancelConfirm" />
+            <div class="flex gap-2">
+              <button @click="attEditPop.cancelMode=false" class="btn-secondary text-xs flex-1">뒤로</button>
+              <button @click="attPopCancelConfirm" class="btn-primary text-xs flex-1 !bg-rose-500 hover:!bg-rose-600">취소 확정</button>
+            </div>
+          </template>
+          <button v-else @click="attPopCancel" class="btn-secondary text-sm text-rose-500">✕ {{ attEditPop.kind==='in'?'등원':'하원' }} 취소</button>
+        </template>
+        <button @click="attEditPop.show=false" class="text-xs text-slate-400 mt-1">닫기</button>
+      </div>
+      <div v-if="isDirectorUp && attHist.length" class="border-t mt-3 pt-2">
+        <div class="text-xs font-semibold text-slate-500 mb-1">변경 이력</div>
+        <ul class="space-y-1 max-h-40 overflow-y-auto">
+          <li v-for="(h,i) in attHist" :key="i" class="text-[11px] text-slate-500">
+            <span class="text-slate-400">{{ h.time }} {{ h.actor }}</span> · {{ h.detail }}<span v-if="h.reason"> ({{ h.reason }})</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
   <!-- 근태 월 그리드 호버 상세(클릭 없이 바로 보이게) -->
   <div v-if="hrPop.show" class="fixed z-[70] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
        :style="{ left: hrPop.x+'px', top: hrPop.y+'px' }">
@@ -767,43 +819,6 @@
         </div>
       </div>
 
-      <!-- 등원/하원 이미 체크됨 → 시간변경/취소 팝업(시간 조정 후 바로 적용) -->
-      <div v-if="attEditPop.show" class="fixed inset-0 z-40 flex items-center justify-center bg-black/20" @click.self="attEditPop.show=false">
-        <div class="bg-white rounded-xl shadow-lg p-4 w-72">
-          <div class="text-sm font-semibold mb-1">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} {{ attEditPop.cur }}</div>
-          <div class="text-xs text-slate-400 mb-3">이미 체크된 기록입니다. 무엇을 하시겠어요?</div>
-          <button v-if="attEditPop.kind==='out' && attOnTimeOut()" @click="attSetOnTime"
-                  class="w-full mb-3 px-2 py-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs hover:bg-indigo-100 leading-tight">
-            ⏱ 정시 하원 <b class="font-mono">{{ attOnTimeOut() }}</b>
-            <span class="block text-[10px] text-indigo-400 mt-0.5">등원 {{ attEditPop.l.att.in }} + 수업 {{ attOnTimeMins() }}분 (누른 뒤 ± 로 조정)</span>
-          </button>
-          <button v-if="attEditPop.kind==='in' && attOnTimeIn()" @click="attSetOnTimeIn"
-                  class="w-full mb-3 px-2 py-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs hover:bg-indigo-100 leading-tight">
-            ⏱ 정시 등원 <b class="font-mono">{{ attOnTimeIn() }}</b>
-            <span class="block text-[10px] text-indigo-400 mt-0.5">수업 시작 시각 (누른 뒤 ± 로 조정)</span>
-          </button>
-          <div class="flex items-center justify-center gap-1.5 mb-3">
-            <button @click="attStepTime(-5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-5</button>
-            <button @click="attStepTime(-1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-1</button>
-            <input v-model="attEditPop.time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="font-mono text-2xl font-bold w-24 text-center border-0 focus:ring-2 focus:ring-indigo-300 rounded" />
-            <button @click="attStepTime(1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+1</button>
-            <button @click="attStepTime(5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+5</button>
-          </div>
-          <div class="flex flex-col gap-2">
-            <button @click="attSaveTime" class="btn-primary text-sm">🕐 {{ attEditPop.time }}로 시간 변경</button>
-            <button @click="attPopCancel" class="btn-secondary text-sm text-rose-500">✕ {{ attEditPop.kind==='in'?'등원':'하원' }} 취소</button>
-            <button @click="attEditPop.show=false" class="text-xs text-slate-400 mt-1">닫기</button>
-          </div>
-          <div v-if="isDirectorUp && attHist.length" class="border-t mt-3 pt-2">
-            <div class="text-xs font-semibold text-slate-500 mb-1">변경 이력</div>
-            <ul class="space-y-1 max-h-40 overflow-y-auto">
-              <li v-for="(h,i) in attHist" :key="i" class="text-[11px] text-slate-500">
-                <span class="text-slate-400">{{ h.time }} {{ h.actor }}</span> · {{ h.detail }}<span v-if="h.reason"> ({{ h.reason }})</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
       <div class="flex items-center gap-3 mb-2 text-sm flex-wrap">
         <span class="text-slate-500">수업 <b>{{ dashStudentCount }}</b>명 <span class="text-slate-300">({{ dashLessons.length }}건)</span></span>
         <span class="text-rose-500">결석 <b>{{ dashAbsentCount }}</b>명</span>
@@ -2860,6 +2875,7 @@
                 <input v-model="stuAttBulkForm.note" placeholder="사유(예: 가족여행으로 일정 결석 / 다른 학원 특강으로 이 기간 시간 변동)" class="input py-1" />
                 <div class="flex justify-end"><button @click="applyStuAttBulk" class="btn-primary text-sm">선택한 {{ stuAttSelected.length }}건에 적용</button></div>
               </div>
+              <p class="text-[11px] text-slate-400">행을 누르면 <b>비고·결석 처리</b>, <b>등원·하원 칸</b>을 누르면 그 시각을 바꿀 수 있습니다.</p>
               <div v-if="stuAttHist.rows.length===0" class="text-xs text-slate-400 py-4 text-center">출결 기록이 없습니다.</div>
               <div v-for="g in stuAttHistByMonth" :key="g.ym" class="border rounded-lg overflow-hidden">
                 <div class="bg-slate-50 px-3 py-1.5 text-xs flex items-center gap-2">
@@ -2894,11 +2910,13 @@
                       </td>
                       <td class="px-2 py-1 truncate">{{ row.subject }}</td>
                       <td class="px-2 py-1 truncate text-slate-500">{{ row.instructor }}</td>
-                      <td class="px-2 py-1 truncate">
-                        {{ row.att.in || '-' }}
+                      <td class="px-2 py-1 truncate" @click.stop="openStuAttTime(row,'in')">
+                        <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.in || '-' }}</span>
                         <span v-if="stuAttLateText(row)" class="block text-[10px]" :class="stuAttLateCls(row)">{{ stuAttLateText(row) }}</span>
                       </td>
-                      <td class="px-2 py-1 truncate">{{ row.att.out || '-' }}</td>
+                      <td class="px-2 py-1 truncate" @click.stop="openStuAttTime(row,'out')">
+                        <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.out || '-' }}</span>
+                      </td>
                       <td class="px-2 py-1 overflow-hidden"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap text-[11px]', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
                       <td class="px-2 py-1 text-slate-500 truncate" @mouseenter="showNotePop(row,$event)" @mouseleave="hideNotePop">
                         {{ row.lesson_note || row.att.note || '' }}
@@ -3515,9 +3533,9 @@
               </div>
             </div>
             <div><label class="lbl">휴게</label>
-              <div class="flex items-center gap-1 text-xs text-slate-500">
-                <input v-model.number="wsForm.break_per_hours" type="number" min="0" max="12" class="input py-1 w-14 text-center" />시간마다
-                <input v-model.number="wsForm.break_minutes" type="number" min="0" max="120" class="input py-1 w-14 text-center" />분
+              <div class="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap">
+                <input v-model.number="wsForm.break_per_hours" type="number" min="0" max="12" class="input py-1 w-14 text-center shrink-0" /><span class="shrink-0">시간마다</span>
+                <input v-model.number="wsForm.break_minutes" type="number" min="0" max="120" class="input py-1 w-14 text-center shrink-0" /><span class="shrink-0">분</span>
               </div>
             </div>
           </div>
@@ -3557,8 +3575,8 @@
             <tbody>
               <tr v-for="w in workSchedules" :key="w.id" class="border-t" :class="w.current ? '' : 'text-slate-400'">
                 <td class="px-3 py-2"><span v-if="w.current" class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[11px]">적용중</span><span v-else class="text-[11px]">지난 기간</span></td>
-                <td class="px-3 py-2 font-mono text-xs">{{ w.active_from }} ~ {{ w.active_until || '' }}</td>
-                <td class="px-3 py-2 font-mono">{{ w.start_time }} ~ {{ w.end_time }}</td>
+                <td class="px-3 py-2 font-mono text-xs whitespace-nowrap">{{ w.active_from }} ~ {{ w.active_until || '' }}</td>
+                <td class="px-3 py-2 font-mono whitespace-nowrap">{{ w.start_time }} ~ {{ w.end_time }}</td>
                 <td class="px-3 py-2">{{ w.workdays_label }}</td>
                 <td class="px-3 py-2 text-xs">{{ w.break_per_hours }}시간마다 {{ w.break_minutes }}분</td>
                 <td class="px-3 py-2 text-xs">{{ w.reason }}</td>
@@ -4506,7 +4524,9 @@ const app = createApp({
       ttStudent: null, ttSearch: '', ttResults: [], ttAll: [], ttInstructors: [], showTtAdd: false,
       ttFilter: { name:'', weekday:'', from:'', to:'', instructor_ids:null, program:'' },
       ttInstrDropdown: false, ttSlotLayout: 'horizontal',
-      attEditPop: { show:false, l:null, kind:'', cur:'', time:'' },
+      // 등하원 시각 팝업. 오늘 운영과 학생 상세(출결기록) 양쪽에서 같은 화면을 쓴다.
+      // date/from 을 팝업이 직접 들고 있어야 어느 날짜·어느 화면에서 열었든 올바르게 저장·갱신된다.
+      attEditPop: { show:false, l:null, kind:'', cur:'', time:'', date:'', from:'dash', cancelMode:false, cancelReason:'' },
       ttView: 'day', ttCalDaysRaw: {}, ttCalResv: {}, ttCalAnchor: '', ttCalMonth: '',
       ttShowAbsent: true, ttShowLeave: true, ttShowMakeup: true, ttHoverMin: null,
       ttShowPre: true, ttShowInProgress: true, ttShowDone: true,
@@ -6900,20 +6920,51 @@ const app = createApp({
     checkAtt(l, kind){
       if (kind==='out' && !l.att.in) return this.notify('등원 후 하원할 수 있습니다.', false);
       const cur = kind==='in' ? l.att.in : l.att.out;
-      if (cur){ this.attEditPop = { show:true, l, kind, cur, time:cur }; this.loadAttHist(l.student_id, this.dashDate); return; }
+      if (cur){ this.openAttTimePop(l, kind, cur, this.dashDate, 'dash'); return; }
       this._doAttCheck(l, kind, {});
     },
+    openAttTimePop(l, kind, cur, date, from){
+      this.attEditPop = { show:true, l, kind, cur, time:cur, date, from, cancelMode:false, cancelReason:'' };
+      this.loadAttHist(l.student_id, date);
+    },
+    // 학생 상세 → 출결기록에서 등원/하원 칸을 눌렀을 때. 오늘 운영과 같은 팝업을 그대로 쓴다
+    // (비고 화면에 시각 항목을 끼워 넣으면 그 화면이 지나치게 무거워짐).
+    openStuAttTime(row, kind){
+      if (!this.stuCanEdit) return;
+      const cur = kind==='in' ? row.att.in : row.att.out;
+      const l = { student_id:this.stuDetail.id, student_name:(this.stuDetail.real_name||''),
+                  att:{ in:row.att.in, out:row.att.out }, start_time:row.start_time,
+                  duration_minutes:row.duration_minutes, occ_id:row.occ_id, status:row.status,
+                  is_makeup:row.is_makeup };
+      if (!cur){
+        if (kind==='out' && !row.att.in) return this.notify('등원 후 하원할 수 있습니다.', false);
+        // 기록이 없으면 수업 시각을 채워 넣은 상태로 팝업을 연다(바로 저장하면 그 시각으로 기록)
+        this.openAttTimePop(l, kind, '', row.date, 'stu');
+        this.attEditPop.time = (kind==='in' ? (row.start_time||'') : this.shiftHM(row.att.in||row.start_time, row.duration_minutes||60));
+        return;
+      }
+      this.openAttTimePop(l, kind, cur, row.date, 'stu');
+    },
     async _doAttCheck(l, kind, opts){
+      const p = this.attEditPop;
+      const date = (p && p.show !== undefined && p.date) ? p.date : this.dashDate;
+      const from = (p && p.from) || 'dash';
       try {
-        const r = await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, kind, date:this.dashDate, ...opts });
-        // 같은 학생의 모든 수업 행에 반영
-        for (const x of this.dashData.lessons){ if (x.student_id===l.student_id) x.att = { in:r.in, out:r.out }; }
+        const r = await api('POST','/api/admin/academy/attendance_check', { student_id:l.student_id, kind, date, ...opts });
+        if (from === 'stu'){
+          // 같은 날짜의 모든 행에 반영(연속수업이면 여러 행이 같은 등하원을 공유)
+          for (const x of this.stuAttHist.rows){ if (x.date===date) x.att = { ...x.att, in:r.in, out:r.out }; }
+        } else {
+          for (const x of this.dashData.lessons){ if (x.student_id===l.student_id) x.att = { in:r.in, out:r.out }; }
+        }
       } catch(e){ this.notify(e.message,false); }
     },
     // 하원 미체크로 그냥 간 학생을 나중에 처리할 때: 등원 시각 + 그날 수업시간 합계로 한 번에 세팅
     attOnTimeMins(){
       const p = this.attEditPop; if (!p || !p.l) return 0;
-      const sibs = (this.dashData.lessons||[]).filter(o=>o.student_id===p.l.student_id && o.occ_id
+      const sibs = (p.from === 'stu')
+        ? (this.stuAttHist.rows||[]).filter(o=>o.date===p.date && !this.isAbsent(o) && !this.isLeave(o))
+        : (this.dashData.lessons||[]).filter(o=>o.student_id===p.l.student_id && o.occ_id
                      && !this.isAbsent(o) && !this.isLeave(o));
       if (sibs.length) return sibs.reduce((a,o)=>a+(o.duration_minutes||60), 0);
       return p.l.duration_minutes||60;
@@ -6940,9 +6991,10 @@ const app = createApp({
       this.attEditPop.show = false;
       this._doAttCheck(p.l, p.kind, { time:p.time });
     },
-    attPopCancel(){
-      const p = this.attEditPop; const label = p.kind==='in' ? '등원' : '하원';
-      const reason = (window.prompt(label+' 취소 사유(선택)') || '').trim();
+    attPopCancel(){ this.attEditPop.cancelMode = true; },
+    attPopCancelConfirm(){
+      const p = this.attEditPop;
+      const reason = (p.cancelReason||'').trim();
       this.attEditPop.show = false;
       this._doAttCheck(p.l, p.kind, { clear:true, reason });
     },
