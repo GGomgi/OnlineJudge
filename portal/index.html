@@ -976,32 +976,37 @@
           <button @click="attModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
         </div>
         <div class="p-5 space-y-3">
-          <div v-if="attModal.is_makeup" class="flex items-end gap-2">
-            <div class="flex-1">
-              <label class="lbl">보강 날짜 <span class="text-slate-400">(다른 날짜로 일정 변경)</span></label>
-              <input v-model="attForm.mkDate" type="date" class="input py-1 w-40" />
+          <!-- 보강 건에만 나오는 두 항목 — 세로로 쌓으면 창이 길어져서 한 줄로 묶음 -->
+          <div v-if="attModal.is_makeup" class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="lbl">보강 날짜 <span class="text-slate-400">(일정 변경)</span></label>
+              <div class="flex items-center gap-2">
+                <input v-model="attForm.mkDate" type="date" class="input py-1" />
+                <button @click="cancelMakeup" class="text-xs text-rose-500 hover:underline whitespace-nowrap shrink-0">보강 취소</button>
+              </div>
             </div>
-            <button @click="cancelMakeup" class="text-xs text-rose-500 hover:underline mb-2">이 보강 취소</button>
-          </div>
-          <div v-if="attModal.is_makeup">
-            <label class="lbl">결석 연결 <span class="text-slate-400">(이 보강이 메꾸는 결석)</span></label>
-            <select v-model.number="attForm.linkTarget" class="input py-1">
-              <option :value="null">연결 안 함(날짜미정 결석과 무관)</option>
-              <option v-for="p in mkLinkCandidates" :key="p.occ_id" :value="p.occ_id">[{{ p.kind==='early_leave'?'조퇴':'결석' }}] {{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</option>
-            </select>
-            <p v-if="mkLinkCandidates.length===0" class="text-[11px] text-slate-400 mt-1">이 학생의 날짜미정 결석·조퇴예정이 없습니다.</p>
+            <div>
+              <label class="lbl">결석 연결 <span class="text-slate-400">(메꾸는 결석)</span></label>
+              <select v-model.number="attForm.linkTarget" class="input py-1">
+                <option :value="null">연결 안 함(날짜미정 결석과 무관)</option>
+                <option v-for="p in mkLinkCandidates" :key="p.occ_id" :value="p.occ_id">[{{ p.kind==='early_leave'?'조퇴':'결석' }}] {{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</option>
+              </select>
+              <p v-if="mkLinkCandidates.length===0" class="text-[11px] text-slate-400 mt-1">이 학생의 날짜미정 결석·조퇴예정이 없습니다.</p>
+            </div>
           </div>
           <div>
-            <label class="lbl">수업 시각 <span class="text-slate-400">(이 날짜만 변경 · 24시간제 직접 입력 가능)</span></label>
+            <label class="lbl">수업 시각 <span class="text-slate-400">(이 날짜만 변경 · 24시간제 직접 입력)</span></label>
             <div class="flex items-center gap-1">
-              <button @click="attShiftLesson(-5)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">-5분</button>
-              <button @click="attShiftLesson(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">-1분</button>
-              <input v-model="attForm.lessonTime" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" />
-              <button @click="attShiftLesson(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">+1분</button>
-              <button @click="attShiftLesson(5)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs">+5분</button>
+              <button @click="attShiftLesson(-5)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs shrink-0">-5분</button>
+              <button @click="attShiftLesson(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs shrink-0">-1분</button>
+              <input v-model="attForm.lessonTime" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" style="width:5.5rem" class="input py-1 text-center font-mono shrink-0" />
+              <button @click="attShiftLesson(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs shrink-0">+1분</button>
+              <button @click="attShiftLesson(5)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs shrink-0">+5분</button>
+              <!-- 빈 자리에 끝나는 시각을 계산해 보여줌(시각만 있으면 언제 끝나는지 바로 안 보임) -->
+              <span v-if="attEndTime" class="text-xs text-slate-400 pl-2 whitespace-nowrap">~ <b class="text-slate-600 font-mono">{{ attEndTime }}</b> 종료 ({{ attForm.duration }}분)</span>
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-4 gap-2">
             <div>
               <label class="lbl">수업시간(분)</label>
               <select v-model.number="attForm.duration" class="input py-1"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select>
@@ -4321,6 +4326,16 @@ const app = createApp({
     tempLeavesSoon(){ return (this.dashData.temp_leaves||[]).filter(t=>t.upcoming); },
     // 보강 현황 목록: 미정/확정 체크박스로 걸러낸 결과
     mkgList(){ return this.mkgAll.filter(p => p.makeup_date ? this.mkgShowFixed : this.mkgShowPending); },
+    // 수업 시각 + 수업시간으로 끝나는 시각을 계산(HH:MM, 24시간제)
+    attEndTime(){
+      const t = (this.attForm.lessonTime||'').trim();
+      if (!/^\d{1,2}:\d{2}$/.test(t)) return '';
+      const [h,m] = t.split(':').map(Number);
+      if (h>23 || m>59) return '';
+      const tot = h*60 + m + (Number(this.attForm.duration)||0);
+      const p = x => String(x).padStart(2,'0');
+      return p(Math.floor(tot/60)%24)+':'+p(tot%60);
+    },
     stuMkList(){ return this.stuMkAll.filter(p => p.makeup_date ? this.stuMkShowFixed : this.stuMkShowPending); },
     stuMkPendingCount(){ return this.stuMkAll.filter(p=>!p.makeup_date).length; },
     stuMkFixedCount(){ return this.stuMkAll.filter(p=>!!p.makeup_date).length; },
