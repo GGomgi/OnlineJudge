@@ -452,11 +452,14 @@ class ConvertLeadSerializer(serializers.Serializer):
     parent_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
     login_id = serializers.CharField(max_length=32)
     password = serializers.CharField(min_length=6, max_length=128)
-    birth_date = serializers.DateField()
+    # 직원이 아는 만큼만 채워 바로 등록하고, 모르는 값과 학부모만 할 수 있는 항목
+    # (동의·서명)은 등록 후 '학부모 확인' 링크로 받는다. 예전에는 이것들이 전부
+    # 필수라 학부모가 쓸 때까지 학생 계정 자체를 만들 수 없었다.
+    birth_date = serializers.DateField(required=False, allow_null=True)
     gender = serializers.ChoiceField(choices=["M", "F"], required=False, allow_blank=True)
-    student_phone = serializers.CharField(max_length=32)
+    student_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
     zipcode = serializers.CharField(max_length=16, required=False, allow_blank=True)
-    address = serializers.CharField(max_length=255)
+    address = serializers.CharField(max_length=255, required=False, allow_blank=True)
     address_detail = serializers.CharField(max_length=255, required=False, allow_blank=True)
     # 등록 과정·교육 일정
     program = serializers.CharField(max_length=16, required=False, allow_blank=True)
@@ -477,15 +480,12 @@ class ConvertLeadSerializer(serializers.Serializer):
     parent_login_id = serializers.CharField(max_length=32, required=False, allow_blank=True)
     parent_password = serializers.CharField(max_length=128, required=False, allow_blank=True)
     # 개인정보 동의(법정대리인)
-    consent_privacy = serializers.BooleanField()
-    consent_guardian_name = serializers.CharField(max_length=64)
-    consent_signature = serializers.CharField()
+    # 동의·서명은 법정대리인 본인이 하는 것이라 직원이 대신 채울 수 없다.
+    # 등록 시에는 비워 두고 학부모 확인 양식에서 받는다.
+    consent_privacy = serializers.BooleanField(required=False, default=False)
+    consent_guardian_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    consent_signature = serializers.CharField(required=False, allow_blank=True)
     consent_date = serializers.DateField(required=False, allow_null=True)
-
-    def validate_consent_privacy(self, v):
-        if not v:
-            raise serializers.ValidationError("개인정보 수집·이용 동의가 필요합니다.")
-        return v
 
 
 class StudentRegisterSerializer(ConvertLeadSerializer):

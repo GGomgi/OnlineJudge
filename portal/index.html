@@ -139,8 +139,120 @@
     </main>
   </div>
 
+  <!-- ===== 학부모 확인 양식(무로그인) — 빈 양식으로 받아 우리 값과 대조한다 ===== -->
+  <div v-if="verifyMode" class="min-h-screen bg-slate-50">
+    <header class="bg-slate-900 text-white">
+      <div class="max-w-lg mx-auto px-4 h-14 flex items-center gap-2">
+        <span class="text-lg font-bold tracking-tight">두잉창의코딩</span>
+        <span class="text-xs text-slate-300">학생 정보 확인</span>
+      </div>
+    </header>
+    <main class="max-w-lg mx-auto px-4 py-6">
+      <div v-if="verifyError" class="bg-white rounded-xl shadow-sm p-6 text-center">
+        <div class="text-rose-500 font-semibold mb-1">링크를 열 수 없습니다</div>
+        <div class="text-sm text-slate-500">{{ verifyError }}</div>
+      </div>
+      <div v-else-if="verifyDone" class="bg-white rounded-xl shadow-sm p-8 text-center">
+        <div class="text-3xl mb-2">✅</div>
+        <div class="font-bold mb-1">제출되었습니다</div>
+        <div class="text-sm text-slate-500">학원에서 확인 후 반영합니다. 감사합니다.</div>
+      </div>
+      <div v-else-if="verifyInfo" class="space-y-4">
+        <div class="bg-white rounded-xl shadow-sm p-4">
+          <div class="text-sm text-slate-500"><b class="text-slate-700">{{ verifyInfo.branch }}</b></div>
+          <div class="text-lg font-bold mt-0.5">{{ verifyInfo.student_name }} 학생의 정보를 작성해 주세요</div>
+          <p class="text-xs text-slate-400 mt-1">학원에 등록된 정보와 대조하기 위한 것입니다. <b>기억하시는 대로</b> 작성해 주세요. 다른 부분이 있으면 학원에서 연락드립니다.</p>
+          <p v-if="verifyInfo.already_submitted" class="text-xs text-amber-600 mt-2">이미 제출하셨습니다. 다시 제출하면 새로 작성한 내용으로 대체됩니다.</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-4 space-y-3">
+          <div class="text-sm font-semibold text-slate-700 border-b pb-1">학생</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="lbl">생년월일 <span class="text-rose-500">*</span></label><input v-model="verifyForm.birth_date" type="date" min="1900-01-01" :max="todayStr" class="input" /></div>
+            <div><label class="lbl">성별</label>
+              <div class="flex gap-3 pt-2">
+                <label class="flex items-center gap-1 text-sm"><input type="radio" value="M" v-model="verifyForm.gender"> 남</label>
+                <label class="flex items-center gap-1 text-sm"><input type="radio" value="F" v-model="verifyForm.gender"> 여</label>
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <div><label class="lbl">학교 구분</label>
+              <select v-model="verifyForm.school_type" class="input px-1"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
+            </div>
+            <div><label class="lbl">학교(학과)</label><input v-model="verifyForm.school_name" class="input" placeholder="예: 청라초등학교" /></div>
+            <div><label class="lbl">학년</label><input v-model="verifyForm.grade" inputmode="numeric" class="input" /></div>
+          </div>
+          <div><label class="lbl">학생 휴대폰 <span class="text-slate-400">(없으면 비워두세요)</span></label>
+            <input :value="verifyForm.student_phone" @input="verifyForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-4 space-y-3">
+          <div class="text-sm font-semibold text-slate-700 border-b pb-1">보호자</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="lbl">보호자 이름</label><input v-model="verifyForm.parent_name" class="input" /></div>
+            <div><label class="lbl">관계</label>
+              <select v-model="verifyForm.parent_relation" class="input px-1"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+            </div>
+          </div>
+          <div><label class="lbl">보호자 연락처 <span class="text-rose-500">*</span></label>
+            <input :value="verifyForm.parent_phone" @input="verifyForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" placeholder="010-0000-0000" /></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="lbl">기타 보호자 연락처 <span class="text-slate-400">(선택)</span></label>
+              <input :value="verifyForm.guardian2_phone" @input="verifyForm.guardian2_phone=formatPhone($event.target.value)" inputmode="numeric" class="input" /></div>
+            <div><label class="lbl">기타 보호자 관계</label>
+              <select v-model="verifyForm.guardian2_relation" class="input px-1"><option value="">선택</option><option value="어머니">어머니</option><option value="아버지">아버지</option><option value="기타">기타</option></select>
+            </div>
+          </div>
+          <div><label class="lbl">등하원 알림</label>
+            <div class="flex items-center gap-3 pt-1">
+              <label class="flex items-center gap-1 text-sm"><input type="radio" :value="true" v-model="verifyForm.notify_optin"> 수신</label>
+              <label class="flex items-center gap-1 text-sm"><input type="radio" :value="false" v-model="verifyForm.notify_optin"> 미수신</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-4 space-y-2">
+          <div class="text-sm font-semibold text-slate-700 border-b pb-1">주소</div>
+          <div class="flex gap-2">
+            <input :value="verifyForm.zipcode" @click="openPostcodeFor(verifyForm)" readonly placeholder="우편번호" class="input w-28 bg-slate-50 cursor-pointer" />
+            <button type="button" @click="openPostcodeFor(verifyForm)" class="btn-secondary text-sm whitespace-nowrap">우편번호 검색</button>
+          </div>
+          <input :value="verifyForm.address" @click="openPostcodeFor(verifyForm)" readonly placeholder="도로명/지번 주소 (클릭하여 검색)" class="input bg-slate-50 cursor-pointer" />
+          <input v-model="verifyForm.address_detail" class="input" placeholder="상세주소 (동/호 등)" />
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-4 space-y-3">
+          <div class="text-sm font-semibold text-slate-700 border-b pb-1">개인정보 수집·이용·제공 동의서</div>
+          <div class="text-[12px] leading-relaxed text-slate-600 bg-slate-50 rounded-lg p-3 space-y-2">
+            <p>학원은 회원 학습 이력관리 및 상담, 학습정보 제공, 회비 정산 등의 목적으로 이용 동의를 철회하는 때까지(법률상 별도 보관기간이 있는 경우 예외) 다음의 개인정보를 수집·이용합니다.</p>
+            <p>- 성명, 생년월일, 주소, 전화번호, 휴대폰번호</p>
+            <p class="text-rose-600 font-medium">※ 만 14세 미만 아동의 경우 반드시 법정대리인의 동의가 필요합니다.</p>
+          </div>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" v-model="verifyForm.consent_privacy" class="w-4 h-4" />
+            <span>위 개인정보 수집·이용·제공에 동의합니다. <span class="text-rose-500">*</span></span>
+          </label>
+          <div><label class="lbl">법정대리인 성명 <span class="text-rose-500">*</span></label><input v-model="verifyForm.consent_guardian_name" class="input w-44" placeholder="보호자 성함" /></div>
+          <div>
+            <label class="lbl">인 / 서명 <span class="text-rose-500">*</span></label>
+            <div class="border-2 border-dashed border-slate-300 rounded-lg bg-white inline-block">
+              <canvas ref="sig" width="330" height="130" class="touch-none rounded-lg"
+                @pointerdown="sigStart" @pointermove="sigMove" @pointerup="sigEnd" @pointerleave="sigEnd"></canvas>
+            </div>
+            <div class="mt-1"><button type="button" @click="sigClear" class="text-xs text-slate-400 hover:text-slate-600">지우기</button></div>
+          </div>
+        </div>
+
+        <div v-if="verifySubmitError" class="px-4 py-3 rounded bg-rose-50 text-rose-700 border border-rose-200 text-sm">{{ verifySubmitError }}</div>
+        <button @click="submitVerify" class="btn-primary w-full py-3">제출하기</button>
+        <p class="text-[11px] text-slate-400 text-center">링크 유효기간: {{ verifyInfo.expires }}</p>
+      </div>
+    </main>
+  </div>
+
   <!-- 상단 바 -->
-  <header v-if="!enrollMode" class="bg-slate-900 text-white">
+  <header v-if="!enrollMode && !verifyMode" class="bg-slate-900 text-white">
     <div :class="[mainMaxW, 'mx-auto px-4 h-14 flex items-center justify-between']">
       <div class="flex items-center gap-2">
         <span class="text-lg font-bold tracking-tight">두잉창의코딩</span>
@@ -370,6 +482,86 @@
     </div>
   </div>
 
+  <!-- 학부모 확인 대조 — 우리 값/학부모 값/직접 입력 중에서 최종값을 정한다 -->
+  <div v-if="vrModal" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="vrModal=null">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between px-5 py-3 border-b shrink-0">
+        <div>
+          <div class="font-bold">{{ vrModal.student_name }} · 학부모 작성 내용 대조</div>
+          <div class="text-xs text-slate-400">학부모 제출 {{ vrModal.submitted_at }}</div>
+        </div>
+        <button @click="vrModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
+      </div>
+      <div class="p-5 space-y-4 overflow-y-auto">
+        <!-- 값이 다름: 반드시 골라야 승인된다 -->
+        <div v-if="vrModal.diff.conflict.length">
+          <div class="text-sm font-semibold text-rose-600 mb-2">값이 다릅니다 — 확인이 필요합니다 ({{ vrModal.diff.conflict.length }})</div>
+          <div v-for="r in vrModal.diff.conflict" :key="r.field" class="border rounded-lg p-3 mb-2"
+               :class="vrPick[r.field] ? 'border-slate-200' : 'border-rose-300 bg-rose-50/40'">
+            <div class="text-sm font-medium text-slate-700 mb-2">{{ r.label }}</div>
+            <div class="grid grid-cols-3 gap-2 text-xs">
+              <label :class="['border rounded px-2 py-2 cursor-pointer', vrPick[r.field]==='staff' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200']">
+                <input type="radio" :name="'vr-'+r.field" value="staff" v-model="vrPick[r.field]" class="mr-1" />
+                <span class="text-slate-400">우리 값</span>
+                <div class="font-medium text-slate-700 mt-0.5 break-all">{{ vrShow(r.field, r.staff) || '(없음)' }}</div>
+              </label>
+              <label :class="['border rounded px-2 py-2 cursor-pointer', vrPick[r.field]==='parent' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200']">
+                <input type="radio" :name="'vr-'+r.field" value="parent" v-model="vrPick[r.field]" class="mr-1" />
+                <span class="text-slate-400">학부모 값</span>
+                <div class="font-medium text-slate-700 mt-0.5 break-all">{{ vrShow(r.field, r.parent) || '(없음)' }}</div>
+              </label>
+              <label :class="['border rounded px-2 py-2 cursor-pointer', vrPick[r.field]==='custom' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200']">
+                <input type="radio" :name="'vr-'+r.field" value="custom" v-model="vrPick[r.field]" class="mr-1" />
+                <span class="text-slate-400">직접 입력</span>
+                <input v-if="r.field==='notify_optin'" disabled class="input py-1 mt-0.5 text-xs bg-slate-50" placeholder="해당 없음" />
+                <input v-else v-model="vrCustom[r.field]" @focus="vrPick[r.field]='custom'" class="input py-1 mt-0.5 text-xs" placeholder="통화로 확인한 값" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 학부모가 채운 빈 칸 -->
+        <div v-if="vrModal.diff.added.length">
+          <div class="text-sm font-semibold text-indigo-700 mb-2">학부모가 채워주신 항목 ({{ vrModal.diff.added.length }})</div>
+          <div class="border rounded-lg divide-y text-xs">
+            <label v-for="r in vrModal.diff.added" :key="r.field" class="flex items-center gap-2 px-3 py-2 cursor-pointer">
+              <input type="checkbox" v-model="vrAdd[r.field]" class="w-3.5 h-3.5" />
+              <span class="text-slate-500 w-28 shrink-0">{{ r.label }}</span>
+              <b class="text-slate-700 break-all">{{ vrShow(r.field, r.parent) }}</b>
+            </label>
+          </div>
+        </div>
+
+        <!-- 표기만 다른 것 -->
+        <div v-if="vrModal.diff.format.length">
+          <button @click="vrShowFormat=!vrShowFormat" class="text-xs text-slate-400 hover:underline">
+            {{ vrShowFormat ? '▾' : '▸' }} 표기만 다른 항목 {{ vrModal.diff.format.length }}개 (뜻은 같아 우리 값을 유지합니다)
+          </button>
+          <div v-if="vrShowFormat" class="border rounded-lg divide-y text-xs mt-1">
+            <label v-for="r in vrModal.diff.format" :key="r.field" class="flex items-center gap-2 px-3 py-2 cursor-pointer text-slate-400">
+              <input type="checkbox" v-model="vrFmt[r.field]" class="w-3.5 h-3.5" />
+              <span class="w-28 shrink-0">{{ r.label }}</span>
+              <span>{{ vrShow(r.field, r.staff) }}</span>
+              <span class="text-slate-300">→</span>
+              <span class="text-slate-600">{{ vrShow(r.field, r.parent) }}</span>
+              <span class="ml-auto text-[10px]">체크하면 학부모 표기로 바꿉니다</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="text-xs text-slate-400">
+          같은 값 {{ vrModal.diff.same_count }}개 ·
+          학부모만 작성한 항목({{ (vrModal.parent_only||[]).map(x=>x.label).join(', ') }})은 그대로 반영됩니다.
+        </div>
+        <div v-if="vrError" class="px-3 py-2 rounded bg-rose-50 text-rose-700 border border-rose-200 text-sm">{{ vrError }}</div>
+      </div>
+      <div class="px-5 py-3 border-t flex justify-end gap-2 shrink-0">
+        <button @click="vrModal=null" class="btn-secondary text-sm">닫기</button>
+        <button @click="saveVerifyResolve" class="btn-primary text-sm">확인 완료 · 반영</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 근태 월 그리드 호버 상세(클릭 없이 바로 보이게) -->
   <div v-if="hrPop.show" class="fixed z-[70] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
        :style="{ left: hrPop.x+'px', top: hrPop.y+'px' }">
@@ -504,7 +696,7 @@
     </ul>
   </div>
 
-  <nav v-if="!enrollMode" class="bg-white border-b sticky top-0 z-30 shadow-sm">
+  <nav v-if="!enrollMode && !verifyMode" class="bg-white border-b sticky top-0 z-30 shadow-sm">
     <div :class="[mainMaxW, 'mx-auto px-4 flex gap-1 overflow-x-auto']">
       <button v-for="t in tabs" :key="t.key" @click="go(t.key)"
         :class="['px-4 py-3 text-sm whitespace-nowrap border-b-2 -mb-px',
@@ -574,7 +766,7 @@
     </div>
   </div>
 
-  <main v-if="!enrollMode" :class="[mainMaxW, 'mx-auto px-4 py-6']">
+  <main v-if="!enrollMode && !verifyMode" :class="[mainMaxW, 'mx-auto px-4 py-6']">
 
     <!-- ============ 로그인 ============ -->
     <section v-if="tab==='login'" class="max-w-sm mx-auto bg-white rounded-xl shadow-sm p-6">
@@ -1582,8 +1774,7 @@
           <button @click="closeConvert" class="text-xs text-slate-300 hover:text-white">← 목록으로</button>
         </div>
         <div class="p-5 space-y-5">
-          <p v-if="directReg" class="text-xs text-slate-400">상담 없이 최소 정보만 입력해 등록합니다. 나머지는 학부모에게 작성 링크를 보내 받습니다.</p>
-          <p v-else class="text-xs text-slate-400">상담 시 작성한 정보를 확인하고, 추가 정보를 작성해 주세요. 작성은 보호자/학생이 직접 진행합니다.</p>
+          <p class="text-xs text-slate-400">아는 만큼만 채워도 <b>바로 등록</b>됩니다(시간표·출결을 즉시 쓸 수 있어요). 모르는 값과 학부모만 할 수 있는 <b>동의·서명</b>은 등록 후 <b>학부모 확인 링크</b>로 받아 대조합니다.</p>
 
           <!-- 직접 등록: 지점 선택 -->
           <div v-if="directReg">
@@ -1605,21 +1796,21 @@
                 <input :value="convertForm.student_name" @input="convertForm.student_name=$event.target.value; genLoginId()" class="input" />
               </div>
               <div>
-                <label class="lbl">성별 <span class="text-rose-500">*</span></label>
+                <label class="lbl">성별</label>
                 <div class="flex gap-3 pt-2">
                   <label class="flex items-center gap-1 text-sm"><input type="radio" value="M" v-model="convertForm.gender"> 남</label>
                   <label class="flex items-center gap-1 text-sm"><input type="radio" value="F" v-model="convertForm.gender"> 여</label>
                 </div>
               </div>
               <div>
-                <label class="lbl">생년월일 <span class="text-rose-500">*</span></label>
+                <label class="lbl">생년월일</label>
                 <input v-model="convertForm.birth_date" @change="checkBirth" type="date" min="1900-01-01" :max="todayStr" class="input" />
               </div>
             </div>
             <!-- 2줄: 보호자 이름 · 관계 · 연락처 · 등하원 알림 -->
             <div class="grid grid-cols-4 gap-3">
               <div>
-                <label class="lbl">보호자 이름 <span v-if="!directReg" class="text-rose-500">*</span></label>
+                <label class="lbl">보호자 이름</label>
                 <input v-model="convertForm.parent_name" class="input" placeholder="보호자 성함" />
               </div>
               <div>
@@ -1648,9 +1839,8 @@
               <div><label class="lbl">학교(학과)</label><div class="flex items-center gap-1"><input v-model="convertForm.school_name" class="input min-w-0" placeholder="학교(학과) 이름" /><span v-if="schoolSuffix(convertForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(convertForm.school_type) }}</span></div></div>
               <div><label class="lbl">학년</label><div class="flex items-center gap-1"><input v-model="convertForm.grade" inputmode="numeric" class="input min-w-0" /><span class="text-xs text-slate-400 whitespace-nowrap">학년</span></div></div>
             </div>
-            <template v-if="!directReg">
             <div>
-              <label class="lbl">학생 휴대폰 <span class="text-rose-500">*</span></label>
+              <label class="lbl">학생 휴대폰</label>
               <div class="flex gap-2">
                 <input :value="convertForm.student_phone" @input="convertForm.student_phone = formatPhone($event.target.value)"
                        inputmode="numeric" class="input" placeholder="010-0000-0000" />
@@ -1672,18 +1862,12 @@
               <label class="lbl">기타 <span class="text-[10px] text-slate-400">(요청사항·알릴사항, 선택)</span></label>
               <textarea v-model="convertForm.memo" rows="2" class="input"></textarea>
             </div>
-            </template>
           </div>
 
-          <div v-if="directReg" class="bg-indigo-50 rounded-lg p-3 text-xs text-indigo-700">
-            직원은 위 최소 정보만 입력하면 됩니다. <b>등록</b>을 누르면 학부모에게 보낼 <b>작성 링크</b>가 생성되고,
-            나머지 정보(주소·등록 과정·동의·서명 등)는 학부모가 링크로 작성합니다.
-          </div>
 
-          <template v-if="!directReg">
           <!-- 주소 -->
           <div class="space-y-2">
-            <div class="text-sm font-semibold text-slate-700 border-b pb-1">주소 <span class="text-rose-500">*</span></div>
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">주소</div>
             <div class="flex gap-2">
               <input :value="convertForm.zipcode" @click="openPostcode" readonly placeholder="우편번호"
                      class="input w-28 bg-slate-50 cursor-pointer" />
@@ -1726,7 +1910,7 @@
               </div>
             </div>
             <div>
-              <label class="lbl">수업 시작일 <span class="text-rose-500">*</span></label>
+              <label class="lbl">수업 시작일</label>
               <input v-model="convertForm.lesson_start_date" type="date" class="input w-44" />
             </div>
             <label class="flex items-center gap-2 text-sm bg-amber-50 rounded-lg px-3 py-2">
@@ -1829,7 +2013,8 @@
 
           <!-- 개인정보 동의서 -->
           <div class="space-y-3">
-            <div class="text-sm font-semibold text-slate-700 border-b pb-1">개인정보 수집·이용·제공 동의서</div>
+            <div class="text-sm font-semibold text-slate-700 border-b pb-1">개인정보 수집·이용·제공 동의서 <span class="font-normal text-slate-400">(선택 — 학부모가 함께 계실 때만)</span></div>
+            <p class="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">동의·서명은 <b>법정대리인 본인</b>이 하는 것이라 직원이 대신 채우지 않습니다. 지금 학부모가 함께 계시면 여기서 바로 받고, 아니면 <b>비워두고 등록</b>한 뒤 학부모 확인 링크로 받으세요.</p>
             <div class="text-[12px] leading-relaxed text-slate-600 bg-slate-50 rounded-lg p-3 space-y-2">
               <p>학원은 정보통신망 이용촉진 및 정보보호 등에 관한 법률을 준수하기 위하여 다음 내용에 대하여 회원의 동의를 받고자 합니다.</p>
               <p>* 학원은 회원학습 이력관리 및 상담, 학습정보 제공, 회비 정산, 신규 서비스 홍보 및 마케팅 등의 목적으로 이용 동의를 철회하는 때까지(단, 법률상 별도 보관기간이 있는 경우 예외) 다음의 개인정보를 수집 및 이용합니다.</p>
@@ -1841,17 +2026,17 @@
             </div>
             <label class="flex items-center gap-2 text-sm">
               <input type="checkbox" v-model="convertForm.consent_privacy" class="w-4 h-4" />
-              <span>위 개인정보 수집·이용·제공에 동의합니다. <span class="text-rose-500">*</span></span>
+              <span>위 개인정보 수집·이용·제공에 동의합니다.</span>
             </label>
             <div class="flex items-end justify-between gap-3 flex-wrap">
               <div class="text-sm text-slate-600">작성일: <b>{{ today.y }}년 {{ today.m }}월 {{ today.d }}일</b></div>
               <div>
-                <label class="lbl">법정대리인 성명 <span class="text-rose-500">*</span></label>
+                <label class="lbl">법정대리인 성명</label>
                 <input v-model="convertForm.consent_guardian_name" class="input w-44" />
               </div>
             </div>
             <div>
-              <label class="lbl">인 / 서명 <span class="text-rose-500">*</span> (아래 칸에 서명)</label>
+              <label class="lbl">인 / 서명 (아래 칸에 서명)</label>
               <div class="border-2 border-dashed border-slate-300 rounded-lg bg-white inline-block">
                 <canvas ref="sig" width="360" height="140"
                   class="touch-none rounded-lg"
@@ -1863,14 +2048,11 @@
             </div>
           </div>
 
-          </template>
-
           <div ref="convertSubmit" class="pt-2 space-y-2">
             <div v-if="convertError" class="px-4 py-3 rounded bg-rose-50 text-rose-700 border border-rose-200 text-sm">{{ convertError }}</div>
             <div class="flex gap-2">
               <button @click="closeConvert" class="btn-secondary flex-1">취소</button>
-              <button v-if="directReg" @click="submitQuickRegister" class="btn-primary flex-1">등록 · 부모 작성 링크 생성</button>
-              <button v-else @click="submitConvert" class="btn-primary flex-1">계정 생성 · 등록 완료</button>
+              <button @click="submitConvert" class="btn-primary flex-1">등록 완료 (계정 생성)</button>
             </div>
           </div>
         </div>
@@ -2474,6 +2656,26 @@
             <div v-if="!stuCanEdit" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-500 text-xs">👁 열람 전용 — 이 지점은 수정 권한이 없습니다.</div>
             <!-- 인적사항 -->
             <div v-if="stuTab==='info'" class="space-y-2">
+              <!-- 학부모 확인 — 등록은 우리가 아는 만큼 먼저 하고, 정확성은 여기서 맞춘다 -->
+              <div v-if="stuVerify" :class="['rounded-lg px-3 py-2 border text-xs', stuVerify.status==='SUBMITTED' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200']">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <b :class="stuVerify.status==='SUBMITTED' ? 'text-emerald-800' : 'text-amber-800'">
+                    {{ stuVerify.status==='SUBMITTED' ? '학부모 작성 완료 — 확인이 필요합니다' : '학부모 확인 대기' }}
+                  </b>
+                  <span class="text-slate-500">D+{{ stuVerify.waiting_days }}</span>
+                  <span v-if="stuVerify.expired" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600">링크 만료</span>
+                  <span v-else class="text-slate-400">~{{ stuVerify.expires }}</span>
+                  <span class="ml-auto flex gap-2 shrink-0">
+                    <button v-if="stuVerify.status==='SUBMITTED'" @click="openVerifyResolve()" class="px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700">대조 확인하기</button>
+                    <button v-if="stuCanEdit" @click="issueVerifyLink()" class="text-slate-500 hover:underline">링크 {{ stuVerify.status==='SENT' ? '다시 만들기' : '재발급' }}</button>
+                    <button v-if="stuCanEdit" @click="cancelVerify()" class="text-rose-400 hover:underline">취소</button>
+                  </span>
+                </div>
+              </div>
+              <div v-else-if="stuCanEdit" class="flex items-center gap-2 text-xs bg-slate-50 border rounded-lg px-3 py-2">
+                <span class="text-slate-500">학부모에게 정보 확인을 요청할 수 있습니다. 빈 양식을 작성받아 지금 정보와 대조합니다.</span>
+                <button @click="issueVerifyLink()" class="ml-auto px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-white shrink-0">학부모 확인 링크 만들기</button>
+              </div>
               <div class="flex items-center justify-end">
                 <button v-if="stuCanEdit && !stuEditMode" @click="stuEditMode=true" class="text-xs px-2 py-1 rounded border border-slate-200 text-indigo-600 hover:bg-indigo-50">✎ 수정</button>
                 <span v-if="stuEditMode" class="text-xs text-amber-600 font-medium">수정 중 — 아래 항목을 고친 뒤 [수정완료]를 눌러주세요.</span>
@@ -4366,6 +4568,12 @@ const app = createApp({
       students: [], stuSearch: '', stuSearch2: '', stuSearchRaw: '', stuSearch2Raw: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
       bulkOpen: false, bulkRows: [], bulkValidated: null, bulkResults: null, bulkBusy: false, bulkConverted: false, bulkFileName: '',
       enrollMode: false, enrollToken: '', enrollPrefill: null, enrollError: '', enrollDone: false,
+      // 학부모 확인(정보 대조) — 빈 양식이라 프리필 없이 시작한다
+      verifyMode: false, verifyToken: '', verifyInfo: null, verifyError: '', verifyDone: false, verifySubmitError: '',
+      verifyForm: { birth_date:'', gender:'', school_type:'', school_name:'', grade:'', student_phone:'',
+                    parent_name:'', parent_phone:'', parent_relation:'', guardian2_phone:'', guardian2_relation:'',
+                    notify_optin:null, zipcode:'', address:'', address_detail:'',
+                    consent_privacy:false, consent_guardian_name:'' },
       enrollForm: { student_name:'', gender:'', birth_date:'', student_phone:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', zipcode:'', address:'', address_detail:'', memo:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       enrollHasPw: false,
       esig: { drawing:false, ctx:null, hasInk:false },
@@ -4395,6 +4603,8 @@ const app = createApp({
       stuProgramsEdit: [], stuProgramsEditOrig: [],
       stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'progress',l:'수업일지'},{k:'attend',l:'출결기록'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
       stuAttHist: { rows:[], from:'', to:'', fwdDays:0 },
+      stuVerify: null, vrModal: null, vrPick: {}, vrCustom: {}, vrAdd: {}, vrFmt: {},
+      vrShowFormat: false, vrError: '',
       stuMkAll: [], stuMkShowPending: true, stuMkShowFixed: true,
       stuMkSub: { planned:true, done:true, missed:true },
       // 출결기록 조회 범위 기본값(오늘 이후 며칠까지). 기기별로 저장해 다음에도 그대로 열림
@@ -6297,6 +6507,8 @@ const app = createApp({
       // 등록 링크(무로그인 원격 작성) 모드 감지
       const et = new URLSearchParams(location.search).get('enroll');
       if (et){ this.enrollMode=true; this.enrollToken=et; await this.loadOptions(); await this.loadEnroll(); return; }
+      const vt = new URLSearchParams(location.search).get('verify');
+      if (vt){ this.verifyMode=true; this.verifyToken=vt; await this.loadOptions(); await this.loadVerifyForm(); return; }
       try { this.me = await api('GET','/api/profile'); } catch(e){ this.me = null; }
       await this.loadBranches();
       await this.loadOptions();
@@ -7654,6 +7866,70 @@ const app = createApp({
       if (all.length) return '선택한 조건에 맞는 보강이 없습니다.';
       return '보강 대상이 없습니다.';
     },
+    // ───────────── 학부모 확인(정보 대조) ─────────────
+    async loadStuVerify(){
+      if (!this.stuDetail){ this.stuVerify = null; return; }
+      try {
+        const rows = await api('GET','/api/admin/academy/profile_verify?student_id='+this.stuDetail.id) || [];
+        this.stuVerify = rows.find(r=>r.status==='SUBMITTED') || rows.find(r=>r.status==='SENT') || null;
+        this._stuVerifyRows = rows;
+      } catch(e){ this.stuVerify = null; }
+    },
+    async issueVerifyLink(){
+      try {
+        const d = await api('POST','/api/admin/academy/profile_verify', { student_id:this.stuDetail.id });
+        await navigator.clipboard.writeText(d.url).catch(()=>{});
+        this.notify('학부모 확인 링크를 복사했습니다 ('+d.expires+'까지). 학부모에게 전달하세요.');
+        this.loadStuVerify();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async cancelVerify(){
+      if (!this.stuVerify) return;
+      try {
+        await api('DELETE','/api/admin/academy/profile_verify?id='+this.stuVerify.id);
+        this.notify('확인 요청을 취소했습니다.'); this.loadStuVerify();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    openVerifyResolve(){
+      const v = (this._stuVerifyRows||[]).find(r=>r.status==='SUBMITTED');
+      if (!v || !v.diff) return this.notify('대조할 내용이 없습니다.', false);
+      // 값이 다른 항목은 기본 선택을 두지 않는다(미리 찍혀 있으면 그냥 승인해 버림)
+      this.vrPick = {}; this.vrCustom = {}; this.vrAdd = {}; this.vrFmt = {};
+      v.diff.added.forEach(r=>{ this.vrAdd[r.field] = true; });   // 추가는 충돌이 아니므로 기본 채택
+      v.diff.format.forEach(r=>{ this.vrFmt[r.field] = false; }); // 표기 차이는 우리 값 유지
+      this.vrShowFormat = false; this.vrError = '';
+      this.vrModal = v;
+    },
+    vrShow(field, val){
+      if (field==='notify_optin') return (val===true || val==='True' || val==='true') ? '수신' : '미수신';
+      if (field==='gender') return val==='M' ? '남' : (val==='F' ? '여' : '');
+      if (field==='school_type') return this.optLabel('school_type', val) || val || '';
+      return val==null ? '' : String(val);
+    },
+    async saveVerifyResolve(){
+      const v = this.vrModal; this.vrError = '';
+      const values = {};
+      for (const r of v.diff.conflict){
+        const pick = this.vrPick[r.field];
+        if (!pick) return this.vrError = '"'+r.label+'" 항목을 아직 확인하지 않았습니다.';
+        if (pick==='staff') values[r.field] = r.staff;
+        else if (pick==='parent') values[r.field] = r.parent;
+        else {
+          const c = (this.vrCustom[r.field]||'').trim();
+          if (!c) return this.vrError = '"'+r.label+'"에 직접 입력할 값을 적어주세요.';
+          values[r.field] = c;
+        }
+      }
+      for (const r of v.diff.added){ if (this.vrAdd[r.field]) values[r.field] = r.parent; }
+      for (const r of v.diff.format){ if (this.vrFmt[r.field]) values[r.field] = r.parent; }
+      try {
+        const d = await api('POST','/api/admin/academy/profile_verify/resolve', { id:v.id, values });
+        this.vrModal = null;
+        this.notify('학부모 확인이 완료되었습니다.'+(d.changed.length ? ' ('+d.changed.length+'개 항목 반영)' : ' (변경 없음)'));
+        this.loadStuVerify();
+        if (this.stuDetail) this.openStudent({ id:this.stuDetail.id });
+      } catch(e){ this.vrError = e.message; }
+    },
     async loadStuMakeups(){
       if (!this.stuDetail) { this.stuMkAll=[]; return; }
       try { this.stuMkAll = await api('GET','/api/admin/academy/pending_makeup?student_id='+this.stuDetail.id) || []; }
@@ -7754,6 +8030,7 @@ const app = createApp({
         this.stuProgress=[]; this.stuProgForm={ date:'', content:'', homework:'', feedback:'', memo:'' }; this.loadStuProgress();
         this.stuProgView='cal'; this.stuProgCalMonth=this.todayStr.slice(0,7); this.stuProgCalDays={};
         this.stuAttHist={ rows:[], from:'', to:'', fwdDays:0 }; this.stuMkAll=[];
+        this.stuVerify=null; this._stuVerifyRows=[]; this.loadStuVerify();
         this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'', no_makeup:false, start_time:'' }; this.stuAttBulkMode=false;
         this.stuResvForm={ date:'', hour:'', min:'00', note:'' };
       } catch(e){ this.notify(e.message,false); }
@@ -8295,6 +8572,33 @@ const app = createApp({
       if (digits.length >= 4) this.convertForm.parent_password = digits.slice(-4);  // 연락처 뒤 4자리 기본값
     },
     useParentPhone(){ this.convertForm.student_phone = this.convertForm.parent_phone; },
+    // 임의 객체에 우편번호·주소를 채우는 범용 검색(학부모 확인 양식 등)
+    openPostcodeFor(obj){
+      if (typeof daum === 'undefined' || !daum.Postcode) return this.notify('주소 검색 모듈을 불러오지 못했습니다(인터넷 확인).', false);
+      new daum.Postcode({ oncomplete: (data)=>{ obj.zipcode = data.zonecode; obj.address = (data.roadAddress || data.jibunAddress); } }).open();
+    },
+    async loadVerifyForm(){
+      try {
+        this.verifyInfo = await api('GET','/api/academy/profile_verify_form?token='+encodeURIComponent(this.verifyToken));
+        this.verifyError = '';
+        this.$nextTick(()=> this.sigInit());
+      } catch(e){ this.verifyError = e.message; this.verifyInfo = null; }
+    },
+    async submitVerify(){
+      const f = this.verifyForm; this.verifySubmitError = '';
+      if (!f.birth_date) return this.verifySubmitError = '생년월일을 입력해 주세요.';
+      if (!(f.parent_phone||'').trim()) return this.verifySubmitError = '보호자 연락처를 입력해 주세요.';
+      if (!f.consent_privacy) return this.verifySubmitError = '개인정보 수집·이용에 동의해 주세요.';
+      if (!(f.consent_guardian_name||'').trim()) return this.verifySubmitError = '법정대리인 성명을 입력해 주세요.';
+      if (!this.sig.hasInk) return this.verifySubmitError = '서명을 입력해 주세요.';
+      try {
+        await api('POST','/api/academy/profile_verify_form', {
+          token: this.verifyToken, ...f,
+          notify_optin: !!f.notify_optin,
+          consent_signature: this.$refs.sig ? this.$refs.sig.toDataURL('image/png') : '' });
+        this.verifyDone = true;
+      } catch(e){ this.verifySubmitError = e.message; }
+    },
     openPostcode(target){
       if (typeof daum === 'undefined' || !daum.Postcode) return this.notify('주소 검색 모듈을 불러오지 못했습니다(인터넷 확인).', false);
       new daum.Postcode({ oncomplete: (data) => {
@@ -8333,25 +8637,23 @@ const app = createApp({
         if (!f.parent_login_id) f.parent_login_id = String(f.parent_phone||'').replace(/\D/g,'');
       }
       this.genParentPassword();
-      if (!f.birth_date) return this.failConvert('생년월일을 입력하세요. (연도 4자리)');
-      { const y = parseInt((f.birth_date.split('-')[0]||''),10); if (isNaN(y)||y<1900||y>this.today.y) return this.failConvert('생년월일의 연도를 4자리로 정확히 입력하세요. (예: 2012)'); }
+      // 등록을 막는 항목은 '학생 계정을 만들 수 없는 것'뿐이다. 나머지는 몰라도 등록하고
+      // 학부모 확인 링크로 채운다(예전에는 모든 항목이 필수라 학부모를 기다려야 했음).
+      if (f.birth_date){ const y = parseInt((f.birth_date.split('-')[0]||''),10); if (isNaN(y)||y<1900||y>this.today.y) return this.failConvert('생년월일의 연도를 4자리로 정확히 입력하세요. (예: 2012)'); }
       if (!f.login_id) this.genLoginId();
       if (!f.login_id || !f.password) return this.failConvert('아이디·비밀번호를 확인하세요.');
       if (f.password.length < 6) return this.failConvert('비밀번호는 6자 이상이어야 합니다.');
-      if (!(f.parent_name||'').trim()) return this.failConvert('보호자 이름을 입력하세요.');
       if (!f.parent_relation) return this.failConvert('보호자 관계를 선택하세요.');
       if (f.parent_relation==='기타' && !(f.parent_relation_etc||'').trim()) return this.failConvert('보호자 관계(기타)를 직접 입력하세요.');
-      if (f.notify_optin===null || f.notify_optin===undefined) return this.failConvert('등하원 알림(알림톡) 수신 여부를 선택하세요.');
-      if (!f.student_phone) return this.failConvert('학생 휴대폰을 입력하세요. (보호자번호와 동일 버튼 사용 가능)');
-      if (!f.zipcode || !f.address) return this.failConvert('우편번호 검색으로 주소를 입력하세요.');
+      // 과정은 고른 것만 검사한다(아예 안 골랐으면 나중에 학생 상세에서 지정)
       for (let i=0;i<f.programs.length;i++){ const p=f.programs[i];
-        if (!p.value) return this.failConvert((i+1)+'번째 등록 과정을 선택하세요.');
+        if (!p.value) continue;
         if (p.value==='LANG' && !p.language) return this.failConvert((i+1)+'번째 과정의 프로그래밍 언어를 선택하세요.');
         if (this.optAllowCustom('program', p.value) && !(p.custom||'').trim()) return this.failConvert((i+1)+'번째 과정(개인맞춤) 내용을 입력하세요.');
       }
-      if (!f.lesson_start_date) return this.failConvert('수업 시작일을 입력하세요.');
-      if (!f.schedule_pending) {
-        if (!f.weekly_sessions) return this.failConvert('주 교육 회수를 선택하세요. (미정이면 "교육 일정 추후 안내"를 체크)');
+      const noProgram = !f.programs.some(p=>p.value);
+      const skipSchedule = f.schedule_pending || noProgram || !f.weekly_sessions;
+      if (!skipSchedule) {
         if (f.schedule.length !== f.weekly_sessions || f.schedule.some(s=>s.day<0 || s.hour===null || s.min===null))
           return this.failConvert('교육 요일과 시간(시·분)을 회수만큼 모두 선택하세요.');
         // 같은 요일·시각 중복은 금지하되, 격주끼리는 허용(과정 번갈아 수강)
@@ -8383,9 +8685,14 @@ const app = createApp({
           }
         }
       }
-      if (!f.consent_privacy) return this.failConvert('개인정보 수집·이용에 동의해 주세요.');
-      if (!f.consent_guardian_name) return this.failConvert('법정대리인 성명을 입력하세요.');
-      if (!this.sig.hasInk) return this.failConvert('서명을 입력해 주세요.');
+      // 동의·서명은 법정대리인 본인이 하는 것이라 직원이 대신 채우지 않는다.
+      // 지금 받으려면 세 가지가 모두 있어야 하고, 아니면 통째로 비워 링크로 받는다.
+      const wantConsent = !!(f.consent_privacy || (f.consent_guardian_name||'').trim() || this.sig.hasInk);
+      if (wantConsent){
+        if (!f.consent_privacy) return this.failConvert('개인정보 수집·이용에 동의해 주세요. (지금 받지 않으려면 법정대리인 성명·서명을 비워두세요)');
+        if (!f.consent_guardian_name) return this.failConvert('법정대리인 성명을 입력하세요.');
+        if (!this.sig.hasInk) return this.failConvert('서명을 입력해 주세요.');
+      }
       try {
         const body = {
           parent_name: f.parent_name, login_id: f.login_id, password: f.password, birth_date: f.birth_date,
@@ -8395,18 +8702,18 @@ const app = createApp({
           guardian2_relation: f.guardian2_relation==='기타' ? (f.guardian2_relation_etc||'').trim() : (f.guardian2_relation||''),
           gender: f.gender || '', student_phone: f.student_phone, zipcode: f.zipcode,
           address: f.address, address_detail: f.address_detail || '',
-          program: f.programs[0].value, program_language: f.programs[0].value==='LANG' ? f.programs[0].language : '',
+          program: f.programs[0].value || '', program_language: f.programs[0].value==='LANG' ? f.programs[0].language : '',
           program_custom: this.optAllowCustom('program', f.programs[0].value) ? (f.programs[0].custom||'') : '',
-          programs: JSON.stringify(f.programs),
+          programs: JSON.stringify(f.programs.filter(p=>p.value)),
           lesson_start_date: f.lesson_start_date,
-          weekly_sessions: f.schedule_pending ? null : f.weekly_sessions,
-          class_schedule: JSON.stringify(f.schedule_pending ? [] : this.buildClassSchedule()),
-          schedule_pending: f.schedule_pending,
+          weekly_sessions: skipSchedule ? null : f.weekly_sessions,
+          class_schedule: JSON.stringify(skipSchedule ? [] : this.buildClassSchedule()),
+          schedule_pending: skipSchedule,
           parent_login_id: f.parent_login_id || '', parent_password: f.parent_password || '',
           memo: f.memo || '',
-          consent_privacy: true, consent_guardian_name: f.consent_guardian_name,
-          consent_signature: this.$refs.sig.toDataURL('image/png'),
-          consent_date: this.todayStr,
+          consent_privacy: wantConsent, consent_guardian_name: wantConsent ? f.consent_guardian_name : '',
+          consent_signature: wantConsent ? this.$refs.sig.toDataURL('image/png') : '',
+          consent_date: wantConsent ? this.todayStr : null,
         };
         if (this.directReg) {
           Object.assign(body, { branch_id: f.branch_id, student_name: f.student_name,
