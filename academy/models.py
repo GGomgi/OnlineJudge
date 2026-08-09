@@ -1079,3 +1079,37 @@ class StaffLeave(models.Model):
     class Meta:
         db_table = "academy_staff_leave"
         ordering = ["-date", "-id"]
+
+
+class ProfileVerification(models.Model):
+    """학부모 확인. 직원이 먼저 입력해 둔 학생 정보를, 학부모가 빈 양식에 독립적으로
+    작성해 대조한다. 값이 다르면 직원이 항목별로 최종값을 정한다(둘 중 하나를 고르거나
+    통화하며 들은 값을 직접 입력).
+
+    학생 계정은 등록 시점에 이미 만들어지고 바로 운영에 쓰인다. 이 확인은 정보의
+    정확성을 위한 절차일 뿐 등록의 전제조건이 아니다(예전에는 학부모가 늦게 쓰면
+    학생 자체가 만들어지지 않아 시간표·출결을 못 넣었음)."""
+    SENT = "SENT"
+    SUBMITTED = "SUBMITTED"
+    DONE = "DONE"
+    CANCELLED = "CANCELLED"
+
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="profile_verifications")
+    token = models.CharField(max_length=48, blank=True, default="", db_index=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=16, default=SENT)
+    staff_snapshot = models.TextField(blank=True, default="")  # 링크 생성 시점의 직원 입력값(JSON)
+    parent_data = models.TextField(blank=True, default="")     # 학부모 제출값(JSON)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    resolved_data = models.TextField(blank=True, default="")   # 승인 시 항목별 채택 결과(JSON)
+    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_profile_verification"
+        ordering = ["-create_time", "-id"]
