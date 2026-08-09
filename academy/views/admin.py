@@ -4379,6 +4379,12 @@ class LessonStatusAdminAPI(APIView):
         if st == OccurrenceStatus.CANCELLED and not o.is_makeup:
             return self.error("보강 건만 취소할 수 있습니다.")
         prev_status, prev_nm, prev_kind = o.status, o.no_makeup, o.no_makeup_kind
+        # '예정'으로 되돌릴 때 그날이 학원 휴무일이면 예정이 아니라 휴무로 돌아가야 한다.
+        # (안 그러면 휴무일에 그 학생만 수업이 있는 것처럼 남는다)
+        if st == OccurrenceStatus.SCHEDULED and not o.is_makeup:
+            from ..views.hr import holidays_on
+            if holidays_on(o.date, o.branch_id).exists():
+                st = OccurrenceStatus.HOLIDAY
         o.status = st
         if "note" in data:
             o.note = (data.get("note") or "").strip()
@@ -4386,7 +4392,7 @@ class LessonStatusAdminAPI(APIView):
             # 명시적으로 넘어온 값을 우선(조퇴예정 등 SCHEDULED 상태에서도 "보강 안 함" 지정 가능하도록)
             o.no_makeup = bool(data.get("no_makeup"))
             o.no_makeup_kind = (data.get("no_makeup_kind") or "") if o.no_makeup else ""
-        elif st in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.LEAVE):
+        elif st in (OccurrenceStatus.SCHEDULED, OccurrenceStatus.LEAVE, OccurrenceStatus.HOLIDAY):
             o.no_makeup = False
         if st == OccurrenceStatus.CANCELLED:
             o.makeup_for = None  # 연결된 결석이 있었다면 재연결 가능하도록 해제
@@ -4403,7 +4409,8 @@ class LessonStatusAdminAPI(APIView):
             # 결석·임시휴원·예정 복원과 보강 처리 변경도 누가 언제 했는지 남긴다
             # (예전엔 보강 취소만 기록돼 추적 불가였음)
             _lbl = {OccurrenceStatus.ABSENT: "결석 처리", OccurrenceStatus.LEAVE: "임시휴원 처리",
-                    OccurrenceStatus.SCHEDULED: "예정으로 복원"}.get(st, st)
+                    OccurrenceStatus.SCHEDULED: "예정으로 복원",
+                    OccurrenceStatus.HOLIDAY: "휴무로 복원(학원 휴무일)"}.get(st, st)
             if prev_status == st:
                 _lbl = "결석 보강 처리 변경" if st == OccurrenceStatus.ABSENT else "%s(수정)" % _lbl
             if st == OccurrenceStatus.ABSENT:
