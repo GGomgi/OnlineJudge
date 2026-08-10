@@ -3667,6 +3667,97 @@ def _adhoc_lesson_rows(d, branch_ids):
     return rows
 
 
+def _dash_student_extra(d, lessons, late_min=5):
+    """오늘 운영에서 '표시 항목'으로 켤 수 있는 부가 정보. 학생 단위로 한 번만 계산해
+    내려준다(같은 학생이 여러 수업을 들어도 값은 하나).
+
+    열마다 학생별로 따로 조회하면 44명 기준으로 조회가 수백 번이 되므로, 필요한
+    데이터를 통째로 한 번씩 읽어 파이썬에서 묶는다."""
+    sids = sorted({l["student_id"] for l in lessons if l.get("student_id")})
+    if not sids:
+        return {}
+    out = {sid: {} for sid in sids}
+
+    # 학교·학년
+    for sp in StudentProfile.objects.filter(user_id__in=sids).only(
+            "user_id", "school_type", "school_name", "grade"):
+        out[sp.user_id]["school"] = _school_short(sp)
+
+    # 주간 요일 패턴(그날 유효한 정규 시간표만)
+    for slot in StudentTimetable.objects.filter(student_id__in=sids).exclude(status="ENDED"):
+        if not _slot_active_on(slot, d):
+            continue
+        e = out.setdefault(slot.student_id, {})
+        wds = e.setdefault("weekdays", {})
+        wds.setdefault(slot.weekday, []).append(str(slot.start_time)[:5])
+
+    # 다음 수업 — 이번 주 남은 일정 + 다음 주까지
+    end = d + timedelta(days=(6 - d.weekday()) + 7)
+    for o in LessonOccurrence.objects.filter(
+            student_id__in=sids, date__gt=d, date__lte=end).exclude(
+            status=OccurrenceStatus.CANCELLED).order_by("date", "start_time"):
+        e = out.setdefault(o.student_id, {})
+        e.setdefault("next", []).append({
+            "date": str(o.date), "wd": _WD[o.date.weekday()], "time": str(o.start_time)[:5],
+            "status": o.status, "is_makeup": o.is_makeup,
+            "subject": o.subject or ""})
+
+    # 이번 달 결석·지각
+    m0 = d.replace(day=1)
+    m1 = (m0 + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    starts = {}
+    for o in LessonOccurrence.objects.filter(
+            student_id__in=sids, date__gte=m0, date__lte=m1).only(
+            "student_id", "date", "start_time", "status"):
+        if o.status == OccurrenceStatus.ABSENT:
+            e = out.setdefault(o.student_id, {})
+            e["m_absent"] = e.get("m_absent", 0) + 1
+        key = (o.student_id, o.date)
+        t = _t2m(o.start_time)
+        if key not in starts or t < starts[key]:
+            starts[key] = t
+    for a in DailyAttendance.objects.filter(
+            student_id__in=sids, date__gte=m0, date__lte=m1, check_in_at__isnull=False).only(
+            "student_id", "date", "check_in_at"):
+        ref = starts.get((a.student_id, a.date))
+        if ref is None:
+            continue
+        hm = _hm_kst(a.check_in_at)
+        if _t2m(hm) - ref > late_min:
+            e = out.setdefault(a.student_id, {})
+            e["m_late"] = e.get("m_late", 0) + 1
+
+    # 미처리 보강(결석인데 보강일이 아직 없는 건)
+    made = set(LessonOccurrence.objects.filter(
+        is_makeup=True, makeup_for__isnull=False).values_list("makeup_for_id", flat=True))
+    for o in LessonOccurrence.objects.filter(
+            student_id__in=sids, status=OccurrenceStatus.ABSENT,
+            is_makeup=False, no_makeup=False).only("id", "student_id"):
+        if o.id in made:
+            continue
+        e = out.setdefault(o.student_id, {})
+        e["mk_pending"] = e.get("mk_pending", 0) + 1
+    return out
+
+
+def _school_short(sp):
+    """청일초등학교 5학년 → 청일초5. 국제학교 등 접미사가 없는 곳은 이름만."""
+    nm = (sp.school_name or "").strip()
+    if not nm:
+        return ""
+    if sp.school_type == "ADULT":
+        return "성인"
+    suf = {"ELEM": "초", "MIDDLE": "중", "HIGH": "고"}.get(sp.school_type, "")
+    if suf:
+        for full in ("초등학교", "중학교", "고등학교", "학교"):
+            if nm.endswith(full):
+                nm = nm[: -len(full)]
+                break
+        nm += suf
+    g = "".join(ch for ch in (sp.grade or "") if ch.isdigit())
+    return nm + g
+
+
 class DashboardAdminAPI(APIView):
     @admin_role_required
     def get(self, request):
@@ -3864,7 +3955,14 @@ class DashboardAdminAPI(APIView):
                     "enroll_edited": l.enroll_edited}
                    for l in eq.order_by("-enroll_edited", "-enroll_submitted_at")[:100]]
         WD = ["월", "화", "수", "목", "금", "토", "일"]
+        # 지각 기준은 화면 설정값(기본 5분)이라 프론트가 알려준다
+        try:
+            late_min = max(0, min(60, int(request.GET.get("late_min") or 5)))
+        except (TypeError, ValueError):
+            late_min = 5
+        extra = _dash_student_extra(d, lessons, late_min)
         return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
+                             "student_extra": extra,
                              "total": len(lessons), "present": len(att), "reservations": reservations,
                              "enrolled_leads": enrolled, "temp_leaves": temp_leaves,
                              "holidays": holiday_names})

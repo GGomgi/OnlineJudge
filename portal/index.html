@@ -292,7 +292,7 @@
               <span class="text-lg leading-none">⚙️</span>
             </button>
             <div v-if="settingsOpen" @click="settingsOpen=false" class="fixed inset-0 z-40"></div>
-            <div v-if="settingsOpen" class="absolute right-0 mt-1 w-64 bg-white text-slate-700 rounded-lg shadow-xl border z-50 p-3 text-xs">
+            <div v-if="settingsOpen" class="absolute right-0 mt-1 w-72 bg-white text-slate-700 rounded-lg shadow-xl border z-50 p-3 text-xs max-h-[80vh] overflow-y-auto">
               <div class="font-semibold mb-2">화면 설정</div>
               <div class="flex items-center justify-between">
                 <span>화면 폭</span>
@@ -307,6 +307,14 @@
                   <input type="number" min="1" :value="lateThreshold" @change="setLateThreshold($event.target.value)" class="input py-0.5 px-1 w-14 text-right" />
                   <span class="text-slate-400">분</span>
                 </div>
+              </div>
+              <!-- 어느 화면 설정인지 헷갈리지 않게 화면 이름을 앞에 붙인다(항목이 계속 늘어날 자리) -->
+              <div class="mt-3 pt-2 border-t">
+                <div class="font-semibold mb-1">오늘 운영: 표시 항목</div>
+                <label v-for="c in dashColOptions" :key="c.k" class="flex items-start gap-1.5 py-0.5 cursor-pointer select-none">
+                  <input type="checkbox" :checked="dashCols[c.k]" @change="setDashCol(c.k, $event.target.checked)" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span><b class="font-medium">{{ c.l }}</b><span class="block text-[10px] text-slate-400">{{ c.d }}</span></span>
+                </label>
               </div>
               <div class="text-[10px] text-slate-400 mt-2">이 브라우저에만 적용되며, 다른 직원 화면에는 영향 없습니다.</div>
             </div>
@@ -560,6 +568,27 @@
         <button @click="saveVerifyResolve" class="btn-primary text-sm">확인 완료 · 반영</button>
       </div>
     </div>
+  </div>
+
+  <!-- 요일 칸 호버: 그 요일 수업 시각 -->
+  <div v-if="wdPop.show" class="fixed z-[70] px-2 py-1 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
+       :style="{ left: wdPop.x+'px', top: wdPop.y+'px' }">
+    {{ wdPop.name }} · {{ wdPop.wd }}요일 <b class="font-mono">{{ wdPop.times.join(', ') }}</b>
+  </div>
+
+  <!-- 다음 수업 호버: 이번 주 남은 일정 + 다음 주 -->
+  <div v-if="nextPop.show" class="fixed z-[70] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
+       :style="{ left: nextPop.x+'px', top: nextPop.y+'px' }">
+    <div class="font-bold text-slate-700 mb-1">{{ nextPop.name }} · 앞으로의 수업</div>
+    <div v-for="(n,i) in nextPop.rows" :key="i" class="flex items-center gap-2 py-0.5">
+      <span class="font-mono text-slate-500">{{ n.date.slice(5) }}({{ n.wd }})</span>
+      <span class="font-mono">{{ n.time }}</span>
+      <span class="text-slate-400">{{ n.subject }}</span>
+      <span v-if="nextStatusLabel(n)" :class="['ml-auto px-1.5 py-0.5 rounded',
+            n.status==='ABSENT' ? 'bg-rose-100 text-rose-600' : (n.status==='HOLIDAY' ? 'bg-slate-100 text-slate-500'
+            : (n.status==='LEAVE' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-700'))]">{{ nextStatusLabel(n) }}</span>
+    </div>
+    <div v-if="!nextPop.rows.length" class="text-slate-400">예정된 수업이 없습니다.</div>
   </div>
 
   <!-- 근태 월 그리드 호버 상세(클릭 없이 바로 보이게) -->
@@ -1110,17 +1139,22 @@
             <tr>
               <th class="text-left px-3 py-2 w-16">시각</th>
               <th class="text-left px-3 py-2 w-28">학생</th>
+              <th v-if="dashCols.school" class="text-left px-3 py-2 w-24">학교</th>
+              <th v-if="dashCols.weekdays" class="text-left px-3 py-2 w-24">요일</th>
               <th class="text-left px-3 py-2">과목</th>
               <th class="text-left px-3 py-2">강사</th>
               <th v-if="showBranchCol" class="text-left px-3 py-2">지점</th>
               <th class="text-center px-3 py-2 w-52">등원 / 하원</th>
               <th class="text-right px-3 py-2 w-24 whitespace-nowrap">경과</th>
+              <th v-if="dashCols.mk" class="text-center px-3 py-2 w-20 whitespace-nowrap">보강</th>
+              <th v-if="dashCols.month" class="text-center px-3 py-2 w-24 whitespace-nowrap">이번달</th>
+              <th v-if="dashCols.next" class="text-left px-3 py-2 w-44">다음 수업</th>
               <th class="text-left px-3 py-2 w-28">비고</th>
             </tr>
           </thead>
           <tbody>
             <template v-for="(l,i) in dashLessonsOrdered" :key="i">
-              <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="showBranchCol?8:7" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }}</td></tr>
+              <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="dashColSpan" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }}</td></tr>
               <tr class="border-t align-middle hover:bg-slate-50" :class="isAbsent(l) ? 'bg-rose-50/50' : (isLeave(l) ? 'bg-violet-50/50' : (l.adhoc ? 'bg-amber-50/50' : ''))">
                 <td class="px-3 py-2 font-mono whitespace-nowrap">
                   <span v-if="l.time_changed" @mouseenter="showTcPop(l,$event)" @mouseleave="hideTcPop" class="text-amber-600 font-bold cursor-help">{{ l.start_time }}</span>
@@ -1129,6 +1163,15 @@
                 <td class="px-3 py-2 font-medium whitespace-nowrap">
                   <span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="findContPartner(l)" class="ml-0.5 opacity-60" title="연속 수업(이어짐)">🔗</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span>
                   <span v-if="l.is_makeup" @click="openAtt(l)" class="block mt-0.5 text-[10px] px-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer w-fit">보강{{ mkAbsenceRefSuffix(l) }}</span>
+                </td>
+                <td v-if="dashCols.school" class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap truncate">{{ dashEx(l).school || '-' }}</td>
+                <td v-if="dashCols.weekdays" class="px-3 py-2 whitespace-nowrap">
+                  <span class="inline-flex gap-px">
+                    <span v-for="(w,wi) in ['월','화','수','목','금','토','일']" :key="wi"
+                          :class="['w-3.5 h-4 text-[10px] leading-4 text-center rounded-sm',
+                                   dashHasDay(l,wi) ? (wi===dashTodayWd ? 'bg-indigo-600 text-white font-bold' : 'bg-indigo-100 text-indigo-700') : 'text-slate-200']"
+                          @mouseenter="dashHasDay(l,wi) && showWdPop(l,wi,$event)" @mouseleave="hideWdPop">{{ w }}</span>
+                  </span>
                 </td>
                 <td class="px-3 py-2 text-slate-500 max-w-[64px] truncate">{{ l.subject }}<span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help" title="">📝</span></td>
                 <td class="px-3 py-2 whitespace-nowrap" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
@@ -1148,6 +1191,22 @@
                   <span v-if="elapsedInfo(l)" class="text-[11px] font-mono" :class="elapsedInfo(l).done ? 'text-emerald-600 font-bold' : (elapsedInfo(l).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ elapsedInfo(l).mins }}분 / {{ elapsedInfo(l).dur }}분</span>
                   <span v-else-if="!isAbsent(l) && !isLeave(l)" class="text-[11px] font-mono text-slate-300">/ {{ l.duration_minutes||60 }}분</span>
                 </td>
+                <td v-if="dashCols.mk" class="px-3 py-2 text-center whitespace-nowrap">
+                  <button v-if="dashEx(l).mk_pending" @click="goStudentAttend(l.student_id)" class="px-1.5 py-0.5 rounded text-[11px] bg-rose-100 text-rose-600 hover:bg-rose-200">미정 {{ dashEx(l).mk_pending }}</button>
+                  <span v-else class="text-[11px] text-slate-200">-</span>
+                </td>
+                <td v-if="dashCols.month" class="px-3 py-2 text-center whitespace-nowrap text-[11px]">
+                  <span v-if="dashEx(l).m_absent" class="text-rose-500">결{{ dashEx(l).m_absent }}</span>
+                  <span v-if="dashEx(l).m_absent && dashEx(l).m_late" class="text-slate-300"> · </span>
+                  <span v-if="dashEx(l).m_late" class="text-amber-600">지{{ dashEx(l).m_late }}</span>
+                  <span v-if="!dashEx(l).m_absent && !dashEx(l).m_late" class="text-slate-200">-</span>
+                </td>
+                <td v-if="dashCols.next" class="px-3 py-2 whitespace-nowrap text-[11px]">
+                  <span v-if="dashNext(l)" :class="dashNext(l).cls" @mouseenter="showNextPop(l,$event)" @mouseleave="hideNextPop" class="cursor-help">
+                    {{ dashNext(l).text }}
+                  </span>
+                  <span v-else class="text-slate-200">-</span>
+                </td>
                 <td class="px-3 py-2">
                   <button v-if="l.adhoc" @click="openAdhocLink(l)" class="px-1.5 py-0.5 rounded text-[11px] bg-amber-100 text-amber-700 hover:bg-amber-200">보강 연결</button>
                   <template v-else>
@@ -1161,8 +1220,8 @@
                 </td>
               </tr>
             </template>
-            <tr v-if="dashIsToday && nowLineIndex===(dashData.lessons||[]).length && (dashData.lessons||[]).length" class="bg-rose-50"><td :colspan="showBranchCol?8:7" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }} ({{ dashAllDone ? '오늘 수업 종료' : '오늘 마지막 수업 중' }})</td></tr>
-            <tr v-if="(dashData.lessons||[]).length===0"><td :colspan="showBranchCol?8:7" class="px-3 py-8 text-center text-sm text-slate-400">이 날짜에 수업이 없습니다.</td></tr>
+            <tr v-if="dashIsToday && nowLineIndex===(dashData.lessons||[]).length && (dashData.lessons||[]).length" class="bg-rose-50"><td :colspan="dashColSpan" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }} ({{ dashAllDone ? '오늘 수업 종료' : '오늘 마지막 수업 중' }})</td></tr>
+            <tr v-if="(dashData.lessons||[]).length===0"><td :colspan="dashColSpan" class="px-3 py-8 text-center text-sm text-slate-400">이 날짜에 수업이 없습니다.</td></tr>
           </tbody>
         </table>
       </div>
@@ -4596,6 +4655,22 @@ const app = createApp({
         return localStorage.getItem('portal_layout_width') || 'wide';
       })(),
       lateThreshold: parseInt(localStorage.getItem('portal_late_threshold')) || 5,
+      // 오늘 운영 표시 항목(기기별 저장). 기본은 지금까지 보이던 열만 — 처음부터 다
+      // 켜져 있으면 복잡해 보이고 대부분 다시 끄게 된다.
+      dashCols: (function(){
+        let v = {};
+        try { v = JSON.parse(localStorage.getItem('portal_dash_cols') || '{}') || {}; } catch(e){ v = {}; }
+        return Object.assign({ school:false, weekdays:false, mk:false, month:false, next:false }, v);
+      })(),
+      dashColOptions: [
+        { k:'mk',       l:'미처리 보강',   d:'보강일이 아직 안 잡힌 결석 수 — 온 김에 잡을 수 있어요' },
+        { k:'next',     l:'다음 수업',     d:'이번 주 남은 일정 + 다음 주 (칸엔 첫 건, 나머지는 마우스를 올리면)' },
+        { k:'school',   l:'학교·학년',     d:'청일초5 처럼 줄여서' },
+        { k:'weekdays', l:'요일 패턴',     d:'오는 요일을 한 줄로 — 마우스를 올리면 그 요일 시각' },
+        { k:'month',    l:'이번 달 결석·지각', d:'상담이 필요한 학생이 눈에 띕니다' },
+      ],
+      wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
+      nextPop: { show:false, x:0, y:0, name:'', rows:[] },
       msgBox: 'inbox', msgList: [], msgCompose: false, msgForm: { recipient_id:null, body:'' }, msgUnread: 0, msgExpand: {}, msgPickerOpen: false,
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
       statusPop: { show:false, x:0, y:0, name:'', list:[] },
@@ -4989,6 +5064,13 @@ const app = createApp({
     hrGridDays(){ const p=(this.hrAtt.people||[])[0]; return p ? p.days : []; },
     myAttDays(){ return (this.myAtt.days||[]).slice().reverse(); },
     hdCanPickBranch(){ return this.mkgBranchOptions().length > 1 || (this.me && this.me.user.admin_type==='Super Admin'); },
+    dashTodayWd(){ const [y,m,dd]=(this.dashDate||this.todayStr).split('-').map(Number); return (new Date(y,m-1,dd).getDay()+6)%7; },
+    dashColSpan(){
+      let n = 7;                       // 시각·학생·과목·강사·등하원·경과·비고
+      if (this.showBranchCol) n++;
+      ['school','weekdays','mk','month','next'].forEach(k=>{ if (this.dashCols[k]) n++; });
+      return n;
+    },
     tempLeavesNow(){ return (this.dashData.temp_leaves||[]).filter(t=>!t.upcoming); },
     tempLeavesSoon(){ return (this.dashData.temp_leaves||[]).filter(t=>t.upcoming); },
     // 수업 시각 + 수업시간으로 끝나는 시각을 계산(HH:MM, 24시간제)
@@ -6655,7 +6737,7 @@ const app = createApp({
     // ── 오늘 운영 대시보드 ──
     async loadDashboard(){
       if (!this.dashDate) this.dashDate = this.todayStr;
-      try { this.dashData = await api('GET','/api/admin/academy/dashboard?date='+this.dashDate); }
+      try { this.dashData = await api('GET','/api/admin/academy/dashboard?date='+this.dashDate+'&late_min='+this.lateThreshold); }
       catch(e){ this.notify(e.message,false); }
       if (!this.attNoteTags.length){
         if (!(this.options.attendance_note||[]).length) await this.loadOptions();
@@ -6902,6 +6984,39 @@ const app = createApp({
     isAbsent(l){ return l.status==='ABSENT'; },
     isLeave(l){ return l.status==='LEAVE'; },
     isHoliday(l){ return l.status==='HOLIDAY'; },
+    // ── 오늘 운영 부가 열 ──
+    dashEx(l){ return ((this.dashData.student_extra||{})[l.student_id]) || {}; },
+    dashHasDay(l, wi){ const w = this.dashEx(l).weekdays; return !!(w && w[wi]); },
+    setDashCol(k, v){
+      this.dashCols[k] = !!v;
+      localStorage.setItem('portal_dash_cols', JSON.stringify(this.dashCols));
+    },
+    // 다음 수업 = 이번 주 남은 일정 + 다음 주. 첫 건만 칸에 쓰고 나머지는 호버로 본다.
+    dashNext(l){
+      const rows = this.dashEx(l).next || [];
+      if (!rows.length) return null;
+      const n = rows[0];
+      const label = n.date.slice(5)+'('+n.wd+') '+n.time;
+      if (n.status==='ABSENT') return { text:label+' 결석', cls:'text-rose-500 font-medium' };
+      if (n.status==='LEAVE') return { text:label+' 임시휴원', cls:'text-purple-500' };
+      if (n.status==='HOLIDAY') return { text:label+' 휴무', cls:'text-slate-400' };
+      return { text:label+(n.is_makeup ? ' 보강' : ''), cls:(n.is_makeup ? 'text-blue-600' : 'text-slate-600') };
+    },
+    showWdPop(l, wi, e){
+      const times = ((this.dashEx(l).weekdays||{})[wi]) || [];
+      this.wdPop = { show:true, name:l.student_name, wd:['월','화','수','목','금','토','일'][wi], times:[...times].sort(),
+                     x:Math.min(e.clientX+12, window.innerWidth-200), y:Math.min(e.clientY+12, window.innerHeight-100) };
+    },
+    hideWdPop(){ this.wdPop.show = false; },
+    showNextPop(l, e){
+      this.nextPop = { show:true, name:l.student_name, rows:(this.dashEx(l).next||[]),
+                       x:Math.min(e.clientX+12, window.innerWidth-260), y:Math.min(e.clientY+12, window.innerHeight-220) };
+    },
+    hideNextPop(){ this.nextPop.show = false; },
+    nextStatusLabel(n){
+      return n.status==='ABSENT' ? '결석' : (n.status==='LEAVE' ? '임시휴원'
+           : (n.status==='HOLIDAY' ? '휴무' : (n.is_makeup ? '보강' : '')));
+    },
     isEarlyLeavePending(l){ return !!(l && l.att && l.att.note_tag===EARLY_LEAVE_TAG); },
     calBadge(it){
       if (this.isLeave(it)) return { label:'임시휴원', style:{backgroundColor:'#f3e8ff',color:'#9333ea'} };
