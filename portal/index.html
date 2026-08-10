@@ -1048,8 +1048,8 @@
         <span class="text-amber-600">수업중 <b>{{ dashInClass }}</b>명</span>
       </div>
       <!-- 그날이 휴무일이면 맨 위에 사유를 띄운다 -->
-      <div v-if="(dashData.holidays||[]).length" class="bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 mb-3 text-sm">
-        🏖 <b class="text-slate-700">{{ dashData.holidays.join(' · ') }}</b> <span class="text-slate-500">— 학원 휴무일입니다. 이날 수업은 휴무로 처리되어 결석에 들어가지 않습니다.</span>
+      <div v-if="(dashData.holidays||[]).length" class="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mb-3 text-sm">
+        🏖 <b class="text-rose-600 text-base">{{ dashData.holidays.join(' · ') }}</b> <span class="text-rose-400">— 학원 휴무일입니다. 이날 수업은 휴무로 처리되어 결석에 들어가지 않습니다.</span>
       </div>
       <!-- 임시휴원 중인 학생 — 기간이 끝나면 자동 복귀라 놓치기 쉬워서 복귀일을 함께 표시 -->
       <div v-if="(dashData.temp_leaves||[]).length" class="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 mb-3 text-xs">
@@ -2266,8 +2266,14 @@
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowAbsent" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>결석</label>
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowLeave" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-purple-400 shrink-0"></span>임시휴원</label>
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowMakeup" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0"></span>보강</label>
-          <!-- 휴무일 수업은 평소엔 볼 일이 없어 기본으로 꺼둔다. 휴무일 표시 자체는 항상 나옴 -->
-          <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowHoliday" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0"></span>휴무일 수업</label>
+        </div>
+        <!-- 휴무일 수업은 성격이 달라(학원이 쉬는 날) 상태 줄과 분리해 아래에 따로 둔다.
+             기본은 꺼둠 — 휴무일 표시 자체는 체크와 무관하게 항상 나온다. -->
+        <div class="mb-2">
+          <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-sm text-rose-600">
+            <input type="checkbox" v-model="ttShowHoliday" class="w-3.5 h-3.5" />
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>[휴무일 수업 표시]
+          </label>
         </div>
 
         <!-- 주간(세로): 시간(20분)×요일 격자, 동시간 학생은 박스가 위아래로 쌓임 -->
@@ -2277,16 +2283,16 @@
               <tr>
                 <th class="w-14 border border-slate-100 bg-slate-50 py-1"></th>
                 <th v-for="(d,i) in ttWeekDates" :key="i" class="border border-slate-100 py-1 font-medium"
-                    :class="isTtHoliday(d.date) ? 'bg-slate-300 text-slate-600' : ('bg-slate-50 '+(d.isToday ? 'text-indigo-600' : 'text-slate-500'))">
+                    :class="isTtHoliday(d.date) ? 'bg-rose-100 text-rose-600 font-bold' : ('bg-slate-50 '+(d.isToday ? 'text-indigo-600' : 'text-slate-500'))">
                   {{ d.label }}
-                  <span v-if="isTtHoliday(d.date)" class="block text-[10px] font-normal truncate">🏖 {{ ttHolidays(d.date).join(' · ') }}</span>
+                  <span v-if="isTtHoliday(d.date)" class="block text-[10px] font-normal text-rose-500 truncate">🏖 {{ ttHolidays(d.date).join(' · ') }}</span>
                 </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="sl in ttWeekSlots" :key="sl.mins">
                 <td class="border border-slate-100 bg-slate-50 text-center text-[11px] align-top py-1" :class="sl.half ? 'text-slate-300' : 'text-slate-400'">{{ sl.label }}</td>
-                <td v-for="(d,i) in ttWeekDates" :key="i" :class="['border border-slate-100 align-top p-0.5 min-w-[110px]', isTtHoliday(d.date) ? 'bg-slate-200/50' : (d.isToday ? 'bg-indigo-50/30' : '')]">
+                <td v-for="(d,i) in ttWeekDates" :key="i" :class="['border border-slate-100 align-top p-0.5 min-w-[110px]', isTtHoliday(d.date) ? 'bg-rose-50/60' : (d.isToday ? 'bg-indigo-50/30' : '')]">
                   <div v-if="ttConnAt(d.date,sl.mins)" class="w-full" :class="ttConnBarCls(d.date,sl.mins)" style="height:6px"></div>
                   <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @click="openCalAtt(it, d.date)" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
                        :class="['px-1.5 py-1 leading-tight cursor-pointer', calItemCls(it), ttConnRole(it,d.date)==='first' ? 'rounded-t' : (ttConnRole(it,d.date)==='second' ? 'rounded-b mb-0.5' : 'rounded mb-0.5')]">
@@ -2317,10 +2323,10 @@
             <div class="flex items-stretch">
               <div class="w-14 shrink-0 sticky left-0 z-10 bg-slate-50 border-r border-b border-slate-100"></div>
               <div v-for="(d,i) in ttWeekDates" :key="'h'+i" class="shrink-0 text-center text-[11px] font-medium py-1 border-r border-b border-slate-100 last:border-r-0"
-                   :class="isTtHoliday(d.date) ? 'text-slate-600 bg-slate-300' : (d.isToday ? 'text-indigo-600 bg-indigo-100' : ('text-slate-500 '+wdBgClass(d.date)))"
+                   :class="isTtHoliday(d.date) ? 'text-rose-600 bg-rose-100 font-bold' : (d.isToday ? 'text-indigo-600 bg-indigo-100' : ('text-slate-500 '+wdBgClass(d.date)))"
                    :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px'}">
                 {{ d.label }}
-                <span v-if="isTtHoliday(d.date)" class="block text-[10px] font-normal truncate">🏖 {{ ttHolidays(d.date).join(' · ') }}</span>
+                <span v-if="isTtHoliday(d.date)" class="block text-[10px] text-rose-500 truncate">🏖 {{ ttHolidays(d.date).join(' · ') }}</span>
               </div>
             </div>
             <!-- 강사 2명 이상 선택 시: 요일 칸 안을 강사별 세로 칸으로 다시 나눠 이름 표시 -->
@@ -2339,7 +2345,7 @@
                 <div v-for="a in ttHzAxis()" :key="a.mins" @mouseenter="ttHoverMin=a.mins" @mouseleave="ttHoverMin=null"
                      class="absolute left-0 right-0 -translate-y-1/2 text-center text-[10px] cursor-default" :class="ttHoverMin===a.mins ? 'text-indigo-600 font-semibold' : 'text-slate-400'" :style="{top: ttHzTop(a.mins)+'px'}">{{ a.label }}</div>
               </div>
-              <div v-for="(d,i) in ttWeekDates" :key="i" class="relative shrink-0 border-r border-slate-100 last:border-r-0" :class="isTtHoliday(d.date) ? 'bg-slate-200/50' : (d.isToday ? 'bg-indigo-50/40' : wdBgClass(d.date))"
+              <div v-for="(d,i) in ttWeekDates" :key="i" class="relative shrink-0 border-r border-slate-100 last:border-r-0" :class="isTtHoliday(d.date) ? 'bg-rose-50/60' : (d.isToday ? 'bg-indigo-50/40' : wdBgClass(d.date))"
                    :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px', height: ttHzHeight()+'px'}">
                 <div v-for="a in ttHzAxis()" :key="'g'+a.mins" class="absolute left-0 right-0 border-t" :class="a.mins%60===0 ? 'border-slate-300' : 'border-slate-200'" :style="{top: ttHzTop(a.mins)+'px'}"></div>
                 <!-- 현재시각 라인(오늘 칸에 자동 표시) -->
@@ -2382,11 +2388,11 @@
         <div v-else class="grid grid-cols-7 gap-1 text-xs">
           <div v-for="w in ['월','화','수','목','금','토','일']" :key="w" class="text-center text-slate-400 font-medium py-1">{{ w }}</div>
           <div v-for="(c,i) in ttMonthCells" :key="i" class="border border-slate-100 rounded min-h-[80px] p-1"
-               :class="!c.date ? 'bg-slate-50/50' : (isTtHoliday(c.date) ? 'bg-slate-200/60' : (c.isToday ? 'bg-indigo-50/40' : ''))">
+               :class="!c.date ? 'bg-slate-50/50' : (isTtHoliday(c.date) ? 'bg-rose-50' : (c.isToday ? 'bg-indigo-50/40' : ''))">
             <template v-if="c.date">
               <div class="text-[11px] mb-0.5" :class="c.isToday ? 'text-indigo-600 font-bold' : 'text-slate-400'">{{ c.day }}</div>
               <!-- 휴무일은 수업 목록과 별개로 날짜 자체에 표시("왜 비었지?"가 안 생기게) -->
-              <div v-if="isTtHoliday(c.date)" class="mb-0.5 px-1 py-0.5 rounded bg-slate-600 text-white text-[10px] leading-tight truncate">🏖 {{ ttHolidays(c.date).join(' · ') }}</div>
+              <div v-if="isTtHoliday(c.date)" class="mb-0.5 px-1 py-0.5 rounded bg-rose-500 text-white text-[10px] leading-tight truncate">🏖 {{ ttHolidays(c.date).join(' · ') }}</div>
               <div v-for="(it,j) in (ttCalDays[c.date] ? ttCalDays[c.date].items : [])" :key="j" @click="openCalAtt(it, c.date)" @mouseenter="showCalPop(it,c.date,$event)" @mouseleave="hideCalPop"
                    :class="['mb-0.5 px-1 py-0.5 rounded truncate leading-tight cursor-pointer', calItemCls(it)]">
                 <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<template v-if="it.makeup"> ·보강{{ mkAbsenceRefSuffix(it) }}</template><span v-if="calBadge(it)" class="ml-0.5">·{{ calBadge(it).label }}</span><span v-if="it.att && it.att.in" class="ml-0.5 text-emerald-600">✓</span>
