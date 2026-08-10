@@ -2269,7 +2269,7 @@
         </div>
         <!-- 휴무일 수업은 성격이 달라(학원이 쉬는 날) 상태 줄과 분리해 아래에 따로 둔다.
              기본은 꺼둠 — 휴무일 표시 자체는 체크와 무관하게 항상 나온다. -->
-        <div class="mb-2">
+        <div v-if="ttHasHoliday" class="mb-2">
           <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-sm text-rose-600">
             <input type="checkbox" v-model="ttShowHoliday" class="w-3.5 h-3.5" />
             <span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>[휴무일 수업 표시]
@@ -5084,6 +5084,14 @@ const app = createApp({
     hrGridDays(){ const p=(this.hrAtt.people||[])[0]; return p ? p.days : []; },
     myAttDays(){ return (this.myAtt.days||[]).slice().reverse(); },
     hdCanPickBranch(){ return this.mkgBranchOptions().length > 1 || (this.me && this.me.user.admin_type==='Super Admin'); },
+    // 지금 화면에 보이는 날짜 중 휴무일이 있을 때만 [휴무일 수업 표시]를 내놓는다
+    // (휴무일이 없는 주·달에는 켤 것도 없어서 자리만 차지함)
+    ttHasHoliday(){
+      const h = this.ttCalHolidays || {};
+      if (!Object.keys(h).length) return false;
+      if (this.ttView === 'month') return this.ttMonthCells.some(c => c.date && h[c.date]);
+      return this.ttWeekDates.some(d => h[d.date]);
+    },
     dashTodayWd(){ const [y,m,dd]=(this.dashDate||this.todayStr).split('-').map(Number); return (new Date(y,m-1,dd).getDay()+6)%7; },
     dashColSpan(){
       let n = 7;                       // 시각·학생·과목·강사·등하원·경과·비고
