@@ -1266,12 +1266,13 @@
             <p class="text-xs text-slate-400">이 지점 출결 키오스크 링크로 접속을 시도한 기기(브라우저) 목록입니다. 승인된 기기에서만 실제로 학생 조회·등원/하원 체크가 가능합니다(링크 주소를 알아도 승인 전에는 사용 불가).</p>
             <div class="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 space-y-1.5">
               <div class="text-xs font-semibold text-indigo-700">키오스크 진입 번호 (6자리)</div>
-              <p class="text-[11px] text-slate-500">포털 첫 화면 <b>출결 키오스크</b>에서 이 번호를 누르면 지점이 자동 선택되고 기기 등록 신청으로 이어집니다. 태블릿을 초기화했을 때 링크 없이 바로 재설정할 수 있습니다.</p>
-              <div class="flex items-center gap-2 whitespace-nowrap">
-                <input :value="kioskDevicePin" @input="kioskDevicePin=$event.target.value.replace(/\D/g,'').slice(0,6)" inputmode="numeric" placeholder="480215" maxlength="6" class="input py-1 w-24 shrink-0 text-center font-mono tracking-widest" />
+              <!-- .input 이 w-full 이라 w-24 가 먹지 않아 칸이 늘어나고 버튼·설명이 상자 밖으로 밀렸음 -->
+              <div class="flex items-center gap-2">
+                <input :value="kioskDevicePin" @input="kioskDevicePin=$event.target.value.replace(/\D/g,'').slice(0,6)" inputmode="numeric" placeholder="480215" maxlength="6" style="width:7rem" class="input py-1 shrink-0 text-center font-mono tracking-widest text-base" />
                 <button @click="saveKioskPin" class="btn-primary text-xs px-3 shrink-0">저장</button>
-                <span class="text-[11px] text-slate-400 shrink-0">비우면 사용 중지</span>
+                <span class="text-[11px] text-slate-400">비우면 사용 중지</span>
               </div>
+              <p class="text-[11px] text-slate-500">포털 첫 화면 <b>출결 키오스크</b>에서 이 번호를 누르면 지점이 자동 선택되고 기기 등록 신청으로 이어집니다. 태블릿을 초기화했을 때 링크 없이 바로 재설정할 수 있습니다.</p>
             </div>
             <div>
               <div class="text-xs font-semibold text-slate-500 mb-1">승인 대기 <span v-if="kioskPendingDevices.length" class="text-amber-500">{{ kioskPendingDevices.length }}</span></div>
@@ -2265,6 +2266,8 @@
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowAbsent" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>결석</label>
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowLeave" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-purple-400 shrink-0"></span>임시휴원</label>
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowMakeup" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0"></span>보강</label>
+          <!-- 휴무일 수업은 평소엔 볼 일이 없어 기본으로 꺼둔다. 휴무일 표시 자체는 항상 나옴 -->
+          <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowHoliday" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0"></span>휴무일 수업</label>
         </div>
 
         <!-- 주간(세로): 시간(20분)×요일 격자, 동시간 학생은 박스가 위아래로 쌓임 -->
@@ -2273,13 +2276,17 @@
             <thead>
               <tr>
                 <th class="w-14 border border-slate-100 bg-slate-50 py-1"></th>
-                <th v-for="(d,i) in ttWeekDates" :key="i" class="border border-slate-100 bg-slate-50 py-1 font-medium" :class="d.isToday ? 'text-indigo-600' : 'text-slate-500'">{{ d.label }}</th>
+                <th v-for="(d,i) in ttWeekDates" :key="i" class="border border-slate-100 py-1 font-medium"
+                    :class="isTtHoliday(d.date) ? 'bg-slate-300 text-slate-600' : ('bg-slate-50 '+(d.isToday ? 'text-indigo-600' : 'text-slate-500'))">
+                  {{ d.label }}
+                  <span v-if="isTtHoliday(d.date)" class="block text-[10px] font-normal truncate">🏖 {{ ttHolidays(d.date).join(' · ') }}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="sl in ttWeekSlots" :key="sl.mins">
                 <td class="border border-slate-100 bg-slate-50 text-center text-[11px] align-top py-1" :class="sl.half ? 'text-slate-300' : 'text-slate-400'">{{ sl.label }}</td>
-                <td v-for="(d,i) in ttWeekDates" :key="i" :class="['border border-slate-100 align-top p-0.5 min-w-[110px]', d.isToday ? 'bg-indigo-50/30' : '']">
+                <td v-for="(d,i) in ttWeekDates" :key="i" :class="['border border-slate-100 align-top p-0.5 min-w-[110px]', isTtHoliday(d.date) ? 'bg-slate-200/50' : (d.isToday ? 'bg-indigo-50/30' : '')]">
                   <div v-if="ttConnAt(d.date,sl.mins)" class="w-full" :class="ttConnBarCls(d.date,sl.mins)" style="height:6px"></div>
                   <div v-for="(it,j) in ttSlotItems(d.date,sl.mins)" :key="j" @click="openCalAtt(it, d.date)" @mouseenter="showCalPop(it,d.date,$event)" @mouseleave="hideCalPop"
                        :class="['px-1.5 py-1 leading-tight cursor-pointer', calItemCls(it), ttConnRole(it,d.date)==='first' ? 'rounded-t' : (ttConnRole(it,d.date)==='second' ? 'rounded-b mb-0.5' : 'rounded mb-0.5')]">
@@ -2310,8 +2317,11 @@
             <div class="flex items-stretch">
               <div class="w-14 shrink-0 sticky left-0 z-10 bg-slate-50 border-r border-b border-slate-100"></div>
               <div v-for="(d,i) in ttWeekDates" :key="'h'+i" class="shrink-0 text-center text-[11px] font-medium py-1 border-r border-b border-slate-100 last:border-r-0"
-                   :class="d.isToday ? 'text-indigo-600 bg-indigo-100' : ('text-slate-500 '+wdBgClass(d.date))"
-                   :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px'}">{{ d.label }}</div>
+                   :class="isTtHoliday(d.date) ? 'text-slate-600 bg-slate-300' : (d.isToday ? 'text-indigo-600 bg-indigo-100' : ('text-slate-500 '+wdBgClass(d.date)))"
+                   :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px'}">
+                {{ d.label }}
+                <span v-if="isTtHoliday(d.date)" class="block text-[10px] font-normal truncate">🏖 {{ ttHolidays(d.date).join(' · ') }}</span>
+              </div>
             </div>
             <!-- 강사 2명 이상 선택 시: 요일 칸 안을 강사별 세로 칸으로 다시 나눠 이름 표시 -->
             <div v-if="(ttFilter.instructor_ids||[]).length>1" class="flex items-stretch">
@@ -2329,7 +2339,7 @@
                 <div v-for="a in ttHzAxis()" :key="a.mins" @mouseenter="ttHoverMin=a.mins" @mouseleave="ttHoverMin=null"
                      class="absolute left-0 right-0 -translate-y-1/2 text-center text-[10px] cursor-default" :class="ttHoverMin===a.mins ? 'text-indigo-600 font-semibold' : 'text-slate-400'" :style="{top: ttHzTop(a.mins)+'px'}">{{ a.label }}</div>
               </div>
-              <div v-for="(d,i) in ttWeekDates" :key="i" class="relative shrink-0 border-r border-slate-100 last:border-r-0" :class="d.isToday ? 'bg-indigo-50/40' : wdBgClass(d.date)"
+              <div v-for="(d,i) in ttWeekDates" :key="i" class="relative shrink-0 border-r border-slate-100 last:border-r-0" :class="isTtHoliday(d.date) ? 'bg-slate-200/50' : (d.isToday ? 'bg-indigo-50/40' : wdBgClass(d.date))"
                    :style="{width: (Math.max(ttHzDayLayout(d.date).lanes,1)*84)+'px', height: ttHzHeight()+'px'}">
                 <div v-for="a in ttHzAxis()" :key="'g'+a.mins" class="absolute left-0 right-0 border-t" :class="a.mins%60===0 ? 'border-slate-300' : 'border-slate-200'" :style="{top: ttHzTop(a.mins)+'px'}"></div>
                 <!-- 현재시각 라인(오늘 칸에 자동 표시) -->
@@ -2371,9 +2381,12 @@
         <!-- 월간: 날짜칸 카드 -->
         <div v-else class="grid grid-cols-7 gap-1 text-xs">
           <div v-for="w in ['월','화','수','목','금','토','일']" :key="w" class="text-center text-slate-400 font-medium py-1">{{ w }}</div>
-          <div v-for="(c,i) in ttMonthCells" :key="i" class="border border-slate-100 rounded min-h-[80px] p-1" :class="!c.date ? 'bg-slate-50/50' : (c.isToday ? 'bg-indigo-50/40' : '')">
+          <div v-for="(c,i) in ttMonthCells" :key="i" class="border border-slate-100 rounded min-h-[80px] p-1"
+               :class="!c.date ? 'bg-slate-50/50' : (isTtHoliday(c.date) ? 'bg-slate-200/60' : (c.isToday ? 'bg-indigo-50/40' : ''))">
             <template v-if="c.date">
               <div class="text-[11px] mb-0.5" :class="c.isToday ? 'text-indigo-600 font-bold' : 'text-slate-400'">{{ c.day }}</div>
+              <!-- 휴무일은 수업 목록과 별개로 날짜 자체에 표시("왜 비었지?"가 안 생기게) -->
+              <div v-if="isTtHoliday(c.date)" class="mb-0.5 px-1 py-0.5 rounded bg-slate-600 text-white text-[10px] leading-tight truncate">🏖 {{ ttHolidays(c.date).join(' · ') }}</div>
               <div v-for="(it,j) in (ttCalDays[c.date] ? ttCalDays[c.date].items : [])" :key="j" @click="openCalAtt(it, c.date)" @mouseenter="showCalPop(it,c.date,$event)" @mouseleave="hideCalPop"
                    :class="['mb-0.5 px-1 py-0.5 rounded truncate leading-tight cursor-pointer', calItemCls(it)]">
                 <span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<template v-if="it.makeup"> ·보강{{ mkAbsenceRefSuffix(it) }}</template><span v-if="calBadge(it)" class="ml-0.5">·{{ calBadge(it).label }}</span><span v-if="it.att && it.att.in" class="ml-0.5 text-emerald-600">✓</span>
@@ -4814,7 +4827,8 @@ const app = createApp({
       // date/from 을 팝업이 직접 들고 있어야 어느 날짜·어느 화면에서 열었든 올바르게 저장·갱신된다.
       attEditPop: { show:false, l:null, kind:'', cur:'', time:'', date:'', from:'dash', cancelMode:false, cancelReason:'' },
       ttView: 'day', ttCalDaysRaw: {}, ttCalResv: {}, ttCalAnchor: '', ttCalMonth: '',
-      ttShowAbsent: true, ttShowLeave: true, ttShowMakeup: true, ttHoverMin: null,
+      ttShowAbsent: true, ttShowLeave: true, ttShowMakeup: true, ttShowHoliday: false, ttHoverMin: null,
+      ttCalHolidays: {},
       ttShowPre: true, ttShowInProgress: true, ttShowDone: true,
       calPop: { show:false, x:0, y:0, date:'', it:{} },
       classes: [], sel: null, roster: [],
@@ -5622,8 +5636,9 @@ const app = createApp({
           });
         }
         this.ttCalDaysRaw=days; this.ttCalResv=(this.tab==='makeup') ? {} : (d.reservations||{});
+        this.ttCalHolidays = d.holidays || {};
       }
-      catch(e){ this.ttCalDaysRaw={}; this.ttCalResv={}; this.notify(e.message,false); }
+      catch(e){ this.ttCalDaysRaw={}; this.ttCalResv={}; this.ttCalHolidays={}; this.notify(e.message,false); }
     },
     ttCalShift(n){
       if (this.ttView==='month'){
@@ -5769,7 +5784,11 @@ const app = createApp({
       const t = this.ttInstructors.find(x=>String(x.user_id)===key);
       return t ? (t.real_name||t.staff_no) : key;
     },
+    // 그 날짜의 휴무일 이름들(없으면 빈 배열)
+    ttHolidays(ds){ return (this.ttCalHolidays||{})[ds] || []; },
+    isTtHoliday(ds){ return this.ttHolidays(ds).length > 0; },
     ttItemVisible(it){
+      if (it.status==='HOLIDAY') return this.ttShowHoliday;
       if (it.status==='ABSENT') return this.ttShowAbsent;
       if (it.status==='LEAVE') return this.ttShowLeave;
       if (it.makeup) return this.ttShowMakeup;

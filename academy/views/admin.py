@@ -4410,7 +4410,18 @@ class TimetableCalendarAPI(APIView):
                 resv.setdefault(ds, []).append({
                     "id": rv.id, "time": _hm_kst(rv.scheduled_at),
                     "student_name": rv.lead.student_name, "note": rv.note})
-        return self.success({"from": str(d0), "to": str(d1), "days": days, "reservations": resv})
+        # 휴무일 — 그날 수업 목록과 별개로 날짜 자체에 표시한다("왜 비었지?" 방지)
+        from ..models import Holiday
+        hq = Holiday.objects.filter(is_deleted=False, date__gte=d0, date__lte=d1)
+        if view is not None:
+            hq = hq.filter(Q(branch_id=None) | Q(branch_id__in=view))
+        if bid:
+            hq = hq.filter(Q(branch_id=None) | Q(branch_id=bid))
+        hol = {}
+        for h in hq:
+            hol.setdefault(str(h.date), []).append(h.name)
+        return self.success({"from": str(d0), "to": str(d1), "days": days,
+                             "reservations": resv, "holidays": hol})
 
 
 class EnsureOccurrenceAdminAPI(APIView):
