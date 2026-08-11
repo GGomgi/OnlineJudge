@@ -2006,6 +2006,7 @@ class StudentListAdminAPI(APIView):
                         "parent_name": (sp.parent_name if sp else ""),
                         "parent_phone": (sp.parent_phone if sp else ""),
                         "parent_relation": (sp.parent_relation if sp else ""),
+                        "student_phone": (sp.student_phone if sp else ""),
                         "enrollment_status": (sp.enrollment_status if sp else EnrollmentStatus.ENROLLED),
                         "weekly_sessions": (sp.weekly_sessions if sp else None),
                         "guardian_count": gcounts.get(u.id, 0),
