@@ -2218,7 +2218,11 @@ class BulkExportAPI(APIView):
 
         WD = _WD
         tt_map = {}
-        for s in StudentTimetable.objects.exclude(status="ENDED").values(
+        # 지금 적용중인 것만(시간표 변경·휴원으로 기간이 끝난 지난 행이 섞이면 안 됨)
+        _today_x = (now() + timedelta(hours=9)).date()
+        for s in StudentTimetable.objects.exclude(status="ENDED").filter(
+                Q(active_until__isnull=True) | Q(active_until__gte=_today_x)).filter(
+                Q(active_from__isnull=True) | Q(active_from__lte=_today_x)).values(
                 "student_id", "weekday", "start_time", "subject", "program"):
             token = _prog_token(s["program"], lang=s["subject"]) if s["program"] == "LANG" else (
                 _prog_token(s["program"]) or s["subject"] or "수업")
@@ -2325,13 +2329,21 @@ class StudentTimetableAdminAPI(APIView):
         if data.get("instructor_id"):
             instructor = User.objects.filter(id=data["instructor_id"]).first()
         prog = data.get("program", "") or ""
-        # 동일 학생·요일·시각·과정 중복 방지(과정이 다르면 같은 시간대 허용 — 격주 번갈아 수강 등)
-        if StudentTimetable.objects.filter(student=student, weekday=data["weekday"],
-                                           start_time=data["start_time"], program=prog
-                                           ).exclude(status="ENDED").exists():
+        # 동일 학생·요일·시각·과정 중복 방지(과정이 다르면 같은 시간대 허용 — 격주 번갈아 수강 등).
+        # 유효기간이 겹칠 때만 중복이다. 예전에 쓰다 끊긴 시간표까지 보면 '원래 시간으로
+        # 되돌리기'가 막힌다(바로 아래 _find_slot_conflict 는 이미 기간을 보고 있었음).
+        # 새로 추가하는 수업은 '오늘부터'로 본다. active_from 을 비워두면 과거 무한대가 되어
+        # 이미 끝난 지난 시간표와도 겹친다고 나온다.
+        af_new = _to_date(data["active_from"]) if data.get("active_from") else (now() + timedelta(hours=9)).date()
+        au_new = _to_date(data["active_until"]) if data.get("active_until") else None
+        dup = [x for x in StudentTimetable.objects.filter(
+                   student=student, weekday=data["weekday"],
+                   start_time=data["start_time"], program=prog).exclude(status="ENDED")
+               if _period_overlaps(af_new, au_new, x.active_from, x.active_until)]
+        if dup:
             return self.error("같은 요일·시각에 같은 과정 수업이 이미 있습니다.")
         dur_new = data.get("duration_minutes") or 60
-        conf = _find_slot_conflict(student.id, data["weekday"], data["start_time"], dur_new, None, None)
+        conf = _find_slot_conflict(student.id, data["weekday"], data["start_time"], dur_new, af_new, au_new)
         if conf:
             return self.error(_conflict_msg(_name_of(student), "%s요일" % _WD[conf.weekday],
                                             conf.start_time, conf.duration_minutes, "정규수업"))
@@ -2343,7 +2355,10 @@ class StudentTimetableAdminAPI(APIView):
             instructor=instructor, program=prog,
             subject=data.get("subject") or resolve_program_label(prog),
             frequency=data.get("frequency") or "WEEKLY",
-            room=data.get("room", "") or "")
+            room=data.get("room", "") or "",
+            # 적용 시작일을 남겨야 나중에 같은 요일·시각으로 되돌릴 때 지난 행과 구분된다
+            active_from=(_to_date(data["active_from"]) if data.get("active_from") else None),
+            active_until=(_to_date(data["active_until"]) if data.get("active_until") else None))
         slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=slot.pk)
         TimetableChange.objects.create(
             student=student, actor=request.user, action="CREATE",
