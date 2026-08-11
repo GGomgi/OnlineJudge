@@ -77,10 +77,15 @@ createApp({
       soundVol: parseInt(localStorage.getItem('kiosk_sound_vol') ?? '70'),
       soundMsg: null, _soundMsgTimer: null,
       voices: [], voiceListOpen: false,
+      // 한국어 전용 음성은 3개뿐(선히·인준·현수)이라, 한국어도 읽는 다국어 음성을 더해
+      // 여성 3 · 남성 3으로 맞췄다. 다국어 음성은 억양이 조금 다를 수 있어 들어보고 고른다.
       voicePacks: [
-        { k:'sunhi',  l:'여성 (선히)', d:'차분함' },
-        { k:'injoon', l:'남성 (인준)', d:'또렷함' },
-        { k:'hyunsu', l:'남성 (현수)', d:'부드러움' },
+        { k:'sunhi',  g:'여성', l:'선히',     d:'한국어 전용 · 차분함' },
+        { k:'ava',    g:'여성', l:'아바',     d:'다국어 · 밝음' },
+        { k:'emma',   g:'여성', l:'엠마',     d:'다국어 · 또렷함' },
+        { k:'injoon', g:'남성', l:'인준',     d:'한국어 전용 · 또렷함' },
+        { k:'hyunsu', g:'남성', l:'현수',     d:'한국어 전용 · 부드러움' },
+        { k:'brian',  g:'남성', l:'브라이언', d:'다국어 · 차분함' },
       ],
       voicePack: localStorage.getItem('kiosk_voice_pack') || 'sunhi',
       voiceSampleMsg: '', _voiceAudio: null, _voiceMsgTimer: null,
@@ -543,13 +548,16 @@ createApp({
           <!-- 안내 음성 고르기 — 태블릿 TTS에 한국어가 없어도 되도록 미리 만들어 둔 파일을 쓴다 -->
           <div class="border-t border-slate-600 pt-2">
             <div class="font-semibold text-slate-200 mb-1">🗣 안내 음성</div>
-            <div v-for="v in voicePacks" :key="v.k" class="flex items-center gap-1.5 py-0.5">
-              <label class="flex items-center gap-1.5 cursor-pointer select-none flex-1">
-                <input type="radio" name="voicepack" :value="v.k" :checked="voicePack===v.k" @change="setVoicePack(v.k)" class="shrink-0" />
-                <span>{{ v.l }}<span class="text-[10px] text-slate-500 ml-1">{{ v.d }}</span></span>
-              </label>
-              <button @click="playVoiceSample(v.k)" class="px-2 py-0.5 rounded border border-slate-600 hover:bg-slate-700 shrink-0">▶ 듣기</button>
-            </div>
+            <template v-for="g in ['여성','남성']" :key="g">
+              <div class="text-[10px] text-slate-500 mt-1">{{ g }}</div>
+              <div v-for="v in voicePacks.filter(x=>x.g===g)" :key="v.k" class="flex items-center gap-1.5 py-0.5">
+                <label class="flex items-center gap-1.5 cursor-pointer select-none flex-1 min-w-0">
+                  <input type="radio" name="voicepack" :value="v.k" :checked="voicePack===v.k" @change="setVoicePack(v.k)" class="shrink-0" />
+                  <span class="truncate">{{ v.l }}<span class="text-[10px] text-slate-500 ml-1">{{ v.d }}</span></span>
+                </label>
+                <button @click="playVoiceSample(v.k)" class="px-2 py-0.5 rounded border border-slate-600 hover:bg-slate-700 shrink-0">▶ 듣기</button>
+              </div>
+            </template>
             <div class="text-[10px] text-slate-500 mt-1">"홍길동님 등원하였습니다"로 들려줍니다. 고른 음성으로 학생 이름을 만듭니다.</div>
             <div v-if="voiceSampleMsg" class="mt-1 text-[10px] text-amber-300">{{ voiceSampleMsg }}</div>
           </div>
