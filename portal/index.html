@@ -903,7 +903,6 @@
             <span>보강 <b class="text-blue-600">{{ stuAttOverall.makeupTotal }}</b><span class="text-slate-400 text-xs"> (날짜미정 {{ stuAttOverall.makeupPending }})</span></span>
             <button @click="toggleStuAttBulkMode" class="ml-auto btn-secondary text-sm">{{ stuAttBulkMode ? '선택일괄수정 닫기' : '+ 선택일괄수정' }}</button>
             <button @click="openMakeupForThisStudent" class="btn-secondary text-sm">+ 보강 추가</button>
-            <button @click="openTempLeave" class="btn-secondary text-sm">+ 임시휴원 등록</button>
           </div>
           <div class="bg-slate-50 rounded-lg px-3 py-2 text-xs flex items-center gap-4 flex-wrap">
             <span>이번달 <b class="text-rose-500">결석 {{ stuAttSummary.mAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.mLate }}</b> <span class="text-slate-400">({{ stuAttSummary.mTotal }}회 중 {{ stuAttSummary.mRate }}%)</span></span>
@@ -4800,7 +4799,6 @@ const app = createApp({
       mkSearch: { query:'', queryRaw:'', student:null, candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' },
       earlyLeavePrompt: null,
       bulkAbsentPrompt: null, bulkMakeupOpen: false, bulkMakeupItems: [],
-      tempLeaveOpen: false, tempLeaveForm: { from:'', to:'', note:'' },
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadStatusSel: [], leadSearch: '', leadSearch2: '', leadSearchRaw: '', leadSearch2Raw: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
@@ -7053,21 +7051,6 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     earlyLeaveSchedule(){ const p=this.earlyLeavePrompt; this.earlyLeavePrompt=null; this.openMakeupFor(p); },
-    openTempLeave(){
-      if (!this.stuDetail) return;
-      this.tempLeaveForm = { from:'', to:'', note:'' };
-      this.tempLeaveOpen = true;
-    },
-    async saveTempLeave(){
-      const f = this.tempLeaveForm;
-      if (!f.from || !f.to) return this.notify('기간을 입력하세요.', false);
-      try {
-        const d = await api('POST','/api/admin/academy/student_temp_leave', { student_id:this.stuDetail.id, from:f.from, to:f.to, note:f.note });
-        this.notify('임시휴원 '+d.count+'건 처리되었습니다.');
-        this.tempLeaveOpen = false;
-        if (this.stuTab==='attend'){ this.loadStuAttHist(this.stuAttHist.fwdDays); this.loadStuMakeups(); }
-      } catch(e){ this.notify(e.message,false); }
-    },
     dashToday(){ this.dashDate = this.todayStr; this.loadDashboard(); },
     dashShift(n){
       const d = new Date((this.dashDate||this.todayStr)+'T00:00:00'); d.setDate(d.getDate()+n);
