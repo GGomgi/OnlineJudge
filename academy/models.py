@@ -1113,3 +1113,134 @@ class ProfileVerification(models.Model):
     class Meta:
         db_table = "academy_profile_verification"
         ordering = ["-create_time", "-id"]
+
+
+# ── 자격증 · 대회 ──
+
+class ExamKind(object):
+    CERT = "CERT"        # 자격증
+    CONTEST = "CONTEST"  # 대회
+
+
+EXAM_KIND_CHOICES = [(ExamKind.CERT, "자격증"), (ExamKind.CONTEST, "대회")]
+
+
+class EntryMode(object):
+    INDIVIDUAL = "INDIVIDUAL"
+    GROUP = "GROUP"
+    BOTH = "BOTH"
+
+
+ENTRY_MODE_CHOICES = [
+    (EntryMode.INDIVIDUAL, "개인 접수"),
+    (EntryMode.GROUP, "단체 접수"),
+    (EntryMode.BOTH, "개인 + 단체"),
+]
+
+
+class ExamCatalog(models.Model):
+    """자격증·대회 '종류'. 한 번 등록해 두고 계속 쓴다(COS Pro, 정보올림피아드 …).
+
+    자격증은 급수·언어 조합이 수십 가지라 조합을 미리 만들지 않는다. 여기엔 고를 수 있는
+    급수·언어 목록만 두고, 실제로 무엇을 보는지는 학생별 참가 기록에서 정한다
+    (같은 시험일에 학생마다 다른 급수·언어를 보기 때문)."""
+    kind = models.CharField(max_length=16, default=ExamKind.CERT)
+    name = models.CharField(max_length=64)                      # COS Pro / 정보올림피아드
+    organizer = models.CharField(max_length=64, blank=True, default="")   # YBM
+    homepage = models.CharField(max_length=255, blank=True, default="")   # 일정 확인하러 갈 곳
+    entry_mode = models.CharField(max_length=16, default=EntryMode.INDIVIDUAL)
+    fee = models.PositiveIntegerField(null=True, blank=True)     # 기본 응시료(안내용)
+    levels = models.TextField(blank=True, default="")            # JSON ["1급","2급","3급"]
+    tracks = models.TextField(blank=True, default="")            # JSON ["Python","C++",...]
+    annual = models.BooleanField(default=False)                  # 해마다 열리는가(대회)
+    # 작년 기록이 없을 때 쓸 '확인 시작 시기'(MM-DD). 이 무렵이면 올해 일정을 확인하라고 알린다.
+    check_from = models.CharField(max_length=8, blank=True, default="")
+    note = models.CharField(max_length=255, blank=True, default="")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="exam_catalogs")     # 비우면 전 지점
+    is_active = models.BooleanField(default=True)
+    order = models.PositiveSmallIntegerField(default=0)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_exam_catalog"
+        ordering = ["kind", "order", "name"]
+
+
+class ExamSession(models.Model):
+    """회차(실제 일정).
+
+    자격증은 우리가 날짜를 정하는 특별시험이라 '날짜'가 곧 회차이고, 무엇을 보는지는
+    학생마다 다르므로 catalog 를 비워 둔다. 대회는 회차 자체가 그 대회라 catalog 를 채운다.
+    대회는 주최측이 일정을 늦게 잡는 일이 많아 confirmed=False 로 먼저 만들어 둘 수 있다."""
+    kind = models.CharField(max_length=16, default=ExamKind.CERT)
+    catalog = models.ForeignKey(ExamCatalog, null=True, blank=True, on_delete=models.SET_NULL,
+                                related_name="sessions")
+    title = models.CharField(max_length=128, blank=True, default="")
+    exam_date = models.DateField(null=True, blank=True)          # 미확정이면 비움
+    apply_from = models.DateField(null=True, blank=True)
+    apply_until = models.DateField(null=True, blank=True)        # 자격증은 시험일-2일 기본
+    result_date = models.DateField(null=True, blank=True)
+    entry_mode = models.CharField(max_length=16, blank=True, default="")  # 종류가 '개인+단체'일 때 회차에서 결정
+    place = models.CharField(max_length=128, blank=True, default="")
+    fee = models.PositiveIntegerField(null=True, blank=True)
+    note = models.CharField(max_length=255, blank=True, default="")
+    confirmed = models.BooleanField(default=True)                # 대회 일정 미확정 표시
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="exam_sessions")
+    is_deleted = models.BooleanField(default=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_exam_session"
+        ordering = ["-exam_date", "-id"]
+
+
+class ExamTeam(models.Model):
+    """대회 팀. 한 대회 안에 개인전·팀전이 섞이므로 팀은 회차에 딸린다."""
+    session = models.ForeignKey(ExamSession, on_delete=models.CASCADE, related_name="teams")
+    name = models.CharField(max_length=64)
+    note = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_exam_team"
+        ordering = ["name"]
+
+
+class ExamEntry(models.Model):
+    """참가 — 목록 화면의 한 줄. '누구 / 무엇 / 언제 / 접수했나'."""
+    session = models.ForeignKey(ExamSession, on_delete=models.CASCADE, related_name="entries")
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="exam_entries")
+    # 자격증은 학생마다 무엇을 보는지 다르다(브랜드·급수·언어). 대회는 회차의 catalog 를 따른다.
+    catalog = models.ForeignKey(ExamCatalog, null=True, blank=True, on_delete=models.SET_NULL,
+                                related_name="entries")
+    level = models.CharField(max_length=16, blank=True, default="")   # 2급
+    track = models.CharField(max_length=32, blank=True, default="")   # Python
+    team = models.ForeignKey(ExamTeam, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name="members")
+    applied = models.BooleanField(default=False)
+    applied_at = models.DateField(null=True, blank=True)
+    # 접수에 쓴 계정(학생 상세의 아이디 관리와 연결) — 부모가 아이디를 잊는 일이 잦다
+    credential = models.ForeignKey(StudentCredential, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    fee_paid = models.BooleanField(default=False)     # 단체 접수일 때만 쓴다
+    result = models.CharField(max_length=32, blank=True, default="")   # 합격/불합격/수상
+    score = models.CharField(max_length=32, blank=True, default="")
+    note = models.CharField(max_length=255, blank=True, default="")
+    instructor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    is_deleted = models.BooleanField(default=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_exam_entry"
+        ordering = ["-id"]

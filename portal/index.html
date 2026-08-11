@@ -4092,6 +4092,83 @@
         </div>
       </div>
 
+      <!-- ===== 자격증·대회 종류 ===== -->
+      <div v-if="acadTab==='exam'">
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <h2 class="text-lg font-bold mb-1">자격증 · 대회 종류</h2>
+          <p class="text-xs text-slate-400 mb-3">한 번 등록해 두고 계속 씁니다. 급수·언어는 여기에 <b>고를 수 있는 목록</b>만 두고, 실제로 무엇을 보는지는 <b>학생마다</b> 정합니다(같은 시험일에 학생마다 다른 급수·언어를 보기 때문).</p>
+          <div class="flex flex-wrap items-end gap-2">
+            <div><label class="lbl">구분</label>
+              <select v-model="examForm.kind" class="input py-1 w-24">
+                <option v-for="k in examKinds" :key="k.value" :value="k.value">{{ k.label }}</option>
+              </select>
+            </div>
+            <div><label class="lbl">이름 <span class="text-rose-500">*</span></label><input v-model="examForm.name" placeholder="예: COS Pro" class="input py-1 w-36" /></div>
+            <div><label class="lbl">주관</label><input v-model="examForm.organizer" placeholder="예: YBM" class="input py-1 w-28" /></div>
+            <div><label class="lbl">접수 방식</label>
+              <select v-model="examForm.entry_mode" class="input py-1 w-32">
+                <option v-for="m in examModes" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
+            </div>
+            <div><label class="lbl">응시료 <span class="text-slate-400">(안내용)</span></label><input v-model="examForm.fee" inputmode="numeric" placeholder="35000" class="input py-1 w-24" /></div>
+          </div>
+          <div class="flex flex-wrap items-end gap-2 mt-2">
+            <div class="flex-1 min-w-[12rem]"><label class="lbl">급수 <span class="text-slate-400">(쉼표로 구분)</span></label><input v-model="examForm.levelsRaw" placeholder="1급, 2급, 3급" class="input py-1" /></div>
+            <div class="flex-1 min-w-[14rem]"><label class="lbl">언어·부문 <span class="text-slate-400">(쉼표로 구분)</span></label><input v-model="examForm.tracksRaw" placeholder="스크래치, 엔트리, C, C++, Java, Python" class="input py-1" /></div>
+          </div>
+          <div class="flex flex-wrap items-end gap-2 mt-2">
+            <div class="flex-1 min-w-[14rem]"><label class="lbl">홈페이지 <span class="text-slate-400">(일정 확인하러 갈 곳)</span></label><input v-model="examForm.homepage" placeholder="https://" class="input py-1" /></div>
+            <label class="flex items-center gap-1.5 text-sm pb-2 whitespace-nowrap cursor-pointer select-none">
+              <input type="checkbox" v-model="examForm.annual" class="w-3.5 h-3.5" />해마다 열림
+            </label>
+            <div v-if="examForm.annual"><label class="lbl">확인 시작 <span class="text-slate-400">(MM-DD)</span></label><input v-model="examForm.check_from" placeholder="03-01" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
+            <button @click="saveExamCatalog" class="btn-primary text-sm">{{ examForm.id ? '수정 저장' : '+ 종류 등록' }}</button>
+            <button v-if="examForm.id" @click="resetExamForm" class="btn-secondary text-sm">취소</button>
+          </div>
+          <p v-if="examForm.annual" class="text-[11px] text-slate-400 mt-1">해마다 열리는 대회는 작년 회차를 근거로 그 시기에 “올해 일정 확인 필요”를 알려줍니다. 작년 기록이 없을 때는 위 <b>확인 시작</b> 날짜를 씁니다.</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-3 overflow-x-auto">
+          <table class="w-full min-w-max text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs">
+              <tr>
+                <th class="px-3 py-2 text-left">구분</th>
+                <th class="px-3 py-2 text-left">이름</th>
+                <th class="px-3 py-2 text-left">주관</th>
+                <th class="px-3 py-2 text-left">접수</th>
+                <th class="px-3 py-2 text-left">응시료</th>
+                <th class="px-3 py-2 text-left">급수</th>
+                <th class="px-3 py-2 text-left">언어·부문</th>
+                <th class="px-3 py-2 text-left">해마다</th>
+                <th class="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in examCatalogs" :key="c.id" class="border-t align-middle">
+                <td class="px-3 py-2 whitespace-nowrap"><span :class="['px-1.5 py-0.5 rounded text-[11px]', c.kind==='CERT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700']">{{ c.kind_label }}</span></td>
+                <td class="px-3 py-2 font-medium whitespace-nowrap">{{ c.name }}
+                  <a v-if="c.homepage" :href="c.homepage" target="_blank" class="ml-1 text-xs text-indigo-500 hover:underline">사이트</a>
+                </td>
+                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ c.organizer || '-' }}</td>
+                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ c.entry_mode_label }}</td>
+                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ c.fee ? c.fee.toLocaleString()+'원' : '-' }}</td>
+                <td class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{{ (c.levels||[]).join(' · ') || '-' }}</td>
+                <td class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{{ (c.tracks||[]).join(' · ') || '-' }}</td>
+                <td class="px-3 py-2 text-xs whitespace-nowrap">
+                  <span v-if="c.annual" class="text-emerald-600">해마다{{ c.check_from ? ' · '+c.check_from+'부터 확인' : '' }}</span>
+                  <span v-else class="text-slate-300">-</span>
+                </td>
+                <td class="px-3 py-2 text-right whitespace-nowrap">
+                  <button @click="editExamCatalog(c)" class="text-xs text-indigo-600 hover:underline">수정</button>
+                  <button @click="deleteExamCatalog(c)" class="ml-2 text-xs text-rose-500 hover:underline">숨김</button>
+                </td>
+              </tr>
+              <tr v-if="!examCatalogs.length"><td colspan="9" class="px-3 py-6 text-center text-xs text-slate-400">등록된 종류가 없습니다. 위에서 추가하세요.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div v-if="acadTab==='notice'" class="bg-white rounded-xl shadow-sm p-10 text-center text-sm text-slate-400">
         준비 중인 기능입니다.<br><span class="text-xs">로그인 첫 화면에 뜨는 한 줄 공지를 등록하는 곳입니다.</span>
       </div>
@@ -4970,6 +5047,9 @@ const app = createApp({
       // 오늘 운영 표시 항목(기기별 저장). 기본은 지금까지 보이던 열만 — 처음부터 다
       // 켜져 있으면 복잡해 보이고 대부분 다시 끄게 된다.
       COLDEFS: COLDEFS,
+      examCatalogs: [], examKinds: [], examModes: [],
+      examForm: { id:null, kind:'CERT', name:'', organizer:'', entry_mode:'INDIVIDUAL', fee:'',
+                  levelsRaw:'', tracksRaw:'', homepage:'', annual:false, check_from:'' },
       colCfg: null, colDragIdx: null, colDragOver: null,
       // 그리는 도중에 만들면 갱신이 계속 돌아 화면이 멈춘다. 시작할 때 미리 만들어 둔다.
       colState: buildAllColState(),
@@ -5367,7 +5447,8 @@ const app = createApp({
     acadTabs(){
       const t = [];
       if (this.canManageOptions) t.push({k:'options',l:'선택 목록'}, {k:'branch',l:'지점'});
-      if (this.isDirectorUp) t.push({k:'holiday',l:'휴무일'}, {k:'work',l:'근무 기준'}, {k:'notice',l:'공지'});
+      if (this.isDirectorUp) t.push({k:'holiday',l:'휴무일'}, {k:'work',l:'근무 기준'},
+                                    {k:'exam',l:'자격증·대회 종류'}, {k:'notice',l:'공지'});
       return t;
     },
     hrGridDays(){ const p=(this.hrAtt.people||[])[0]; return p ? p.days : []; },
@@ -6193,6 +6274,7 @@ const app = createApp({
           this.hdForm.branch_id = (this.myProfile && this.myProfile.branch && this.myProfile.branch.id) || '';
         this.loadHolidays();
       }
+      if (k==='exam') this.loadExamCatalogs();
       if (k==='work'){
         if (!this.wsForm.branch_id) this.wsForm.branch_id = (this.myProfile && this.myProfile.branch_id) || '';
         if (!this.ttInstructors.length) this.loadTtInstructors();
@@ -7330,6 +7412,43 @@ const app = createApp({
     isAbsent(l){ return l.status==='ABSENT'; },
     isLeave(l){ return l.status==='LEAVE'; },
     isHoliday(l){ return l.status==='HOLIDAY'; },
+    // ── 자격증·대회 종류 ──
+    async loadExamCatalogs(){
+      try {
+        const d = await api('GET','/api/admin/academy/exam_catalog?all=1');
+        this.examCatalogs = d.rows || []; this.examKinds = d.kinds || []; this.examModes = d.modes || [];
+      } catch(e){ this.examCatalogs = []; this.notify(e.message,false); }
+    },
+    resetExamForm(){
+      this.examForm = { id:null, kind:'CERT', name:'', organizer:'', entry_mode:'INDIVIDUAL', fee:'',
+                        levelsRaw:'', tracksRaw:'', homepage:'', annual:false, check_from:'' };
+    },
+    editExamCatalog(c){
+      this.examForm = { id:c.id, kind:c.kind, name:c.name, organizer:c.organizer,
+                        entry_mode:c.entry_mode, fee:(c.fee||''),
+                        levelsRaw:(c.levels||[]).join(', '), tracksRaw:(c.tracks||[]).join(', '),
+                        homepage:c.homepage, annual:!!c.annual, check_from:c.check_from||'' };
+    },
+    async saveExamCatalog(){
+      const f = this.examForm;
+      if (!(f.name||'').trim()) return this.notify('이름을 입력하세요.', false);
+      const split = v => (v||'').split(',').map(x=>x.trim()).filter(Boolean);
+      try {
+        await api('POST','/api/admin/academy/exam_catalog', {
+          id:f.id, kind:f.kind, name:f.name, organizer:f.organizer, entry_mode:f.entry_mode,
+          fee:f.fee, levels:split(f.levelsRaw), tracks:split(f.tracksRaw),
+          homepage:f.homepage, annual:f.annual, check_from:f.check_from });
+        this.notify(f.id ? '수정되었습니다.' : '등록되었습니다.');
+        this.resetExamForm(); this.loadExamCatalogs();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async deleteExamCatalog(c){
+      try {
+        await api('DELETE','/api/admin/academy/exam_catalog?id='+c.id);
+        this.notify('숨겼습니다. 이미 등록된 참가 기록은 그대로 남습니다.');
+        this.loadExamCatalogs();
+      } catch(e){ this.notify(e.message,false); }
+    },
     // ── 열 설정(오늘 운영·학생 관리 공용) ──
     // 저장 형태: { order:[키...], off:[숨긴 키...] }. 기기별로 남긴다.
     colKey(page){ return 'portal_cols_' + page; },
