@@ -1,6 +1,6 @@
 from django.conf.urls import url
 
-from ..views.verify import ProfileVerifyAdminAPI, ProfileVerifyResolveAPI
+from ..views.verify import ProfileVerifyAdminAPI, ProfileVerifyResolveAPI, StudentVoiceAdminAPI
 from ..views.hr import (HolidayAdminAPI, WorkScheduleAdminAPI, StaffAttendanceAPI,
                         StaffAttendanceCheckAPI, StaffAttendanceEditAPI,
                         StaffAttendanceApproveAPI, StaffAttendanceHistoryAPI,
@@ -117,4 +117,5 @@ urlpatterns = [
     # 학부모 확인(정보 대조)
     url(r"^academy/profile_verify/?$", ProfileVerifyAdminAPI.as_view(), name="academy_profile_verify"),
     url(r"^academy/profile_verify/resolve/?$", ProfileVerifyResolveAPI.as_view(), name="academy_profile_verify_resolve"),
+    url(r"^academy/student_voice/?$", StudentVoiceAdminAPI.as_view(), name="academy_student_voice"),
 ]

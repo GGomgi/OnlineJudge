@@ -369,3 +369,78 @@ class ProfileVerifyPublicAPI(APIView):
         v.submitted_at = now()
         v.save(update_fields=["parent_data", "status", "submitted_at"])
         return self.success({"ok": True, "student_name": name_of(v.student)})
+
+
+# ─────────────────────── 등하원 안내 음성 ───────────────────────
+
+class StudentVoiceAdminAPI(APIView):
+    """학생 이름 안내 음성 관리. GET 현황 / POST 생성(개별·일괄) / DELETE 삭제."""
+
+    @admin_role_required
+    def get(self, request):
+        from ..services_voice import voice_status, voice_for, voice_url
+        from ..models import StudentProfile, EnrollmentStatus
+        view = viewable_branch_ids(request.user)
+        qs = StudentProfile.objects.select_related("user", "user__userprofile").exclude(
+            enrollment_status=EnrollmentStatus.WITHDRAWN)
+        rows, missing = [], 0
+        for sp in qs:
+            ap = getattr(sp.user, "academy_profile", None)
+            if view is not None and ap and ap.branch_id not in view:
+                continue
+            st = voice_status(sp.user_id)
+            ok = all(st.values())
+            if not ok:
+                missing += 1
+            rows.append({"student_id": sp.user_id, "name": name_of(sp.user),
+                         "gender": sp.gender or "", "voice": voice_for(sp.gender),
+                         "ready": ok, "detail": st,
+                         "url_in": voice_url(sp.user_id, "in"),
+                         "url_out": voice_url(sp.user_id, "out")})
+        rows.sort(key=lambda r: (r["ready"], r["name"]))
+        return self.success({"rows": rows, "total": len(rows), "missing": missing})
+
+    @admin_role_required
+    def post(self, request):
+        from ..services_voice import build_student_voice, has_voice
+        from ..models import StudentProfile, EnrollmentStatus
+        sid = request.data.get("student_id")
+        if sid:
+            u = User.objects.filter(id=sid).first()
+            if not u:
+                return self.error("학생이 없습니다.")
+            ap = getattr(u, "academy_profile", None)
+            if ap and not can_manage_branch(request.user, ap.branch_id):
+                return self.error("권한이 없습니다.")
+            ok, err = build_student_voice(u)
+            return self.success({"made": 1 if ok else 0, "failed": ([name_of(u)] if not ok else []),
+                                 "error": err})
+        # 일괄 — 이미 있는 학생은 건너뛴다(only_missing=0 이면 전부 다시 만든다)
+        only_missing = str(request.data.get("only_missing", "1")) not in ("0", "false", "False")
+        view = viewable_branch_ids(request.user)
+        made, failed = 0, []
+        for sp in StudentProfile.objects.select_related("user", "user__userprofile").exclude(
+                enrollment_status=EnrollmentStatus.WITHDRAWN):
+            ap = getattr(sp.user, "academy_profile", None)
+            if view is not None and ap and ap.branch_id not in view:
+                continue
+            if only_missing and has_voice(sp.user_id):
+                continue
+            ok, err = build_student_voice(sp.user)
+            if ok:
+                made += 1
+            else:
+                failed.append(name_of(sp.user))
+        return self.success({"made": made, "failed": failed})
+
+    @admin_role_required
+    def delete(self, request):
+        from ..services_voice import delete_student_voice
+        u = User.objects.filter(id=request.GET.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        ap = getattr(u, "academy_profile", None)
+        if ap and not can_manage_branch(request.user, ap.branch_id):
+            return self.error("권한이 없습니다.")
+        delete_student_voice(u.id)
+        return self.success("ok")

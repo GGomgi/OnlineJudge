@@ -75,8 +75,7 @@ createApp({
       soundStu: localStorage.getItem('kiosk_sound_stu') || 'off',
       soundStaff: localStorage.getItem('kiosk_sound_staff') || 'off',
       soundVol: parseInt(localStorage.getItem('kiosk_sound_vol') ?? '70'),
-      soundMsg: null, _soundMsgTimer: null,
-      voices: [], voiceListOpen: false,
+      voices: [],
       // 한국어 전용 음성은 3개뿐(선히·인준·현수)이라, 한국어도 읽는 다국어 음성을 더해
       // 여성 3 · 남성 3으로 맞췄다. 다국어 음성은 억양이 조금 다를 수 있어 들어보고 고른다.
       voicePacks: [
@@ -277,8 +276,8 @@ createApp({
       this.busy = true;
       try {
         const d = await kioskApi('POST', '/api/academy/kiosk_check', { b:this.b, t:this.t, device_id:this.deviceId, student_id:m.student_id });
-        if (d.action === 'in'){ this.resultMsg = d.name+'님 등원 완료'; this.resultSub = d.time; this.notifySound('stu', d.name, '등원'); }
-        else if (d.action === 'out'){ this.resultMsg = d.name+'님 하원 완료'; this.resultSub = d.time; this.notifySound('stu', d.name, '하원'); }
+        if (d.action === 'in'){ this.resultMsg = d.name+'님 등원 완료'; this.resultSub = d.time; this.notifySound('stu', d.name, '등원', m.student_id); }
+        else if (d.action === 'out'){ this.resultMsg = d.name+'님 하원 완료'; this.resultSub = d.time; this.notifySound('stu', d.name, '하원', m.student_id); }
         else { this.resultMsg = d.name+'님은 오늘 등원·하원이 모두 처리되었습니다.'; this.resultSub = '등원 '+(d.in||'-')+' · 하원 '+(d.out||'-'); this.failSound('stu'); }
         this.stage = 'result';
         this.loadBoard();
@@ -345,13 +344,28 @@ createApp({
         window.speechSynthesis.speak(u);
       } catch(e){ /* 음성이 없는 기기면 알림음만 나고 조용히 넘어간다 */ }
     },
-    // who: 'stu'|'staff', name: 이름, what: '등원'|'하원'|'출근'|'퇴근'
-    notifySound(who, name, what){
+    // 미리 만들어 둔 mp3 를 재생한다. 태블릿에 한국어 음성이 없어도 똑같이 들린다.
+    playFile(url){
+      try {
+        if (this._voiceAudio) this._voiceAudio.pause();
+        const a = new Audio(url);
+        a.volume = Math.max(0, Math.min(1, this.soundVol/100));
+        this._voiceAudio = a;
+        a.play().catch(()=>{});
+        return true;
+      } catch(e){ return false; }
+    },
+    // who: 'stu'|'staff', name: 이름, what: '등원'|'하원'|'출근'|'퇴근', id: 학생 id
+    notifySound(who, name, what, id){
       const mode = who==='stu' ? this.soundStu : this.soundStaff;
       if (mode === 'off') return;
       this.beepOk();
-      if (mode === 'name') this.speak(name + '님 ' + what + '하였습니다');
-      else if (mode === 'voice') this.speak(what + ' 완료되었습니다');
+      if (mode === 'name' && who === 'stu' && id){
+        // 이름 음성은 학생만 있다. 파일이 없으면(새 학생 등) 알림음만 나고 넘어간다.
+        setTimeout(()=> this.playFile('/public/voice/' + id + '_' + (what==='등원' ? 'in' : 'out') + '.mp3'), 380);
+      } else if (mode === 'name' || mode === 'voice'){
+        this.speak(name + '님 ' + what + '하였습니다');
+      }
     },
     failSound(who){
       const mode = who==='stu' ? this.soundStu : this.soundStaff;
@@ -373,22 +387,6 @@ createApp({
         this.voiceSampleMsg = (this.soundVol === 0) ? '볼륨이 0입니다.' : '';
       } catch(e){ this.voiceSampleMsg = '재생할 수 없습니다.'; }
       this._voiceMsgTimer = setTimeout(()=>{ this.voiceSampleMsg = ''; }, 4000);
-    },
-    testSound(who){
-      const mode = who==='stu' ? this.soundStu : this.soundStaff;
-      clearTimeout(this._soundMsgTimer);
-      if (mode === 'off'){ this.soundMsg = { who, text:'소리가 꺼져 있습니다.' }; }
-      else if (this.soundVol === 0){ this.soundMsg = { who, text:'볼륨이 0입니다.' }; }
-      else {
-        this.notifySound(who, '홍길동', who==='stu' ? '등원' : '출근');
-        let msg;
-        if (mode === 'beep') msg = '알림음을 재생했습니다.';
-        else if (!window.speechSynthesis) msg = '이 브라우저는 음성 읽기를 지원하지 않습니다. 알림음만 납니다.';
-        else if (!this.koVoice()) msg = '이 기기에 한국어 음성이 없어 알림음만 납니다. 아래 [음성 목록]에서 확인하세요.';
-        else msg = '알림음과 음성을 재생했습니다. 안 들리면 태블릿 볼륨을 확인하세요.';
-        this.soundMsg = { who, text: msg };
-      }
-      this._soundMsgTimer = setTimeout(()=>{ this.soundMsg = null; }, 4000);
     },
 
     // ── 직원 출퇴근 ──
@@ -525,8 +523,7 @@ createApp({
               <input type="radio" name="snd-stu" :value="o.k" :checked="soundStu===o.k" @change="setSound('stu', o.k)" class="mt-0.5 shrink-0" />
               <span>{{ o.l }}<span v-if="o.d" class="block text-[10px] text-slate-500">{{ o.d }}</span></span>
             </label>
-            <button @click="testSound('stu')" class="mt-1 px-2 py-1 rounded border border-slate-600 hover:bg-slate-700">🔈 테스트</button>
-            <div v-if="soundMsg && soundMsg.who==='stu'" class="mt-1 text-[10px] text-amber-300">{{ soundMsg.text }}</div>
+
           </div>
           <div class="border-t border-slate-600 pt-2">
             <div class="font-semibold text-slate-200 mb-1">🔊 소리 — 직원 출퇴근</div>
@@ -534,8 +531,7 @@ createApp({
               <input type="radio" name="snd-staff" :value="o.k" :checked="soundStaff===o.k" @change="setSound('staff', o.k)" class="mt-0.5 shrink-0" />
               <span>{{ o.l }}<span v-if="o.d" class="block text-[10px] text-slate-500">{{ o.d }}</span></span>
             </label>
-            <button @click="testSound('staff')" class="mt-1 px-2 py-1 rounded border border-slate-600 hover:bg-slate-700">🔈 테스트</button>
-            <div v-if="soundMsg && soundMsg.who==='staff'" class="mt-1 text-[10px] text-amber-300">{{ soundMsg.text }}</div>
+
           </div>
           <div class="border-t border-slate-600 pt-2">
             <div class="flex items-center justify-between mb-1">
@@ -545,43 +541,20 @@ createApp({
             <input type="range" min="0" max="100" step="5" :value="soundVol" @input="setSoundVol($event.target.value)" class="w-full" />
             <div class="text-[10px] text-slate-500 mt-1">태블릿 자체 볼륨도 함께 켜져 있어야 들립니다.</div>
           </div>
-          <!-- 안내 음성 고르기 — 태블릿 TTS에 한국어가 없어도 되도록 미리 만들어 둔 파일을 쓴다 -->
+          <!-- 안내 음성은 학생 성별로 자동으로 갈린다(남학생 현수 · 여학생 선히).
+               미리 만들어 둔 파일을 재생하므로 태블릿 음성 설치와 무관하다. -->
           <div class="border-t border-slate-600 pt-2">
             <div class="font-semibold text-slate-200 mb-1">🗣 안내 음성</div>
-            <template v-for="g in ['여성','남성']" :key="g">
-              <div class="text-[10px] text-slate-500 mt-1">{{ g }}</div>
-              <div v-for="v in voicePacks.filter(x=>x.g===g)" :key="v.k" class="flex items-center gap-1.5 py-0.5">
-                <label class="flex items-center gap-1.5 cursor-pointer select-none flex-1 min-w-0">
-                  <input type="radio" name="voicepack" :value="v.k" :checked="voicePack===v.k" @change="setVoicePack(v.k)" class="shrink-0" />
-                  <span class="truncate">{{ v.l }}<span class="text-[10px] text-slate-500 ml-1">{{ v.d }}</span></span>
-                </label>
-                <button @click="playVoiceSample(v.k)" class="px-2 py-0.5 rounded border border-slate-600 hover:bg-slate-700 shrink-0">▶ 듣기</button>
-              </div>
-            </template>
-            <div class="text-[10px] text-slate-500 mt-1">"홍길동님 등원하였습니다"로 들려줍니다. 고른 음성으로 학생 이름을 만듭니다.</div>
-            <div v-if="voiceSampleMsg" class="mt-1 text-[10px] text-amber-300">{{ voiceSampleMsg }}</div>
-          </div>
-
-          <!-- 태블릿 자체 음성이 안 나올 때 원인을 바로 알 수 있게(참고용) -->
-          <div class="border-t border-slate-600 pt-2">
-            <button @click="voiceListOpen=!voiceListOpen; initVoices()" class="px-2 py-1 rounded border border-slate-600 hover:bg-slate-700">
-              🗣 음성 목록 {{ voiceListOpen ? '닫기' : '보기' }}
-            </button>
-            <div v-if="voiceListOpen" class="mt-1 text-[10px]">
-              <div v-if="koVoice()" class="text-emerald-300">한국어 음성 있음 — {{ koVoice().name }}</div>
-              <div v-else class="text-amber-300">
-                한국어 음성 없음. 태블릿에서<br>
-                <b>설정 → 일반 → 접근성 → 텍스트 음성 변환(TTS)</b><br>
-                에서 엔진을 <b>Google 음성 서비스</b>로 고르고<br>
-                <b>언어 → 한국어</b>를 내려받으세요.<br>
-                (Play 스토어에서 <b>Speech Services by Google</b> 설치·업데이트 필요할 수 있음)
-              </div>
-              <div class="text-slate-500 mt-1">설치된 음성 {{ (voices||[]).length }}개</div>
-              <div class="max-h-24 overflow-y-auto text-slate-400">
-                <div v-for="(v,i) in (voices||[])" :key="i">{{ v.lang }} · {{ v.name }}</div>
-                <div v-if="!(voices||[]).length" class="text-slate-500">목록이 비어 있습니다(기기가 음성을 제공하지 않음).</div>
-              </div>
+            <div class="text-[10px] text-slate-500 mb-1">학생 성별에 맞춰 자동으로 정해집니다.</div>
+            <div class="flex items-center gap-1.5 py-0.5">
+              <span class="flex-1">여학생 — 선히</span>
+              <button @click="playVoiceSample('sunhi')" class="px-2 py-0.5 rounded border border-slate-600 hover:bg-slate-700 shrink-0">▶ 듣기</button>
             </div>
+            <div class="flex items-center gap-1.5 py-0.5">
+              <span class="flex-1">남학생 — 현수</span>
+              <button @click="playVoiceSample('hyunsu')" class="px-2 py-0.5 rounded border border-slate-600 hover:bg-slate-700 shrink-0">▶ 듣기</button>
+            </div>
+            <div v-if="voiceSampleMsg" class="mt-1 text-[10px] text-amber-300">{{ voiceSampleMsg }}</div>
           </div>
           <div class="text-[10px] text-slate-500">이 기기에만 적용됩니다.</div>
         </div>

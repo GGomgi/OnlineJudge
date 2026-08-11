@@ -1440,6 +1440,10 @@ def _create_student_from_lead(request, lead, data):
             consent_date=(data.get("consent_date") or (now().date() if data.get("consent_privacy") else None)),
             memo=data.get("memo", "") or "",
         )
+        # 키오스크 등하원 안내 음성을 미리 만들어 둔다. 실패해도 등록은 그대로 진행한다
+        # (인터넷이 잠깐 끊겨도 학생은 등록돼야 하고, 음성은 나중에 다시 만들면 된다).
+        from ..services_voice import build_student_voice
+        build_student_voice(user)
         # 입회원 신청서의 요일/시간(class_schedule)으로 개별 시간표 자동 생성(12).
         # '추후 안내'면 미생성. 수업 길이는 학교급·주횟수 규칙으로 자동 계산.
         schedule_raw = data.get("class_schedule") or ""
@@ -2723,8 +2727,10 @@ class StudentDetailAdminAPI(APIView):
             return self.error("No permission for this branch")
         sp, _ = StudentProfile.objects.get_or_create(user=u)
         rn = (data.get("real_name") or "").strip()
+        name_changed = False
         if rn:
             up, _ = UserProfile.objects.get_or_create(user=u)
+            name_changed = (up.real_name or "") != rn
             up.real_name = rn
             up.save(update_fields=["real_name"])
 
@@ -2809,7 +2815,12 @@ class StudentDetailAdminAPI(APIView):
                 log = []
             log.append({"time": _now_kst_str(), "by": _name_of(request.user), "items": changed})
             sp.edit_log = _json.dumps(log, ensure_ascii=False)
+
         sp.save()
+        # 이름이나 성별이 바뀌면 안내 음성을 다시 만든다(이름을 읽고, 성별로 목소리가 갈린다)
+        if name_changed or any(c.get("label") == "성별" for c in changed):
+            from ..services_voice import build_student_voice
+            build_student_voice(u)
         return self.success("ok")
 
 
