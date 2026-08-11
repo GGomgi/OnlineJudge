@@ -1156,8 +1156,9 @@
                       colDragIdx===i ? 'opacity-40 border-dashed border-indigo-400 bg-indigo-50' : 'border-transparent hover:bg-slate-50']">
           <span class="text-slate-300 select-none shrink-0">⠿</span>
           <label class="flex items-center gap-1.5 flex-1 min-w-0 cursor-pointer select-none">
-            <input type="checkbox" :checked="colCfgOn(c.k)" @change="toggleCol(c.k, $event.target.checked)" class="w-3.5 h-3.5 shrink-0" />
-            <span class="text-sm truncate">{{ c.l }}<span v-if="c.d" class="block text-[10px] text-slate-400 truncate">{{ c.d }}</span></span>
+            <input type="checkbox" :checked="colOn(colCfg.page, c.k)" :disabled="c.always"
+                   @change="toggleCol(c.k, $event.target.checked)" class="w-3.5 h-3.5 shrink-0" />
+            <span class="text-sm truncate">{{ c.l }}<span v-if="c.always" class="ml-1 text-[10px] text-slate-400">(항상)</span><span v-if="c.d" class="block text-[10px] text-slate-400 truncate">{{ c.d }}</span></span>
           </label>
           <span class="flex flex-col shrink-0">
             <button @click="moveCol(i,-1)" :disabled="i===0" class="text-[10px] leading-none px-1 text-slate-400 hover:text-indigo-600 disabled:opacity-20">▲</button>
