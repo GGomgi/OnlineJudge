@@ -21,6 +21,21 @@ KINDS = {
     "out": "%s님 하원하였습니다",
 }
 
+# 직원 출퇴근(이름 읽기). 직원은 성별 정보가 없어 기본 목소리를 쓴다.
+STAFF_KINDS = {
+    "work_in": "%s님 출근하였습니다",
+    "work_out": "%s님 퇴근하였습니다",
+}
+
+# 이름 없이 쓰는 고정 안내. 잘못 눌렀을 때·이름 음성이 없을 때 쓴다.
+COMMON = {
+    "fail": "다시 확인해 주세요",
+    "in": "등원 완료되었습니다",
+    "out": "하원 완료되었습니다",
+    "work_in": "출근 완료되었습니다",
+    "work_out": "퇴근 완료되었습니다",
+}
+
 VOICE_SUBDIR = "voice"
 VOICE_URL_PREFIX = "/public/voice"
 
@@ -91,6 +106,44 @@ def build_student_voice(student, name=None, gender=None, kinds=None):
             made.append(kind)
         return True, ""
     except Exception as e:                      # 네트워크 오류·패키지 없음 등
+        return False, str(e)[:200]
+
+
+def common_path(key):
+    return os.path.join(voice_dir(), "common_%s.mp3" % key)
+
+
+def common_url(key):
+    return "%s/common_%s.mp3" % (VOICE_URL_PREFIX, key)
+
+
+def build_common_voices():
+    """고정 안내 문구를 만든다(이름이 안 들어가므로 한 번만 만들면 계속 쓴다)."""
+    made, failed = [], []
+    for key, text in COMMON.items():
+        try:
+            _speak_to_file(text, VOICE_DEFAULT, common_path(key))
+            made.append(key)
+        except Exception as e:
+            failed.append((key, str(e)[:120]))
+    return made, failed
+
+
+def build_staff_voice(staff, name=None):
+    """직원 출퇴근 이름 안내."""
+    try:
+        nm = (name or "").strip()
+        if not nm:
+            try:
+                nm = staff.userprofile.real_name or staff.username
+            except Exception:
+                nm = staff.username
+        if not nm:
+            return False, "이름이 없습니다."
+        for kind, tpl in STAFF_KINDS.items():
+            _speak_to_file(tpl % nm, VOICE_DEFAULT, voice_path(staff.id, kind))
+        return True, ""
+    except Exception as e:
         return False, str(e)[:200]
 
 

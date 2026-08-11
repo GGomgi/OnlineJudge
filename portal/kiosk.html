@@ -75,7 +75,6 @@ createApp({
       soundStu: localStorage.getItem('kiosk_sound_stu') || 'off',
       soundStaff: localStorage.getItem('kiosk_sound_staff') || 'off',
       soundVol: parseInt(localStorage.getItem('kiosk_sound_vol') ?? '70'),
-      voices: [],
       // 한국어 전용 음성은 3개뿐(선히·인준·현수)이라, 한국어도 읽는 다국어 음성을 더해
       // 여성 3 · 남성 3으로 맞췄다. 다국어 음성은 억양이 조금 다를 수 있어 들어보고 고른다.
       voicePacks: [
@@ -322,57 +321,33 @@ createApp({
     },
     beepOk(){ this._tone(880, 0, 0.16); this._tone(1175, 0.14, 0.22); },      // 띵동(올라가는 두 음)
     beepFail(){ this._tone(320, 0, 0.22, 1.2); this._tone(240, 0.20, 0.30, 1.2); },  // 낮게 두 번
-    // getVoices() 는 처음 부를 때 빈 배열을 주고 잠시 뒤에 채워진다(브라우저 공통).
-    // 그래서 목록을 미리 받아 두고, 늦게 채워지면 voiceschanged 로 다시 받는다.
-    initVoices(){
-      if (!window.speechSynthesis) return;
-      const load = () => { this.voices = window.speechSynthesis.getVoices() || []; };
-      load();
-      window.speechSynthesis.onvoiceschanged = load;
-      // 일부 기기는 이벤트도 안 오고 조금 뒤에야 채워진다
-      setTimeout(load, 500); setTimeout(load, 2000);
+    // 안내는 모두 미리 만들어 둔 파일로 낸다(태블릿 음성 설치와 무관하게 같은 소리).
+    // who: 'stu'|'staff', what: '등원'|'하원'|'출근'|'퇴근', id: 학생·직원 id
+    voiceKind(what){
+      return { '등원':'in', '하원':'out', '출근':'work_in', '퇴근':'work_out' }[what] || 'in';
     },
-    koVoice(){ return (this.voices||[]).find(v=>/^ko/i.test(v.lang)) || null; },
-    speak(text){
-      if (!text || !window.speechSynthesis) return;
-      try {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'ko-KR'; u.volume = this.soundVol/100; u.rate = 1.0;
-        const ko = this.koVoice();
-        if (ko) u.voice = ko;
-        window.speechSynthesis.speak(u);
-      } catch(e){ /* 음성이 없는 기기면 알림음만 나고 조용히 넘어간다 */ }
-    },
-    // 미리 만들어 둔 mp3 를 재생한다. 태블릿에 한국어 음성이 없어도 똑같이 들린다.
-    playFile(url){
-      try {
-        if (this._voiceAudio) this._voiceAudio.pause();
-        const a = new Audio(url);
-        a.volume = Math.max(0, Math.min(1, this.soundVol/100));
-        this._voiceAudio = a;
-        a.play().catch(()=>{});
-        return true;
-      } catch(e){ return false; }
-    },
-    // who: 'stu'|'staff', name: 이름, what: '등원'|'하원'|'출근'|'퇴근', id: 학생 id
     notifySound(who, name, what, id){
       const mode = who==='stu' ? this.soundStu : this.soundStaff;
       if (mode === 'off') return;
       this.beepOk();
-      if (mode === 'name' && who === 'stu' && id){
-        // 이름 음성은 학생만 있다. 파일이 없으면(새 학생 등) 알림음만 나고 넘어간다.
-        setTimeout(()=> this.playFile('/public/voice/' + id + '_' + (what==='등원' ? 'in' : 'out') + '.mp3'), 380);
-      } else if (mode === 'name' || mode === 'voice'){
-        this.speak(name + '님 ' + what + '하였습니다');
-      }
+      if (mode === 'beep') return;
+      const kind = this.voiceKind(what);
+      // 알림음이 끝난 뒤 이어서 말하도록 살짝 띄운다
+      setTimeout(()=>{
+        if (mode === 'name' && id){
+          // 이름 파일이 없으면(등록 직후 생성 실패 등) 이름 없는 안내로 대신한다
+          this.playFile('/public/voice/' + id + '_' + kind + '.mp3', '/public/voice/common_' + kind + '.mp3');
+        } else {
+          this.playFile('/public/voice/common_' + kind + '.mp3');
+        }
+      }, 380);
     },
     failSound(who){
       const mode = who==='stu' ? this.soundStu : this.soundStaff;
       if (mode === 'off') return;
       this.beepFail();
-      // 실패는 이름을 부를 게 없으니 어느 모드든 같은 안내
-      if (mode === 'name' || mode === 'voice') this.speak('다시 확인해 주세요');
+      if (mode === 'beep') return;
+      setTimeout(()=> this.playFile('/public/voice/common_fail.mp3'), 480);
     },
     setVoicePack(k){ this.voicePack = k; localStorage.setItem('kiosk_voice_pack', k); this.playVoiceSample(k); },
     playVoiceSample(k){
@@ -435,7 +410,7 @@ createApp({
         } else {
           this.resultMsg = d.name+'님 '+(d.action==='IN'?'출근':'퇴근')+' 완료';
           this.resultSub = d.time;
-          this.notifySound('staff', d.name, d.action==='IN' ? '출근' : '퇴근');
+          this.notifySound('staff', d.name, d.action==='IN' ? '출근' : '퇴근', this.staffPick && this.staffPick.staff_id);
         }
         this.stage = 'result';
         setTimeout(()=>this.reset(), 2600);
@@ -469,7 +444,6 @@ createApp({
   async mounted(){
     this.tickClock();
     setInterval(this.tickClock, 1000);
-    this.initVoices();
     document.addEventListener('fullscreenchange', ()=>{ this.isFullscreen = !!document.fullscreenElement; });
     if (!this.b || !this.t){
       this.deviceStatus = 'badlink';
