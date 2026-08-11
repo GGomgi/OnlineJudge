@@ -1147,11 +1147,14 @@ class ExamCatalog(models.Model):
     kind = models.CharField(max_length=16, default=ExamKind.CERT)
     name = models.CharField(max_length=64)                      # COS Pro / 정보올림피아드
     organizer = models.CharField(max_length=64, blank=True, default="")   # YBM
-    homepage = models.CharField(max_length=255, blank=True, default="")   # 일정 확인하러 갈 곳
+    homepage = models.CharField(max_length=255, blank=True, default="")    # 일정 확인하러 갈 곳
+    apply_url = models.CharField(max_length=255, blank=True, default="")   # 접수 페이지
+    notice_url = models.CharField(max_length=255, blank=True, default="")  # 공지사항
     entry_mode = models.CharField(max_length=16, default=EntryMode.INDIVIDUAL)
     fee = models.PositiveIntegerField(null=True, blank=True)     # 기본 응시료(안내용)
-    levels = models.TextField(blank=True, default="")            # JSON ["1급","2급","3급"]
-    tracks = models.TextField(blank=True, default="")            # JSON ["Python","C++",...]
+    # 급수·부문은 응시료가 저마다 다를 수 있어 [{"name","fee"}] 로 담는다(fee 가 없으면 기본 응시료).
+    levels = models.TextField(blank=True, default="")            # [{"name":"1급","fee":40000}, ...]
+    tracks = models.TextField(blank=True, default="")            # [{"name":"Python","fee":null}, ...]
     annual = models.BooleanField(default=False)                  # 해마다 열리는가(대회)
     # 작년 기록이 없을 때 쓸 '확인 시작 시기'(MM-DD). 이 무렵이면 올해 일정을 확인하라고 알린다.
     check_from = models.CharField(max_length=8, blank=True, default="")

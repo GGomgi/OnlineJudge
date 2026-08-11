@@ -39,11 +39,49 @@ def parse_date(v, default=None):
 
 
 def load_list(s):
+    """[{"name","fee"}] 목록으로 읽는다. 예전에 저장된 문자열 배열도 그대로 받아준다."""
     try:
         v = _json.loads(s) if s else []
-        return v if isinstance(v, list) else []
     except (ValueError, TypeError):
         return []
+    if not isinstance(v, list):
+        return []
+    out = []
+    for x in v:
+        if isinstance(x, dict):
+            nm = str(x.get("name") or "").strip()
+            if nm:
+                out.append({"name": nm, "fee": x.get("fee")})
+        elif str(x).strip():
+            out.append({"name": str(x).strip(), "fee": None})
+    return out
+
+
+def parse_items(raw):
+    """화면에서 온 '1급:40000, 2급' 같은 목록을 이름·응시료로 나눈다."""
+    out = []
+    for x in (raw or []):
+        t = str(x).strip()
+        if not t:
+            continue
+        name, fee = t, None
+        if ":" in t:
+            name, _, f = t.partition(":")
+            name = name.strip()
+            f = "".join(ch for ch in f if ch.isdigit())
+            fee = int(f) if f else None
+        if name:
+            out.append({"name": name, "fee": fee})
+    return out
+
+
+def item_text(items, base_fee=None):
+    """화면 입력칸에 되돌려 줄 문자열. 응시료가 다른 것만 붙인다."""
+    parts = []
+    for it in items:
+        f = it.get("fee")
+        parts.append("%s:%d" % (it["name"], f) if f else it["name"])
+    return ", ".join(parts)
 
 
 def name_of(u):
@@ -59,7 +97,10 @@ def catalog_row(c):
     return {"id": c.id, "kind": c.kind, "kind_label": KIND_LABEL.get(c.kind, c.kind),
             "name": c.name, "organizer": c.organizer, "homepage": c.homepage,
             "entry_mode": c.entry_mode, "entry_mode_label": MODE_LABEL.get(c.entry_mode, c.entry_mode),
-            "fee": c.fee, "levels": load_list(c.levels), "tracks": load_list(c.tracks),
+            "apply_url": c.apply_url, "notice_url": c.notice_url,
+            "fee": c.fee,
+            "levels": load_list(c.levels), "tracks": load_list(c.tracks),
+            "levels_text": item_text(load_list(c.levels)), "tracks_text": item_text(load_list(c.tracks)),
             "annual": c.annual, "check_from": c.check_from, "note": c.note,
             "branch_id": c.branch_id, "branch": (c.branch.name if c.branch_id else "전 지점"),
             "is_active": c.is_active, "order": c.order}
@@ -101,15 +142,15 @@ class ExamCatalogAdminAPI(APIView):
         c.name = name
         c.organizer = (d.get("organizer") or "").strip()
         c.homepage = (d.get("homepage") or "").strip()
+        c.apply_url = (d.get("apply_url") or "").strip()
+        c.notice_url = (d.get("notice_url") or "").strip()
         c.entry_mode = d.get("entry_mode") or EntryMode.INDIVIDUAL
         try:
             c.fee = int(d.get("fee")) if str(d.get("fee") or "").strip() else None
         except (TypeError, ValueError):
             c.fee = None
-        c.levels = _json.dumps([x.strip() for x in (d.get("levels") or []) if str(x).strip()],
-                               ensure_ascii=False)
-        c.tracks = _json.dumps([x.strip() for x in (d.get("tracks") or []) if str(x).strip()],
-                               ensure_ascii=False)
+        c.levels = _json.dumps(parse_items(d.get("levels")), ensure_ascii=False)
+        c.tracks = _json.dumps(parse_items(d.get("tracks")), ensure_ascii=False)
         c.annual = bool(d.get("annual"))
         c.check_from = (d.get("check_from") or "").strip()[:8]
         c.note = (d.get("note") or "").strip()[:255]
@@ -282,10 +323,26 @@ def entry_row(e):
         "fee_paid": e.fee_paid,
         "credential_id": e.credential_id,
         "credential": ((e.credential.site + " / " + e.credential.login_id) if e.credential_id else ""),
+        "fee": entry_fee(e, cat, sn),
         "result": e.result, "score": e.score, "note": e.note,
         "instructor": name_of(e.instructor) if e.instructor_id else "",
         "phone": _entry_phone(e),
     }
+
+
+def entry_fee(e, cat, sn):
+    """이 참가의 응시료. 부문 → 급수 → 종류 기본값 → 회차 순으로 정한다.
+    급수마다, 대회는 부문마다 응시료가 다른 경우가 있어 좁은 쪽을 먼저 본다."""
+    if cat:
+        for items, want in ((load_list(cat.tracks), e.track), (load_list(cat.levels), e.level)):
+            if not want:
+                continue
+            for it in items:
+                if it["name"] == want and it.get("fee"):
+                    return it["fee"]
+        if cat.fee:
+            return cat.fee
+    return sn.fee
 
 
 def _entry_phone(e):
