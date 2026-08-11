@@ -1714,7 +1714,7 @@
       </div>
       <div class="flex items-center gap-2 mb-3">
         <!-- v-model은 한글 조합 중 값 갱신을 보류하므로, 조합 중 글자까지 받도록 원시 input 이벤트로 바인딩 -->
-        <input :value="dashFilter.qRaw" @input="dashFilter.qRaw=$event.target.value" placeholder="학생 검색" class="input flex-1 min-w-0 py-1" />
+        <input :value="dashFilter.qRaw" @input="dashFilter.qRaw=$event.target.value" placeholder="학생 검색 (오늘 수업 + 전체 학생)" class="input flex-1 min-w-0 py-1" />
         <div class="w-32 shrink-0"><select v-model="dashFilter.subject" class="input py-1"><option value="">과목 전체</option><option v-for="s in dashSubjects" :key="s" :value="s">{{ s }}</option></select></div>
         <div class="w-32 shrink-0"><select v-model="dashFilter.instructor" class="input py-1"><option value="">강사 전체</option><option v-for="t in dashInstructors" :key="t" :value="t">{{ t }}</option></select></div>
         <div v-if="showBranchCol" class="w-32 shrink-0"><select v-model="dashFilter.branch" class="input py-1"><option value="">지점 전체</option><option v-for="b in dashBranches" :key="b" :value="b">{{ b }}</option></select></div>
@@ -1856,8 +1856,103 @@
             </template>
             <tr v-if="dashIsToday && nowLineIndex===(dashData.lessons||[]).length && (dashData.lessons||[]).length" class="bg-rose-50"><td :colspan="dashColSpan" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }} ({{ dashAllDone ? '오늘 수업 종료' : '오늘 마지막 수업 중' }})</td></tr>
             <tr v-if="(dashData.lessons||[]).length===0"><td :colspan="dashColSpan" class="px-3 py-8 text-center text-sm text-slate-400">이 날짜에 수업이 없습니다.</td></tr>
+            <!-- 오늘 안 오는 학생을 찾으면 위가 비는데, 아래에 결과가 있다는 걸 알려줘야
+                 '없네?' 하고 멈추지 않는다 -->
+            <tr v-else-if="dashFilter.q && dashLessons.length===0">
+              <td :colspan="dashColSpan" class="px-3 py-6 text-center text-sm text-slate-400">
+                오늘 수업 중에는 없습니다.
+                <span v-if="dashStuFound.length" class="text-indigo-600 font-medium">아래 전체 학생에서 {{ dashStuFound.length }}명 찾았습니다 ↓</span>
+              </td>
+            </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- 전체 학생에서 찾기 — 검색어를 넣었을 때만 나온다.
+           학생 관리로 옮기지 않고 이 화면에서 바로 확인·수정하기 위한 것. -->
+      <div v-if="dashFilter.q" class="mt-4">
+        <div class="flex items-center gap-2 mb-2 text-sm flex-wrap">
+          <span class="font-semibold text-slate-700">🔍 전체 학생에서 찾음</span>
+          <span class="text-slate-400">"{{ dashFilter.q }}" · {{ dashStuFound.length }}명</span>
+          <span v-if="dashStuLoading" class="text-xs text-slate-400">불러오는 중…</span>
+          <span class="ml-auto text-[11px] text-slate-400">표시 항목은 학생 관리 설정을 따릅니다</span>
+        </div>
+        <div class="bg-indigo-50/40 border border-indigo-100 rounded-xl shadow-sm overflow-x-auto">
+          <table class="w-full min-w-max text-sm">
+            <thead class="bg-indigo-50 text-slate-500 text-xs">
+              <tr>
+                <th v-for="c in stuCols" :key="c.k" :class="['text-left px-3 py-2 whitespace-nowrap']">{{ c.l }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in dashStuFound" :key="s.id" @click="openStudent(s)" class="border-t border-indigo-100 align-middle hover:bg-white cursor-pointer">
+                <td v-for="c in stuCols" :key="c.k" class="px-3 py-2 text-slate-500 whitespace-nowrap">
+                  <template v-if="c.k==='enroll_no'"><span class="font-mono">{{ s.enroll_no || '-' }}</span></template>
+                  <template v-else-if="c.k==='name'">
+                    <span v-if="stuMissing(s).length" class="text-amber-600 font-semibold">❗{{ stuMissing(s).length }}개 미완 {{ s.real_name || s.username }}</span>
+                    <span v-else class="font-medium text-slate-700">{{ s.real_name || s.username }}</span>
+                  </template>
+                  <template v-else-if="c.k==='birth'">{{ s.birth_date || '-' }}</template>
+                  <template v-else-if="c.k==='age'">{{ ageOf(s.birth_date) }}</template>
+                  <template v-else-if="c.k==='school'">{{ s.school_name || '-' }}</template>
+                  <template v-else-if="c.k==='school_type'">{{ schoolLabel(s.school_type) || '-' }}</template>
+                  <template v-else-if="c.k==='grade'">{{ s.grade ? s.grade+'학년' : '-' }}</template>
+                  <template v-else-if="c.k==='schoolshort'">{{ schoolGradeShort(s.school_name, s.school_type, s.grade) || '-' }}</template>
+                  <template v-else-if="c.k==='programs'">{{ (s.subjects||[]).join(' · ') || '-' }}</template>
+                  <template v-else-if="c.k==='weekly'">{{ s.weekly_sessions ? '주 '+s.weekly_sessions+'회' : '-' }}</template>
+                  <template v-else-if="c.k==='weekdays'">
+                    <span class="inline-flex gap-px">
+                      <span v-for="(w,wi) in ['월','화','수','목','금','토','일']" :key="wi"
+                            :class="['w-3.5 h-4 text-[10px] leading-4 text-center rounded-sm',
+                                     stuHasDay(s,wi) ? 'bg-indigo-100 text-indigo-700' : 'text-slate-200']">{{ w }}</span>
+                    </span>
+                  </template>
+                  <template v-else-if="c.k==='instructor'">{{ ((s.extra||{}).instructors||[]).join(', ') || '-' }}</template>
+                  <template v-else-if="c.k==='parent'">{{ s.parent_name || '-' }}</template>
+                  <template v-else-if="c.k==='parent_phone'">
+                    <span v-if="s.parent_phone" @click.stop class="inline-flex items-center gap-1">{{ s.parent_phone }}<call-btn :phone="s.parent_phone"></call-btn><sms-btn :phone="s.parent_phone"></sms-btn></span>
+                    <span v-else>-</span>
+                  </template>
+                  <template v-else-if="c.k==='student_phone'">{{ s.student_phone || '-' }}</template>
+                  <template v-else-if="c.k==='sibling'">{{ (s.extra||{}).siblings ? '형제 '+(s.extra.siblings+1)+'명' : '-' }}</template>
+                  <template v-else-if="c.k==='month'">
+                    <span v-if="(s.extra||{}).m_absent" class="text-rose-500">결{{ s.extra.m_absent }}</span>
+                    <span v-if="(s.extra||{}).m_absent && (s.extra||{}).m_late" class="text-slate-300"> · </span>
+                    <span v-if="(s.extra||{}).m_late" class="text-amber-600">지{{ s.extra.m_late }}</span>
+                    <span v-if="!(s.extra||{}).m_absent && !(s.extra||{}).m_late" class="text-slate-200">-</span>
+                  </template>
+                  <template v-else-if="c.k==='mk'">
+                    <span v-if="(s.extra||{}).mk_pending" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 text-[11px]">미정 {{ s.extra.mk_pending }}</span>
+                    <span v-else class="text-slate-200">-</span>
+                  </template>
+                  <template v-else-if="c.k==='last_attend'">
+                    <span v-if="(s.extra||{}).last_attend">{{ s.extra.last_attend.slice(5) }}<span class="text-slate-400 text-[11px]"> ({{ s.extra.last_attend_days }}일 전)</span></span>
+                    <span v-else class="text-slate-200">-</span>
+                  </template>
+                  <template v-else-if="c.k==='verify'">
+                    <span v-if="(s.extra||{}).verify" :class="['px-1.5 py-0.5 rounded text-[11px]', s.extra.verify.status==='SUBMITTED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700']">
+                      {{ s.extra.verify.status==='SUBMITTED' ? '확인 필요' : '대기' }} D+{{ s.extra.verify.days }}
+                    </span>
+                    <span v-else class="text-slate-200">-</span>
+                  </template>
+                  <template v-else-if="c.k==='missing'">
+                    <span v-if="stuMissing(s).length" class="text-amber-600">{{ stuMissing(s).length }}개</span>
+                    <span v-else class="text-emerald-500">완료</span>
+                  </template>
+                  <template v-else-if="c.k==='enrolled_at'">{{ ((s.extra||{}).enrollment_date || '-') }}</template>
+                  <template v-else-if="c.k==='tenure'">{{ tenureOf((s.extra||{}).enrollment_date) }}</template>
+                  <template v-else-if="c.k==='branch'">{{ s.branch || '-' }}</template>
+                  <template v-else-if="c.k==='status'">
+                    <span :class="['px-2 py-0.5 rounded text-xs', stuStatusBadge(s.enrollment_status).cls]">{{ stuStatusBadge(s.enrollment_status).label }}</span>
+                  </template>
+                </td>
+              </tr>
+              <tr v-if="!dashStuLoading && dashStuFound.length===0">
+                <td :colspan="stuCols.length" class="px-3 py-6 text-center text-sm text-slate-400">전체 학생에서도 찾지 못했습니다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- 수업외 등원 → 보강 연결 모달 -->
@@ -4936,6 +5031,8 @@ const app = createApp({
       tcPop: { show:false, x:0, y:0, orig:'', now:'', reason:'' },
       progPop: { show:false, x:0, y:0, content:'', homework:'', feedback:'', memo:'' },
       dashFilter: { q:'', qRaw:'', subject:'', instructor:'', branch:'' }, dashPop: { show:false, x:0, y:0, l:{att:{}} },
+      // 오늘 운영에서 전체 학생 찾기 — 검색을 처음 할 때 한 번만 받아 두고 화면에서 거른다
+      dashStuAll: null, dashStuLoading: false,
       mkgAll: [], mkgGroupBy: 'student', mkgBranchId: '', mkgLoading: false,
       // 보강일 필터: 기본은 아직 날짜를 못 잡은 '미정'만 — 처리해야 할 일만 보이게.
       // 확정 건은 그 아래에서 예정/완료/미이수로 다시 나눈다(미정은 완료가 될 수 없어 축이 겹치지 않음).
@@ -5294,6 +5391,18 @@ const app = createApp({
       return !this.stuTimetables.some(s => this.stuTtPhase(s) !== 'past');
     },
     stuCols(){ return this.colOrder('stu'); },
+    // 상태(재원·휴원·퇴원)를 가리지 않고 찾는다 — 오늘 운영에서는 오히려 휴원생을
+    // 확인할 일이 많다(언제 돌아오는지 등). 상태는 배지로 구분한다.
+    dashStuFound(){
+      const q = (this.dashFilter.q||'').trim().toLowerCase();
+      if (!q || !this.dashStuAll) return [];
+      const hay = s => [s.enroll_no, s.real_name, s.username, s.school_name,
+                        this.schoolLabel(s.school_type), String(s.grade||''),
+                        s.parent_name, s.parent_phone, s.student_phone]
+                        .filter(Boolean).join(' ').toLowerCase();
+      return this.dashStuAll.filter(s => hay(s).includes(q))
+                 .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
+    },
     dashColsView(){ return this.colOrder('dash').filter(c => c.k!=='branch' || this.showBranchCol); },
     colCfgList(){
       if (!this.colCfg) return [];
@@ -7276,7 +7385,12 @@ const app = createApp({
       this.afterColChange(p);
     },
     afterColChange(page){
-      if (page === 'stu') this.loadStudents();
+      if (page === 'stu'){
+        this.loadStudents();
+        // 오늘 운영의 검색 결과도 같은 설정을 쓰므로 다시 받는다
+        this.dashStuAll = null;
+        if ((this.dashFilter.q||'').trim()) this.ensureDashStudents();
+      }
       if (page === 'dash') this.loadDashboard();
     },
     // ── 학생 관리 열 ──
@@ -7315,6 +7429,19 @@ const app = createApp({
       if (months < 0) return '-';
       if (months < 12) return months + '개월';
       return Math.floor(months/12) + '년' + (months%12 ? ' '+(months%12)+'개월' : '');
+    },
+    async ensureDashStudents(){
+      if (this.dashStuAll || this.dashStuLoading) return;
+      this.dashStuLoading = true;
+      try {
+        // 학생 관리에서 켜 둔 열에 필요한 값까지 함께 받는다(같은 설정을 쓰므로)
+        const heavy = ['missing','weekdays','instructor','month','mk','last_attend','verify','sibling'];
+        const need = heavy.filter(k=>this.colOn('stu', k));
+        if (this.colOn('stu','tenure') || this.colOn('stu','enrolled_at')) need.push('verify');
+        const qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
+        this.dashStuAll = await api('GET','/api/admin/academy/students'+qs) || [];
+      } catch(e){ this.dashStuAll = []; }
+      finally { this.dashStuLoading = false; }
     },
     // ── 오늘 운영 열 ──
     dashColHead(k){
@@ -9320,6 +9447,9 @@ const app = createApp({
         });
       });
     });
+    // 오늘 운영에서 검색을 시작하면 전체 학생 목록을 한 번만 받아 둔다
+    // (화면을 열 때마다 미리 받으면 대부분 안 쓰는 낭비가 된다)
+    this.$watch(() => this.dashFilter.q, (v)=>{ if ((v||'').trim()) this.ensureDashStudents(); });
     setInterval(()=>{ this.clockNow = Date.now(); }, 1000);  // 실시간 시계/경과시간
     // 오늘 운영 탭이 오늘 날짜를 보고 있을 때, 키오스크 등 다른 화면에서의 등원/하원 변경을 반영
     setInterval(()=>{ if (this.tab==='dashboard' && this.dashIsToday && !this.attModal) this.loadDashboard(); }, 5000);
