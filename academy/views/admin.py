@@ -3916,25 +3916,40 @@ class DashboardAdminAPI(APIView):
         # (하루씩 띄엄띄엄 쉬는 걸 하나로 묶으면 실제보다 길게 쉬는 것처럼 보임).
         # 아직 시작 전이면 시작 10일 전부터만 예고한다(주 1회 오는 학생도 등원 전에 미리 알 수 있게).
         TL_LEAD_DAYS = 10
-        tl_q = LessonOccurrence.objects.filter(date__gte=d, is_makeup=False)\
-            .exclude(status=OccurrenceStatus.CANCELLED).select_related("student", "student__userprofile")
+        TL_LOOKBACK = 120   # 이미 시작된 휴원이 언제부터였는지 거슬러 볼 범위
+        # 오늘 이후만 보면 안 된다. 임시휴원은 '수업이 있는 날'에만 표시가 붙는데, 오늘이
+        # 그 학생 수업이 없는 요일이면 오늘 이후 첫 표시가 미래라서 이미 쉬는 중인데도
+        # '예정'으로 나온다(유채원 7/24부터 쉬는데 8/14 예정으로 표시됨).
+        tl_from = d - timedelta(days=TL_LOOKBACK)
+        lv_q = LessonOccurrence.objects.filter(
+            status=OccurrenceStatus.LEAVE, is_makeup=False, date__gte=tl_from)
         if view is not None:
-            tl_q = tl_q.filter(branch_id__in=view)
+            lv_q = lv_q.filter(branch_id__in=view)
         if bid:
-            tl_q = tl_q.filter(branch_id=bid)
+            lv_q = lv_q.filter(branch_id=bid)
+        lv_sids = set(lv_q.values_list("student_id", flat=True))
         by_student = {}
-        for o in tl_q:
-            by_student.setdefault(o.student_id, []).append(o)
+        if lv_sids:
+            for o in LessonOccurrence.objects.filter(
+                    student_id__in=lv_sids, is_makeup=False, date__gte=tl_from)\
+                    .exclude(status=OccurrenceStatus.CANCELLED)\
+                    .select_related("student", "student__userprofile"):
+                by_student.setdefault(o.student_id, []).append(o)
         temp_leaves = []
         for sid, occs in by_student.items():
             occs.sort(key=lambda x: (x.date, x.start_time))
-            first = next((k for k, o in enumerate(occs) if o.status == OccurrenceStatus.LEAVE), None)
+            # 오늘 이후로 이어질 휴원만 대상(이미 끝난 과거 휴원은 알릴 필요 없음)
+            first = next((k for k, o in enumerate(occs)
+                          if o.status == OccurrenceStatus.LEAVE and o.date >= d), None)
             if first is None:
                 continue
+            # 과거 쪽으로 이어지는지 확인해 실제 시작일을 찾는다(중간에 정상 수업이 있으면 멈춤)
+            while first > 0 and occs[first - 1].status == OccurrenceStatus.LEAVE:
+                first -= 1
             start = occs[first].date
             if (start - d).days > TL_LEAD_DAYS:
                 continue
-            end = first
+            end = next(k for k, o in enumerate(occs) if o is occs[first])
             while end + 1 < len(occs) and occs[end + 1].status == OccurrenceStatus.LEAVE:
                 end += 1
             nxt = occs[end + 1] if end + 1 < len(occs) else None
@@ -3943,7 +3958,8 @@ class DashboardAdminAPI(APIView):
                 "student_id": sid, "name": _name_of(occs[first].student), "note": note,
                 "start_date": str(start), "starts_in": (start - d).days, "upcoming": start > d,
                 "last_date": str(occs[end].date), "days_left": (occs[end].date - d).days,
-                "count": end - first + 1,
+                # 남은 횟수(오늘 이후) — 이미 지나간 회차까지 세면 실제보다 많아 보인다
+                "count": sum(1 for o in occs[first:end + 1] if o.date >= d),
                 "back_date": str(nxt.date) if nxt else "",
                 "back_in": (nxt.date - d).days if nxt else None,
             })
