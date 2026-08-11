@@ -1836,6 +1836,128 @@ class OptionReorderAPI(APIView):
         return self.success(OptionItemSerializer(qs, many=True).data)
 
 
+# 학생 정보에서 '있어야 정상'인 항목 — 하나라도 비면 목록에서 표시해 알린다
+_REQUIRED_INFO = [
+    ("birth_date", "생년월일"), ("gender", "성별"), ("address", "주소"),
+    ("parent_phone", "보호자 연락처"), ("parent_name", "보호자 이름"),
+    ("school_name", "학교"), ("consent_privacy", "개인정보 동의"),
+]
+
+
+def _missing_info(sp):
+    if not sp:
+        return [lb for _, lb in _REQUIRED_INFO]
+    out = []
+    for f, lb in _REQUIRED_INFO:
+        v = getattr(sp, f, None)
+        if f == "consent_privacy":
+            if not v:
+                out.append(lb)
+        elif v in (None, ""):
+            out.append(lb)
+    return out
+
+
+def _student_list_extra(rows, want):
+    """학생 목록의 선택 열 값. 필요한 것만 통째로 한 번씩 읽어 학생별로 묶는다."""
+    ids = [r["id"] for r in rows]
+    if not ids:
+        return
+    today = (now() + timedelta(hours=9)).date()
+    ex = {i: {} for i in ids}
+
+    if "missing" in want or "verify" in want:
+        for sp in StudentProfile.objects.filter(user_id__in=ids):
+            if "missing" in want:
+                ex[sp.user_id]["missing"] = _missing_info(sp)
+            if "verify" in want:
+                ex[sp.user_id]["enrollment_date"] = str(sp.enrollment_date) if sp.enrollment_date else ""
+
+    if "weekdays" in want or "instructor" in want or "times" in want:
+        for slot in StudentTimetable.objects.filter(student_id__in=ids).exclude(
+                status="ENDED").select_related("instructor"):
+            if not _slot_active_on(slot, today):
+                continue
+            e = ex[slot.student_id]
+            e.setdefault("weekdays", {}).setdefault(slot.weekday, []).append(str(slot.start_time)[:5])
+            if slot.instructor_id:
+                names = e.setdefault("instructors", [])
+                nm = _name_of(slot.instructor)
+                if nm not in names:
+                    names.append(nm)
+
+    if "month" in want:
+        m0 = today.replace(day=1)
+        starts = {}
+        for o in LessonOccurrence.objects.filter(
+                student_id__in=ids, date__gte=m0, date__lte=today).only(
+                "student_id", "date", "start_time", "status"):
+            if o.status == OccurrenceStatus.ABSENT:
+                e = ex[o.student_id]
+                e["m_absent"] = e.get("m_absent", 0) + 1
+            key = (o.student_id, o.date)
+            t = _t2m(o.start_time)
+            if key not in starts or t < starts[key]:
+                starts[key] = t
+        for a in DailyAttendance.objects.filter(
+                student_id__in=ids, date__gte=m0, date__lte=today,
+                check_in_at__isnull=False).only("student_id", "date", "check_in_at"):
+            ref = starts.get((a.student_id, a.date))
+            if ref is not None and _t2m(_hm_kst(a.check_in_at)) - ref > 5:
+                e = ex[a.student_id]
+                e["m_late"] = e.get("m_late", 0) + 1
+
+    if "mk" in want:
+        made = set(LessonOccurrence.objects.filter(
+            is_makeup=True, makeup_for__isnull=False).values_list("makeup_for_id", flat=True))
+        for o in LessonOccurrence.objects.filter(
+                student_id__in=ids, status=OccurrenceStatus.ABSENT,
+                is_makeup=False, no_makeup=False).only("id", "student_id"):
+            if o.id not in made:
+                e = ex[o.student_id]
+                e["mk_pending"] = e.get("mk_pending", 0) + 1
+
+    if "last_attend" in want:
+        for a in DailyAttendance.objects.filter(
+                student_id__in=ids, check_in_at__isnull=False).order_by("student_id", "-date").only(
+                "student_id", "date"):
+            e = ex[a.student_id]
+            if "last_attend" not in e:
+                e["last_attend"] = str(a.date)
+                e["last_attend_days"] = (today - a.date).days
+
+    if "verify" in want:
+        from ..models import ProfileVerification
+        for v in ProfileVerification.objects.filter(
+                student_id__in=ids,
+                status__in=[ProfileVerification.SENT, ProfileVerification.SUBMITTED]):
+            ex[v.student_id]["verify"] = {
+                "status": v.status,
+                "days": (now().date() - v.create_time.date()).days}
+
+    if "sibling" in want:
+        from ..models import GuardianStudent
+        parents = {}
+        for pid, sid in GuardianStudent.objects.filter(student_id__in=ids).values_list("parent_id", "student_id"):
+            parents.setdefault(pid, []).append(sid)
+        sib = {}
+        if parents:
+            total = {}
+            for pid, sid in GuardianStudent.objects.filter(
+                    parent_id__in=parents.keys()).values_list("parent_id", "student_id"):
+                total.setdefault(pid, set()).add(sid)
+            for pid, sids in parents.items():
+                n = len(total.get(pid, set()))
+                for sid in sids:
+                    sib[sid] = max(sib.get(sid, 0), n - 1)
+        for i in ids:
+            if sib.get(i):
+                ex[i]["siblings"] = sib[i]
+
+    for r in rows:
+        r["extra"] = ex.get(r["id"], {})
+
+
 class StudentListAdminAPI(APIView):
     @admin_role_required
     def get(self, request):
@@ -1890,6 +2012,12 @@ class StudentListAdminAPI(APIView):
                         "subjects": subj_map.get(u.id, []),
                         "slot_count": counts.get(u.id, 0),
                         "status_history": []})
+        # 켠 열에 필요한 값만 계산해 붙인다. 전부 계산하면 목록이 무거워지므로
+        # 화면이 cols= 로 알려준 것만 만든다.
+        want = {c for c in (request.GET.get("cols") or "").split(",") if c}
+        if want:
+            _student_list_extra(out, want)
+
         # 휴원/퇴원 학생은 상태 변경 이력을 함께 내려 목록에서 호버로 보기
         non_enrolled = [r["id"] for r in out
                         if r["enrollment_status"] in (EnrollmentStatus.ON_LEAVE, EnrollmentStatus.WITHDRAWN)]
@@ -3794,16 +3922,22 @@ def _dash_student_extra(d, lessons, late_min=5):
     return out
 
 
+# 학교 구분 코드는 선택 목록의 값(ELEMENTARY/MIDDLE/HIGH/UNIVERSITY/INTL/ETC)이다.
+# 예전에 'ELEM' 으로 잘못 적어 초등학교·대학교에 접미사가 안 붙었다.
+_SCHOOL_SUFFIX_SHORT = {"ELEMENTARY": "초", "MIDDLE": "중", "HIGH": "고", "UNIVERSITY": "대"}
+
+
 def _school_short(sp):
-    """청일초등학교 5학년 → 청일초5. 국제학교 등 접미사가 없는 곳은 이름만."""
+    """청일초등학교 5학년 → 청일초5. 국제학교처럼 접미사가 없는 곳은 이름만(달튼7)."""
     nm = (sp.school_name or "").strip()
     if not nm:
         return ""
-    if sp.school_type == "ADULT":
+    if nm == "성인":
         return "성인"
-    suf = {"ELEM": "초", "MIDDLE": "중", "HIGH": "고"}.get(sp.school_type, "")
+    suf = _SCHOOL_SUFFIX_SHORT.get(sp.school_type, "")
     if suf:
-        for full in ("초등학교", "중학교", "고등학교", "학교"):
+        # 이미 '청일초등학교'처럼 전체 이름이 들어 있으면 접미사를 겹쳐 붙이지 않는다
+        for full in ("초등학교", "중학교", "고등학교", "대학교", "학교"):
             if nm.endswith(full):
                 nm = nm[: -len(full)]
                 break

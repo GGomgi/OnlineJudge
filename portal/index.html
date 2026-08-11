@@ -308,14 +308,6 @@
                   <span class="text-slate-400">분</span>
                 </div>
               </div>
-              <!-- 어느 화면 설정인지 헷갈리지 않게 화면 이름을 앞에 붙인다(항목이 계속 늘어날 자리) -->
-              <div class="mt-3 pt-2 border-t">
-                <div class="font-semibold mb-1">오늘 운영: 표시 항목</div>
-                <label v-for="c in dashColOptions" :key="c.k" class="flex items-start gap-1.5 py-0.5 cursor-pointer select-none">
-                  <input type="checkbox" :checked="dashCols[c.k]" @change="setDashCol(c.k, $event.target.checked)" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  <span><b class="font-medium">{{ c.l }}</b><span class="block text-[10px] text-slate-400">{{ c.d }}</span></span>
-                </label>
-              </div>
               <div class="text-[10px] text-slate-400 mt-2">이 브라우저에만 적용되며, 다른 직원 화면에는 영향 없습니다.</div>
             </div>
           </div>
@@ -1143,6 +1135,43 @@
     </div>
   </div>
 
+  <!-- 열 설정 — 페이지마다 자기 설정을 갖는다(헤더 톱니에 다 몰면 화면이 늘수록 감당이 안 됨).
+       모든 열을 다 나열해 체크·순서를 한 자리에서 다룬다(기본 열이 빠져 있으면 순서를 알 수 없음). -->
+  <div v-if="colCfg" class="fixed inset-0 z-[75]" @click.self="closeColCfg">
+    <div class="absolute bg-white rounded-xl shadow-2xl border w-80 max-h-[80vh] flex flex-col"
+         :style="{ left: colCfg.x+'px', top: colCfg.y+'px' }">
+      <div class="flex items-center justify-between px-3 py-2 border-b shrink-0">
+        <div class="text-sm font-bold">{{ colCfg.title }}</div>
+        <button @click="closeColCfg" class="text-slate-400 hover:text-slate-600">✕</button>
+      </div>
+      <div class="px-3 py-1.5 text-[11px] text-slate-400 border-b shrink-0">
+        체크로 보이기/숨기기, 끌거나 ▲▼로 순서를 바꿉니다.
+      </div>
+      <div class="overflow-y-auto p-2 space-y-0.5">
+        <div v-for="(c,i) in colCfgList" :key="c.k"
+             draggable="true"
+             @dragstart="colDragStart(i,$event)" @dragenter.prevent="colDragEnter(i)"
+             @dragover.prevent @drop.prevent @dragend="colDragEnd"
+             :class="['flex items-center gap-1.5 px-2 py-1.5 rounded border cursor-grab active:cursor-grabbing transition-all',
+                      colDragIdx===i ? 'opacity-40 border-dashed border-indigo-400 bg-indigo-50' : 'border-transparent hover:bg-slate-50']">
+          <span class="text-slate-300 select-none shrink-0">⠿</span>
+          <label class="flex items-center gap-1.5 flex-1 min-w-0 cursor-pointer select-none">
+            <input type="checkbox" :checked="colCfgOn(c.k)" @change="toggleCol(c.k, $event.target.checked)" class="w-3.5 h-3.5 shrink-0" />
+            <span class="text-sm truncate">{{ c.l }}<span v-if="c.d" class="block text-[10px] text-slate-400 truncate">{{ c.d }}</span></span>
+          </label>
+          <span class="flex flex-col shrink-0">
+            <button @click="moveCol(i,-1)" :disabled="i===0" class="text-[10px] leading-none px-1 text-slate-400 hover:text-indigo-600 disabled:opacity-20">▲</button>
+            <button @click="moveCol(i,1)" :disabled="i===colCfgList.length-1" class="text-[10px] leading-none px-1 text-slate-400 hover:text-indigo-600 disabled:opacity-20">▼</button>
+          </span>
+        </div>
+      </div>
+      <div class="flex items-center justify-between px-3 py-2 border-t shrink-0">
+        <button @click="resetCols" class="text-xs text-slate-400 hover:underline">초기화</button>
+        <span class="text-[11px] text-slate-400">이 브라우저에만 적용</span>
+      </div>
+    </div>
+  </div>
+
   <!-- 요일 칸 호버: 그 요일 수업 시각 -->
   <div v-if="wdPop.show" class="fixed z-[70] px-2 py-1 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
        :style="{ left: wdPop.x+'px', top: wdPop.y+'px' }">
@@ -1636,6 +1665,7 @@
         <span class="text-emerald-600">등원 <b>{{ dashCheckedIn }}</b>명</span>
         <span class="text-indigo-600">하원 <b>{{ dashCheckedOut }}</b>명</span>
         <span class="text-amber-600">수업중 <b>{{ dashInClass }}</b>명</span>
+        <button @click="openColCfg('dash','오늘 운영 — 화면 표시', $event)" class="ml-auto px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs hover:bg-white shrink-0">⚙ 화면표시</button>
       </div>
       <!-- 그날이 휴무일이면 맨 위에 사유를 띄운다 -->
       <div v-if="(dashData.holidays||[]).length" class="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mb-3 text-sm">
@@ -1729,16 +1759,16 @@
             <tr>
               <th class="text-left px-3 py-2 w-16">시각</th>
               <th class="text-left px-3 py-2 w-28">학생</th>
-              <th v-if="dashCols.school" class="text-left px-3 py-2 w-24">학교</th>
-              <th v-if="dashCols.weekdays" class="text-left px-3 py-2 w-24">요일</th>
+              <th v-if="colOn('dash','school')" class="text-left px-3 py-2 w-24">학교</th>
+              <th v-if="colOn('dash','weekdays')" class="text-left px-3 py-2 w-24">요일</th>
               <th class="text-left px-3 py-2">과목</th>
               <th class="text-left px-3 py-2">강사</th>
               <th v-if="showBranchCol" class="text-left px-3 py-2">지점</th>
               <th class="text-center px-3 py-2 w-52">등원 / 하원</th>
               <th class="text-right px-3 py-2 w-24 whitespace-nowrap">경과</th>
-              <th v-if="dashCols.mk" class="text-center px-3 py-2 w-20 whitespace-nowrap">보강</th>
-              <th v-if="dashCols.month" class="text-center px-3 py-2 w-24 whitespace-nowrap">이번달</th>
-              <th v-if="dashCols.next" class="text-left px-3 py-2 w-44">다음 수업</th>
+              <th v-if="colOn('dash','mk')" class="text-center px-3 py-2 w-20 whitespace-nowrap">보강</th>
+              <th v-if="colOn('dash','month')" class="text-center px-3 py-2 w-24 whitespace-nowrap">이번달</th>
+              <th v-if="colOn('dash','next')" class="text-left px-3 py-2 w-44">다음 수업</th>
               <th class="text-left px-3 py-2 w-28">비고</th>
             </tr>
           </thead>
@@ -1754,8 +1784,8 @@
                   <span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="findContPartner(l)" class="ml-0.5 opacity-60" title="연속 수업(이어짐)">🔗</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span>
                   <span v-if="l.is_makeup" @click="openAtt(l)" class="block mt-0.5 text-[10px] px-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer w-fit">보강{{ mkAbsenceRefSuffix(l) }}</span>
                 </td>
-                <td v-if="dashCols.school" class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap truncate">{{ dashEx(l).school || '-' }}</td>
-                <td v-if="dashCols.weekdays" class="px-3 py-2 whitespace-nowrap">
+                <td v-if="colOn('dash','school')" class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap truncate">{{ dashEx(l).school || '-' }}</td>
+                <td v-if="colOn('dash','weekdays')" class="px-3 py-2 whitespace-nowrap">
                   <span class="inline-flex gap-px">
                     <span v-for="(w,wi) in ['월','화','수','목','금','토','일']" :key="wi"
                           :class="['w-3.5 h-4 text-[10px] leading-4 text-center rounded-sm',
@@ -1784,11 +1814,11 @@
                   <span v-if="elapsedInfo(l)" class="text-[11px] font-mono" :class="elapsedInfo(l).done ? 'text-emerald-600 font-bold' : (elapsedInfo(l).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ elapsedInfo(l).mins }}분 / {{ elapsedInfo(l).dur }}분</span>
                   <span v-else-if="!isAbsent(l) && !isLeave(l)" class="text-[11px] font-mono text-slate-300">/ {{ l.duration_minutes||60 }}분</span>
                 </td>
-                <td v-if="dashCols.mk" class="px-3 py-2 text-center whitespace-nowrap">
+                <td v-if="colOn('dash','mk')" class="px-3 py-2 text-center whitespace-nowrap">
                   <button v-if="dashEx(l).mk_pending" @click="goStudentAttend(l.student_id)" class="px-1.5 py-0.5 rounded text-[11px] bg-rose-100 text-rose-600 hover:bg-rose-200">미정 {{ dashEx(l).mk_pending }}</button>
                   <span v-else class="text-[11px] text-slate-200">-</span>
                 </td>
-                <td v-if="dashCols.month" class="px-3 py-2 text-center whitespace-nowrap text-[11px]"
+                <td v-if="colOn('dash','month')" class="px-3 py-2 text-center whitespace-nowrap text-[11px]"
                     @mouseenter="showAttDetailPop(l,$event)" @mouseleave="hideAttDetailPop">
                   <span :class="(dashEx(l).att_detail||[]).length ? 'cursor-help' : ''">
                     <span v-if="dashEx(l).m_absent" class="text-rose-500">결{{ dashEx(l).m_absent }}</span>
@@ -1797,7 +1827,7 @@
                     <span v-if="!dashEx(l).m_absent && !dashEx(l).m_late" class="text-slate-200">-</span>
                   </span>
                 </td>
-                <td v-if="dashCols.next" class="px-3 py-2 whitespace-nowrap text-[11px]">
+                <td v-if="colOn('dash','next')" class="px-3 py-2 whitespace-nowrap text-[11px]">
                   <span v-if="dashNext(l)" :class="dashNext(l).cls" @mouseenter="showNextPop(l,$event)" @mouseleave="hideNextPop" class="cursor-help">
                     {{ dashNext(l).text }}
                   </span>
@@ -3137,6 +3167,7 @@
           <button @click="openBulk" class="text-xs text-slate-500 hover:text-slate-700 hover:underline whitespace-nowrap">일괄 등록</button>
           <button @click="exportStudents" class="text-xs text-slate-500 hover:text-slate-700 hover:underline whitespace-nowrap">내보내기</button>
           <button @click="openDirectRegister" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">등록</button>
+          <button @click="openColCfg('stu','학생 관리 — 화면 표시', $event)" class="px-2 py-1.5 rounded border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 whitespace-nowrap">⚙ 화면표시</button>
         </div>
       </div>
 
@@ -3251,33 +3282,85 @@
         <table class="w-full text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
-              <th @click="sortStu('enroll_no')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">원번{{ stuArrow('enroll_no') }}</th>
-              <th @click="sortStu('real_name')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">이름{{ stuArrow('real_name') }}</th>
-              <th @click="sortStu('birth_date')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">생년월일{{ stuArrow('birth_date') }}</th>
-              <th @click="sortStu('school_name')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">학교{{ stuArrow('school_name') }}</th>
-              <th @click="sortStu('school_type')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">학교급{{ stuArrow('school_type') }}</th>
-              <th @click="sortStu('grade')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">학년{{ stuArrow('grade') }}</th>
-              <th v-if="showBranchCol" @click="sortStu('branch')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">지점{{ stuArrow('branch') }}</th>
-              <th @click="sortStu('parent_name')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">보호자{{ stuArrow('parent_name') }}</th>
-              <th @click="sortStu('enrollment_status')" class="text-left px-3 py-2 cursor-pointer select-none hover:text-slate-700">상태{{ stuArrow('enrollment_status') }}</th>
+              <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다. 정렬은 헤더 클릭 그대로. -->
+              <th v-for="c in stuCols" :key="c.k" @click="stuSortKey(c.k) && sortStu(stuSortKey(c.k))"
+                  :class="['text-left px-3 py-2 select-none whitespace-nowrap', stuSortKey(c.k) ? 'cursor-pointer hover:text-slate-700' : '']">
+                {{ c.l }}<template v-if="stuSortKey(c.k)">{{ stuArrow(stuSortKey(c.k)) }}</template>
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="s in filteredStudents" :key="s.id" @click="openStudent(s)" class="border-t align-middle hover:bg-indigo-50/50 cursor-pointer">
-              <td class="px-3 py-2 font-mono text-slate-500">{{ s.enroll_no || '-' }}</td>
-              <td class="px-3 py-2 whitespace-nowrap font-medium">{{ s.real_name || s.username }}</td>
-              <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ s.birth_date || '-' }}</td>
-              <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ s.school_name || '-' }}</td>
-              <td class="px-3 py-2 text-slate-500">{{ schoolLabel(s.school_type) || '-' }}</td>
-              <td class="px-3 py-2 text-slate-500">{{ s.grade ? s.grade+'학년' : '-' }}</td>
-              <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ s.branch }}</td>
-              <td class="px-3 py-2 text-slate-500 whitespace-nowrap">
-                <span v-if="siblingCount(s)>=2" @mouseenter="showSiblings(s,$event)" @mouseleave="scheduleCloseSib" class="cursor-pointer hover:underline text-indigo-600">{{ s.parent_name || '-' }} <span class="text-xs text-indigo-400">(형제 {{ siblingCount(s) }})</span></span>
-                <span v-else>{{ s.parent_name || '-' }}</span>
+              <td v-for="c in stuCols" :key="c.k" class="px-3 py-2 text-slate-500 whitespace-nowrap">
+                <template v-if="c.k==='enroll_no'"><span class="font-mono">{{ s.enroll_no || '-' }}</span></template>
+                <template v-else-if="c.k==='name'">
+                  <!-- 정보가 빠진 학생은 이름을 주황으로 띄우고 몇 개 빠졌는지 붙인다 -->
+                  <span v-if="stuMissing(s).length" class="text-amber-600 font-semibold"
+                        @mouseenter="showMissingPop(s,$event)" @mouseleave="hideMissingPop">
+                    ❗{{ stuMissing(s).length }}개 미완 {{ s.real_name || s.username }}
+                  </span>
+                  <span v-else class="font-medium text-slate-700">{{ s.real_name || s.username }}</span>
+                </template>
+                <template v-else-if="c.k==='birth'">{{ s.birth_date || '-' }}</template>
+                <template v-else-if="c.k==='age'">{{ ageOf(s.birth_date) }}</template>
+                <template v-else-if="c.k==='school'">{{ s.school_name || '-' }}</template>
+                <template v-else-if="c.k==='school_type'">{{ schoolLabel(s.school_type) || '-' }}</template>
+                <template v-else-if="c.k==='grade'">{{ s.grade ? s.grade+'학년' : '-' }}</template>
+                <template v-else-if="c.k==='schoolshort'">{{ schoolGradeShort(s.school_name, s.school_type, s.grade) || '-' }}</template>
+                <template v-else-if="c.k==='programs'">{{ (s.subjects||[]).join(' · ') || '-' }}</template>
+                <template v-else-if="c.k==='weekly'">{{ s.weekly_sessions ? '주 '+s.weekly_sessions+'회' : '-' }}</template>
+                <template v-else-if="c.k==='weekdays'">
+                  <span class="inline-flex gap-px">
+                    <span v-for="(w,wi) in ['월','화','수','목','금','토','일']" :key="wi"
+                          :class="['w-3.5 h-4 text-[10px] leading-4 text-center rounded-sm',
+                                   stuHasDay(s,wi) ? 'bg-indigo-100 text-indigo-700' : 'text-slate-200']"
+                          @mouseenter="stuHasDay(s,wi) && showStuWdPop(s,wi,$event)" @mouseleave="hideWdPop">{{ w }}</span>
+                  </span>
+                </template>
+                <template v-else-if="c.k==='instructor'">{{ ((s.extra||{}).instructors||[]).join(', ') || '-' }}</template>
+                <template v-else-if="c.k==='parent'">
+                  <span v-if="siblingCount(s)>=2" @mouseenter="showSiblings(s,$event)" @mouseleave="scheduleCloseSib" class="cursor-pointer hover:underline text-indigo-600">{{ s.parent_name || '-' }} <span class="text-xs text-indigo-400">(형제 {{ siblingCount(s) }})</span></span>
+                  <span v-else>{{ s.parent_name || '-' }}</span>
+                </template>
+                <template v-else-if="c.k==='parent_phone'">
+                  <span v-if="s.parent_phone" @click.stop class="inline-flex items-center gap-1">{{ s.parent_phone }}<call-btn :phone="s.parent_phone"></call-btn><sms-btn :phone="s.parent_phone"></sms-btn></span>
+                  <span v-else>-</span>
+                </template>
+                <template v-else-if="c.k==='student_phone'">{{ s.student_phone || '-' }}</template>
+                <template v-else-if="c.k==='sibling'">{{ (s.extra||{}).siblings ? '형제 '+(s.extra.siblings+1)+'명' : '-' }}</template>
+                <template v-else-if="c.k==='month'">
+                  <span v-if="(s.extra||{}).m_absent" class="text-rose-500">결{{ s.extra.m_absent }}</span>
+                  <span v-if="(s.extra||{}).m_absent && (s.extra||{}).m_late" class="text-slate-300"> · </span>
+                  <span v-if="(s.extra||{}).m_late" class="text-amber-600">지{{ s.extra.m_late }}</span>
+                  <span v-if="!(s.extra||{}).m_absent && !(s.extra||{}).m_late" class="text-slate-200">-</span>
+                </template>
+                <template v-else-if="c.k==='mk'">
+                  <span v-if="(s.extra||{}).mk_pending" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 text-[11px]">미정 {{ s.extra.mk_pending }}</span>
+                  <span v-else class="text-slate-200">-</span>
+                </template>
+                <template v-else-if="c.k==='last_attend'">
+                  <span v-if="(s.extra||{}).last_attend">{{ s.extra.last_attend.slice(5) }}<span class="text-slate-400 text-[11px]"> ({{ s.extra.last_attend_days }}일 전)</span></span>
+                  <span v-else class="text-slate-200">-</span>
+                </template>
+                <template v-else-if="c.k==='verify'">
+                  <span v-if="(s.extra||{}).verify" :class="['px-1.5 py-0.5 rounded text-[11px]', s.extra.verify.status==='SUBMITTED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700']">
+                    {{ s.extra.verify.status==='SUBMITTED' ? '확인 필요' : '대기' }} D+{{ s.extra.verify.days }}
+                  </span>
+                  <span v-else class="text-slate-200">-</span>
+                </template>
+                <template v-else-if="c.k==='missing'">
+                  <span v-if="stuMissing(s).length" class="text-amber-600">{{ stuMissing(s).length }}개</span>
+                  <span v-else class="text-emerald-500">완료</span>
+                </template>
+                <template v-else-if="c.k==='enrolled_at'">{{ ((s.extra||{}).enrollment_date || '-') }}</template>
+                <template v-else-if="c.k==='tenure'">{{ tenureOf((s.extra||{}).enrollment_date) }}</template>
+                <template v-else-if="c.k==='branch'">{{ s.branch || '-' }}</template>
+                <template v-else-if="c.k==='status'">
+                  <span :class="['px-2 py-0.5 rounded text-xs', stuStatusBadge(s.enrollment_status).cls, (s.status_history&&s.status_history.length) ? 'cursor-help' : '']" @mouseenter="(s.status_history&&s.status_history.length) && showStatusPop(s,$event)" @mouseleave="hideStatusPop">{{ stuStatusBadge(s.enrollment_status).label }}</span>
+                </template>
               </td>
-              <td class="px-3 py-2"><span :class="['px-2 py-0.5 rounded text-xs', stuStatusBadge(s.enrollment_status).cls, (s.status_history&&s.status_history.length) ? 'cursor-help' : '']" @mouseenter="(s.status_history&&s.status_history.length) && showStatusPop(s,$event)" @mouseleave="hideStatusPop">{{ stuStatusBadge(s.enrollment_status).label }}</span></td>
             </tr>
-            <tr v-if="filteredStudents.length===0"><td :colspan="showBranchCol?9:8" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 학생이 없습니다.</td></tr>
+            <tr v-if="filteredStudents.length===0"><td :colspan="stuCols.length" class="px-3 py-6 text-center text-xs text-slate-400">해당하는 학생이 없습니다.</td></tr>
           </tbody>
         </table>
       </div>
@@ -4708,18 +4791,53 @@ const app = createApp({
       lateThreshold: parseInt(localStorage.getItem('portal_late_threshold')) || 5,
       // 오늘 운영 표시 항목(기기별 저장). 기본은 지금까지 보이던 열만 — 처음부터 다
       // 켜져 있으면 복잡해 보이고 대부분 다시 끄게 된다.
-      dashCols: (function(){
-        let v = {};
-        try { v = JSON.parse(localStorage.getItem('portal_dash_cols') || '{}') || {}; } catch(e){ v = {}; }
-        return Object.assign({ school:false, weekdays:false, mk:false, month:false, next:false }, v);
-      })(),
-      dashColOptions: [
-        { k:'mk',       l:'미처리 보강',   d:'보강일이 아직 안 잡힌 결석 수 — 온 김에 잡을 수 있어요' },
-        { k:'next',     l:'다음 수업',     d:'앞으로 한 달 (칸엔 첫 건, 나머지는 마우스를 올리면)' },
-        { k:'school',   l:'학교·학년',     d:'청일초5 처럼 줄여서' },
-        { k:'weekdays', l:'요일 패턴',     d:'오는 요일을 한 줄로 — 마우스를 올리면 그 요일 시각' },
-        { k:'month',    l:'이번 달 결석·지각', d:'상담이 필요한 학생이 눈에 띕니다' },
-      ],
+      // 각 화면의 열 정의. always=true 는 끌 수 없는 뼈대(시각·학생 등).
+      COLDEFS: {
+        dash: [
+          { k:'time',     l:'시각', always:true },
+          { k:'student',  l:'학생', always:true },
+          { k:'school',   l:'학교·학년', d:'청일초5 처럼 줄여서' },
+          { k:'weekdays', l:'요일 패턴', d:'오는 요일 — 올리면 그 요일 시각' },
+          { k:'subject',  l:'과목', always:true },
+          { k:'instructor', l:'강사', always:true },
+          { k:'branch',   l:'지점', d:'여러 지점을 볼 때만' },
+          { k:'att',      l:'등원 / 하원', always:true },
+          { k:'elapsed',  l:'경과', always:true },
+          { k:'mk',       l:'미처리 보강', d:'보강일이 아직 없는 결석 수' },
+          { k:'month',    l:'이번 달 결석·지각', d:'올리면 날짜와 지각 분수' },
+          { k:'next',     l:'다음 수업', d:'앞으로 한 달' },
+          { k:'note',     l:'비고', always:true },
+        ],
+        stu: [
+          { k:'enroll_no', l:'원번', always:true },
+          { k:'name',      l:'이름', always:true },
+          { k:'birth',     l:'생년월일' },
+          { k:'age',       l:'나이', d:'만 나이' },
+          { k:'school',    l:'학교' },
+          { k:'school_type', l:'학교급' },
+          { k:'grade',     l:'학년' },
+          { k:'schoolshort', l:'학교·학년(축약)', d:'청일초5' },
+          { k:'programs',  l:'등록 과정', d:'C · Py · 블록코딩' },
+          { k:'weekly',    l:'주 횟수' },
+          { k:'weekdays',  l:'요일 패턴', d:'올리면 그 요일 시각' },
+          { k:'instructor', l:'담당 강사' },
+          { k:'parent',    l:'보호자', always:true },
+          { k:'parent_phone', l:'보호자 연락처', d:'통화·문자 버튼 포함' },
+          { k:'student_phone', l:'학생 연락처' },
+          { k:'sibling',   l:'형제 재원' },
+          { k:'month',     l:'이번 달 결석·지각' },
+          { k:'mk',        l:'미처리 보강' },
+          { k:'last_attend', l:'마지막 등원', d:'며칠 전인지' },
+          { k:'verify',    l:'학부모 확인 대기' },
+          { k:'missing',   l:'정보 미완료', d:'빠진 항목 수' },
+          { k:'enrolled_at', l:'등록일' },
+          { k:'tenure',    l:'재원 기간' },
+          { k:'branch',    l:'지점' },
+          { k:'status',    l:'상태', always:true },
+        ],
+      },
+      colCfg: null, colDragIdx: null, colDragOver: null,
+      colState: {},
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
       attDetailPop: { show:false, x:0, y:0, name:'', groups:[] },
       nextPop: { show:false, x:0, y:0, name:'', rows:[] },
@@ -5141,11 +5259,17 @@ const app = createApp({
       if (st !== 'ON_LEAVE' && st !== 'WITHDRAWN') return false;
       return !this.stuTimetables.some(s => this.stuTtPhase(s) !== 'past');
     },
+    stuCols(){ return this.colOrder('stu'); },
+    colCfgList(){
+      if (!this.colCfg) return [];
+      const p = this.colCfg.page, st = this.loadColState(p), defs = this.COLDEFS[p] || [];
+      return st.order.map(k=>defs.find(d=>d.k===k)).filter(Boolean);
+    },
     dashTodayWd(){ const [y,m,dd]=(this.dashDate||this.todayStr).split('-').map(Number); return (new Date(y,m-1,dd).getDay()+6)%7; },
     dashColSpan(){
       let n = 7;                       // 시각·학생·과목·강사·등하원·경과·비고
       if (this.showBranchCol) n++;
-      ['school','weekdays','mk','month','next'].forEach(k=>{ if (this.dashCols[k]) n++; });
+      ['school','weekdays','mk','month','next'].forEach(k=>{ if (this.colOn('dash',k)) n++; });
       return n;
     },
     tempLeavesNow(){ return (this.dashData.temp_leaves||[]).filter(t=>!t.upcoming); },
@@ -7061,13 +7185,124 @@ const app = createApp({
     isAbsent(l){ return l.status==='ABSENT'; },
     isLeave(l){ return l.status==='LEAVE'; },
     isHoliday(l){ return l.status==='HOLIDAY'; },
+    // ── 열 설정(오늘 운영·학생 관리 공용) ──
+    // 저장 형태: { order:[키...], off:[숨긴 키...] }. 기기별로 남긴다.
+    colKey(page){ return 'portal_cols_' + page; },
+    loadColState(page){
+      if (this.colState[page]) return this.colState[page];
+      let v = null;
+      try { v = JSON.parse(localStorage.getItem(this.colKey(page)) || 'null'); } catch(e){ v = null; }
+      const defs = this.COLDEFS[page] || [];
+      const known = defs.map(d=>d.k);
+      // 저장된 순서에서 사라진 키는 버리고, 새로 생긴 키는 원래 자리에 끼워 넣는다
+      let order = (v && Array.isArray(v.order)) ? v.order.filter(k=>known.includes(k)) : [];
+      known.forEach((k,i)=>{ if (!order.includes(k)) order.splice(Math.min(i, order.length), 0, k); });
+      const off = (v && Array.isArray(v.off)) ? v.off.filter(k=>known.includes(k)) : this.defaultOffCols(page);
+      this.colState[page] = { order, off };
+      return this.colState[page];
+    },
+    defaultOffCols(page){
+      // 처음엔 지금까지 보이던 것만 켠다(다 켜져 있으면 첫인상이 복잡하다)
+      if (page === 'dash') return ['school','weekdays','mk','month','next'];
+      if (page === 'stu') return ['age','schoolshort','programs','weekly','weekdays','instructor',
+        'parent_phone','student_phone','sibling','month','mk','last_attend','verify','missing',
+        'enrolled_at','tenure','branch'];
+      return [];
+    },
+    saveColState(page){
+      localStorage.setItem(this.colKey(page), JSON.stringify(this.colState[page]));
+    },
+    colOn(page, k){
+      const st = this.loadColState(page);
+      const def = (this.COLDEFS[page]||[]).find(d=>d.k===k);
+      if (def && def.always) return true;
+      return !st.off.includes(k);
+    },
+    colOrder(page){
+      const st = this.loadColState(page);
+      const defs = this.COLDEFS[page] || [];
+      return st.order.map(k=>defs.find(d=>d.k===k)).filter(Boolean).filter(d=>this.colOn(page, d.k));
+    },
+    openColCfg(page, title, e){
+      const st = this.loadColState(page);
+      const w = 320, x = Math.max(8, Math.min(e.clientX - w + 40, window.innerWidth - w - 8));
+      this.colCfg = { page, title, x, y: Math.min(e.clientY + 10, window.innerHeight - 200) };
+    },
+    closeColCfg(){ this.colCfg = null; this.colDragIdx = null; },
+    toggleCol(k, on){
+      const p = this.colCfg.page, st = this.loadColState(p);
+      const def = (this.COLDEFS[p]||[]).find(d=>d.k===k);
+      if (def && def.always) return;                  // 뼈대 열은 끌 수 없다
+      const i = st.off.indexOf(k);
+      if (on && i>=0) st.off.splice(i,1);
+      else if (!on && i<0) st.off.push(k);
+      this.saveColState(p); this.afterColChange(p);
+    },
+    moveCol(i, delta){
+      const p = this.colCfg.page, st = this.loadColState(p);
+      const j = i + delta;
+      if (j < 0 || j >= st.order.length) return;
+      const [x] = st.order.splice(i,1); st.order.splice(j,0,x);
+      this.saveColState(p);
+    },
+    colDragStart(i, e){ this.colDragIdx = i; try { e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',''); } catch(_){} },
+    colDragEnter(i){
+      if (this.colDragIdx===null || this.colDragIdx===i) return;
+      // 끌고 지나가는 즉시 자리를 바꿔 미리보기처럼 보이게 한다
+      const st = this.loadColState(this.colCfg.page);
+      const [x] = st.order.splice(this.colDragIdx,1); st.order.splice(i,0,x);
+      this.colDragIdx = i;
+    },
+    colDragEnd(){ if (this.colCfg) this.saveColState(this.colCfg.page); this.colDragIdx = null; },
+    resetCols(){
+      const p = this.colCfg.page;
+      localStorage.removeItem(this.colKey(p));
+      delete this.colState[p];
+      this.loadColState(p);
+      this.afterColChange(p);
+    },
+    afterColChange(page){
+      if (page === 'stu') this.loadStudents();
+      if (page === 'dash') this.loadDashboard();
+    },
+    // ── 학생 관리 열 ──
+    stuSortKey(k){
+      return ({ enroll_no:'enroll_no', name:'real_name', birth:'birth_date', school:'school_name',
+                school_type:'school_type', grade:'grade', parent:'parent_name', branch:'branch',
+                status:'enrollment_status' })[k] || '';
+    },
+    stuMissing(s){ return ((s.extra||{}).missing) || []; },
+    stuHasDay(s, wi){ const w = (s.extra||{}).weekdays; return !!(w && w[wi]); },
+    showStuWdPop(s, wi, e){
+      const times = (((s.extra||{}).weekdays)||{})[wi] || [];
+      this.wdPop = { show:true, name:(s.real_name||s.username), wd:['월','화','수','목','금','토','일'][wi],
+                     times:[...times].sort(),
+                     x:Math.min(e.clientX+12, window.innerWidth-200), y:Math.min(e.clientY+12, window.innerHeight-100) };
+    },
+    showMissingPop(s, e){
+      this.wdPop = { show:true, name:(s.real_name||s.username), wd:'빠진 정보', times:this.stuMissing(s),
+                     x:Math.min(e.clientX+12, window.innerWidth-260), y:Math.min(e.clientY+12, window.innerHeight-120) };
+    },
+    hideMissingPop(){ this.wdPop.show = false; },
+    ageOf(birth){
+      if (!birth) return '-';
+      const [y,m,d] = birth.split('-').map(Number);
+      const t = this.today;
+      let a = t.y - y;
+      if (t.m < m || (t.m === m && t.d < d)) a--;
+      return (a >= 0 ? a + '세' : '-');
+    },
+    tenureOf(enrolled){
+      if (!enrolled) return '-';
+      const [y,m] = enrolled.split('-').map(Number);
+      const months = (this.today.y - y) * 12 + (this.today.m - m);
+      if (months < 0) return '-';
+      if (months < 12) return months + '개월';
+      return Math.floor(months/12) + '년' + (months%12 ? ' '+(months%12)+'개월' : '');
+    },
     // ── 오늘 운영 부가 열 ──
     dashEx(l){ return ((this.dashData.student_extra||{})[l.student_id]) || {}; },
     dashHasDay(l, wi){ const w = this.dashEx(l).weekdays; return !!(w && w[wi]); },
-    setDashCol(k, v){
-      this.dashCols[k] = !!v;
-      localStorage.setItem('portal_dash_cols', JSON.stringify(this.dashCols));
-    },
     // 다음 수업 = 이번 주 남은 일정 + 다음 주. 첫 건만 칸에 쓰고 나머지는 호버로 본다.
     dashNext(l){
       const rows = this.dashEx(l).next || [];
@@ -7643,7 +7878,15 @@ const app = createApp({
     async addDbComment(){ const b=(this.dbComment||'').trim(); if(!b) return; try { await api('POST','/api/academy/dev_comment', { request_id:this.dbDetail.id, body:b }); this.dbComment=''; this.openDbDetail(this.dbDetail.id); } catch(e){ this.notify(e.message,false); } },
     async deleteDbComment(c){ if(!confirm('덧글을 삭제할까요?')) return; try { await api('DELETE','/api/academy/dev_comment?id='+c.id); this.openDbDetail(this.dbDetail.id); } catch(e){ this.notify(e.message,false); } },
     // ── 학생 관리 ──
-    async loadStudents(){ try { this.students = await api('GET','/api/admin/academy/students'); } catch(e){ this.notify(e.message,false); } },
+    async loadStudents(){
+      // 켠 열에 필요한 값만 서버에서 계산하게 한다(다 계산하면 목록이 무거워짐)
+      const heavy = ['missing','weekdays','instructor','month','mk','last_attend','verify','sibling'];
+      const need = heavy.filter(k=>this.colOn('stu', k));
+      if (this.colOn('stu','tenure') || this.colOn('stu','enrolled_at')) need.push('verify');
+      const qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
+      try { this.students = await api('GET','/api/admin/academy/students'+qs); }
+      catch(e){ this.notify(e.message,false); }
+    },
     // ── 엑셀 일괄등록 ──
     openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; this.bulkConverted=false; this.bulkFileName=''; if(!(this.options.program||[]).length||!(this.options.program_language||[]).length) this.loadOptions(); if(!this.branches.length) this.loadBranches(); if(!this.ttInstructors.length) this.loadTtInstructors(); if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
     bulkTtSlots(){ return 4; },
