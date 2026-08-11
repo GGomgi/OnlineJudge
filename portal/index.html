@@ -1759,19 +1759,8 @@
         <table class="w-full text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
-              <th class="text-left px-3 py-2 w-16">시각</th>
-              <th class="text-left px-3 py-2 w-28">학생</th>
-              <th v-if="colOn('dash','school')" class="text-left px-3 py-2 w-24">학교</th>
-              <th v-if="colOn('dash','weekdays')" class="text-left px-3 py-2 w-24">요일</th>
-              <th class="text-left px-3 py-2">과목</th>
-              <th class="text-left px-3 py-2">강사</th>
-              <th v-if="showBranchCol" class="text-left px-3 py-2">지점</th>
-              <th class="text-center px-3 py-2 w-52">등원 / 하원</th>
-              <th class="text-right px-3 py-2 w-24 whitespace-nowrap">경과</th>
-              <th v-if="colOn('dash','mk')" class="text-center px-3 py-2 w-20 whitespace-nowrap">보강</th>
-              <th v-if="colOn('dash','month')" class="text-center px-3 py-2 w-24 whitespace-nowrap">이번달</th>
-              <th v-if="colOn('dash','next')" class="text-left px-3 py-2 w-44">다음 수업</th>
-              <th class="text-left px-3 py-2 w-28">비고</th>
+              <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다 -->
+              <th v-for="c in dashColsView" :key="c.k" :class="['px-3 py-2 whitespace-nowrap', dashColAlign(c.k), dashColWidth(c.k)]">{{ dashColHead(c.k) }}</th>
             </tr>
           </thead>
           <tbody>
@@ -3285,9 +3274,9 @@
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
               <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다. 정렬은 헤더 클릭 그대로. -->
-              <th v-for="c in stuCols" :key="c.k" @click="stuSortKey(c.k) && sortStu(stuSortKey(c.k))"
-                  :class="['text-left px-3 py-2 select-none whitespace-nowrap', stuSortKey(c.k) ? 'cursor-pointer hover:text-slate-700' : '']">
-                {{ c.l }}<template v-if="stuSortKey(c.k)">{{ stuArrow(stuSortKey(c.k)) }}</template>
+              <th v-for="c in stuCols" :key="c.k" @click="colSortField(c.k) && sortStu(colSortField(c.k))"
+                  :class="['text-left px-3 py-2 select-none whitespace-nowrap', colSortField(c.k) ? 'cursor-pointer hover:text-slate-700' : '']">
+                {{ c.l }}<template v-if="colSortField(c.k)">{{ stuArrow(colSortField(c.k)) }}</template>
               </th>
             </tr>
           </thead>
@@ -7278,7 +7267,9 @@ const app = createApp({
       if (page === 'dash') this.loadDashboard();
     },
     // ── 학생 관리 열 ──
-    stuSortKey(k){
+    // 열 키 → 정렬에 쓸 데이터 필드. 이름을 stuSortKey 로 두면 정렬 기준을 담은
+    // 같은 이름의 데이터와 충돌해 화면이 통째로 죽는다.
+    colSortField(k){
       return ({ enroll_no:'enroll_no', name:'real_name', birth:'birth_date', school:'school_name',
                 school_type:'school_type', grade:'grade', parent:'parent_name', branch:'branch',
                 status:'enrollment_status' })[k] || '';
