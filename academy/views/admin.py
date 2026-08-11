@@ -1440,10 +1440,6 @@ def _create_student_from_lead(request, lead, data):
             consent_date=(data.get("consent_date") or (now().date() if data.get("consent_privacy") else None)),
             memo=data.get("memo", "") or "",
         )
-        # 키오스크 등하원 안내 음성을 미리 만들어 둔다. 실패해도 등록은 그대로 진행한다
-        # (인터넷이 잠깐 끊겨도 학생은 등록돼야 하고, 음성은 나중에 다시 만들면 된다).
-        from ..services_voice import build_student_voice
-        build_student_voice(user)
         # 입회원 신청서의 요일/시간(class_schedule)으로 개별 시간표 자동 생성(12).
         # '추후 안내'면 미생성. 수업 길이는 학교급·주횟수 규칙으로 자동 계산.
         schedule_raw = data.get("class_schedule") or ""
@@ -1515,6 +1511,10 @@ def _create_student_from_lead(request, lead, data):
     if parent_user is not None:
         result["parent_account"] = {"username": parent_user.username,
                                     "is_new": parent_user.last_login is None}
+    # 키오스크 등하원 안내 음성. 트랜잭션이 끝난 뒤에 만든다 — 외부 통신이라 느리거나
+    # 실패할 수 있는데, 그것 때문에 등록이 통째로 되돌려지면 안 된다.
+    from ..services_voice import build_student_voice
+    build_student_voice(user)
     return result, None
 
 
@@ -2193,6 +2193,10 @@ class BulkRegisterAPI(APIView):
             # 학부모(보호자) 계정 생성/연결 — 전환(개별 등록) 흐름과 동일하게 처리(11 §9)
             get_or_create_guardian(user, d["parent_name"], d["parent_phone"], d["branch"],
                                    relation=d.get("parent_relation", ""))
+        # 키오스크 등하원 안내 음성(개별 등록과 동일). 트랜잭션 밖에서 만든다 —
+        # 외부 통신이라 느리거나 실패할 수 있는데, 그것 때문에 등록이 되돌려지면 안 된다.
+        from ..services_voice import build_student_voice
+        build_student_voice(user)
 
 
 class BulkExportAPI(APIView):
