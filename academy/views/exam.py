@@ -134,3 +134,252 @@ class ExamCatalogAdminAPI(APIView):
         c.is_active = False
         c.save(update_fields=["is_active"])
         return self.success("ok")
+
+
+# ─────────────────────── 회차 ───────────────────────
+
+def session_label(sn):
+    """목록에 쓸 이름. 자격증 특별시험은 날짜가 곧 이름이라 제목이 없어도 읽히게 만든다."""
+    if sn.title:
+        return sn.title
+    if sn.catalog_id and sn.catalog:
+        return sn.catalog.name
+    return "특별시험"
+
+
+def session_row(sn, counts=None):
+    c = counts or {}
+    d = sn.exam_date
+    today = kst_today()
+    return {
+        "id": sn.id, "kind": sn.kind, "kind_label": KIND_LABEL.get(sn.kind, sn.kind),
+        "catalog_id": sn.catalog_id, "catalog": (sn.catalog.name if sn.catalog_id else ""),
+        "title": sn.title, "label": session_label(sn),
+        "exam_date": str(d) if d else "", "confirmed": sn.confirmed,
+        "apply_from": str(sn.apply_from) if sn.apply_from else "",
+        "apply_until": str(sn.apply_until) if sn.apply_until else "",
+        "result_date": str(sn.result_date) if sn.result_date else "",
+        "entry_mode": sn.entry_mode or (sn.catalog.entry_mode if sn.catalog_id else ""),
+        "place": sn.place, "fee": sn.fee, "note": sn.note,
+        "branch_id": sn.branch_id, "branch": (sn.branch.name if sn.branch_id else ""),
+        "d_exam": (d - today).days if d else None,
+        "d_apply": ((sn.apply_until - today).days if sn.apply_until else None),
+        "total": c.get("total", 0), "applied": c.get("applied", 0),
+        "pending": c.get("total", 0) - c.get("applied", 0),
+    }
+
+
+class ExamSessionAdminAPI(APIView):
+    """회차(시험일·대회) 등록·수정·삭제."""
+
+    @admin_role_required
+    def get(self, request):
+        view = viewable_branch_ids(request.user)
+        qs = ExamSession.objects.select_related("catalog", "branch").filter(is_deleted=False)
+        if view is not None:
+            qs = qs.filter(Q(branch_id=None) | Q(branch_id__in=view))
+        if request.GET.get("kind"):
+            qs = qs.filter(kind=request.GET["kind"])
+        if request.GET.get("upcoming") == "1":
+            qs = qs.filter(Q(exam_date__gte=kst_today()) | Q(exam_date__isnull=True))
+        counts = {}
+        for e in ExamEntry.objects.filter(session__in=qs, is_deleted=False).values("session_id", "applied"):
+            c = counts.setdefault(e["session_id"], {"total": 0, "applied": 0})
+            c["total"] += 1
+            if e["applied"]:
+                c["applied"] += 1
+        rows = [session_row(sn, counts.get(sn.id)) for sn in qs]
+        rows.sort(key=lambda r: (r["exam_date"] or "9999-99-99"))
+        return self.success(rows)
+
+    @admin_role_required
+    def post(self, request):
+        d = request.data
+        sid = d.get("id")
+        sn = ExamSession.objects.filter(id=sid, is_deleted=False).first() if sid else None
+        if sid and not sn:
+            return self.error("회차가 없습니다.")
+        kind = d.get("kind") or ExamKind.CERT
+        exam_date = parse_date(d.get("exam_date"))
+        if kind == ExamKind.CERT and not exam_date:
+            return self.error("시험일을 정하세요.")
+        if not sn:
+            sn = ExamSession(created_by=request.user)
+        sn.kind = kind
+        cid = d.get("catalog_id") or None
+        sn.catalog_id = int(cid) if cid else None
+        if kind == ExamKind.CONTEST and not sn.catalog_id:
+            return self.error("어떤 대회인지 고르세요.")
+        sn.title = (d.get("title") or "").strip()[:128]
+        sn.exam_date = exam_date
+        sn.apply_from = parse_date(d.get("apply_from"))
+        au = parse_date(d.get("apply_until"))
+        if au is None and kind == ExamKind.CERT and exam_date:
+            # 특별시험은 시험 이틀 전까지 접수 — 비워 두면 자동으로 채운다
+            au = exam_date - timedelta(days=CERT_APPLY_LEAD_DAYS)
+        sn.apply_until = au
+        sn.result_date = parse_date(d.get("result_date"))
+        sn.entry_mode = (d.get("entry_mode") or "").strip()
+        sn.place = (d.get("place") or "").strip()[:128]
+        try:
+            sn.fee = int(d.get("fee")) if str(d.get("fee") or "").strip() else None
+        except (TypeError, ValueError):
+            sn.fee = None
+        sn.note = (d.get("note") or "").strip()[:255]
+        sn.confirmed = bool(d.get("confirmed", True))
+        bid = d.get("branch_id") or None
+        if bid and not can_manage_branch(request.user, int(bid)):
+            return self.error("이 지점을 관리할 권한이 없습니다.")
+        sn.branch_id = int(bid) if bid else None
+        sn.save()
+        return self.success(session_row(sn))
+
+    @admin_role_required
+    def delete(self, request):
+        sn = ExamSession.objects.filter(id=request.GET.get("id"), is_deleted=False).first()
+        if not sn:
+            return self.error("회차가 없습니다.")
+        if sn.branch_id and not can_manage_branch(request.user, sn.branch_id):
+            return self.error("권한이 없습니다.")
+        sn.is_deleted = True
+        sn.save(update_fields=["is_deleted"])
+        ExamEntry.objects.filter(session=sn).update(is_deleted=True)
+        return self.success("ok")
+
+
+# ─────────────────────── 참가(목록의 한 줄) ───────────────────────
+
+def entry_row(e):
+    sn = e.session
+    cat = e.catalog or sn.catalog
+    today = kst_today()
+    what = []
+    if cat:
+        what.append(cat.name)
+    if e.level:
+        what.append(e.level)
+    if e.track:
+        what.append(e.track)
+    if e.team_id:
+        what.append("팀 " + e.team.name)
+    return {
+        "id": e.id, "session_id": sn.id, "kind": sn.kind,
+        "kind_label": KIND_LABEL.get(sn.kind, sn.kind),
+        "student_id": e.student_id, "student": name_of(e.student),
+        "catalog_id": (cat.id if cat else None), "catalog": (cat.name if cat else ""),
+        "level": e.level, "track": e.track,
+        "team_id": e.team_id, "team": (e.team.name if e.team_id else ""),
+        "what": " ".join(what) or session_label(sn),
+        "session_label": session_label(sn),
+        "exam_date": str(sn.exam_date) if sn.exam_date else "",
+        "confirmed": sn.confirmed,
+        "apply_until": str(sn.apply_until) if sn.apply_until else "",
+        "d_exam": ((sn.exam_date - today).days if sn.exam_date else None),
+        "d_apply": ((sn.apply_until - today).days if sn.apply_until else None),
+        "applied": e.applied, "applied_at": str(e.applied_at) if e.applied_at else "",
+        "entry_mode": sn.entry_mode or (sn.catalog.entry_mode if sn.catalog_id else
+                                        (cat.entry_mode if cat else "")),
+        "fee_paid": e.fee_paid,
+        "credential_id": e.credential_id,
+        "credential": ((e.credential.site + " / " + e.credential.login_id) if e.credential_id else ""),
+        "result": e.result, "score": e.score, "note": e.note,
+        "instructor": name_of(e.instructor) if e.instructor_id else "",
+        "phone": _entry_phone(e),
+    }
+
+
+def _entry_phone(e):
+    sp = getattr(e.student, "student_profile", None)
+    return (sp.parent_phone if sp else "") or ""
+
+
+class ExamEntryAdminAPI(APIView):
+    """참가 목록 — 이 기능의 메인 화면. '누구 / 무엇 / 언제 / 접수했나'를 한 줄씩."""
+
+    @admin_role_required
+    def get(self, request):
+        view = viewable_branch_ids(request.user)
+        qs = ExamEntry.objects.select_related(
+            "session", "session__catalog", "session__branch", "catalog", "team",
+            "student", "student__userprofile", "student__student_profile",
+            "credential", "instructor").filter(is_deleted=False, session__is_deleted=False)
+        if view is not None:
+            qs = qs.filter(Q(session__branch_id=None) | Q(session__branch_id__in=view))
+        if request.GET.get("session_id"):
+            qs = qs.filter(session_id=request.GET["session_id"])
+        if request.GET.get("student_id"):
+            qs = qs.filter(student_id=request.GET["student_id"])
+        rows = [entry_row(e) for e in qs[:1000]]
+        # 시험일이 가까운 순. 날짜 미정(대회 미확정)은 뒤로.
+        rows.sort(key=lambda r: (r["exam_date"] or "9999-99-99", r["student"]))
+        return self.success(rows)
+
+    @admin_role_required
+    def post(self, request):
+        """참가 추가·수정. student_ids 로 여러 명을 한 번에 붙일 수 있다."""
+        d = request.data
+        eid = d.get("id")
+        if eid:
+            e = ExamEntry.objects.filter(id=eid, is_deleted=False).first()
+            if not e:
+                return self.error("참가 기록이 없습니다.")
+            self._apply(e, d, request.user)
+            e.save()
+            return self.success(entry_row(ExamEntry.objects.select_related(
+                "session", "session__catalog", "catalog", "team", "student",
+                "student__userprofile", "student__student_profile", "credential",
+                "instructor").get(id=e.id)))
+
+        sn = ExamSession.objects.filter(id=d.get("session_id"), is_deleted=False).first()
+        if not sn:
+            return self.error("회차가 없습니다.")
+        ids = d.get("student_ids") or ([d.get("student_id")] if d.get("student_id") else [])
+        if not ids:
+            return self.error("학생을 고르세요.")
+        made, skipped = 0, []
+        for sid in ids:
+            u = User.objects.filter(id=sid).first()
+            if not u:
+                continue
+            if ExamEntry.objects.filter(session=sn, student=u, is_deleted=False).exists():
+                skipped.append(name_of(u))
+                continue
+            e = ExamEntry(session=sn, student=u, created_by=request.user)
+            self._apply(e, d, request.user)
+            e.save()
+            made += 1
+        return self.success({"made": made, "skipped": skipped})
+
+    @staticmethod
+    def _apply(e, d, actor):
+        if "catalog_id" in d:
+            e.catalog_id = int(d["catalog_id"]) if d.get("catalog_id") else None
+        if "level" in d:
+            e.level = (d.get("level") or "").strip()[:16]
+        if "track" in d:
+            e.track = (d.get("track") or "").strip()[:32]
+        if "team_id" in d:
+            e.team_id = int(d["team_id"]) if d.get("team_id") else None
+        if "applied" in d:
+            e.applied = bool(d.get("applied"))
+            e.applied_at = kst_today() if e.applied else None
+            if d.get("applied_at"):
+                e.applied_at = parse_date(d["applied_at"], e.applied_at)
+        if "credential_id" in d:
+            e.credential_id = int(d["credential_id"]) if d.get("credential_id") else None
+        if "fee_paid" in d:
+            e.fee_paid = bool(d.get("fee_paid"))
+        for f, mx in (("result", 32), ("score", 32), ("note", 255)):
+            if f in d:
+                setattr(e, f, (d.get(f) or "").strip()[:mx])
+        if "instructor_id" in d:
+            e.instructor_id = int(d["instructor_id"]) if d.get("instructor_id") else None
+
+    @admin_role_required
+    def delete(self, request):
+        e = ExamEntry.objects.filter(id=request.GET.get("id"), is_deleted=False).first()
+        if not e:
+            return self.error("참가 기록이 없습니다.")
+        e.is_deleted = True
+        e.save(update_fields=["is_deleted"])
+        return self.success("ok")
