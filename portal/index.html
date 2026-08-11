@@ -1913,7 +1913,10 @@
                     <span v-if="s.parent_phone" @click.stop class="inline-flex items-center gap-1">{{ s.parent_phone }}<call-btn :phone="s.parent_phone"></call-btn><sms-btn :phone="s.parent_phone"></sms-btn></span>
                     <span v-else>-</span>
                   </template>
-                  <template v-else-if="c.k==='student_phone'">{{ s.student_phone || '-' }}</template>
+                  <template v-else-if="c.k==='student_phone'">
+                    <span v-if="s.student_phone" @click.stop class="inline-flex items-center gap-1">{{ s.student_phone }}<call-btn :phone="s.student_phone"></call-btn><sms-btn :phone="s.student_phone"></sms-btn></span>
+                    <span v-else>-</span>
+                  </template>
                   <template v-else-if="c.k==='sibling'">{{ (s.extra||{}).siblings ? '형제 '+(s.extra.siblings+1)+'명' : '-' }}</template>
                   <template v-else-if="c.k==='month'">
                     <span v-if="(s.extra||{}).m_absent" class="text-rose-500">결{{ s.extra.m_absent }}</span>
@@ -3429,7 +3432,10 @@
                   <span v-if="s.parent_phone" @click.stop class="inline-flex items-center gap-1">{{ s.parent_phone }}<call-btn :phone="s.parent_phone"></call-btn><sms-btn :phone="s.parent_phone"></sms-btn></span>
                   <span v-else>-</span>
                 </template>
-                <template v-else-if="c.k==='student_phone'">{{ s.student_phone || '-' }}</template>
+                <template v-else-if="c.k==='student_phone'">
+                  <span v-if="s.student_phone" @click.stop class="inline-flex items-center gap-1">{{ s.student_phone }}<call-btn :phone="s.student_phone"></call-btn><sms-btn :phone="s.student_phone"></sms-btn></span>
+                  <span v-else>-</span>
+                </template>
                 <template v-else-if="c.k==='sibling'">{{ (s.extra||{}).siblings ? '형제 '+(s.extra.siblings+1)+'명' : '-' }}</template>
                 <template v-else-if="c.k==='month'">
                   <span v-if="(s.extra||{}).m_absent" class="text-rose-500">결{{ s.extra.m_absent }}</span>
