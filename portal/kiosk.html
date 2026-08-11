@@ -66,6 +66,17 @@ createApp({
       leftZoom: parseInt(localStorage.getItem('kiosk_left_zoom')) || 120,
       rightZoom: parseInt(localStorage.getItem('kiosk_right_zoom')) || 150,
       ratioSettingsOpen: false,
+      soundModes: [
+        { k:'off',   l:'끄기',                d:'' },
+        { k:'beep',  l:'알림음만',            d:'띵동' },
+        { k:'name',  l:'알림음 + 이름 + 음성', d:'"홍길동님 등원하였습니다"' },
+        { k:'voice', l:'알림음 + 음성',        d:'이름 없이 "등원 완료되었습니다"' },
+      ],
+      soundStu: localStorage.getItem('kiosk_sound_stu') || 'off',
+      soundStaff: localStorage.getItem('kiosk_sound_staff') || 'off',
+      soundVol: parseInt(localStorage.getItem('kiosk_sound_vol') ?? '70'),
+      soundMsg: null, _soundMsgTimer: null,
+      _audioCtx: null,
       deviceId: '', deviceStatus: 'checking',  // checking | confirm | PENDING | APPROVED | REVOKED | badlink
       deviceNameInput: '',
     };
@@ -233,7 +244,7 @@ createApp({
         if (!d.matches || !d.matches.length){
           this.resultMsg = '일치하는 학생이 없습니다.';
           this.resultSub = '번호를 다시 확인해주세요.';
-          this.stage = 'error';
+          this.stage = 'error'; this.failSound('stu');
           setTimeout(()=>this.reset(), 2200);
         } else if (d.matches.length === 1){
           this.matches = d.matches;
@@ -245,7 +256,7 @@ createApp({
       } catch(e){
         this.resultMsg = '오류가 발생했습니다.';
         this.resultSub = e.message || '';
-        this.stage = 'error';
+        this.stage = 'error'; this.failSound('stu');
         setTimeout(()=>this.reset(), 2500);
       } finally { this.busy = false; }
     },
@@ -253,21 +264,89 @@ createApp({
       this.busy = true;
       try {
         const d = await kioskApi('POST', '/api/academy/kiosk_check', { b:this.b, t:this.t, device_id:this.deviceId, student_id:m.student_id });
-        if (d.action === 'in'){ this.resultMsg = d.name+'님 등원 완료'; this.resultSub = d.time; }
-        else if (d.action === 'out'){ this.resultMsg = d.name+'님 하원 완료'; this.resultSub = d.time; }
-        else { this.resultMsg = d.name+'님은 오늘 등원·하원이 모두 처리되었습니다.'; this.resultSub = '등원 '+(d.in||'-')+' · 하원 '+(d.out||'-'); }
+        if (d.action === 'in'){ this.resultMsg = d.name+'님 등원 완료'; this.resultSub = d.time; this.notifySound('stu', d.name, '등원'); }
+        else if (d.action === 'out'){ this.resultMsg = d.name+'님 하원 완료'; this.resultSub = d.time; this.notifySound('stu', d.name, '하원'); }
+        else { this.resultMsg = d.name+'님은 오늘 등원·하원이 모두 처리되었습니다.'; this.resultSub = '등원 '+(d.in||'-')+' · 하원 '+(d.out||'-'); this.failSound('stu'); }
         this.stage = 'result';
         this.loadBoard();
         setTimeout(()=>this.reset(), 2600);
       } catch(e){
         this.resultMsg = '처리 중 오류가 발생했습니다.';
         this.resultSub = e.message || '';
-        this.stage = 'error';
+        this.stage = 'error'; this.failSound('stu');
         setTimeout(()=>this.reset(), 2500);
       } finally { this.busy = false; }
     },
     reset(){ this.digits=''; this.matches=[]; this.resultMsg=''; this.resultSub=''; this.stage='keypad';
              this.staffDigits=''; this.staffMatches=[]; this.staffPick=null; this.staffAction=''; },
+
+    // ── 소리 ──
+    // 음원 파일 없이 브라우저에서 직접 소리를 만든다(외부 요청 없음 = 인터넷이 끊겨도 남).
+    setSound(who, v){
+      if (who === 'stu'){ this.soundStu = v; localStorage.setItem('kiosk_sound_stu', v); }
+      else { this.soundStaff = v; localStorage.setItem('kiosk_sound_staff', v); }
+    },
+    setSoundVol(v){ this.soundVol = parseInt(v); localStorage.setItem('kiosk_sound_vol', this.soundVol); },
+    _ctx(){
+      if (!this._audioCtx){
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        this._audioCtx = new AC();
+      }
+      if (this._audioCtx.state === 'suspended') this._audioCtx.resume();
+      return this._audioCtx;
+    },
+    _tone(freq, start, dur, gainScale){
+      const ctx = this._ctx(); if (!ctx) return;
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      const vol = (this.soundVol/100) * (gainScale||1) * 0.25;
+      osc.type = 'sine'; osc.frequency.value = freq;
+      // 뚝 끊기면 '틱' 소리가 나서 시작·끝을 부드럽게 감싼다
+      g.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+      g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), ctx.currentTime + start + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+      osc.connect(g); g.connect(ctx.destination);
+      osc.start(ctx.currentTime + start); osc.stop(ctx.currentTime + start + dur + 0.02);
+    },
+    beepOk(){ this._tone(880, 0, 0.16); this._tone(1175, 0.14, 0.22); },      // 띵동(올라가는 두 음)
+    beepFail(){ this._tone(320, 0, 0.22, 1.2); this._tone(240, 0.20, 0.30, 1.2); },  // 낮게 두 번
+    speak(text){
+      if (!text || !window.speechSynthesis) return;
+      try {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'ko-KR'; u.volume = this.soundVol/100; u.rate = 1.0;
+        const ko = window.speechSynthesis.getVoices().find(v=>/^ko/i.test(v.lang));
+        if (ko) u.voice = ko;
+        window.speechSynthesis.speak(u);
+      } catch(e){ /* 음성이 없는 기기면 알림음만 나고 조용히 넘어간다 */ }
+    },
+    // who: 'stu'|'staff', name: 이름, what: '등원'|'하원'|'출근'|'퇴근'
+    notifySound(who, name, what){
+      const mode = who==='stu' ? this.soundStu : this.soundStaff;
+      if (mode === 'off') return;
+      this.beepOk();
+      if (mode === 'name') this.speak(name + '님 ' + what + '하였습니다');
+      else if (mode === 'voice') this.speak(what + ' 완료되었습니다');
+    },
+    failSound(who){
+      const mode = who==='stu' ? this.soundStu : this.soundStaff;
+      if (mode === 'off') return;
+      this.beepFail();
+      // 실패는 이름을 부를 게 없으니 어느 모드든 같은 안내
+      if (mode === 'name' || mode === 'voice') this.speak('다시 확인해 주세요');
+    },
+    testSound(who){
+      const mode = who==='stu' ? this.soundStu : this.soundStaff;
+      clearTimeout(this._soundMsgTimer);
+      if (mode === 'off'){ this.soundMsg = { who, text:'소리가 꺼져 있습니다.' }; }
+      else if (this.soundVol === 0){ this.soundMsg = { who, text:'볼륨이 0입니다.' }; }
+      else {
+        this.notifySound(who, '홍길동', who==='stu' ? '등원' : '출근');
+        this.soundMsg = { who, text:(mode==='beep' ? '알림음을 재생했습니다.' : '알림음과 음성을 재생했습니다. 안 들리면 태블릿 볼륨을 확인하세요.') };
+      }
+      this._soundMsgTimer = setTimeout(()=>{ this.soundMsg = null; }, 4000);
+    },
 
     // ── 직원 출퇴근 ──
     openStaffPad(){ this.staffDigits=''; this.staffMatches=[]; this.staffPick=null; this.stage='staffpad'; },
@@ -289,7 +368,7 @@ createApp({
       } catch(e){
         this.resultMsg = '확인할 수 없습니다.';
         this.resultSub = e.message || '';
-        this.stage = 'error';
+        this.stage = 'error'; this.failSound('staff');
         setTimeout(()=>this.reset(), 2500);
       } finally { this.busy = false; }
     },
@@ -311,16 +390,18 @@ createApp({
         if (d.action === 'UNDO'){
           this.resultMsg = d.name+'님 '+(d.field==='OUT'?'퇴근':'출근')+' 기록이 취소되었습니다.';
           this.resultSub = '다시 찍어주세요.';
+          this.failSound('staff');
         } else {
           this.resultMsg = d.name+'님 '+(d.action==='IN'?'출근':'퇴근')+' 완료';
           this.resultSub = d.time;
+          this.notifySound('staff', d.name, d.action==='IN' ? '출근' : '퇴근');
         }
         this.stage = 'result';
         setTimeout(()=>this.reset(), 2600);
       } catch(e){
         this.resultMsg = '처리할 수 없습니다.';
         this.resultSub = e.message || '';
-        this.stage = 'error';
+        this.stage = 'error'; this.failSound('staff');
         setTimeout(()=>this.reset(), 3000);
       } finally { this.busy = false; }
     },
@@ -392,6 +473,33 @@ createApp({
               <span class="font-mono">{{ rightZoom }}%</span>
             </div>
             <input type="range" min="70" max="200" step="10" :value="rightZoom" @input="setRightZoom($event.target.value)" class="w-full" />
+          </div>
+          <!-- 소리는 학생용·직원용을 따로 둔다(직원은 이름이 불리는 게 어색할 수 있어 보통 알림음만) -->
+          <div class="border-t border-slate-600 pt-2">
+            <div class="font-semibold text-slate-200 mb-1">🔊 소리 — 학생 등하원</div>
+            <label v-for="o in soundModes" :key="'s'+o.k" class="flex items-start gap-1.5 py-0.5 cursor-pointer select-none">
+              <input type="radio" name="snd-stu" :value="o.k" :checked="soundStu===o.k" @change="setSound('stu', o.k)" class="mt-0.5 shrink-0" />
+              <span>{{ o.l }}<span v-if="o.d" class="block text-[10px] text-slate-500">{{ o.d }}</span></span>
+            </label>
+            <button @click="testSound('stu')" class="mt-1 px-2 py-1 rounded border border-slate-600 hover:bg-slate-700">🔈 테스트</button>
+            <div v-if="soundMsg && soundMsg.who==='stu'" class="mt-1 text-[10px] text-amber-300">{{ soundMsg.text }}</div>
+          </div>
+          <div class="border-t border-slate-600 pt-2">
+            <div class="font-semibold text-slate-200 mb-1">🔊 소리 — 직원 출퇴근</div>
+            <label v-for="o in soundModes" :key="'f'+o.k" class="flex items-start gap-1.5 py-0.5 cursor-pointer select-none">
+              <input type="radio" name="snd-staff" :value="o.k" :checked="soundStaff===o.k" @change="setSound('staff', o.k)" class="mt-0.5 shrink-0" />
+              <span>{{ o.l }}<span v-if="o.d" class="block text-[10px] text-slate-500">{{ o.d }}</span></span>
+            </label>
+            <button @click="testSound('staff')" class="mt-1 px-2 py-1 rounded border border-slate-600 hover:bg-slate-700">🔈 테스트</button>
+            <div v-if="soundMsg && soundMsg.who==='staff'" class="mt-1 text-[10px] text-amber-300">{{ soundMsg.text }}</div>
+          </div>
+          <div class="border-t border-slate-600 pt-2">
+            <div class="flex items-center justify-between mb-1">
+              <span>볼륨</span>
+              <span class="font-mono">{{ soundVol }}%</span>
+            </div>
+            <input type="range" min="0" max="100" step="5" :value="soundVol" @input="setSoundVol($event.target.value)" class="w-full" />
+            <div class="text-[10px] text-slate-500 mt-1">태블릿 자체 볼륨도 함께 켜져 있어야 들립니다.</div>
           </div>
           <div class="text-[10px] text-slate-500">이 기기에만 적용됩니다.</div>
         </div>
