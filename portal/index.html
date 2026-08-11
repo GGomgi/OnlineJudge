@@ -1756,7 +1756,7 @@
       </div>
       <!-- 아래: 수업표 -->
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full min-w-max text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
               <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다 -->
@@ -1768,7 +1768,7 @@
               <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="dashColSpan" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }}</td></tr>
               <tr class="border-t align-middle hover:bg-slate-50" :class="isAbsent(l) ? 'bg-rose-50/50' : (isLeave(l) ? 'bg-violet-50/50' : (l.adhoc ? 'bg-amber-50/50' : ''))">
                 <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다 -->
-                <td v-for="c in dashColsView" :key="c.k" :class="['px-3 py-2', dashColAlign(c.k)]">
+                <td v-for="c in dashColsView" :key="c.k" :class="['px-3 py-2 whitespace-nowrap align-middle', dashColAlign(c.k), dashColWidth(c.k), dashColFont(c.k)]">
                   <template v-if="c.k==='time'">
                     <span v-if="l.time_changed" @mouseenter="showTcPop(l,$event)" @mouseleave="hideTcPop" class="text-amber-600 font-bold cursor-help">{{ l.start_time }}</span>
                     <span v-else>{{ l.start_time }}</span>
@@ -3287,7 +3287,7 @@
       </div>
       <!-- 목록 -->
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full min-w-max text-sm">
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
               <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다. 정렬은 헤더 클릭 그대로. -->
@@ -7327,9 +7327,16 @@ const app = createApp({
       if (k==='elapsed') return 'text-right';
       return 'text-left';
     },
+    dashColFont(k){
+      return ({ time:'font-mono', student:'font-medium' })[k] || '';
+    },
     dashColWidth(k){
-      return ({ time:'w-16', student:'w-28', school:'w-24', weekdays:'w-24', att:'w-52',
-                elapsed:'w-24', mk:'w-20', month:'w-24', next:'w-44', note:'w-28' })[k] || '';
+      // 최소폭만 준다. 예전처럼 고정폭(w-*)을 주면 열이 늘었을 때 칸이 눌려
+      // 글자가 여러 줄로 쪼개진다. 가로가 길어지면 스크롤로 본다.
+      return ({ time:'min-w-[3.5rem]', student:'min-w-[7rem]', school:'min-w-[5rem]',
+                weekdays:'min-w-[6rem]', subject:'min-w-[4rem]', instructor:'min-w-[4rem]',
+                att:'min-w-[13rem]', elapsed:'min-w-[6rem]', mk:'min-w-[4rem]',
+                month:'min-w-[5rem]', next:'min-w-[10rem]', note:'min-w-[6rem]' })[k] || '';
     },
     // ── 오늘 운영 부가 열 ──
     dashEx(l){ return ((this.dashData.student_extra||{})[l.student_id]) || {}; },
