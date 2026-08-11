@@ -2115,8 +2115,8 @@
     <!-- 연속 수업(같은 학생 바로 이어지는 2타임) 함께 적용 여부 확인 — 탭과 무관하게 항상 렌더링 -->
     <div v-if="linkedPrompt" class="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center" @click.self="linkedChoose(null)">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5">
-        <div class="font-bold mb-1">연속 수업 확인</div>
-        <p class="text-sm text-slate-500 mb-4">{{ linkedPrompt.text }}</p>
+        <div class="font-bold mb-1">{{ linkedPrompt.title }}</div>
+        <p class="text-sm text-slate-500 mb-4 whitespace-pre-line">{{ linkedPrompt.text }}</p>
         <div class="flex items-center justify-between gap-2">
           <button @click="linkedChoose(null)" class="text-xs text-slate-400 hover:underline">취소</button>
           <div class="flex gap-2">
@@ -6847,8 +6847,8 @@ const app = createApp({
       }
       return null;
     },
-    askLinked(text, noLabel, yesLabel){
-      return new Promise(resolve=>{ this.linkedPrompt = { text, noLabel, yesLabel, resolve }; });
+    askLinked(text, noLabel, yesLabel, title){
+      return new Promise(resolve=>{ this.linkedPrompt = { text, noLabel, yesLabel, resolve, title: title || '연속 수업 확인' }; });
     },
     linkedChoose(v){ const p=this.linkedPrompt; this.linkedPrompt=null; if (p) p.resolve(v); },
     async openAtt(l){
@@ -6946,11 +6946,16 @@ const app = createApp({
           if (ok!==true) return;
         }
       }
+      // 결석을 '결석이 아닌 다른 것'으로 바꾸면 그 보강은 메꿀 결석이 없어진다.
+      // 조퇴예정은 그대로 보강 사유가 되므로 묻지 않는다(임시휴원은 보강 대상이 아니라 포함).
       let cancelMakeupToo = null;
-      if (wasAbsentChk && tagChk!=='ABSENT' && tagChk!=='TEMP_LEAVE' && l.linked && l.linked.kind==='makeup' && l.linked.occ_id){
-        if (window.confirm('이 결석에 연결된 보강 일정('+l.linked.date+'('+this.wdOf(l.linked.date)+') '+l.linked.start_time+')이 있습니다.\n보강도 함께 취소할까요?\n(취소를 누르면 결석만 취소되고 보강 일정은 그대로 유지됩니다.)')){
-          cancelMakeupToo = l.linked.occ_id;
-        }
+      const stillNeedsMakeup = (tagChk==='ABSENT' || tagChk==='EARLY_LEAVE_EXPECTED');
+      if (wasAbsentChk && !stillNeedsMakeup && l.linked && l.linked.kind==='makeup' && l.linked.occ_id){
+        const ans = await this.askLinked(
+          '이 결석에 연결된 보강 일정('+l.linked.date+'('+this.wdOf(l.linked.date)+') '+l.linked.start_time+')이 있습니다.\n결석을 취소하면 이 보강은 메꿀 결석이 없어집니다.',
+          '보강은 그대로 두기', '보강도 함께 취소', '연결된 보강 확인');
+        if (ans === null) return;                 // 창을 닫으면 저장 자체를 하지 않는다
+        if (ans === true) cancelMakeupToo = l.linked.occ_id;
       }
       try {
         const lessonEditBody = { occ_id:l.occ_id, reason:this.attForm.note };
@@ -8192,7 +8197,10 @@ const app = createApp({
       this.openAtt({ occ_id:row.occ_id, student_id:this.stuDetail.id, student_name:(this.stuDetail.real_name||this.stuDetail.username),
         start_time:row.start_time, subject:row.subject, status:row.status, is_makeup: !!row.is_makeup,
         duration_minutes:row.duration_minutes, instructor_id:row.instructor_id, program:row.program,
-        att: row.att, lesson_note: row.lesson_note||'', progress: row.progress||null, date: row.date });
+        att: row.att, lesson_note: row.lesson_note||'', progress: row.progress||null, date: row.date,
+        // linked 를 빠뜨리면 결석을 취소할 때 연결된 보강이 있는지 알 수 없어
+        // '보강도 함께 취소할까요?'가 뜨지 않는다(오늘 운영에서만 뜨던 이유)
+        linked: row.linked || null, no_makeup: !!row.no_makeup, no_makeup_kind: row.no_makeup_kind || '' });
     },
     credFieldDirty(c, f){ return c._orig && c[f] !== c._orig[f]; },
     credDirty(c){ return ['site','login_id','password'].some(f=>this.credFieldDirty(c,f)); },
