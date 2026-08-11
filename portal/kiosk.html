@@ -76,6 +76,7 @@ createApp({
       soundStaff: localStorage.getItem('kiosk_sound_staff') || 'off',
       soundVol: parseInt(localStorage.getItem('kiosk_sound_vol') ?? '70'),
       soundMsg: null, _soundMsgTimer: null,
+      voices: [], voiceListOpen: false,
       _audioCtx: null,
       deviceId: '', deviceStatus: 'checking',  // checking | confirm | PENDING | APPROVED | REVOKED | badlink
       deviceNameInput: '',
@@ -310,13 +311,24 @@ createApp({
     },
     beepOk(){ this._tone(880, 0, 0.16); this._tone(1175, 0.14, 0.22); },      // 띵동(올라가는 두 음)
     beepFail(){ this._tone(320, 0, 0.22, 1.2); this._tone(240, 0.20, 0.30, 1.2); },  // 낮게 두 번
+    // getVoices() 는 처음 부를 때 빈 배열을 주고 잠시 뒤에 채워진다(브라우저 공통).
+    // 그래서 목록을 미리 받아 두고, 늦게 채워지면 voiceschanged 로 다시 받는다.
+    initVoices(){
+      if (!window.speechSynthesis) return;
+      const load = () => { this.voices = window.speechSynthesis.getVoices() || []; };
+      load();
+      window.speechSynthesis.onvoiceschanged = load;
+      // 일부 기기는 이벤트도 안 오고 조금 뒤에야 채워진다
+      setTimeout(load, 500); setTimeout(load, 2000);
+    },
+    koVoice(){ return (this.voices||[]).find(v=>/^ko/i.test(v.lang)) || null; },
     speak(text){
       if (!text || !window.speechSynthesis) return;
       try {
         window.speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(text);
         u.lang = 'ko-KR'; u.volume = this.soundVol/100; u.rate = 1.0;
-        const ko = window.speechSynthesis.getVoices().find(v=>/^ko/i.test(v.lang));
+        const ko = this.koVoice();
         if (ko) u.voice = ko;
         window.speechSynthesis.speak(u);
       } catch(e){ /* 음성이 없는 기기면 알림음만 나고 조용히 넘어간다 */ }
@@ -343,7 +355,12 @@ createApp({
       else if (this.soundVol === 0){ this.soundMsg = { who, text:'볼륨이 0입니다.' }; }
       else {
         this.notifySound(who, '홍길동', who==='stu' ? '등원' : '출근');
-        this.soundMsg = { who, text:(mode==='beep' ? '알림음을 재생했습니다.' : '알림음과 음성을 재생했습니다. 안 들리면 태블릿 볼륨을 확인하세요.') };
+        let msg;
+        if (mode === 'beep') msg = '알림음을 재생했습니다.';
+        else if (!window.speechSynthesis) msg = '이 브라우저는 음성 읽기를 지원하지 않습니다. 알림음만 납니다.';
+        else if (!this.koVoice()) msg = '이 기기에 한국어 음성이 없어 알림음만 납니다. 아래 [음성 목록]에서 확인하세요.';
+        else msg = '알림음과 음성을 재생했습니다. 안 들리면 태블릿 볼륨을 확인하세요.';
+        this.soundMsg = { who, text: msg };
       }
       this._soundMsgTimer = setTimeout(()=>{ this.soundMsg = null; }, 4000);
     },
@@ -428,6 +445,7 @@ createApp({
   async mounted(){
     this.tickClock();
     setInterval(this.tickClock, 1000);
+    this.initVoices();
     document.addEventListener('fullscreenchange', ()=>{ this.isFullscreen = !!document.fullscreenElement; });
     if (!this.b || !this.t){
       this.deviceStatus = 'badlink';
@@ -500,6 +518,27 @@ createApp({
             </div>
             <input type="range" min="0" max="100" step="5" :value="soundVol" @input="setSoundVol($event.target.value)" class="w-full" />
             <div class="text-[10px] text-slate-500 mt-1">태블릿 자체 볼륨도 함께 켜져 있어야 들립니다.</div>
+          </div>
+          <!-- 음성이 안 나올 때 원인을 바로 알 수 있게(기기에 한국어 음성이 있는지) -->
+          <div class="border-t border-slate-600 pt-2">
+            <button @click="voiceListOpen=!voiceListOpen; initVoices()" class="px-2 py-1 rounded border border-slate-600 hover:bg-slate-700">
+              🗣 음성 목록 {{ voiceListOpen ? '닫기' : '보기' }}
+            </button>
+            <div v-if="voiceListOpen" class="mt-1 text-[10px]">
+              <div v-if="koVoice()" class="text-emerald-300">한국어 음성 있음 — {{ koVoice().name }}</div>
+              <div v-else class="text-amber-300">
+                한국어 음성 없음. 태블릿에서<br>
+                <b>설정 → 일반 → 접근성 → 텍스트 음성 변환(TTS)</b><br>
+                에서 엔진을 <b>Google 음성 서비스</b>로 고르고<br>
+                <b>언어 → 한국어</b>를 내려받으세요.<br>
+                (Play 스토어에서 <b>Speech Services by Google</b> 설치·업데이트 필요할 수 있음)
+              </div>
+              <div class="text-slate-500 mt-1">설치된 음성 {{ (voices||[]).length }}개</div>
+              <div class="max-h-24 overflow-y-auto text-slate-400">
+                <div v-for="(v,i) in (voices||[])" :key="i">{{ v.lang }} · {{ v.name }}</div>
+                <div v-if="!(voices||[]).length" class="text-slate-500">목록이 비어 있습니다(기기가 음성을 제공하지 않음).</div>
+              </div>
+            </div>
           </div>
           <div class="text-[10px] text-slate-500">이 기기에만 적용됩니다.</div>
         </div>
