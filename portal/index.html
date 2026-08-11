@@ -490,6 +490,579 @@
     </div>
   </div>
 
+  <!-- 학생 상세 — 오늘 운영·시간표 등 어느 화면에서든 그 자리에서 열 수 있도록 전역에 둔다
+       (예전에는 학생 관리 섹션 안에 있어서 탭을 옮겨야만 보였고, 돌아오기가 번거로웠음) -->
+  <div v-if="stuDetail" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="closeStudent">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4">
+      <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
+        <button @click="goStudentNav(-1)" :disabled="!stuNavHas(-1)"
+                @mouseenter="showNavTip(stuNavLabel(-1),$event)" @mouseleave="hideNavTip"
+                :class="['flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg border text-xs shrink-0',
+                         stuNavHas(-1) ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-slate-100 text-slate-300 cursor-not-allowed']">
+          <span class="text-base leading-none">‹</span>이전</button>
+        <div class="font-bold flex-1 min-w-0 ml-3">{{ stuDetail.real_name || stuDetail.username }}
+          <span class="text-xs font-normal text-slate-400">{{ stuDetail.username }} · {{ stuDetail.branch }}</span>
+          <span :class="['ml-2 px-2 py-0.5 rounded text-xs', stuStatusBadge(stuDetail.enrollment_status).cls]">{{ stuStatusBadge(stuDetail.enrollment_status).label }}</span>
+          <!-- 기존 관리 시트 바로가기(포털 전환 기간용). 칩과 호버창이 붙어 있어야 마우스가 지나가도 안 닫힘 -->
+          <span class="relative inline-block align-middle ml-2" @mouseenter="legacyPopEnter(stuDetail.id)" @mouseleave="legacyPopLeave">
+            <a v-if="stuLegacyUrl()" :href="stuLegacyUrl()" target="_blank" rel="noopener"
+               class="text-xs font-normal px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">(이전기록)</a>
+            <span v-else class="text-xs font-normal px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 cursor-default">(이전기록)</span>
+            <span v-if="legacyPopFor===stuDetail.id || legacyEdit.id===stuDetail.id" class="absolute left-0 top-full pt-1 z-50 w-80 block">
+              <span class="block bg-white border rounded-lg shadow-xl p-2 text-[11px] font-normal text-slate-600 break-all">
+                <template v-if="legacyEdit.id===stuDetail.id">
+                  <input v-model="legacyEdit.url" @keyup.enter="saveLegacyEdit" placeholder="https://..." class="input py-1 text-[11px] w-full" />
+                  <span class="block mt-1 text-right">
+                    <button @click.prevent="saveLegacyEdit" class="text-indigo-600 hover:underline mr-2">저장</button>
+                    <button @click.prevent="cancelLegacyEdit" class="text-slate-400 hover:underline">취소</button>
+                  </span>
+                  <span class="block text-slate-400 mt-0.5">비우고 저장하면 삭제됩니다.</span>
+                </template>
+                <template v-else>
+                  {{ stuLegacyUrl() || '등록된 링크가 없습니다.' }}
+                  <span v-if="stuCanEdit" class="block mt-1 text-right">
+                    <button @click.prevent="startLegacyEdit(stuDetail.id, stuLegacyUrl())" class="text-indigo-600 hover:underline">{{ stuLegacyUrl() ? '수정' : '등록' }}</button>
+                  </span>
+                </template>
+              </span>
+            </span>
+          </span>
+        </div>
+        <button @click="goStudentNav(1)" :disabled="!stuNavHas(1)"
+                @mouseenter="showNavTip(stuNavLabel(1),$event)" @mouseleave="hideNavTip"
+                :class="['flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg border text-xs shrink-0',
+                         stuNavHas(1) ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-slate-100 text-slate-300 cursor-not-allowed']">
+          다음<span class="text-base leading-none">›</span></button>
+        <button @click="closeStudent" class="text-slate-400 hover:text-slate-600 shrink-0 ml-3">✕</button>
+      </div>
+      <!-- 서브탭 -->
+      <div class="flex gap-1 px-5 pt-3 border-b text-sm">
+        <button v-for="st in stuTabs" :key="st.k" @click="selectStuTab(st.k)"
+          :class="['px-3 py-2 border-b-2 -mb-px', stuTab===st.k ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500']">{{ st.l }}</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <div v-if="!stuCanEdit" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-500 text-xs">👁 열람 전용 — 이 지점은 수정 권한이 없습니다.</div>
+        <!-- 인적사항 -->
+        <div v-if="stuTab==='info'" class="space-y-2">
+          <!-- 학부모 확인 — 등록은 우리가 아는 만큼 먼저 하고, 정확성은 여기서 맞춘다 -->
+          <div v-if="stuVerify" :class="['rounded-lg px-3 py-2 border text-xs', stuVerify.status==='SUBMITTED' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200']">
+            <div class="flex items-center gap-2 flex-wrap">
+              <b :class="stuVerify.status==='SUBMITTED' ? 'text-emerald-800' : 'text-amber-800'">
+                {{ stuVerify.status==='SUBMITTED' ? '학부모 작성 완료 — 확인이 필요합니다' : '학부모 확인 대기' }}
+              </b>
+              <span class="text-slate-500">D+{{ stuVerify.waiting_days }}</span>
+              <span v-if="stuVerify.expired" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600">링크 만료</span>
+              <span v-else class="text-slate-400">~{{ stuVerify.expires }}</span>
+              <span class="ml-auto flex gap-2 shrink-0">
+                <button v-if="stuVerify.status==='SUBMITTED'" @click="openVerifyResolve()" class="px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700">대조 확인하기</button>
+                <button v-if="stuCanEdit" @click="issueVerifyLink()" class="text-slate-500 hover:underline">링크 {{ stuVerify.status==='SENT' ? '다시 만들기' : '재발급' }}</button>
+                <button v-if="stuCanEdit" @click="cancelVerify()" class="text-rose-400 hover:underline">취소</button>
+              </span>
+            </div>
+          </div>
+          <div v-else-if="stuCanEdit" class="flex items-center gap-2 text-xs bg-slate-50 border rounded-lg px-3 py-2">
+            <span class="text-slate-500">학부모에게 정보 확인을 요청할 수 있습니다. 빈 양식을 작성받아 지금 정보와 대조합니다.</span>
+            <button @click="issueVerifyLink()" class="ml-auto px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-white shrink-0">학부모 확인 링크 만들기</button>
+          </div>
+          <div class="flex items-center justify-end">
+            <button v-if="stuCanEdit && !stuEditMode" @click="stuEditMode=true" class="text-xs px-2 py-1 rounded border border-slate-200 text-indigo-600 hover:bg-indigo-50">✎ 수정</button>
+            <span v-if="stuEditMode" class="text-xs text-amber-600 font-medium">수정 중 — 아래 항목을 고친 뒤 [수정완료]를 눌러주세요.</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">원번</label><input :value="stuForm.enroll_no || '-'" class="input bg-slate-50" readonly /></div>
+            <div><label class="lbl">이름 <span v-if="stuFieldDirty('real_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.real_name" :readonly="!stuEditMode" :class="stuCls('real_name')" /></div>
+            <div><label class="lbl">생년월일 <span v-if="stuFieldDirty('birth_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.birth_date" type="date" :readonly="!stuEditMode" :class="stuCls('birth_date')" /></div>
+            <div><label class="lbl">성별 <span v-if="stuFieldDirty('gender')" class="text-amber-600">✏️</span></label><select v-model="stuForm.gender" :disabled="!stuEditMode" :class="stuCls('gender')"><option value="">-</option><option value="M">남</option><option value="F">여</option></select></div>
+            <div><label class="lbl">학생 연락처 <span v-if="stuFieldDirty('student_phone')" class="text-amber-600">✏️</span></label><input :value="stuForm.student_phone" @input="stuForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" :readonly="!stuEditMode" :class="stuCls('student_phone')" placeholder="010-0000-0000" /></div>
+            <div><label class="lbl">학교 구분 <span v-if="stuFieldDirty('school_type')" class="text-amber-600">✏️</span></label><select v-model="stuForm.school_type" :disabled="!stuEditMode" :class="stuCls('school_type','px-2')"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+            <div><label class="lbl">학교(학과) 이름 <span v-if="stuFieldDirty('school_name')" class="text-amber-600">✏️</span></label>
+              <div class="flex items-center gap-1"><input v-model="stuForm.school_name" :readonly="!stuEditMode" :class="stuCls('school_name','min-w-0')" /><span v-if="schoolSuffix(stuForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(stuForm.school_type) }}</span></div>
+            </div>
+            <div><label class="lbl">학년 <span v-if="stuFieldDirty('grade')" class="text-amber-600">✏️</span></label>
+              <div class="flex items-center gap-1"><input v-model="stuForm.grade" :readonly="!stuEditMode" :class="stuCls('grade','min-w-0')" /><span class="text-xs text-slate-400 whitespace-nowrap">학년</span></div>
+            </div>
+            <div><label class="lbl">등록일 <span v-if="stuFieldDirty('enrollment_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.enrollment_date" type="date" :readonly="!stuEditMode" :class="stuCls('enrollment_date')" /></div>
+            <div><label class="lbl">수업 시작일 <span v-if="stuFieldDirty('lesson_start_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.lesson_start_date" type="date" :readonly="!stuEditMode" :class="stuCls('lesson_start_date')" /></div>
+          </div>
+          <!-- 주 교육 회수(오늘 기준 적용중인 시간표 개수) · 등록 과정 나란히 배치 -->
+          <div class="border-t pt-2 grid grid-cols-2 gap-4">
+            <div>
+              <label class="lbl">주 교육 회수</label>
+              <input :value="stuWeeklySessions()+'회 (오늘 기준 적용중인 시간표 개수)'" readonly class="input bg-slate-50 text-slate-500" />
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-slate-500 mb-1">등록 과정 <span class="font-normal text-slate-400">({{ stuProgramsEdit.length }}개)</span> <span v-if="stuProgramsDirty()" class="text-amber-600">✏️</span></div>
+              <div v-if="!stuEditMode">
+                <div v-if="stuProgramsEdit.length" class="flex flex-wrap gap-1">
+                  <span v-for="(p,pi) in stuProgramsEdit" :key="pi" class="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">{{ composedProgramLabel(p) }}</span>
+                </div>
+                <div v-else class="text-xs text-slate-400">등록 과정 정보 없음</div>
+              </div>
+              <div v-else class="space-y-1.5">
+                <div v-for="(p,pi) in stuProgramsEdit" :key="pi" class="flex items-center gap-1.5">
+                  <select v-model="p.value" class="input py-1 px-1 w-32">
+                    <option value="">선택</option>
+                    <option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
+                  </select>
+                  <select v-if="p.value==='LANG'" v-model="p.language" class="input py-1 px-1 w-24">
+                    <option value="">언어</option>
+                    <option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
+                  </select>
+                  <input v-else-if="optAllowCustom('program', p.value)" v-model="p.custom" class="input py-1" placeholder="직접 입력" />
+                  <button @click="removeStuProgram(pi)" class="text-xs text-rose-400 hover:underline shrink-0">삭제</button>
+                </div>
+                <button @click="addStuProgram" class="text-xs text-indigo-600 hover:underline">+ 과정 추가</button>
+              </div>
+            </div>
+          </div>
+          <!-- 과목 · 시간표 (개별 시간표와 동일 편집 — 인적사항 수정 모드와 별도로 자체 수정 모드 사용) -->
+          <div class="border-t pt-2">
+            <div class="flex items-center justify-between mb-1">
+              <div class="text-xs font-semibold text-slate-500">과목 · 시간표 <span class="font-normal text-slate-400">(수정 시 사유→이력 기록, 누르면 바로 적용)</span></div>
+              <div class="flex items-center gap-3">
+                <label class="text-[11px] text-slate-400 inline-flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="stuTtShowHistory" :disabled="stuTtAutoHistory" class="w-3 h-3" />과거 이력 보기</label>
+                <span v-if="stuTtAutoHistory" class="text-[11px] text-amber-600">— {{ stuDetail.enrollment_status==='WITHDRAWN' ? '퇴원' : '휴원' }}으로 종료된 시간표라 지난 내용을 함께 보여줍니다</span>
+                <button v-if="stuCanEdit" @click="stuTtEditMode=!stuTtEditMode" :class="['text-xs px-2 py-0.5 rounded border', stuTtEditMode ? 'border-amber-300 text-amber-600 bg-amber-50' : 'border-slate-200 text-indigo-600 hover:bg-indigo-50']">{{ stuTtEditMode ? '시간표 수정 종료' : '✎ 시간표 수정' }}</button>
+                <button v-if="stuCanEdit && stuTtEditMode" @click="addStuTtRow" class="text-xs text-indigo-600 hover:underline">+ 시간표 추가</button>
+              </div>
+            </div>
+            <div v-if="stuTimetables.length" class="space-y-2">
+              <div v-for="s in stuTtVisibleRows()" :key="s.id || s._tmpId" :class="['rounded-lg border px-2 py-1.5 overflow-x-auto', s.status==='PAUSED' ? 'bg-amber-50' : '', stuTtPhase(s)==='past' ? 'opacity-60' : '', (s.id && ttRowDirty(s)) ? 'ring-1 ring-amber-300' : '', !s.id ? 'ring-1 ring-indigo-300 bg-indigo-50/30' : '']">
+                <div v-if="s.id" class="text-[10px] mb-0.5" :class="{'text-emerald-600':stuTtPhase(s)==='current','text-indigo-500':stuTtPhase(s)==='upcoming','text-slate-400':stuTtPhase(s)==='past'}">
+                  <template v-if="stuTtPhase(s)==='current'">✓ 적용중{{ s.active_from ? ' · '+s.active_from : '' }} ~ {{ s.active_until ? s.active_until+'까지 (이후 아래 예정 시간표로 변경)' : '' }}</template>
+                  <template v-else-if="stuTtPhase(s)==='upcoming'">🕓 예정 · {{ s.active_from }}부터 적용</template>
+                  <template v-else>지난 시간표 · {{ s.active_from||'~' }} ~ {{ s.active_until }}</template>
+                </div>
+                <div class="flex items-center gap-1 text-xs whitespace-nowrap">
+                  <div class="w-12 shrink-0"><select v-model.number="s.weekday" :disabled="!stuTtEditMode" :class="ttCls(s,'weekday','py-1 !pl-1 !pr-0')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
+                  <div class="w-20 shrink-0"><input v-model="s.start_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :readonly="!stuTtEditMode" :class="ttCls(s,'start_time','py-1 !pl-1 !pr-0 text-center font-mono')" /></div>
+                  <div class="w-16 shrink-0"><select v-model.number="s.duration_minutes" :disabled="!stuTtEditMode" :class="ttCls(s,'duration_minutes','py-1 !pl-1 !pr-0')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></div>
+                  <div class="w-36 shrink-0"><select v-model="s.program" :disabled="!stuTtEditMode" :class="ttCls(s,'program','py-1 !pl-1 !pr-0')"><option value="">미지정</option><option v-for="o in stuTtProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
+                  <div v-if="s.program==='LANG'" class="w-12 shrink-0"><select v-model="s.language" :disabled="!stuTtEditMode" :class="ttCls(s,'language','py-1 !pl-1 !pr-0')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select></div>
+                  <div class="w-20 shrink-0"><select v-model.number="s._instructor_id" :disabled="!stuTtEditMode" :class="[ttCls(s,'instr','py-1 !pl-1 !pr-0'), !s._instructor_id ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
+                  <div class="w-14 shrink-0"><select v-model="s.frequency" :disabled="!stuTtEditMode" :class="ttCls(s,'frequency','py-1 !pl-1 !pr-0')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></div>
+                  <span v-if="s.status==='PAUSED'" class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 shrink-0">휴원중지</span>
+                  <span class="ml-auto flex gap-2 shrink-0 pl-1 items-center">
+                    <template v-if="!s.id">
+                      <button v-if="stuCanEdit && stuTtEditMode" @click="createStuTt(s)" class="text-emerald-600 font-bold hover:underline">저장</button>
+                      <button v-if="stuCanEdit && stuTtEditMode" @click="removeStuTtRow(s)" class="text-slate-400 hover:underline">취소</button>
+                    </template>
+                    <template v-else>
+                      <template v-if="stuCanEdit && stuTtEditMode && ttRowDirty(s)">
+                        <label class="text-[10px] text-slate-400 inline-flex items-center gap-0.5 mr-1" title="처음부터 잘못 입력된 데이터라 이력을 나누지 않고 이 행 자체를 바로 수정"><input type="checkbox" v-model="s._fullEdit" class="w-3 h-3" />전체수정</label>
+                        <input v-if="!s._fullEdit" v-model="s.effective_date" type="date" title="적용 시작일(기본 오늘)" class="input py-0.5 px-1 text-[11px] w-32" />
+                      </template>
+                      <button v-if="stuCanEdit && stuTtEditMode && ttRowDirty(s)" @click="revertTt(s)" class="text-slate-400 hover:underline">취소</button>
+                      <button v-if="stuCanEdit && stuTtEditMode" @click="delStuTt(s)" class="text-rose-500 hover:underline">삭제</button>
+                      <button @mouseenter="openTtHistory(s,$event)" @mouseleave="scheduleCloseTt" class="text-slate-500 hover:underline">이력</button>
+                    </template>
+                  </span>
+                </div>
+              </div>
+              <div v-if="stuCanEdit && stuTtEditMode" class="flex justify-end pt-0.5">
+                <button @click="saveAllStuTt" :class="['text-xs px-3 py-1.5 rounded', stuTtDirtyCount() ? 'bg-amber-500 text-white hover:bg-amber-600 font-bold' : 'bg-slate-100 text-slate-400']">변경사항 저장{{ stuTtDirtyCount() ? ' ('+stuTtDirtyCount()+'건)' : '' }}</button>
+              </div>
+            </div>
+            <div v-else class="text-xs text-rose-400">시간표 미정</div>
+          </div>
+          <!-- 주소 -->
+          <div class="border-t pt-2">
+            <div class="text-xs font-semibold text-slate-500 mb-1">주소</div>
+            <div class="flex gap-2 mb-1">
+              <input :value="stuForm.zipcode" @click="stuEditMode && openPostcode('stu')" readonly placeholder="우편번호" :class="['input w-28 bg-slate-50', stuEditMode ? 'cursor-pointer' : '']" />
+              <input :value="stuForm.address" @click="stuEditMode && openPostcode('stu')" readonly placeholder="주소 (클릭하여 검색)" :class="['input bg-slate-50', stuEditMode ? 'cursor-pointer' : '']" />
+            </div>
+            <input v-model="stuForm.address_detail" placeholder="상세주소 (동/호 등)" :readonly="!stuEditMode" :class="stuCls('address_detail')" />
+          </div>
+          <!-- 보호자 (구 보호자 탭 통합) -->
+          <div class="border-t pt-2">
+            <div class="text-xs font-semibold text-slate-500 mb-1">보호자</div>
+            <ul class="space-y-1">
+              <li v-for="gd in stuDetail.guardians" :key="gd.link_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-1.5">
+                <span class="font-medium">{{ gd.name }}<span v-if="gd.relation" class="font-normal text-slate-400">({{ gd.relation }})</span></span>
+                <span class="text-xs text-slate-400 flex items-center gap-1">{{ gd.phone }} <call-btn :phone="gd.phone"></call-btn><sms-btn :phone="gd.phone"></sms-btn> · @{{ gd.username }}</span>
+                <span v-if="stuCanEdit" class="ml-auto flex gap-2">
+                  <button @click="resetGuardianPw(gd)" class="text-xs text-indigo-500 hover:underline">비번 초기화</button>
+                  <button @click="unlinkGuardian(gd)" class="text-xs text-rose-400 hover:underline">연결 해제</button>
+                </span>
+              </li>
+              <li v-if="stuDetail.guardians.length===0" class="text-xs text-slate-400">연결된 보호자가 없습니다.</li>
+            </ul>
+            <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2 mt-2">
+              <div class="flex items-center justify-between">
+                <div class="text-xs font-semibold text-slate-500">보호자 연결 / 계정 생성</div>
+                <button @click="openGdSearch" class="text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-white">🔍 보호자 검색</button>
+              </div>
+              <div v-if="gdSelectedParentId" class="text-[11px] text-emerald-600">✓ 기존 보호자 선택됨 — 아래 [연결]을 누르세요.</div>
+              <div class="grid grid-cols-2 gap-2">
+                <input v-model="gdForm.parent_name" @input="gdSelectedParentId=null" placeholder="보호자 이름" class="input py-1" />
+                <input :value="gdForm.parent_phone" @input="gdForm.parent_phone=formatPhone($event.target.value); gdSelectedParentId=null" inputmode="numeric" placeholder="연락처" class="input py-1" />
+                <input v-model="gdForm.relation" list="guardianRelationList" placeholder="관계(선택·직접입력)" class="input py-1" />
+                <input v-if="!gdSelectedParentId" v-model="gdForm.password" placeholder="비밀번호(미입력 시 연락처)" class="input py-1" />
+              </div>
+              <datalist id="guardianRelationList"><option value="아버지"><option value="어머니"><option value="할아버지"><option value="할머니"><option value="조부모"></datalist>
+              <div class="flex justify-end">
+                <button v-if="gdSelectedParentId" @click="linkGuardian" class="btn-primary text-sm">연결</button>
+                <button v-else-if="(gdForm.parent_name||'').trim() && (gdForm.parent_phone||'').trim()" @click="linkGuardian" class="btn-secondary text-sm">생성</button>
+              </div>
+              <p class="text-[11px] text-slate-400">검색에서 고르면 <b>연결</b>, 직접 작성하면 새 계정 <b>생성</b>됩니다.</p>
+            </div>
+          </div>
+
+          <!-- 기타 보호자 · 요청사항 -->
+          <div class="border-t pt-2">
+            <div class="text-xs font-semibold text-slate-500 mb-1">기타 보호자
+              <span v-if="stuDetail.profile_edits && stuDetail.profile_edits.length" class="font-normal text-amber-500 cursor-help" @mouseenter="showStuEditPop($event)" @mouseleave="hideMsgEditPop">· ✎{{ stuDetail.profile_edits.length }}회 수정</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="lbl">기타 보호자 휴대폰 <span v-if="stuFieldDirty('guardian2_phone')" class="text-amber-600">✏️</span></label>
+                <input :value="stuForm.guardian2_phone" @input="stuForm.guardian2_phone=formatPhone($event.target.value)" inputmode="numeric" :readonly="!stuEditMode" :class="stuCls('guardian2_phone')" placeholder="010-0000-0000" />
+              </div>
+              <div><label class="lbl">기타 보호자 관계 <span v-if="stuFieldDirty('guardian2_relation')" class="text-amber-600">✏️</span></label>
+                <input v-model="stuForm.guardian2_relation" list="guardianRelationList" :readonly="!stuEditMode" :class="stuCls('guardian2_relation')" placeholder="예: 아버지, 삼촌" />
+              </div>
+            </div>
+            <div class="mt-2"><label class="lbl">요청사항 · 알릴사항 <span v-if="stuFieldDirty('memo')" class="text-amber-600">✏️</span></label>
+              <textarea v-model="stuForm.memo" rows="2" :readonly="!stuEditMode" :class="stuCls('memo')" placeholder="요청사항·알릴사항 없음"></textarea>
+            </div>
+            <div v-if="stuEditMode" class="flex justify-end gap-2 mt-2">
+              <button @click="cancelStuEdit" class="btn-secondary text-sm">취소</button>
+              <button @click="finishStuEdit" class="btn-primary text-sm">수정완료</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 상담 타임라인 -->
+        <div v-if="stuTab==='counsel'" class="space-y-3">
+          <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
+            <div class="flex gap-2 items-center flex-wrap">
+              <div class="w-20 shrink-0"><select v-model="stuNoteChannel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
+              <div class="w-32 shrink-0"><input v-model="stuNoteTime.date" type="date" class="input py-1" /></div>
+              <div class="w-16 shrink-0"><select v-model="stuNoteTime.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in hours24" :key="h" :value="h">{{ String(h).padStart(2,'0') }}시</option></select></div>
+              <div class="w-20 shrink-0"><select v-model="stuNoteTime.min" class="input py-1"><option v-for="m in minOptions" :key="m" :value="m">{{ m }}분</option></select></div>
+            </div>
+            <textarea v-model="stuNoteText" rows="2" placeholder="상담 내용 입력" class="input"></textarea>
+            <div class="flex justify-end"><button @click="addStuNote" class="btn-secondary text-sm">기록 추가</button></div>
+          </div>
+          <ul class="space-y-1">
+            <li v-for="g in (stuDetail.lead ? stuDetail.lead.logs : [])" :key="g.id" :class="['text-sm rounded px-3 py-1.5', g.is_initial ? 'bg-indigo-50/60' : (g.is_hidden ? 'bg-rose-50' : 'bg-slate-50')]">
+              <div class="flex items-center gap-1 text-xs text-slate-400">
+                <span v-if="g.is_initial" class="text-indigo-500 font-semibold">📝 최초 상담 신청</span>
+                <template v-else>
+                  <span>{{ channelLabel(g.channel) }}</span>
+                  <span v-if="g.counsel_at">· 상담 {{ dt(g.counsel_at) }}</span>
+                  <span v-if="g.is_hidden" class="text-rose-500">· 삭제됨</span>
+                </template>
+                <span class="ml-auto">{{ dt(g.create_time) }} {{ g.author }}</span>
+              </div>
+              <template v-if="stuEditLogId===g.id">
+                <textarea v-model="stuEditLogText" rows="2" class="input mt-1"></textarea>
+                <div class="flex justify-end gap-2 mt-1">
+                  <button @click="stuEditLogId=null" class="text-xs text-slate-400 hover:underline">취소</button>
+                  <button @click="saveStuEditLog(g)" class="text-xs text-indigo-600 hover:underline">저장</button>
+                </div>
+              </template>
+              <template v-else>
+                <div class="whitespace-pre-wrap">{{ g.summary }}</div>
+                <div v-if="g.edits && g.edits.length" class="mt-1 space-y-1">
+                  <div class="text-[11px] text-amber-600">✎ {{ g.edits.length }}회 수정됨</div>
+                  <div v-for="(e,i) in g.edits" :key="i" class="flex gap-2 text-[11px] pl-3 border-l-2 border-amber-200 py-0.5">
+                    <span class="shrink-0 w-28 text-amber-600 leading-tight">{{ e.time }}<br>{{ e.actor || '' }}</span>
+                    <span class="whitespace-pre-wrap text-slate-600 flex-1">{{ e.old }}</span>
+                  </div>
+                </div>
+                <div v-if="stuCanEdit && !g.is_initial" class="flex justify-end gap-2 text-[11px]">
+                  <button v-if="!g.is_hidden" @click="startStuEditLog(g)" class="text-indigo-500 hover:underline">수정</button>
+                  <button v-if="!g.is_hidden" @click="deleteStuLog(g)" class="text-rose-400 hover:underline">삭제</button>
+                  <button v-else @click="restoreStuLog(g)" class="text-indigo-500 hover:underline">복원</button>
+                </div>
+              </template>
+            </li>
+            <li v-if="!stuDetail.lead || stuDetail.lead.logs.length===0" class="text-xs text-slate-400">상담 기록이 없습니다.</li>
+          </ul>
+
+          <!-- 상담 예약(여러 건) -->
+          <div class="border-t pt-3">
+            <div class="text-xs font-semibold text-slate-500 mb-1">상담 예약</div>
+            <ul class="space-y-1">
+              <li v-for="rv in (stuDetail.lead ? (stuDetail.lead.reservations||[]).filter(x=>x.status==='ACTIVE') : [])" :key="rv.id" class="flex items-center gap-2 text-sm rounded px-3 py-1.5" :class="rv.is_past ? 'bg-slate-50 text-slate-400' : 'bg-amber-50'">
+                <span class="font-medium">{{ dt(rv.scheduled_at) }}</span>
+                <span class="text-[11px]" :class="rv.is_past ? 'text-slate-400' : 'text-amber-600'">{{ rv.is_past ? '지난 예약' : '예약' }}</span>
+                <span v-if="rv.note" class="text-xs text-slate-500">· {{ rv.note }}</span>
+                <span class="ml-auto text-[11px] text-slate-400">{{ rv.created_by }}</span>
+                <button v-if="stuCanEdit" @click="cancelStuReservation(rv)" class="text-[11px] text-rose-400 hover:underline">취소</button>
+              </li>
+              <li v-if="!stuDetail.lead || !(stuDetail.lead.reservations||[]).filter(x=>x.status==='ACTIVE').length" class="text-xs text-slate-400">예약 없음</li>
+            </ul>
+            <div v-if="stuCanEdit" class="mt-2 space-y-2">
+              <div class="flex gap-2 items-center flex-wrap">
+                <div class="w-32 shrink-0"><input v-model="stuResvForm.date" type="date" class="input py-1" /></div>
+                <div class="w-16 shrink-0"><select v-model="stuResvForm.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in hours24" :key="h" :value="h">{{ String(h).padStart(2,'0') }}시</option></select></div>
+                <div class="w-20 shrink-0"><select v-model="stuResvForm.min" class="input py-1"><option v-for="m in minOptions" :key="m" :value="m">{{ m }}분</option></select></div>
+              </div>
+              <textarea v-model="stuResvForm.note" rows="2" placeholder="메모(선택)" class="input py-1"></textarea>
+              <div class="flex justify-end"><button @click="addStuReservation" class="btn-secondary text-sm">예약 추가</button></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 상태 이력 -->
+        <div v-if="stuTab==='status'" class="space-y-3">
+          <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
+            <div class="flex gap-2 items-center">
+              <div class="shrink-0 w-28"><select v-model="stuStatusNew" class="input py-1">
+                <option value="ENROLLED">재원(재등록)</option>
+                <option value="ON_LEAVE">휴원</option>
+                <option value="WITHDRAWN">퇴원</option>
+              </select></div>
+              <div class="shrink-0 w-36"><input v-model="stuStatusDate" type="date" class="input py-1" title="적용일" /></div>
+              <input v-model="stuStatusReason" placeholder="사유 (필수)" class="input flex-1 min-w-0 py-1" />
+              <button @click="changeStuStatus" class="btn-secondary text-sm whitespace-nowrap shrink-0">상태 변경</button>
+            </div>
+            <p class="text-[11px] text-slate-400">현재 상태: <b>{{ stuStatusBadge(stuDetail.enrollment_status).label }}</b> · 변경 시 이력에 영구 기록됩니다.</p>
+          </div>
+          <ul class="space-y-1">
+            <li v-for="h in stuDetail.status_history" :key="h.id" class="text-sm bg-slate-50 rounded px-3 py-1.5">
+              <div class="flex items-center gap-2">
+                <span class="text-xs">{{ stuStatusBadge(h.from).label }} → <b>{{ stuStatusBadge(h.to).label }}</b></span>
+                <span v-if="h.effective_date" class="text-xs text-slate-400">적용 {{ h.effective_date }}</span>
+                <span class="text-xs text-slate-400 ml-auto">{{ h.time }} {{ h.actor }}</span>
+              </div>
+              <div v-if="h.reason" class="text-xs text-slate-600">사유: {{ h.reason }}</div>
+            </li>
+            <li v-if="stuDetail.status_history.length===0" class="text-xs text-slate-400">상태 변경 이력이 없습니다.</li>
+          </ul>
+        </div>
+
+        <!-- 수업일지 -->
+        <div v-if="stuTab==='progress'" class="space-y-3">
+          <label class="flex items-center gap-2 text-xs cursor-pointer select-none justify-end">
+            <span :class="stuProgView==='list' ? 'text-indigo-600 font-semibold' : 'text-slate-400'">리스트</span>
+            <button type="button" @click="toggleStuProgView"
+                    :class="['w-10 h-5 rounded-full relative transition-colors shrink-0', stuProgView==='cal' ? 'bg-indigo-600' : 'bg-slate-300']">
+              <span :class="['absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all', stuProgView==='cal' ? 'left-5' : 'left-0.5']"></span>
+            </button>
+            <span :class="stuProgView==='cal' ? 'text-indigo-600 font-semibold' : 'text-slate-400'">달력</span>
+          </label>
+          <!-- 달력 보기: 이 학생의 월별 수업만 표시. 호버=수업일지 미리보기, 클릭=상세(수업일지 작성) 모달 -->
+          <div v-if="stuProgView==='cal'" class="space-y-2">
+            <div class="flex items-center gap-1">
+              <button @click="stuProgCalShift(-1)" class="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 text-xs">◀</button>
+              <span class="font-semibold text-sm w-28 text-center">{{ stuProgCalMonth }}</span>
+              <button @click="stuProgCalShift(1)" class="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 text-xs">▶</button>
+              <button @click="stuProgCalToday" class="ml-1 px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">이번달</button>
+              <span class="text-[11px] text-slate-400 ml-2">📝=일지 작성됨 · 수업 클릭 시 작성/수정</span>
+            </div>
+            <div class="grid grid-cols-7 gap-1 text-xs">
+              <div v-for="w in ['월','화','수','목','금','토','일']" :key="w" class="text-center text-slate-400 font-medium py-1">{{ w }}</div>
+              <div v-for="(c,i) in stuProgCells" :key="i" class="border border-slate-100 rounded min-h-[64px] p-1" :class="!c.date ? 'bg-slate-50/50' : (c.isToday ? 'bg-indigo-50/40' : '')">
+                <template v-if="c.date">
+                  <div class="text-[11px] mb-0.5" :class="c.isToday ? 'text-indigo-600 font-bold' : 'text-slate-400'">{{ c.day }}</div>
+                  <div v-for="(it,j) in (stuProgCalDays[c.date] ? stuProgCalDays[c.date].items : [])" :key="j"
+                       @click="openCalAtt(it, c.date)" @mouseenter="showProgPop(it,$event)" @mouseleave="hideProgPop"
+                       :class="['mb-0.5 px-1 py-0.5 rounded truncate leading-tight cursor-pointer', calItemCls(it)]">
+                    <span class="font-semibold">{{ it.start_time }}</span> {{ ttSubjectShort(it.subject) }}<span v-if="it.progress && (it.progress.content || it.progress.homework || it.progress.feedback || it.progress.memo)" class="ml-0.5">📝</span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+          <template v-else>
+          <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
+            <div class="text-xs font-semibold text-slate-500">수업일지 추가 <span class="font-normal text-slate-400">(수업과 무관한 자유 기록용 — 실제 수업 일지는 달력에서 해당 수업을 클릭해 작성하세요)</span></div>
+            <input v-model="stuProgForm.date" type="date" class="input py-1 w-40" />
+            <textarea v-model="stuProgForm.content" rows="2" placeholder="수업 내용" class="input"></textarea>
+            <textarea v-model="stuProgForm.homework" rows="1" placeholder="숙제 (선택)" class="input"></textarea>
+            <textarea v-model="stuProgForm.feedback" rows="1" placeholder="피드백 (학부모에게 그대로 전달되는 내용, 선택)" class="input"></textarea>
+            <textarea v-model="stuProgForm.memo" rows="1" placeholder="비고 (우리끼리 참고할 내용 — 학부모에게 전달되지 않음, 선택)" class="input"></textarea>
+            <div class="flex justify-end"><button @click="addStuProgress" class="btn-secondary text-sm">추가</button></div>
+          </div>
+          <ul class="space-y-1">
+            <li v-for="p in stuProgress" :key="p.id" class="bg-white border rounded-lg px-3 py-2">
+              <div class="flex items-center gap-2 text-xs text-slate-400">
+                <span class="font-medium text-slate-600">{{ p.date }}</span>
+                <span v-if="p.subject" class="text-indigo-500">{{ p.subject }}</span>
+                <span class="ml-auto">{{ p.author }}</span>
+                <button v-if="stuCanEdit" @click="deleteStuProgress(p)" class="text-rose-400 hover:underline">삭제</button>
+              </div>
+              <div class="text-sm whitespace-pre-wrap mt-0.5">{{ p.content || '(내용 없음)' }}</div>
+              <div v-if="p.homework" class="text-xs text-slate-500 mt-0.5">숙제: {{ p.homework }}</div>
+              <div v-if="p.feedback" class="text-xs text-slate-500 mt-0.5">피드백: {{ p.feedback }}</div>
+              <div v-if="p.memo" class="text-xs text-amber-700 mt-0.5">비고: {{ p.memo }}</div>
+            </li>
+            <li v-if="stuProgress.length===0" class="text-xs text-slate-400">수업일지 기록이 없습니다.</li>
+          </ul>
+          </template>
+        </div>
+
+        <!-- 출결기록 -->
+        <div v-if="stuTab==='attend'" class="space-y-3">
+          <div class="border border-slate-200 rounded-lg px-3 py-2 text-sm flex items-center gap-4 flex-wrap">
+            <span>결석 <b class="text-rose-500">{{ stuAttOverall.absent }}</b></span>
+            <span>지각 <b class="text-amber-600">{{ stuAttOverall.late }}</b></span>
+            <span>보강 <b class="text-blue-600">{{ stuAttOverall.makeupTotal }}</b><span class="text-slate-400 text-xs"> (날짜미정 {{ stuAttOverall.makeupPending }})</span></span>
+            <button @click="toggleStuAttBulkMode" class="ml-auto btn-secondary text-sm">{{ stuAttBulkMode ? '선택일괄수정 닫기' : '+ 선택일괄수정' }}</button>
+            <button @click="openMakeupForThisStudent" class="btn-secondary text-sm">+ 보강 추가</button>
+            <button @click="openTempLeave" class="btn-secondary text-sm">+ 임시휴원 등록</button>
+          </div>
+          <div class="bg-slate-50 rounded-lg px-3 py-2 text-xs flex items-center gap-4 flex-wrap">
+            <span>이번달 <b class="text-rose-500">결석 {{ stuAttSummary.mAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.mLate }}</b> <span class="text-slate-400">({{ stuAttSummary.mTotal }}회 중 {{ stuAttSummary.mRate }}%)</span></span>
+            <span>최근 3개월 <b class="text-rose-500">결석 {{ stuAttSummary.qAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.qLate }}</b> <span class="text-slate-400">({{ stuAttSummary.qTotal }}회 중 {{ stuAttSummary.qRate }}%)</span></span>
+          </div>
+          <!-- 개별 보강 현황 — 보강 관리 탭과 같은 형식(보강일 미정/확정 필터) -->
+          <div class="border border-blue-200 bg-blue-50/50 rounded-lg px-3 py-2">
+            <div class="flex items-center gap-2 flex-wrap text-xs mb-1">
+              <span class="font-semibold text-blue-800 text-sm">보강 현황 <span class="font-normal text-slate-400">{{ stuMkList.length }}건</span></span>
+              <span class="flex items-center gap-2 text-slate-500 ml-auto">
+                보강일
+                <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="stuMkShowPending" class="w-3 h-3" />미정 <span class="text-slate-400">{{ stuMkPendingCount }}</span></label>
+                <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="stuMkShowFixed" class="w-3 h-3" />확정 <span class="text-slate-400">{{ stuMkFixedCount }}</span></label>
+                <span :class="['flex items-center gap-2 pl-2 border-l border-blue-200', stuMkShowFixed ? '' : 'opacity-40']">
+                  <span class="text-slate-300">└</span>
+                  <label v-for="st in mkStates" :key="st.k" class="flex items-center gap-1 select-none" :class="stuMkShowFixed ? 'cursor-pointer' : 'cursor-not-allowed'">
+                    <input type="checkbox" v-model="stuMkSub[st.k]" :disabled="!stuMkShowFixed" class="w-3 h-3" />{{ st.l }} <span class="text-slate-400">{{ stuMkStateCounts[st.k] }}</span>
+                  </label>
+                </span>
+              </span>
+            </div>
+            <div v-for="p in stuMkList" :key="p.occ_id" class="flex items-center gap-2 text-xs text-slate-600 py-0.5">
+              <span>{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
+              <span :class="['px-1.5 py-0.5 rounded shrink-0', mkgDaysCls(p.date)]">D+{{ mkgDaysAgo(p.date) }}</span>
+              <span v-if="p.makeup_date" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">보강 {{ p.makeup_date.slice(5) }}({{ wdOf(p.makeup_date) }}) {{ p.makeup_time }}</span>
+              <span v-if="mkStateInfo(p.mk_state)" :class="['px-1.5 py-0.5 rounded shrink-0', mkStateInfo(p.mk_state).cls]">{{ mkStateInfo(p.mk_state).l }}</span>
+              <span class="ml-auto flex gap-2 shrink-0">
+                <template v-if="!p.makeup_date">
+                  <button @click="openMakeupFor(p)" class="text-indigo-600 hover:underline">일정잡기</button>
+                  <button @click="mkgSetNoMakeup(p)" class="text-slate-400 hover:underline">보강안함</button>
+                </template>
+              </span>
+            </div>
+            <div v-if="!stuMkList.length" class="text-xs text-slate-400 py-1">{{ stuMkEmptyMsg }}</div>
+          </div>
+          <div class="flex items-center gap-2 text-xs flex-wrap">
+            <span class="text-slate-400">조회 범위: <b class="text-slate-600">{{ stuAttHist.from }} ~ {{ stuAttHist.to }}</b> <span class="text-slate-300">(수업시작일 ~ 오늘 기본)</span></span>
+            <button @click="loadStuAttHist(stuAttHist.fwdDays+30)" class="ml-auto px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">+1개월(이후 예정 보기)</button>
+            <select :value="stuAttFwdDefault" @change="setStuAttFwdDefault($event.target.value)" class="px-2 py-1 rounded border border-slate-200 bg-white">
+              <option :value="0">기본값 선택</option>
+              <option v-for="w in [1,2,3,4,5,6,7,8]" :key="w" :value="w*7">+{{ w }}주</option>
+            </select>
+            <button v-if="stuAttHist.fwdDays>0" @click="loadStuAttHist(0)" class="px-2 py-1 rounded border border-slate-200 text-slate-400 hover:bg-slate-50">초기화</button>
+          </div>
+          <div v-if="stuAttBulkMode" class="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-xs space-y-2">
+            <div class="flex items-center gap-2">
+              <b class="text-indigo-700">{{ stuAttSelected.length }}건 선택됨</b>
+              <span class="text-slate-400">날짜 왼쪽 체크박스로 여러 건 골라 같은 사유로 한 번에 처리하세요</span>
+              <button v-if="stuAttSelected.length>0" @click="stuAttSelected=[]" class="ml-auto text-slate-400 hover:underline">선택 해제</button>
+            </div>
+            <div class="flex flex-wrap gap-1">
+              <button @click="stuAttBulkForm.note_tag=''; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', !stuAttBulkForm.note_tag ? 'border-slate-400' : 'border-slate-200 text-slate-400']">없음</button>
+              <button v-for="t in attNoteTags" :key="t.value" @click="stuAttBulkForm.note_tag=t.value; stuAttBulkForm.no_makeup=false" class="px-2 py-1 rounded text-xs border" :style="(stuAttBulkForm.note_tag===t.value && !(t.value==='ABSENT' && stuAttBulkForm.no_makeup)) ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
+              <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=true" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && stuAttBulkForm.no_makeup) ? 'border-pink-400 bg-pink-50 text-pink-600' : 'border-slate-200 text-slate-400']">결석(보강X)</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <input v-model="stuAttBulkForm.start_time" type="text" inputmode="numeric" placeholder="HH:MM(선택, 시각도 함께 변경 시)" maxlength="5" class="input py-1 w-56" />
+              <span class="text-slate-400">예: 방학기간 시간표를 임시로 바꿀 때 함께 지정</span>
+            </div>
+            <input v-model="stuAttBulkForm.note" placeholder="사유(예: 가족여행으로 일정 결석 / 다른 학원 특강으로 이 기간 시간 변동)" class="input py-1" />
+            <div class="flex justify-end"><button @click="applyStuAttBulk" class="btn-primary text-sm">선택한 {{ stuAttSelected.length }}건에 적용</button></div>
+          </div>
+          <p class="text-[11px] text-slate-400">행을 누르면 <b>비고·결석 처리</b>, <b>등원·하원 칸</b>을 누르면 그 시각을 바꿀 수 있습니다.</p>
+          <div v-if="stuAttHist.rows.length===0" class="text-xs text-slate-400 py-4 text-center">출결 기록이 없습니다.</div>
+          <div v-for="g in stuAttHistByMonth" :key="g.ym" class="border rounded-lg overflow-hidden">
+            <div class="bg-slate-50 px-3 py-1.5 text-xs flex items-center gap-2">
+              <span class="font-semibold text-slate-600">{{ g.label }}</span>
+              <span v-if="g.absent" class="text-rose-500">결석 {{ g.absent }}</span>
+              <span v-if="g.late" class="text-amber-600">지각 {{ g.late }}</span>
+              <span v-if="g.makeup" class="text-blue-600">보강 {{ g.makeup }}</span>
+              <span class="ml-auto text-slate-400">{{ g.rows.length }}건</span>
+            </div>
+            <table class="w-full text-xs" style="table-layout:fixed">
+              <colgroup>
+                <col style="width:4%"><col style="width:10%"><col style="width:8%"><col style="width:11%"><col style="width:8%">
+                <col style="width:9%"><col style="width:9%"><col style="width:15%"><col>
+              </colgroup>
+              <thead class="text-slate-400"><tr>
+                <th class="px-2 py-1"><input v-if="stuAttBulkMode" type="checkbox" :checked="isGroupFullySelected(g)" @click="toggleStuAttGroupSel(g)" class="w-3.5 h-3.5 align-middle" title="이 달 전체 선택" /></th>
+                <th class="px-2 py-1 text-left">날짜</th>
+                <th class="px-2 py-1 text-left">시간</th>
+                <th class="px-2 py-1 text-left">과목</th>
+                <th class="px-2 py-1 text-left">강사</th>
+                <th class="px-2 py-1 text-left">등원</th>
+                <th class="px-2 py-1 text-left">하원</th>
+                <th class="px-2 py-1 text-left">상태</th>
+                <th class="px-2 py-1 text-left">비고</th>
+              </tr></thead>
+              <tbody>
+                <tr v-for="row in g.rows" :key="row.occ_id" @click="openStuAttRow(row)" class="border-t hover:bg-indigo-50/50 cursor-pointer">
+                  <td class="px-2 py-1" @click.stop="stuAttBulkMode && toggleStuAttSel(row.occ_id)"><input v-if="stuAttBulkMode" type="checkbox" :checked="stuAttSelected.includes(row.occ_id)" class="w-3.5 h-3.5 align-middle" /></td>
+                  <td class="px-2 py-1 whitespace-nowrap truncate">{{ row.date.slice(5) }}({{ wdOf(row.date) }})</td>
+                  <td class="px-2 py-1 truncate" @click.stop="row.time_changed && showTcPop(row,$event)" @mouseenter="row.time_changed && showTcPop(row,$event)" @mouseleave="hideTcPop">
+                    <span :class="row.time_changed ? 'text-amber-600 font-bold cursor-help' : ''">{{ row.start_time }}</span>
+                  </td>
+                  <td class="px-2 py-1 truncate">{{ row.subject }}</td>
+                  <td class="px-2 py-1 truncate text-slate-500">{{ row.instructor }}</td>
+                  <td class="px-2 py-1 truncate" @click.stop="openStuAttTime(row,'in')">
+                    <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.in || '-' }}</span>
+                    <span v-if="stuAttLateText(row)" class="block text-[10px]" :class="stuAttLateCls(row)">{{ stuAttLateText(row) }}</span>
+                  </td>
+                  <td class="px-2 py-1 truncate" @click.stop="openStuAttTime(row,'out')">
+                    <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.out || '-' }}</span>
+                  </td>
+                  <td class="px-2 py-1 overflow-hidden"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap text-[11px]', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
+                  <td class="px-2 py-1 text-slate-500 truncate" @mouseenter="showNotePop(row,$event)" @mouseleave="hideNotePop">
+                    {{ row.lesson_note || row.att.note || '' }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 아이디 관리 -->
+        <div v-if="stuTab==='cred'" class="space-y-2">
+          <p class="text-xs text-slate-400">학생이 쓰는 사이트의 아이디·비밀번호를 관리합니다. 한 줄에 하나씩, [저장]으로 추가·수정합니다.</p>
+          <div v-for="c in stuCreds" :key="c.id" class="flex gap-2 items-center">
+            <div class="w-32 shrink-0"><input v-model="c.site" placeholder="사이트(예: 스크래치)" :class="['input py-1', credFieldDirty(c,'site') ? 'ring-2 ring-amber-400 border-amber-400' : '']" /></div>
+            <div class="flex-1 min-w-0"><input v-model="c.login_id" placeholder="아이디" :class="['input py-1', credFieldDirty(c,'login_id') ? 'ring-2 ring-amber-400 border-amber-400' : '']" /></div>
+            <div class="flex-1 min-w-0"><input v-model="c.password" placeholder="비밀번호" :class="['input py-1', credFieldDirty(c,'password') ? 'ring-2 ring-amber-400 border-amber-400' : '']" /></div>
+            <button v-if="stuCanEdit" @click="saveStuCred(c)" :class="['text-xs shrink-0', credDirty(c) ? 'btn-primary' : 'btn-secondary']">수정</button>
+            <button v-if="stuCanEdit" @click="deleteStuCred(c)" class="text-rose-400 text-xs hover:underline shrink-0">삭제</button>
+          </div>
+          <div v-if="!stuCreds.length" class="text-xs text-slate-400">등록된 사이트 계정이 없습니다.</div>
+          <div v-if="stuCanEdit" class="flex gap-2 items-center pt-2 border-t mt-2">
+            <div class="w-32 shrink-0"><input v-model="stuCredNew.site" placeholder="사이트(예: 스크래치)" class="input py-1" /></div>
+            <div class="flex-1 min-w-0"><input v-model="stuCredNew.login_id" placeholder="아이디" class="input py-1" /></div>
+            <div class="flex-1 min-w-0"><input v-model="stuCredNew.password" placeholder="비밀번호" class="input py-1" /></div>
+            <button @click="addStuCred" class="btn-primary text-xs shrink-0">추가</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 보호자 검색 모달 -->
+    <div v-if="gdSearchOpen" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="gdSearchOpen=false">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <div class="font-bold">보호자 검색</div>
+          <button @click="gdSearchOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div class="p-4 space-y-2">
+          <input v-model="gdSearchQ" @input="searchGuardians" placeholder="이름·연락처·연결 학생명 검색" class="input py-1" />
+          <ul class="space-y-1 max-h-96 overflow-y-auto">
+            <li v-for="p in gdSearchList" :key="p.parent_id" class="flex items-start gap-2 bg-slate-50 rounded px-3 py-2">
+              <div class="min-w-0">
+                <div class="text-sm font-medium">{{ p.name || '(이름없음)' }} <span class="text-xs text-slate-400">{{ p.phone }}</span></div>
+                <div class="text-xs text-slate-500">자녀: <span v-for="(c,i) in p.children" :key="c.id">{{ i>0?', ':'' }}{{ c.name }}({{ c.school_name }}{{ schoolSuffix(c.school_type) }}{{ c.grade?' '+c.grade+'학년':'' }})</span><span v-if="!p.children.length">없음</span></div>
+              </div>
+              <button @click="selectGuardian(p)" class="ml-auto shrink-0 text-xs px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700">연결</button>
+            </li>
+            <li v-if="gdSearchList.length===0" class="text-xs text-slate-400 text-center py-6">검색 결과가 없습니다.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 학부모 확인 대조 — 우리 값/학부모 값/직접 입력 중에서 최종값을 정한다 -->
   <div v-if="vrModal" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="vrModal=null">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
@@ -579,7 +1152,7 @@
   <!-- 다음 수업 호버: 이번 주 남은 일정 + 다음 주 -->
   <div v-if="nextPop.show" class="fixed z-[70] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
        :style="{ left: nextPop.x+'px', top: nextPop.y+'px' }">
-    <div class="font-bold text-slate-700 mb-1">{{ nextPop.name }} · 앞으로의 수업</div>
+    <div class="font-bold text-slate-700 mb-1">{{ nextPop.name }} · 앞으로 한 달 수업 <span class="font-normal text-slate-400">({{ nextPop.rows.length }}회)</span></div>
     <div v-for="(n,i) in nextPop.rows" :key="i" class="flex items-center gap-2 py-0.5">
       <span class="font-mono text-slate-500">{{ n.date.slice(5) }}({{ n.wd }})</span>
       <span class="font-mono">{{ n.time }}</span>
@@ -589,6 +1162,23 @@
             : (n.status==='LEAVE' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-700'))]">{{ nextStatusLabel(n) }}</span>
     </div>
     <div v-if="!nextPop.rows.length" class="text-slate-400">예정된 수업이 없습니다.</div>
+  </div>
+
+  <!-- 결석·지각 호버: 이번 달과 지난달을 날짜순으로 함께 -->
+  <div v-if="attDetailPop.show" class="fixed z-[70] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
+       :style="{ left: attDetailPop.x+'px', top: attDetailPop.y+'px' }">
+    <div class="font-bold text-slate-700 mb-1">{{ attDetailPop.name }} · 결석·지각</div>
+    <template v-for="(grp,gi) in attDetailPop.groups" :key="gi">
+      <div class="text-[10px] text-slate-400 mt-1 first:mt-0">{{ grp.label }}
+        <span v-if="!grp.rows.length" class="text-slate-300">— 없음</span>
+      </div>
+      <div v-for="(r,i) in grp.rows" :key="i" class="flex items-center gap-2 py-0.5">
+        <span class="font-mono text-slate-500">{{ r.date.slice(5) }}({{ r.wd }})</span>
+        <span v-if="r.kind==='absent'" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600">결석</span>
+        <span v-else class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{{ r.mins }}분 지각</span>
+        <span class="font-mono text-slate-400">{{ r.time }}</span>
+      </div>
+    </template>
   </div>
 
   <!-- 근태 월 그리드 호버 상세(클릭 없이 바로 보이게) -->
@@ -1173,7 +1763,10 @@
                           @mouseenter="dashHasDay(l,wi) && showWdPop(l,wi,$event)" @mouseleave="hideWdPop">{{ w }}</span>
                   </span>
                 </td>
-                <td class="px-3 py-2 text-slate-500 max-w-[64px] truncate">{{ l.subject }}<span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help" title="">📝</span></td>
+                <!-- 수업일지 아이콘이 붙으면 64px을 넘겨 과목명이 잘렸음(블록코딩…). 아이콘은 폭에서 빼둔다 -->
+                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">
+                  <span class="inline-block max-w-[84px] truncate align-bottom">{{ l.subject }}</span><span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help">📝</span>
+                </td>
                 <td class="px-3 py-2 whitespace-nowrap" :class="l.instructor==='미배정' ? 'text-rose-500 font-medium' : 'text-slate-500'">{{ l.instructor }}</td>
                 <td v-if="showBranchCol" class="px-3 py-2 text-slate-500">{{ l.branch }}</td>
                 <td class="px-3 py-2">
@@ -1195,11 +1788,14 @@
                   <button v-if="dashEx(l).mk_pending" @click="goStudentAttend(l.student_id)" class="px-1.5 py-0.5 rounded text-[11px] bg-rose-100 text-rose-600 hover:bg-rose-200">미정 {{ dashEx(l).mk_pending }}</button>
                   <span v-else class="text-[11px] text-slate-200">-</span>
                 </td>
-                <td v-if="dashCols.month" class="px-3 py-2 text-center whitespace-nowrap text-[11px]">
-                  <span v-if="dashEx(l).m_absent" class="text-rose-500">결{{ dashEx(l).m_absent }}</span>
-                  <span v-if="dashEx(l).m_absent && dashEx(l).m_late" class="text-slate-300"> · </span>
-                  <span v-if="dashEx(l).m_late" class="text-amber-600">지{{ dashEx(l).m_late }}</span>
-                  <span v-if="!dashEx(l).m_absent && !dashEx(l).m_late" class="text-slate-200">-</span>
+                <td v-if="dashCols.month" class="px-3 py-2 text-center whitespace-nowrap text-[11px]"
+                    @mouseenter="showAttDetailPop(l,$event)" @mouseleave="hideAttDetailPop">
+                  <span :class="(dashEx(l).att_detail||[]).length ? 'cursor-help' : ''">
+                    <span v-if="dashEx(l).m_absent" class="text-rose-500">결{{ dashEx(l).m_absent }}</span>
+                    <span v-if="dashEx(l).m_absent && dashEx(l).m_late" class="text-slate-300"> · </span>
+                    <span v-if="dashEx(l).m_late" class="text-amber-600">지{{ dashEx(l).m_late }}</span>
+                    <span v-if="!dashEx(l).m_absent && !dashEx(l).m_late" class="text-slate-200">-</span>
+                  </span>
                 </td>
                 <td v-if="dashCols.next" class="px-3 py-2 whitespace-nowrap text-[11px]">
                   <span v-if="dashNext(l)" :class="dashNext(l).cls" @mouseenter="showNextPop(l,$event)" @mouseleave="hideNextPop" class="cursor-help">
@@ -2687,576 +3283,6 @@
       </div>
 
       <!-- 상세 모달 -->
-      <div v-if="stuDetail" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="closeStudent">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4">
-          <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
-            <button @click="goStudentNav(-1)" :disabled="!stuNavHas(-1)"
-                    @mouseenter="showNavTip(stuNavLabel(-1),$event)" @mouseleave="hideNavTip"
-                    :class="['flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg border text-xs shrink-0',
-                             stuNavHas(-1) ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-slate-100 text-slate-300 cursor-not-allowed']">
-              <span class="text-base leading-none">‹</span>이전</button>
-            <div class="font-bold flex-1 min-w-0 ml-3">{{ stuDetail.real_name || stuDetail.username }}
-              <span class="text-xs font-normal text-slate-400">{{ stuDetail.username }} · {{ stuDetail.branch }}</span>
-              <span :class="['ml-2 px-2 py-0.5 rounded text-xs', stuStatusBadge(stuDetail.enrollment_status).cls]">{{ stuStatusBadge(stuDetail.enrollment_status).label }}</span>
-              <!-- 기존 관리 시트 바로가기(포털 전환 기간용). 칩과 호버창이 붙어 있어야 마우스가 지나가도 안 닫힘 -->
-              <span class="relative inline-block align-middle ml-2" @mouseenter="legacyPopEnter(stuDetail.id)" @mouseleave="legacyPopLeave">
-                <a v-if="stuLegacyUrl()" :href="stuLegacyUrl()" target="_blank" rel="noopener"
-                   class="text-xs font-normal px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">(이전기록)</a>
-                <span v-else class="text-xs font-normal px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 cursor-default">(이전기록)</span>
-                <span v-if="legacyPopFor===stuDetail.id || legacyEdit.id===stuDetail.id" class="absolute left-0 top-full pt-1 z-50 w-80 block">
-                  <span class="block bg-white border rounded-lg shadow-xl p-2 text-[11px] font-normal text-slate-600 break-all">
-                    <template v-if="legacyEdit.id===stuDetail.id">
-                      <input v-model="legacyEdit.url" @keyup.enter="saveLegacyEdit" placeholder="https://..." class="input py-1 text-[11px] w-full" />
-                      <span class="block mt-1 text-right">
-                        <button @click.prevent="saveLegacyEdit" class="text-indigo-600 hover:underline mr-2">저장</button>
-                        <button @click.prevent="cancelLegacyEdit" class="text-slate-400 hover:underline">취소</button>
-                      </span>
-                      <span class="block text-slate-400 mt-0.5">비우고 저장하면 삭제됩니다.</span>
-                    </template>
-                    <template v-else>
-                      {{ stuLegacyUrl() || '등록된 링크가 없습니다.' }}
-                      <span v-if="stuCanEdit" class="block mt-1 text-right">
-                        <button @click.prevent="startLegacyEdit(stuDetail.id, stuLegacyUrl())" class="text-indigo-600 hover:underline">{{ stuLegacyUrl() ? '수정' : '등록' }}</button>
-                      </span>
-                    </template>
-                  </span>
-                </span>
-              </span>
-            </div>
-            <button @click="goStudentNav(1)" :disabled="!stuNavHas(1)"
-                    @mouseenter="showNavTip(stuNavLabel(1),$event)" @mouseleave="hideNavTip"
-                    :class="['flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg border text-xs shrink-0',
-                             stuNavHas(1) ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-slate-100 text-slate-300 cursor-not-allowed']">
-              다음<span class="text-base leading-none">›</span></button>
-            <button @click="closeStudent" class="text-slate-400 hover:text-slate-600 shrink-0 ml-3">✕</button>
-          </div>
-          <!-- 서브탭 -->
-          <div class="flex gap-1 px-5 pt-3 border-b text-sm">
-            <button v-for="st in stuTabs" :key="st.k" @click="selectStuTab(st.k)"
-              :class="['px-3 py-2 border-b-2 -mb-px', stuTab===st.k ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500']">{{ st.l }}</button>
-          </div>
-          <div class="p-5 space-y-3">
-            <div v-if="!stuCanEdit" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-500 text-xs">👁 열람 전용 — 이 지점은 수정 권한이 없습니다.</div>
-            <!-- 인적사항 -->
-            <div v-if="stuTab==='info'" class="space-y-2">
-              <!-- 학부모 확인 — 등록은 우리가 아는 만큼 먼저 하고, 정확성은 여기서 맞춘다 -->
-              <div v-if="stuVerify" :class="['rounded-lg px-3 py-2 border text-xs', stuVerify.status==='SUBMITTED' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200']">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <b :class="stuVerify.status==='SUBMITTED' ? 'text-emerald-800' : 'text-amber-800'">
-                    {{ stuVerify.status==='SUBMITTED' ? '학부모 작성 완료 — 확인이 필요합니다' : '학부모 확인 대기' }}
-                  </b>
-                  <span class="text-slate-500">D+{{ stuVerify.waiting_days }}</span>
-                  <span v-if="stuVerify.expired" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600">링크 만료</span>
-                  <span v-else class="text-slate-400">~{{ stuVerify.expires }}</span>
-                  <span class="ml-auto flex gap-2 shrink-0">
-                    <button v-if="stuVerify.status==='SUBMITTED'" @click="openVerifyResolve()" class="px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700">대조 확인하기</button>
-                    <button v-if="stuCanEdit" @click="issueVerifyLink()" class="text-slate-500 hover:underline">링크 {{ stuVerify.status==='SENT' ? '다시 만들기' : '재발급' }}</button>
-                    <button v-if="stuCanEdit" @click="cancelVerify()" class="text-rose-400 hover:underline">취소</button>
-                  </span>
-                </div>
-              </div>
-              <div v-else-if="stuCanEdit" class="flex items-center gap-2 text-xs bg-slate-50 border rounded-lg px-3 py-2">
-                <span class="text-slate-500">학부모에게 정보 확인을 요청할 수 있습니다. 빈 양식을 작성받아 지금 정보와 대조합니다.</span>
-                <button @click="issueVerifyLink()" class="ml-auto px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-white shrink-0">학부모 확인 링크 만들기</button>
-              </div>
-              <div class="flex items-center justify-end">
-                <button v-if="stuCanEdit && !stuEditMode" @click="stuEditMode=true" class="text-xs px-2 py-1 rounded border border-slate-200 text-indigo-600 hover:bg-indigo-50">✎ 수정</button>
-                <span v-if="stuEditMode" class="text-xs text-amber-600 font-medium">수정 중 — 아래 항목을 고친 뒤 [수정완료]를 눌러주세요.</span>
-              </div>
-              <div class="grid grid-cols-2 gap-2">
-                <div><label class="lbl">원번</label><input :value="stuForm.enroll_no || '-'" class="input bg-slate-50" readonly /></div>
-                <div><label class="lbl">이름 <span v-if="stuFieldDirty('real_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.real_name" :readonly="!stuEditMode" :class="stuCls('real_name')" /></div>
-                <div><label class="lbl">생년월일 <span v-if="stuFieldDirty('birth_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.birth_date" type="date" :readonly="!stuEditMode" :class="stuCls('birth_date')" /></div>
-                <div><label class="lbl">성별 <span v-if="stuFieldDirty('gender')" class="text-amber-600">✏️</span></label><select v-model="stuForm.gender" :disabled="!stuEditMode" :class="stuCls('gender')"><option value="">-</option><option value="M">남</option><option value="F">여</option></select></div>
-                <div><label class="lbl">학생 연락처 <span v-if="stuFieldDirty('student_phone')" class="text-amber-600">✏️</span></label><input :value="stuForm.student_phone" @input="stuForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" :readonly="!stuEditMode" :class="stuCls('student_phone')" placeholder="010-0000-0000" /></div>
-                <div><label class="lbl">학교 구분 <span v-if="stuFieldDirty('school_type')" class="text-amber-600">✏️</span></label><select v-model="stuForm.school_type" :disabled="!stuEditMode" :class="stuCls('school_type','px-2')"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
-                <div><label class="lbl">학교(학과) 이름 <span v-if="stuFieldDirty('school_name')" class="text-amber-600">✏️</span></label>
-                  <div class="flex items-center gap-1"><input v-model="stuForm.school_name" :readonly="!stuEditMode" :class="stuCls('school_name','min-w-0')" /><span v-if="schoolSuffix(stuForm.school_type)" class="text-xs text-slate-400 whitespace-nowrap">{{ schoolSuffix(stuForm.school_type) }}</span></div>
-                </div>
-                <div><label class="lbl">학년 <span v-if="stuFieldDirty('grade')" class="text-amber-600">✏️</span></label>
-                  <div class="flex items-center gap-1"><input v-model="stuForm.grade" :readonly="!stuEditMode" :class="stuCls('grade','min-w-0')" /><span class="text-xs text-slate-400 whitespace-nowrap">학년</span></div>
-                </div>
-                <div><label class="lbl">등록일 <span v-if="stuFieldDirty('enrollment_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.enrollment_date" type="date" :readonly="!stuEditMode" :class="stuCls('enrollment_date')" /></div>
-                <div><label class="lbl">수업 시작일 <span v-if="stuFieldDirty('lesson_start_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.lesson_start_date" type="date" :readonly="!stuEditMode" :class="stuCls('lesson_start_date')" /></div>
-              </div>
-              <!-- 주 교육 회수(오늘 기준 적용중인 시간표 개수) · 등록 과정 나란히 배치 -->
-              <div class="border-t pt-2 grid grid-cols-2 gap-4">
-                <div>
-                  <label class="lbl">주 교육 회수</label>
-                  <input :value="stuWeeklySessions()+'회 (오늘 기준 적용중인 시간표 개수)'" readonly class="input bg-slate-50 text-slate-500" />
-                </div>
-                <div>
-                  <div class="text-xs font-semibold text-slate-500 mb-1">등록 과정 <span class="font-normal text-slate-400">({{ stuProgramsEdit.length }}개)</span> <span v-if="stuProgramsDirty()" class="text-amber-600">✏️</span></div>
-                  <div v-if="!stuEditMode">
-                    <div v-if="stuProgramsEdit.length" class="flex flex-wrap gap-1">
-                      <span v-for="(p,pi) in stuProgramsEdit" :key="pi" class="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">{{ composedProgramLabel(p) }}</span>
-                    </div>
-                    <div v-else class="text-xs text-slate-400">등록 과정 정보 없음</div>
-                  </div>
-                  <div v-else class="space-y-1.5">
-                    <div v-for="(p,pi) in stuProgramsEdit" :key="pi" class="flex items-center gap-1.5">
-                      <select v-model="p.value" class="input py-1 px-1 w-32">
-                        <option value="">선택</option>
-                        <option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
-                      </select>
-                      <select v-if="p.value==='LANG'" v-model="p.language" class="input py-1 px-1 w-24">
-                        <option value="">언어</option>
-                        <option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ o.label }}</option>
-                      </select>
-                      <input v-else-if="optAllowCustom('program', p.value)" v-model="p.custom" class="input py-1" placeholder="직접 입력" />
-                      <button @click="removeStuProgram(pi)" class="text-xs text-rose-400 hover:underline shrink-0">삭제</button>
-                    </div>
-                    <button @click="addStuProgram" class="text-xs text-indigo-600 hover:underline">+ 과정 추가</button>
-                  </div>
-                </div>
-              </div>
-              <!-- 과목 · 시간표 (개별 시간표와 동일 편집 — 인적사항 수정 모드와 별도로 자체 수정 모드 사용) -->
-              <div class="border-t pt-2">
-                <div class="flex items-center justify-between mb-1">
-                  <div class="text-xs font-semibold text-slate-500">과목 · 시간표 <span class="font-normal text-slate-400">(수정 시 사유→이력 기록, 누르면 바로 적용)</span></div>
-                  <div class="flex items-center gap-3">
-                    <label class="text-[11px] text-slate-400 inline-flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="stuTtShowHistory" :disabled="stuTtAutoHistory" class="w-3 h-3" />과거 이력 보기</label>
-                    <span v-if="stuTtAutoHistory" class="text-[11px] text-amber-600">— {{ stuDetail.enrollment_status==='WITHDRAWN' ? '퇴원' : '휴원' }}으로 종료된 시간표라 지난 내용을 함께 보여줍니다</span>
-                    <button v-if="stuCanEdit" @click="stuTtEditMode=!stuTtEditMode" :class="['text-xs px-2 py-0.5 rounded border', stuTtEditMode ? 'border-amber-300 text-amber-600 bg-amber-50' : 'border-slate-200 text-indigo-600 hover:bg-indigo-50']">{{ stuTtEditMode ? '시간표 수정 종료' : '✎ 시간표 수정' }}</button>
-                    <button v-if="stuCanEdit && stuTtEditMode" @click="addStuTtRow" class="text-xs text-indigo-600 hover:underline">+ 시간표 추가</button>
-                  </div>
-                </div>
-                <div v-if="stuTimetables.length" class="space-y-2">
-                  <div v-for="s in stuTtVisibleRows()" :key="s.id || s._tmpId" :class="['rounded-lg border px-2 py-1.5 overflow-x-auto', s.status==='PAUSED' ? 'bg-amber-50' : '', stuTtPhase(s)==='past' ? 'opacity-60' : '', (s.id && ttRowDirty(s)) ? 'ring-1 ring-amber-300' : '', !s.id ? 'ring-1 ring-indigo-300 bg-indigo-50/30' : '']">
-                    <div v-if="s.id" class="text-[10px] mb-0.5" :class="{'text-emerald-600':stuTtPhase(s)==='current','text-indigo-500':stuTtPhase(s)==='upcoming','text-slate-400':stuTtPhase(s)==='past'}">
-                      <template v-if="stuTtPhase(s)==='current'">✓ 적용중{{ s.active_from ? ' · '+s.active_from : '' }} ~ {{ s.active_until ? s.active_until+'까지 (이후 아래 예정 시간표로 변경)' : '' }}</template>
-                      <template v-else-if="stuTtPhase(s)==='upcoming'">🕓 예정 · {{ s.active_from }}부터 적용</template>
-                      <template v-else>지난 시간표 · {{ s.active_from||'~' }} ~ {{ s.active_until }}</template>
-                    </div>
-                    <div class="flex items-center gap-1 text-xs whitespace-nowrap">
-                      <div class="w-12 shrink-0"><select v-model.number="s.weekday" :disabled="!stuTtEditMode" :class="ttCls(s,'weekday','py-1 !pl-1 !pr-0')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
-                      <div class="w-20 shrink-0"><input v-model="s.start_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :readonly="!stuTtEditMode" :class="ttCls(s,'start_time','py-1 !pl-1 !pr-0 text-center font-mono')" /></div>
-                      <div class="w-16 shrink-0"><select v-model.number="s.duration_minutes" :disabled="!stuTtEditMode" :class="ttCls(s,'duration_minutes','py-1 !pl-1 !pr-0')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></div>
-                      <div class="w-36 shrink-0"><select v-model="s.program" :disabled="!stuTtEditMode" :class="ttCls(s,'program','py-1 !pl-1 !pr-0')"><option value="">미지정</option><option v-for="o in stuTtProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
-                      <div v-if="s.program==='LANG'" class="w-12 shrink-0"><select v-model="s.language" :disabled="!stuTtEditMode" :class="ttCls(s,'language','py-1 !pl-1 !pr-0')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select></div>
-                      <div class="w-20 shrink-0"><select v-model.number="s._instructor_id" :disabled="!stuTtEditMode" :class="[ttCls(s,'instr','py-1 !pl-1 !pr-0'), !s._instructor_id ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
-                      <div class="w-14 shrink-0"><select v-model="s.frequency" :disabled="!stuTtEditMode" :class="ttCls(s,'frequency','py-1 !pl-1 !pr-0')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></div>
-                      <span v-if="s.status==='PAUSED'" class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 shrink-0">휴원중지</span>
-                      <span class="ml-auto flex gap-2 shrink-0 pl-1 items-center">
-                        <template v-if="!s.id">
-                          <button v-if="stuCanEdit && stuTtEditMode" @click="createStuTt(s)" class="text-emerald-600 font-bold hover:underline">저장</button>
-                          <button v-if="stuCanEdit && stuTtEditMode" @click="removeStuTtRow(s)" class="text-slate-400 hover:underline">취소</button>
-                        </template>
-                        <template v-else>
-                          <template v-if="stuCanEdit && stuTtEditMode && ttRowDirty(s)">
-                            <label class="text-[10px] text-slate-400 inline-flex items-center gap-0.5 mr-1" title="처음부터 잘못 입력된 데이터라 이력을 나누지 않고 이 행 자체를 바로 수정"><input type="checkbox" v-model="s._fullEdit" class="w-3 h-3" />전체수정</label>
-                            <input v-if="!s._fullEdit" v-model="s.effective_date" type="date" title="적용 시작일(기본 오늘)" class="input py-0.5 px-1 text-[11px] w-32" />
-                          </template>
-                          <button v-if="stuCanEdit && stuTtEditMode && ttRowDirty(s)" @click="revertTt(s)" class="text-slate-400 hover:underline">취소</button>
-                          <button v-if="stuCanEdit && stuTtEditMode" @click="delStuTt(s)" class="text-rose-500 hover:underline">삭제</button>
-                          <button @mouseenter="openTtHistory(s,$event)" @mouseleave="scheduleCloseTt" class="text-slate-500 hover:underline">이력</button>
-                        </template>
-                      </span>
-                    </div>
-                  </div>
-                  <div v-if="stuCanEdit && stuTtEditMode" class="flex justify-end pt-0.5">
-                    <button @click="saveAllStuTt" :class="['text-xs px-3 py-1.5 rounded', stuTtDirtyCount() ? 'bg-amber-500 text-white hover:bg-amber-600 font-bold' : 'bg-slate-100 text-slate-400']">변경사항 저장{{ stuTtDirtyCount() ? ' ('+stuTtDirtyCount()+'건)' : '' }}</button>
-                  </div>
-                </div>
-                <div v-else class="text-xs text-rose-400">시간표 미정</div>
-              </div>
-              <!-- 주소 -->
-              <div class="border-t pt-2">
-                <div class="text-xs font-semibold text-slate-500 mb-1">주소</div>
-                <div class="flex gap-2 mb-1">
-                  <input :value="stuForm.zipcode" @click="stuEditMode && openPostcode('stu')" readonly placeholder="우편번호" :class="['input w-28 bg-slate-50', stuEditMode ? 'cursor-pointer' : '']" />
-                  <input :value="stuForm.address" @click="stuEditMode && openPostcode('stu')" readonly placeholder="주소 (클릭하여 검색)" :class="['input bg-slate-50', stuEditMode ? 'cursor-pointer' : '']" />
-                </div>
-                <input v-model="stuForm.address_detail" placeholder="상세주소 (동/호 등)" :readonly="!stuEditMode" :class="stuCls('address_detail')" />
-              </div>
-              <!-- 보호자 (구 보호자 탭 통합) -->
-              <div class="border-t pt-2">
-                <div class="text-xs font-semibold text-slate-500 mb-1">보호자</div>
-                <ul class="space-y-1">
-                  <li v-for="gd in stuDetail.guardians" :key="gd.link_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-1.5">
-                    <span class="font-medium">{{ gd.name }}<span v-if="gd.relation" class="font-normal text-slate-400">({{ gd.relation }})</span></span>
-                    <span class="text-xs text-slate-400 flex items-center gap-1">{{ gd.phone }} <call-btn :phone="gd.phone"></call-btn><sms-btn :phone="gd.phone"></sms-btn> · @{{ gd.username }}</span>
-                    <span v-if="stuCanEdit" class="ml-auto flex gap-2">
-                      <button @click="resetGuardianPw(gd)" class="text-xs text-indigo-500 hover:underline">비번 초기화</button>
-                      <button @click="unlinkGuardian(gd)" class="text-xs text-rose-400 hover:underline">연결 해제</button>
-                    </span>
-                  </li>
-                  <li v-if="stuDetail.guardians.length===0" class="text-xs text-slate-400">연결된 보호자가 없습니다.</li>
-                </ul>
-                <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2 mt-2">
-                  <div class="flex items-center justify-between">
-                    <div class="text-xs font-semibold text-slate-500">보호자 연결 / 계정 생성</div>
-                    <button @click="openGdSearch" class="text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-white">🔍 보호자 검색</button>
-                  </div>
-                  <div v-if="gdSelectedParentId" class="text-[11px] text-emerald-600">✓ 기존 보호자 선택됨 — 아래 [연결]을 누르세요.</div>
-                  <div class="grid grid-cols-2 gap-2">
-                    <input v-model="gdForm.parent_name" @input="gdSelectedParentId=null" placeholder="보호자 이름" class="input py-1" />
-                    <input :value="gdForm.parent_phone" @input="gdForm.parent_phone=formatPhone($event.target.value); gdSelectedParentId=null" inputmode="numeric" placeholder="연락처" class="input py-1" />
-                    <input v-model="gdForm.relation" list="guardianRelationList" placeholder="관계(선택·직접입력)" class="input py-1" />
-                    <input v-if="!gdSelectedParentId" v-model="gdForm.password" placeholder="비밀번호(미입력 시 연락처)" class="input py-1" />
-                  </div>
-                  <datalist id="guardianRelationList"><option value="아버지"><option value="어머니"><option value="할아버지"><option value="할머니"><option value="조부모"></datalist>
-                  <div class="flex justify-end">
-                    <button v-if="gdSelectedParentId" @click="linkGuardian" class="btn-primary text-sm">연결</button>
-                    <button v-else-if="(gdForm.parent_name||'').trim() && (gdForm.parent_phone||'').trim()" @click="linkGuardian" class="btn-secondary text-sm">생성</button>
-                  </div>
-                  <p class="text-[11px] text-slate-400">검색에서 고르면 <b>연결</b>, 직접 작성하면 새 계정 <b>생성</b>됩니다.</p>
-                </div>
-              </div>
-
-              <!-- 기타 보호자 · 요청사항 -->
-              <div class="border-t pt-2">
-                <div class="text-xs font-semibold text-slate-500 mb-1">기타 보호자
-                  <span v-if="stuDetail.profile_edits && stuDetail.profile_edits.length" class="font-normal text-amber-500 cursor-help" @mouseenter="showStuEditPop($event)" @mouseleave="hideMsgEditPop">· ✎{{ stuDetail.profile_edits.length }}회 수정</span>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <div><label class="lbl">기타 보호자 휴대폰 <span v-if="stuFieldDirty('guardian2_phone')" class="text-amber-600">✏️</span></label>
-                    <input :value="stuForm.guardian2_phone" @input="stuForm.guardian2_phone=formatPhone($event.target.value)" inputmode="numeric" :readonly="!stuEditMode" :class="stuCls('guardian2_phone')" placeholder="010-0000-0000" />
-                  </div>
-                  <div><label class="lbl">기타 보호자 관계 <span v-if="stuFieldDirty('guardian2_relation')" class="text-amber-600">✏️</span></label>
-                    <input v-model="stuForm.guardian2_relation" list="guardianRelationList" :readonly="!stuEditMode" :class="stuCls('guardian2_relation')" placeholder="예: 아버지, 삼촌" />
-                  </div>
-                </div>
-                <div class="mt-2"><label class="lbl">요청사항 · 알릴사항 <span v-if="stuFieldDirty('memo')" class="text-amber-600">✏️</span></label>
-                  <textarea v-model="stuForm.memo" rows="2" :readonly="!stuEditMode" :class="stuCls('memo')" placeholder="요청사항·알릴사항 없음"></textarea>
-                </div>
-                <div v-if="stuEditMode" class="flex justify-end gap-2 mt-2">
-                  <button @click="cancelStuEdit" class="btn-secondary text-sm">취소</button>
-                  <button @click="finishStuEdit" class="btn-primary text-sm">수정완료</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- 상담 타임라인 -->
-            <div v-if="stuTab==='counsel'" class="space-y-3">
-              <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
-                <div class="flex gap-2 items-center flex-wrap">
-                  <div class="w-20 shrink-0"><select v-model="stuNoteChannel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
-                  <div class="w-32 shrink-0"><input v-model="stuNoteTime.date" type="date" class="input py-1" /></div>
-                  <div class="w-16 shrink-0"><select v-model="stuNoteTime.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in hours24" :key="h" :value="h">{{ String(h).padStart(2,'0') }}시</option></select></div>
-                  <div class="w-20 shrink-0"><select v-model="stuNoteTime.min" class="input py-1"><option v-for="m in minOptions" :key="m" :value="m">{{ m }}분</option></select></div>
-                </div>
-                <textarea v-model="stuNoteText" rows="2" placeholder="상담 내용 입력" class="input"></textarea>
-                <div class="flex justify-end"><button @click="addStuNote" class="btn-secondary text-sm">기록 추가</button></div>
-              </div>
-              <ul class="space-y-1">
-                <li v-for="g in (stuDetail.lead ? stuDetail.lead.logs : [])" :key="g.id" :class="['text-sm rounded px-3 py-1.5', g.is_initial ? 'bg-indigo-50/60' : (g.is_hidden ? 'bg-rose-50' : 'bg-slate-50')]">
-                  <div class="flex items-center gap-1 text-xs text-slate-400">
-                    <span v-if="g.is_initial" class="text-indigo-500 font-semibold">📝 최초 상담 신청</span>
-                    <template v-else>
-                      <span>{{ channelLabel(g.channel) }}</span>
-                      <span v-if="g.counsel_at">· 상담 {{ dt(g.counsel_at) }}</span>
-                      <span v-if="g.is_hidden" class="text-rose-500">· 삭제됨</span>
-                    </template>
-                    <span class="ml-auto">{{ dt(g.create_time) }} {{ g.author }}</span>
-                  </div>
-                  <template v-if="stuEditLogId===g.id">
-                    <textarea v-model="stuEditLogText" rows="2" class="input mt-1"></textarea>
-                    <div class="flex justify-end gap-2 mt-1">
-                      <button @click="stuEditLogId=null" class="text-xs text-slate-400 hover:underline">취소</button>
-                      <button @click="saveStuEditLog(g)" class="text-xs text-indigo-600 hover:underline">저장</button>
-                    </div>
-                  </template>
-                  <template v-else>
-                    <div class="whitespace-pre-wrap">{{ g.summary }}</div>
-                    <div v-if="g.edits && g.edits.length" class="mt-1 space-y-1">
-                      <div class="text-[11px] text-amber-600">✎ {{ g.edits.length }}회 수정됨</div>
-                      <div v-for="(e,i) in g.edits" :key="i" class="flex gap-2 text-[11px] pl-3 border-l-2 border-amber-200 py-0.5">
-                        <span class="shrink-0 w-28 text-amber-600 leading-tight">{{ e.time }}<br>{{ e.actor || '' }}</span>
-                        <span class="whitespace-pre-wrap text-slate-600 flex-1">{{ e.old }}</span>
-                      </div>
-                    </div>
-                    <div v-if="stuCanEdit && !g.is_initial" class="flex justify-end gap-2 text-[11px]">
-                      <button v-if="!g.is_hidden" @click="startStuEditLog(g)" class="text-indigo-500 hover:underline">수정</button>
-                      <button v-if="!g.is_hidden" @click="deleteStuLog(g)" class="text-rose-400 hover:underline">삭제</button>
-                      <button v-else @click="restoreStuLog(g)" class="text-indigo-500 hover:underline">복원</button>
-                    </div>
-                  </template>
-                </li>
-                <li v-if="!stuDetail.lead || stuDetail.lead.logs.length===0" class="text-xs text-slate-400">상담 기록이 없습니다.</li>
-              </ul>
-
-              <!-- 상담 예약(여러 건) -->
-              <div class="border-t pt-3">
-                <div class="text-xs font-semibold text-slate-500 mb-1">상담 예약</div>
-                <ul class="space-y-1">
-                  <li v-for="rv in (stuDetail.lead ? (stuDetail.lead.reservations||[]).filter(x=>x.status==='ACTIVE') : [])" :key="rv.id" class="flex items-center gap-2 text-sm rounded px-3 py-1.5" :class="rv.is_past ? 'bg-slate-50 text-slate-400' : 'bg-amber-50'">
-                    <span class="font-medium">{{ dt(rv.scheduled_at) }}</span>
-                    <span class="text-[11px]" :class="rv.is_past ? 'text-slate-400' : 'text-amber-600'">{{ rv.is_past ? '지난 예약' : '예약' }}</span>
-                    <span v-if="rv.note" class="text-xs text-slate-500">· {{ rv.note }}</span>
-                    <span class="ml-auto text-[11px] text-slate-400">{{ rv.created_by }}</span>
-                    <button v-if="stuCanEdit" @click="cancelStuReservation(rv)" class="text-[11px] text-rose-400 hover:underline">취소</button>
-                  </li>
-                  <li v-if="!stuDetail.lead || !(stuDetail.lead.reservations||[]).filter(x=>x.status==='ACTIVE').length" class="text-xs text-slate-400">예약 없음</li>
-                </ul>
-                <div v-if="stuCanEdit" class="mt-2 space-y-2">
-                  <div class="flex gap-2 items-center flex-wrap">
-                    <div class="w-32 shrink-0"><input v-model="stuResvForm.date" type="date" class="input py-1" /></div>
-                    <div class="w-16 shrink-0"><select v-model="stuResvForm.hour" class="input py-1"><option value="" disabled>시</option><option v-for="h in hours24" :key="h" :value="h">{{ String(h).padStart(2,'0') }}시</option></select></div>
-                    <div class="w-20 shrink-0"><select v-model="stuResvForm.min" class="input py-1"><option v-for="m in minOptions" :key="m" :value="m">{{ m }}분</option></select></div>
-                  </div>
-                  <textarea v-model="stuResvForm.note" rows="2" placeholder="메모(선택)" class="input py-1"></textarea>
-                  <div class="flex justify-end"><button @click="addStuReservation" class="btn-secondary text-sm">예약 추가</button></div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 상태 이력 -->
-            <div v-if="stuTab==='status'" class="space-y-3">
-              <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
-                <div class="flex gap-2 items-center">
-                  <div class="shrink-0 w-28"><select v-model="stuStatusNew" class="input py-1">
-                    <option value="ENROLLED">재원(재등록)</option>
-                    <option value="ON_LEAVE">휴원</option>
-                    <option value="WITHDRAWN">퇴원</option>
-                  </select></div>
-                  <div class="shrink-0 w-36"><input v-model="stuStatusDate" type="date" class="input py-1" title="적용일" /></div>
-                  <input v-model="stuStatusReason" placeholder="사유 (필수)" class="input flex-1 min-w-0 py-1" />
-                  <button @click="changeStuStatus" class="btn-secondary text-sm whitespace-nowrap shrink-0">상태 변경</button>
-                </div>
-                <p class="text-[11px] text-slate-400">현재 상태: <b>{{ stuStatusBadge(stuDetail.enrollment_status).label }}</b> · 변경 시 이력에 영구 기록됩니다.</p>
-              </div>
-              <ul class="space-y-1">
-                <li v-for="h in stuDetail.status_history" :key="h.id" class="text-sm bg-slate-50 rounded px-3 py-1.5">
-                  <div class="flex items-center gap-2">
-                    <span class="text-xs">{{ stuStatusBadge(h.from).label }} → <b>{{ stuStatusBadge(h.to).label }}</b></span>
-                    <span v-if="h.effective_date" class="text-xs text-slate-400">적용 {{ h.effective_date }}</span>
-                    <span class="text-xs text-slate-400 ml-auto">{{ h.time }} {{ h.actor }}</span>
-                  </div>
-                  <div v-if="h.reason" class="text-xs text-slate-600">사유: {{ h.reason }}</div>
-                </li>
-                <li v-if="stuDetail.status_history.length===0" class="text-xs text-slate-400">상태 변경 이력이 없습니다.</li>
-              </ul>
-            </div>
-
-            <!-- 수업일지 -->
-            <div v-if="stuTab==='progress'" class="space-y-3">
-              <label class="flex items-center gap-2 text-xs cursor-pointer select-none justify-end">
-                <span :class="stuProgView==='list' ? 'text-indigo-600 font-semibold' : 'text-slate-400'">리스트</span>
-                <button type="button" @click="toggleStuProgView"
-                        :class="['w-10 h-5 rounded-full relative transition-colors shrink-0', stuProgView==='cal' ? 'bg-indigo-600' : 'bg-slate-300']">
-                  <span :class="['absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all', stuProgView==='cal' ? 'left-5' : 'left-0.5']"></span>
-                </button>
-                <span :class="stuProgView==='cal' ? 'text-indigo-600 font-semibold' : 'text-slate-400'">달력</span>
-              </label>
-              <!-- 달력 보기: 이 학생의 월별 수업만 표시. 호버=수업일지 미리보기, 클릭=상세(수업일지 작성) 모달 -->
-              <div v-if="stuProgView==='cal'" class="space-y-2">
-                <div class="flex items-center gap-1">
-                  <button @click="stuProgCalShift(-1)" class="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 text-xs">◀</button>
-                  <span class="font-semibold text-sm w-28 text-center">{{ stuProgCalMonth }}</span>
-                  <button @click="stuProgCalShift(1)" class="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 text-xs">▶</button>
-                  <button @click="stuProgCalToday" class="ml-1 px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">이번달</button>
-                  <span class="text-[11px] text-slate-400 ml-2">📝=일지 작성됨 · 수업 클릭 시 작성/수정</span>
-                </div>
-                <div class="grid grid-cols-7 gap-1 text-xs">
-                  <div v-for="w in ['월','화','수','목','금','토','일']" :key="w" class="text-center text-slate-400 font-medium py-1">{{ w }}</div>
-                  <div v-for="(c,i) in stuProgCells" :key="i" class="border border-slate-100 rounded min-h-[64px] p-1" :class="!c.date ? 'bg-slate-50/50' : (c.isToday ? 'bg-indigo-50/40' : '')">
-                    <template v-if="c.date">
-                      <div class="text-[11px] mb-0.5" :class="c.isToday ? 'text-indigo-600 font-bold' : 'text-slate-400'">{{ c.day }}</div>
-                      <div v-for="(it,j) in (stuProgCalDays[c.date] ? stuProgCalDays[c.date].items : [])" :key="j"
-                           @click="openCalAtt(it, c.date)" @mouseenter="showProgPop(it,$event)" @mouseleave="hideProgPop"
-                           :class="['mb-0.5 px-1 py-0.5 rounded truncate leading-tight cursor-pointer', calItemCls(it)]">
-                        <span class="font-semibold">{{ it.start_time }}</span> {{ ttSubjectShort(it.subject) }}<span v-if="it.progress && (it.progress.content || it.progress.homework || it.progress.feedback || it.progress.memo)" class="ml-0.5">📝</span>
-                      </div>
-                    </template>
-                  </div>
-                </div>
-              </div>
-              <template v-else>
-              <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
-                <div class="text-xs font-semibold text-slate-500">수업일지 추가 <span class="font-normal text-slate-400">(수업과 무관한 자유 기록용 — 실제 수업 일지는 달력에서 해당 수업을 클릭해 작성하세요)</span></div>
-                <input v-model="stuProgForm.date" type="date" class="input py-1 w-40" />
-                <textarea v-model="stuProgForm.content" rows="2" placeholder="수업 내용" class="input"></textarea>
-                <textarea v-model="stuProgForm.homework" rows="1" placeholder="숙제 (선택)" class="input"></textarea>
-                <textarea v-model="stuProgForm.feedback" rows="1" placeholder="피드백 (학부모에게 그대로 전달되는 내용, 선택)" class="input"></textarea>
-                <textarea v-model="stuProgForm.memo" rows="1" placeholder="비고 (우리끼리 참고할 내용 — 학부모에게 전달되지 않음, 선택)" class="input"></textarea>
-                <div class="flex justify-end"><button @click="addStuProgress" class="btn-secondary text-sm">추가</button></div>
-              </div>
-              <ul class="space-y-1">
-                <li v-for="p in stuProgress" :key="p.id" class="bg-white border rounded-lg px-3 py-2">
-                  <div class="flex items-center gap-2 text-xs text-slate-400">
-                    <span class="font-medium text-slate-600">{{ p.date }}</span>
-                    <span v-if="p.subject" class="text-indigo-500">{{ p.subject }}</span>
-                    <span class="ml-auto">{{ p.author }}</span>
-                    <button v-if="stuCanEdit" @click="deleteStuProgress(p)" class="text-rose-400 hover:underline">삭제</button>
-                  </div>
-                  <div class="text-sm whitespace-pre-wrap mt-0.5">{{ p.content || '(내용 없음)' }}</div>
-                  <div v-if="p.homework" class="text-xs text-slate-500 mt-0.5">숙제: {{ p.homework }}</div>
-                  <div v-if="p.feedback" class="text-xs text-slate-500 mt-0.5">피드백: {{ p.feedback }}</div>
-                  <div v-if="p.memo" class="text-xs text-amber-700 mt-0.5">비고: {{ p.memo }}</div>
-                </li>
-                <li v-if="stuProgress.length===0" class="text-xs text-slate-400">수업일지 기록이 없습니다.</li>
-              </ul>
-              </template>
-            </div>
-
-            <!-- 출결기록 -->
-            <div v-if="stuTab==='attend'" class="space-y-3">
-              <div class="border border-slate-200 rounded-lg px-3 py-2 text-sm flex items-center gap-4 flex-wrap">
-                <span>결석 <b class="text-rose-500">{{ stuAttOverall.absent }}</b></span>
-                <span>지각 <b class="text-amber-600">{{ stuAttOverall.late }}</b></span>
-                <span>보강 <b class="text-blue-600">{{ stuAttOverall.makeupTotal }}</b><span class="text-slate-400 text-xs"> (날짜미정 {{ stuAttOverall.makeupPending }})</span></span>
-                <button @click="toggleStuAttBulkMode" class="ml-auto btn-secondary text-sm">{{ stuAttBulkMode ? '선택일괄수정 닫기' : '+ 선택일괄수정' }}</button>
-                <button @click="openMakeupForThisStudent" class="btn-secondary text-sm">+ 보강 추가</button>
-                <button @click="openTempLeave" class="btn-secondary text-sm">+ 임시휴원 등록</button>
-              </div>
-              <div class="bg-slate-50 rounded-lg px-3 py-2 text-xs flex items-center gap-4 flex-wrap">
-                <span>이번달 <b class="text-rose-500">결석 {{ stuAttSummary.mAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.mLate }}</b> <span class="text-slate-400">({{ stuAttSummary.mTotal }}회 중 {{ stuAttSummary.mRate }}%)</span></span>
-                <span>최근 3개월 <b class="text-rose-500">결석 {{ stuAttSummary.qAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.qLate }}</b> <span class="text-slate-400">({{ stuAttSummary.qTotal }}회 중 {{ stuAttSummary.qRate }}%)</span></span>
-              </div>
-              <!-- 개별 보강 현황 — 보강 관리 탭과 같은 형식(보강일 미정/확정 필터) -->
-              <div class="border border-blue-200 bg-blue-50/50 rounded-lg px-3 py-2">
-                <div class="flex items-center gap-2 flex-wrap text-xs mb-1">
-                  <span class="font-semibold text-blue-800 text-sm">보강 현황 <span class="font-normal text-slate-400">{{ stuMkList.length }}건</span></span>
-                  <span class="flex items-center gap-2 text-slate-500 ml-auto">
-                    보강일
-                    <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="stuMkShowPending" class="w-3 h-3" />미정 <span class="text-slate-400">{{ stuMkPendingCount }}</span></label>
-                    <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="stuMkShowFixed" class="w-3 h-3" />확정 <span class="text-slate-400">{{ stuMkFixedCount }}</span></label>
-                    <span :class="['flex items-center gap-2 pl-2 border-l border-blue-200', stuMkShowFixed ? '' : 'opacity-40']">
-                      <span class="text-slate-300">└</span>
-                      <label v-for="st in mkStates" :key="st.k" class="flex items-center gap-1 select-none" :class="stuMkShowFixed ? 'cursor-pointer' : 'cursor-not-allowed'">
-                        <input type="checkbox" v-model="stuMkSub[st.k]" :disabled="!stuMkShowFixed" class="w-3 h-3" />{{ st.l }} <span class="text-slate-400">{{ stuMkStateCounts[st.k] }}</span>
-                      </label>
-                    </span>
-                  </span>
-                </div>
-                <div v-for="p in stuMkList" :key="p.occ_id" class="flex items-center gap-2 text-xs text-slate-600 py-0.5">
-                  <span>{{ p.date }}({{ wdOf(p.date) }}) {{ p.start_time }} · {{ p.subject }}</span>
-                  <span :class="['px-1.5 py-0.5 rounded shrink-0', mkgDaysCls(p.date)]">D+{{ mkgDaysAgo(p.date) }}</span>
-                  <span v-if="p.makeup_date" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">보강 {{ p.makeup_date.slice(5) }}({{ wdOf(p.makeup_date) }}) {{ p.makeup_time }}</span>
-                  <span v-if="mkStateInfo(p.mk_state)" :class="['px-1.5 py-0.5 rounded shrink-0', mkStateInfo(p.mk_state).cls]">{{ mkStateInfo(p.mk_state).l }}</span>
-                  <span class="ml-auto flex gap-2 shrink-0">
-                    <template v-if="!p.makeup_date">
-                      <button @click="openMakeupFor(p)" class="text-indigo-600 hover:underline">일정잡기</button>
-                      <button @click="mkgSetNoMakeup(p)" class="text-slate-400 hover:underline">보강안함</button>
-                    </template>
-                  </span>
-                </div>
-                <div v-if="!stuMkList.length" class="text-xs text-slate-400 py-1">{{ stuMkEmptyMsg }}</div>
-              </div>
-              <div class="flex items-center gap-2 text-xs flex-wrap">
-                <span class="text-slate-400">조회 범위: <b class="text-slate-600">{{ stuAttHist.from }} ~ {{ stuAttHist.to }}</b> <span class="text-slate-300">(수업시작일 ~ 오늘 기본)</span></span>
-                <button @click="loadStuAttHist(stuAttHist.fwdDays+30)" class="ml-auto px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">+1개월(이후 예정 보기)</button>
-                <select :value="stuAttFwdDefault" @change="setStuAttFwdDefault($event.target.value)" class="px-2 py-1 rounded border border-slate-200 bg-white">
-                  <option :value="0">기본값 선택</option>
-                  <option v-for="w in [1,2,3,4,5,6,7,8]" :key="w" :value="w*7">+{{ w }}주</option>
-                </select>
-                <button v-if="stuAttHist.fwdDays>0" @click="loadStuAttHist(0)" class="px-2 py-1 rounded border border-slate-200 text-slate-400 hover:bg-slate-50">초기화</button>
-              </div>
-              <div v-if="stuAttBulkMode" class="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-xs space-y-2">
-                <div class="flex items-center gap-2">
-                  <b class="text-indigo-700">{{ stuAttSelected.length }}건 선택됨</b>
-                  <span class="text-slate-400">날짜 왼쪽 체크박스로 여러 건 골라 같은 사유로 한 번에 처리하세요</span>
-                  <button v-if="stuAttSelected.length>0" @click="stuAttSelected=[]" class="ml-auto text-slate-400 hover:underline">선택 해제</button>
-                </div>
-                <div class="flex flex-wrap gap-1">
-                  <button @click="stuAttBulkForm.note_tag=''; stuAttBulkForm.no_makeup=false" :class="['px-2 py-1 rounded text-xs border', !stuAttBulkForm.note_tag ? 'border-slate-400' : 'border-slate-200 text-slate-400']">없음</button>
-                  <button v-for="t in attNoteTags" :key="t.value" @click="stuAttBulkForm.note_tag=t.value; stuAttBulkForm.no_makeup=false" class="px-2 py-1 rounded text-xs border" :style="(stuAttBulkForm.note_tag===t.value && !(t.value==='ABSENT' && stuAttBulkForm.no_makeup)) ? { borderColor:t.color, backgroundColor:(t.color||'#888')+'22', color:t.color } : { borderColor:'#e5e7eb', color:t.color }">{{ t.label }}</button>
-                  <button @click="stuAttBulkForm.note_tag='ABSENT'; stuAttBulkForm.no_makeup=true" :class="['px-2 py-1 rounded text-xs border', (stuAttBulkForm.note_tag==='ABSENT' && stuAttBulkForm.no_makeup) ? 'border-pink-400 bg-pink-50 text-pink-600' : 'border-slate-200 text-slate-400']">결석(보강X)</button>
-                </div>
-                <div class="flex items-center gap-2">
-                  <input v-model="stuAttBulkForm.start_time" type="text" inputmode="numeric" placeholder="HH:MM(선택, 시각도 함께 변경 시)" maxlength="5" class="input py-1 w-56" />
-                  <span class="text-slate-400">예: 방학기간 시간표를 임시로 바꿀 때 함께 지정</span>
-                </div>
-                <input v-model="stuAttBulkForm.note" placeholder="사유(예: 가족여행으로 일정 결석 / 다른 학원 특강으로 이 기간 시간 변동)" class="input py-1" />
-                <div class="flex justify-end"><button @click="applyStuAttBulk" class="btn-primary text-sm">선택한 {{ stuAttSelected.length }}건에 적용</button></div>
-              </div>
-              <p class="text-[11px] text-slate-400">행을 누르면 <b>비고·결석 처리</b>, <b>등원·하원 칸</b>을 누르면 그 시각을 바꿀 수 있습니다.</p>
-              <div v-if="stuAttHist.rows.length===0" class="text-xs text-slate-400 py-4 text-center">출결 기록이 없습니다.</div>
-              <div v-for="g in stuAttHistByMonth" :key="g.ym" class="border rounded-lg overflow-hidden">
-                <div class="bg-slate-50 px-3 py-1.5 text-xs flex items-center gap-2">
-                  <span class="font-semibold text-slate-600">{{ g.label }}</span>
-                  <span v-if="g.absent" class="text-rose-500">결석 {{ g.absent }}</span>
-                  <span v-if="g.late" class="text-amber-600">지각 {{ g.late }}</span>
-                  <span v-if="g.makeup" class="text-blue-600">보강 {{ g.makeup }}</span>
-                  <span class="ml-auto text-slate-400">{{ g.rows.length }}건</span>
-                </div>
-                <table class="w-full text-xs" style="table-layout:fixed">
-                  <colgroup>
-                    <col style="width:4%"><col style="width:10%"><col style="width:8%"><col style="width:11%"><col style="width:8%">
-                    <col style="width:9%"><col style="width:9%"><col style="width:15%"><col>
-                  </colgroup>
-                  <thead class="text-slate-400"><tr>
-                    <th class="px-2 py-1"><input v-if="stuAttBulkMode" type="checkbox" :checked="isGroupFullySelected(g)" @click="toggleStuAttGroupSel(g)" class="w-3.5 h-3.5 align-middle" title="이 달 전체 선택" /></th>
-                    <th class="px-2 py-1 text-left">날짜</th>
-                    <th class="px-2 py-1 text-left">시간</th>
-                    <th class="px-2 py-1 text-left">과목</th>
-                    <th class="px-2 py-1 text-left">강사</th>
-                    <th class="px-2 py-1 text-left">등원</th>
-                    <th class="px-2 py-1 text-left">하원</th>
-                    <th class="px-2 py-1 text-left">상태</th>
-                    <th class="px-2 py-1 text-left">비고</th>
-                  </tr></thead>
-                  <tbody>
-                    <tr v-for="row in g.rows" :key="row.occ_id" @click="openStuAttRow(row)" class="border-t hover:bg-indigo-50/50 cursor-pointer">
-                      <td class="px-2 py-1" @click.stop="stuAttBulkMode && toggleStuAttSel(row.occ_id)"><input v-if="stuAttBulkMode" type="checkbox" :checked="stuAttSelected.includes(row.occ_id)" class="w-3.5 h-3.5 align-middle" /></td>
-                      <td class="px-2 py-1 whitespace-nowrap truncate">{{ row.date.slice(5) }}({{ wdOf(row.date) }})</td>
-                      <td class="px-2 py-1 truncate" @click.stop="row.time_changed && showTcPop(row,$event)" @mouseenter="row.time_changed && showTcPop(row,$event)" @mouseleave="hideTcPop">
-                        <span :class="row.time_changed ? 'text-amber-600 font-bold cursor-help' : ''">{{ row.start_time }}</span>
-                      </td>
-                      <td class="px-2 py-1 truncate">{{ row.subject }}</td>
-                      <td class="px-2 py-1 truncate text-slate-500">{{ row.instructor }}</td>
-                      <td class="px-2 py-1 truncate" @click.stop="openStuAttTime(row,'in')">
-                        <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.in || '-' }}</span>
-                        <span v-if="stuAttLateText(row)" class="block text-[10px]" :class="stuAttLateCls(row)">{{ stuAttLateText(row) }}</span>
-                      </td>
-                      <td class="px-2 py-1 truncate" @click.stop="openStuAttTime(row,'out')">
-                        <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.out || '-' }}</span>
-                      </td>
-                      <td class="px-2 py-1 overflow-hidden"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap text-[11px]', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
-                      <td class="px-2 py-1 text-slate-500 truncate" @mouseenter="showNotePop(row,$event)" @mouseleave="hideNotePop">
-                        {{ row.lesson_note || row.att.note || '' }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- 아이디 관리 -->
-            <div v-if="stuTab==='cred'" class="space-y-2">
-              <p class="text-xs text-slate-400">학생이 쓰는 사이트의 아이디·비밀번호를 관리합니다. 한 줄에 하나씩, [저장]으로 추가·수정합니다.</p>
-              <div v-for="c in stuCreds" :key="c.id" class="flex gap-2 items-center">
-                <div class="w-32 shrink-0"><input v-model="c.site" placeholder="사이트(예: 스크래치)" :class="['input py-1', credFieldDirty(c,'site') ? 'ring-2 ring-amber-400 border-amber-400' : '']" /></div>
-                <div class="flex-1 min-w-0"><input v-model="c.login_id" placeholder="아이디" :class="['input py-1', credFieldDirty(c,'login_id') ? 'ring-2 ring-amber-400 border-amber-400' : '']" /></div>
-                <div class="flex-1 min-w-0"><input v-model="c.password" placeholder="비밀번호" :class="['input py-1', credFieldDirty(c,'password') ? 'ring-2 ring-amber-400 border-amber-400' : '']" /></div>
-                <button v-if="stuCanEdit" @click="saveStuCred(c)" :class="['text-xs shrink-0', credDirty(c) ? 'btn-primary' : 'btn-secondary']">수정</button>
-                <button v-if="stuCanEdit" @click="deleteStuCred(c)" class="text-rose-400 text-xs hover:underline shrink-0">삭제</button>
-              </div>
-              <div v-if="!stuCreds.length" class="text-xs text-slate-400">등록된 사이트 계정이 없습니다.</div>
-              <div v-if="stuCanEdit" class="flex gap-2 items-center pt-2 border-t mt-2">
-                <div class="w-32 shrink-0"><input v-model="stuCredNew.site" placeholder="사이트(예: 스크래치)" class="input py-1" /></div>
-                <div class="flex-1 min-w-0"><input v-model="stuCredNew.login_id" placeholder="아이디" class="input py-1" /></div>
-                <div class="flex-1 min-w-0"><input v-model="stuCredNew.password" placeholder="비밀번호" class="input py-1" /></div>
-                <button @click="addStuCred" class="btn-primary text-xs shrink-0">추가</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 보호자 검색 모달 -->
-        <div v-if="gdSearchOpen" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="gdSearchOpen=false">
-          <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
-            <div class="flex items-center justify-between px-5 py-3 border-b">
-              <div class="font-bold">보호자 검색</div>
-              <button @click="gdSearchOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
-            </div>
-            <div class="p-4 space-y-2">
-              <input v-model="gdSearchQ" @input="searchGuardians" placeholder="이름·연락처·연결 학생명 검색" class="input py-1" />
-              <ul class="space-y-1 max-h-96 overflow-y-auto">
-                <li v-for="p in gdSearchList" :key="p.parent_id" class="flex items-start gap-2 bg-slate-50 rounded px-3 py-2">
-                  <div class="min-w-0">
-                    <div class="text-sm font-medium">{{ p.name || '(이름없음)' }} <span class="text-xs text-slate-400">{{ p.phone }}</span></div>
-                    <div class="text-xs text-slate-500">자녀: <span v-for="(c,i) in p.children" :key="c.id">{{ i>0?', ':'' }}{{ c.name }}({{ c.school_name }}{{ schoolSuffix(c.school_type) }}{{ c.grade?' '+c.grade+'학년':'' }})</span><span v-if="!p.children.length">없음</span></div>
-                  </div>
-                  <button @click="selectGuardian(p)" class="ml-auto shrink-0 text-xs px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700">연결</button>
-                </li>
-                <li v-if="gdSearchList.length===0" class="text-xs text-slate-400 text-center py-6">검색 결과가 없습니다.</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
     </section>
 
     <!-- ============ 관리자: 반/시간표/출결 ============ -->
@@ -4689,12 +4715,13 @@ const app = createApp({
       })(),
       dashColOptions: [
         { k:'mk',       l:'미처리 보강',   d:'보강일이 아직 안 잡힌 결석 수 — 온 김에 잡을 수 있어요' },
-        { k:'next',     l:'다음 수업',     d:'이번 주 남은 일정 + 다음 주 (칸엔 첫 건, 나머지는 마우스를 올리면)' },
+        { k:'next',     l:'다음 수업',     d:'앞으로 한 달 (칸엔 첫 건, 나머지는 마우스를 올리면)' },
         { k:'school',   l:'학교·학년',     d:'청일초5 처럼 줄여서' },
         { k:'weekdays', l:'요일 패턴',     d:'오는 요일을 한 줄로 — 마우스를 올리면 그 요일 시각' },
         { k:'month',    l:'이번 달 결석·지각', d:'상담이 필요한 학생이 눈에 띕니다' },
       ],
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
+      attDetailPop: { show:false, x:0, y:0, name:'', groups:[] },
       nextPop: { show:false, x:0, y:0, name:'', rows:[] },
       msgBox: 'inbox', msgList: [], msgCompose: false, msgForm: { recipient_id:null, body:'' }, msgUnread: 0, msgExpand: {}, msgPickerOpen: false,
       sibPop: { show:false, x:0, y:0, list:[], name:'' }, _sibTimer: null, sibPopHover: false,
@@ -7059,6 +7086,17 @@ const app = createApp({
                      x:Math.min(e.clientX+12, window.innerWidth-200), y:Math.min(e.clientY+12, window.innerHeight-100) };
     },
     hideWdPop(){ this.wdPop.show = false; },
+    showAttDetailPop(l, e){
+      const ex = this.dashEx(l), rows = ex.att_detail || [];
+      if (!rows.length) return;
+      const ym = (this.dashDate||this.todayStr).slice(0,7);
+      const label = m => Number(m.slice(5))+'월';
+      this.attDetailPop = { show:true, name:l.student_name,
+        groups: [ { label:'이번 달('+label(ym)+')', rows: rows.filter(r=>r.this_month) },
+                  { label:'지난달('+label(ex.prev_month||ym)+')', rows: rows.filter(r=>!r.this_month) } ],
+        x:Math.min(e.clientX+12, window.innerWidth-260), y:Math.min(e.clientY+12, window.innerHeight-240) };
+    },
+    hideAttDetailPop(){ this.attDetailPop.show = false; },
     showNextPop(l, e){
       this.nextPop = { show:true, name:l.student_name, rows:(this.dashEx(l).next||[]),
                        x:Math.min(e.clientX+12, window.innerWidth-260), y:Math.min(e.clientY+12, window.innerHeight-220) };
@@ -7098,9 +7136,10 @@ const app = createApp({
     showDashPop(l,e){ clearTimeout(this._dashPopTimer); this.dashPop={ show:true, l, x:Math.min(e.clientX+8,window.innerWidth-280), y:Math.min(e.clientY+8,window.innerHeight-180) }; },
     keepDashPop(){ clearTimeout(this._dashPopTimer); },
     hideDashPop(){ clearTimeout(this._dashPopTimer); this._dashPopTimer=setTimeout(()=>{ if (!this.legacyEdit.id) this.dashPop.show=false; }, 250); },
+    // 학생 상세는 전역 모달이라 탭을 옮기지 않고 지금 화면 위에 띄운다.
+    // (예전엔 학생 관리로 이동해서, 확인 후 오늘 운영으로 되돌아오기가 번거로웠음)
     async goStudentAttend(studentId){
       if (!studentId) return;
-      this.go('students');
       await this.openStudent({ id:studentId });
       this.selectStuTab('attend');
     },

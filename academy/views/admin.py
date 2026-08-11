@@ -3706,8 +3706,8 @@ def _dash_student_extra(d, lessons, late_min=5):
         wds = e.setdefault("weekdays", {})
         wds.setdefault(slot.weekday, []).append(str(slot.start_time)[:5])
 
-    # 다음 수업 — 이번 주 남은 일정 + 다음 주까지
-    end = d + timedelta(days=(6 - d.weekday()) + 7)
+    # 다음 수업 — 앞으로 한 달
+    end = d + timedelta(days=30)
     for o in LessonOccurrence.objects.filter(
             student_id__in=sids, date__gt=d, date__lte=end).exclude(
             status=OccurrenceStatus.CANCELLED).order_by("date", "start_time"):
@@ -3717,30 +3717,48 @@ def _dash_student_extra(d, lessons, late_min=5):
             "status": o.status, "is_makeup": o.is_makeup,
             "subject": o.subject or ""})
 
-    # 이번 달 결석·지각
+    # 결석·지각 — 칸에는 이번 달 수만, 마우스를 올리면 지난달까지 날짜와 지각 분수를 본다
     m0 = d.replace(day=1)
     m1 = (m0 + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-    starts = {}
+    p0 = (m0 - timedelta(days=1)).replace(day=1)        # 지난달 1일
+    starts, detail = {}, {}
     for o in LessonOccurrence.objects.filter(
-            student_id__in=sids, date__gte=m0, date__lte=m1).only(
+            student_id__in=sids, date__gte=p0, date__lte=m1).only(
             "student_id", "date", "start_time", "status"):
+        this_month = o.date >= m0
         if o.status == OccurrenceStatus.ABSENT:
             e = out.setdefault(o.student_id, {})
-            e["m_absent"] = e.get("m_absent", 0) + 1
+            if this_month:
+                e["m_absent"] = e.get("m_absent", 0) + 1
+            detail.setdefault(o.student_id, []).append(
+                {"date": str(o.date), "wd": _WD[o.date.weekday()], "kind": "absent",
+                 "time": str(o.start_time)[:5], "this_month": this_month})
         key = (o.student_id, o.date)
         t = _t2m(o.start_time)
         if key not in starts or t < starts[key]:
             starts[key] = t
     for a in DailyAttendance.objects.filter(
-            student_id__in=sids, date__gte=m0, date__lte=m1, check_in_at__isnull=False).only(
+            student_id__in=sids, date__gte=p0, date__lte=m1, check_in_at__isnull=False).only(
             "student_id", "date", "check_in_at"):
         ref = starts.get((a.student_id, a.date))
         if ref is None:
             continue
         hm = _hm_kst(a.check_in_at)
-        if _t2m(hm) - ref > late_min:
+        diff = _t2m(hm) - ref
+        if diff > late_min:
+            this_month = a.date >= m0
             e = out.setdefault(a.student_id, {})
-            e["m_late"] = e.get("m_late", 0) + 1
+            if this_month:
+                e["m_late"] = e.get("m_late", 0) + 1
+            detail.setdefault(a.student_id, []).append(
+                {"date": str(a.date), "wd": _WD[a.date.weekday()], "kind": "late",
+                 "time": hm, "mins": diff, "this_month": this_month})
+    for sid, rows in detail.items():
+        # 결석과 지각을 따로 나누지 않고 날짜순으로 섞는다 — 둘 다 같은 '출결 문제'라
+        # 섞어 봐야 "이달 들어 계속 늦네" 같은 흐름이 보인다.
+        rows.sort(key=lambda r: (r["date"], r["time"]), reverse=True)
+        out.setdefault(sid, {})["att_detail"] = rows[:30]
+        out[sid]["prev_month"] = str(p0)[:7]
 
     # 미처리 보강(결석인데 보강일이 아직 없는 건)
     made = set(LessonOccurrence.objects.filter(
