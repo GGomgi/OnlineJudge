@@ -3533,6 +3533,12 @@ def _find_day_conflict(student_id, d, start_time, duration, exclude_occ_id=None)
     occs = LessonOccurrence.objects.filter(student_id=student_id, date=d)\
         .exclude(status=OccurrenceStatus.CANCELLED)
     if exclude_occ_id:
+        # 지금 옮기는 수업 자신은 비교에서 빼는데, 그 수업이 어느 정규 시간표에서 나왔는지도
+        # 함께 빼야 한다. 안 그러면 아래에서 그 시간표를 '아직 안 만들어진 수업'으로 보고
+        # 원래 시각 그대로 비교해, 자기 자신과 겹친다고 나온다.
+        ex = LessonOccurrence.objects.filter(id=exclude_occ_id).only("source_timetable_id").first()
+        if ex and ex.source_timetable_id:
+            covered.add(ex.source_timetable_id)
         occs = occs.exclude(id=exclude_occ_id)
     for o in occs:
         busy.append((o.start_time, o.duration_minutes, "보강" if o.is_makeup else "수업"))
