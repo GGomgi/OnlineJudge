@@ -4646,8 +4646,12 @@
       <!-- ===== 메뉴 관리 ===== -->
       <div v-if="acadTab==='menu'">
         <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
-          <h2 class="text-lg font-bold mb-1">메뉴 관리</h2>
+          <h2 class="text-lg font-bold mb-1">메뉴 관리 <span class="text-sm font-normal text-slate-400">— {{ menuScope }}</span></h2>
           <p class="text-xs text-slate-400">지금 안 쓰는 메뉴를 감춰 둡니다(없애는 게 아니라 나중에 다시 켤 수 있습니다). 직급으로 제한하거나 특정 직원만 예외를 둘 수도 있습니다. 바꾼 내용은 <b>각자 다음 접속</b>부터 적용됩니다.</p>
+          <p class="text-[11px] text-slate-400 mt-1">
+            <b>{{ menuScope }}</b>에만 적용됩니다.
+            본부 관리자·인사 관리자·지부장은 <b>언제나 모든 메뉴</b>를 보므로 제한 대상에서 빠져 있습니다.
+          </p>
         </div>
         <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
           <table class="w-full min-w-max text-sm">
@@ -5582,7 +5586,7 @@ const app = createApp({
       // 오늘 운영 표시 항목(기기별 저장). 기본은 지금까지 보이던 열만 — 처음부터 다
       // 켜져 있으면 복잡해 보이고 대부분 다시 끄게 된다.
       COLDEFS: COLDEFS,
-      menuRows: [], menuStaff: [], menuRoles: [], myMenus: null,
+      menuRows: [], menuStaff: [], menuRoles: [], menuScope: '', myMenus: null,
       examCatalogs: [], examKinds: [], examModes: [],
       examSessions: [], examEntries: [], examLoading: false,
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
@@ -8056,6 +8060,7 @@ const app = createApp({
       try {
         const d = await api('GET','/api/admin/academy/menu_setting');
         this.menuRows = d.rows || []; this.menuStaff = d.staff || []; this.menuRoles = d.roles || [];
+        this.menuScope = d.scope || '';
       } catch(e){ this.notify(e.message,false); }
     },
     async saveMenu(m, patch){

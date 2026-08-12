@@ -1307,13 +1307,17 @@ class MenuSetting(models.Model):
 
     지금 안 쓰는 메뉴(그룹·특강, 개발 요청)를 감추되 없애지는 않는다 — 나중에 다시
     쓸 수 있기 때문. 역할별로 제한하거나 특정 직원만 예외를 둘 수도 있다."""
-    key = models.CharField(max_length=32, unique=True)     # dashboard, classes, devboard …
-    enabled = models.BooleanField(default=True)            # 꺼두면 아무도 볼 수 없다
+    key = models.CharField(max_length=32)                  # dashboard, classes, devboard …
+    # 지점별 설정. 비어 있으면 전 지점 기본값(본부가 정한 것)이고, 지점 설정이 있으면 그게 우선.
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="menu_settings")
+    enabled = models.BooleanField(default=True)            # 꺼두면 그 지점에서 안 보인다
     roles = models.TextField(blank=True, default="")       # JSON 역할 목록. 비면 제한 없음
     update_time = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "academy_menu_setting"
+        unique_together = ("key", "branch")
 
 
 class MenuOverride(models.Model):

@@ -534,7 +534,9 @@ class ExamStageAdminAPI(APIView):
 
 # ─────────────────────── 포털 메뉴 켜고 끄기 ───────────────────────
 
-from ..models import MenuSetting, MenuOverride, AcademyProfile, ACADEMY_ROLE_CHOICES, STAFF_ROLES
+from ..models import (MenuSetting, MenuOverride, AcademyProfile, ACADEMY_ROLE_CHOICES,
+                      STAFF_ROLES, AcademyRole)
+from ..services import editable_branch_ids
 
 # 화면의 메뉴 순서와 같게 둔다. always=True 는 끌 수 없다 —
 # 학원 관리를 꺼버리면 되돌릴 방법이 없어지기 때문.
@@ -556,12 +558,26 @@ MENU_DEFS = [
 MENU_ALWAYS = {m["key"] for m in MENU_DEFS if m.get("always")}
 ROLE_LABEL = dict(ACADEMY_ROLE_CHOICES)
 
+# 원장보다 위(본부관리자·인사관리자·지부장)는 언제나 전체 메뉴를 본다.
+# 위에 있는 사람이 아래 설정 때문에 화면을 못 보는 상황은 없어야 하므로 제한 대상에서 뺀다.
+MENU_SUPER_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN, AcademyRole.REGIONAL_MANAGER}
+# 직급 제한을 걸 수 있는 대상(원장 이하)
+MENU_LIMITABLE_ROLES = [r for r in STAFF_ROLES if r not in MENU_SUPER_ROLES]
+
+
+def menu_setting_for(key_map, key, branch_id):
+    """지점 설정이 있으면 그것, 없으면 전 지점 기본값."""
+    return key_map.get((key, branch_id)) or key_map.get((key, None))
+
 
 def menu_allowed_keys(user):
-    """이 사람이 볼 수 있는 메뉴 키. 개인 예외 > 역할 제한 > 전체 on/off 순."""
+    """이 사람이 볼 수 있는 메뉴 키. 개인 예외 > 직급 제한 > 지점 설정 > 전 지점 기본값."""
     prof = getattr(user, "academy_profile", None)
     role = prof.role if prof else ""
-    settings_by_key = {m.key: m for m in MenuSetting.objects.all()}
+    if role in MENU_SUPER_ROLES or user.is_super_admin():
+        return [d["key"] for d in MENU_DEFS]
+    branch_id = prof.branch_id if prof else None
+    key_map = {(m.key, m.branch_id): m for m in MenuSetting.objects.all()}
     over = {o.key: o.allow for o in MenuOverride.objects.filter(staff=user)}
     out = []
     for d in MENU_DEFS:
@@ -573,7 +589,7 @@ def menu_allowed_keys(user):
             if over[k]:
                 out.append(k)
             continue
-        st = settings_by_key.get(k)
+        st = menu_setting_for(key_map, k, branch_id)
         if st and not st.enabled:
             continue
         roles = load_list_plain(st.roles) if st else []
@@ -581,6 +597,14 @@ def menu_allowed_keys(user):
             continue
         out.append(k)
     return out
+
+
+def menu_scope_branch(user):
+    """설정을 어느 지점에 저장·조회할지. 전지점 역할은 전 지점 기본값(None)을 다룬다."""
+    if editable_branch_ids(user) is None:
+        return None
+    prof = getattr(user, "academy_profile", None)
+    return prof.branch_id if prof else None
 
 
 def load_list_plain(s):
@@ -604,28 +628,39 @@ class MenuSettingAdminAPI(APIView):
 
     @admin_role_required
     def get(self, request):
-        if not can_manage_branch(request.user, None) and not request.user.is_super_admin():
-            pass  # 조회는 막지 않는다(설정 화면 자체가 원장 이상에게만 보임)
-        by_key = {m.key: m for m in MenuSetting.objects.all()}
+        bid = menu_scope_branch(request.user)
+        key_map = {(m.key, m.branch_id): m for m in MenuSetting.objects.all()}
+        # 직원 예외는 볼 수 있는 지점 사람만
+        view = viewable_branch_ids(request.user)
+        sq = AcademyProfile.objects.filter(role__in=MENU_LIMITABLE_ROLES, is_deleted=False)\
+                                   .select_related("user", "user__userprofile", "branch")
+        if view is not None:
+            sq = sq.filter(branch_id__in=view)
+        staff_ids = {p.user_id for p in sq}
         over = {}
-        for o in MenuOverride.objects.select_related("staff", "staff__userprofile"):
+        for o in MenuOverride.objects.filter(staff_id__in=staff_ids)\
+                                     .select_related("staff", "staff__userprofile"):
             over.setdefault(o.key, []).append(
                 {"staff_id": o.staff_id, "name": name_of(o.staff), "allow": o.allow})
         rows = []
         for d in MENU_DEFS:
-            st = by_key.get(d["key"])
+            st = menu_setting_for(key_map, d["key"], bid)
             rows.append({"key": d["key"], "label": d["label"], "always": bool(d.get("always")),
                          "enabled": (st.enabled if st else True),
                          "roles": load_list_plain(st.roles) if st else [],
                          "overrides": over.get(d["key"], [])})
         staff = [{"user_id": p.user_id, "name": name_of(p.user), "role": p.role,
-                  "role_label": ROLE_LABEL.get(p.role, p.role)}
-                 for p in AcademyProfile.objects.filter(role__in=STAFF_ROLES, is_deleted=False)
-                                                .select_related("user", "user__userprofile")]
+                  "role_label": ROLE_LABEL.get(p.role, p.role),
+                  "branch": (p.branch.name if p.branch_id else "")} for p in sq]
         staff.sort(key=lambda x: x["name"])
+        b = None
+        if bid:
+            from ..models import Branch as _B
+            b = _B.objects.filter(id=bid).first()
         return self.success({
             "rows": rows, "staff": staff,
-            "roles": [{"value": k, "label": v} for k, v in ACADEMY_ROLE_CHOICES if k in STAFF_ROLES],
+            "scope": (b.name if b else "전 지점"),
+            "roles": [{"value": k, "label": ROLE_LABEL.get(k, k)} for k in MENU_LIMITABLE_ROLES],
         })
 
     @admin_role_required
@@ -636,7 +671,7 @@ class MenuSettingAdminAPI(APIView):
             return self.error("메뉴가 올바르지 않습니다.")
         if key in MENU_ALWAYS and "enabled" in d and not d.get("enabled"):
             return self.error("이 메뉴는 끌 수 없습니다(끄면 설정으로 돌아올 수 없습니다).")
-        st, _ = MenuSetting.objects.get_or_create(key=key)
+        st, _ = MenuSetting.objects.get_or_create(key=key, branch_id=menu_scope_branch(request.user))
         if "enabled" in d:
             st.enabled = bool(d.get("enabled"))
         if "roles" in d:
