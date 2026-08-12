@@ -261,6 +261,12 @@
     <button @click="leavePrompt=null" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
     <button @click="leaveGo" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 나가기</button>
   </div>
+  <!-- 지우기 확인. 되돌릴 수 없는 일이라 이탈(주황)과 색으로 구분한다 -->
+  <div v-if="confirmPrompt" class="fixed left-1/2 -translate-x-1/2 top-3 z-[95] rounded-lg border border-rose-300 bg-rose-50 shadow-lg px-3 py-2 flex items-center gap-3 max-w-[92vw]">
+    <div class="text-sm text-rose-800 whitespace-pre-line">{{ confirmPrompt.msg }}</div>
+    <button @click="confirmNo" class="px-2.5 py-1 rounded bg-white border border-rose-300 text-rose-800 text-xs whitespace-nowrap">그만두기</button>
+    <button @click="confirmYes" class="px-2.5 py-1 rounded bg-rose-600 text-white text-xs whitespace-nowrap">네, 지웁니다</button>
+  </div>
   <header v-if="!enrollMode && !verifyMode" class="bg-slate-900 text-white">
     <div :class="[mainMaxW, 'mx-auto px-4 h-14 flex items-center justify-between']">
       <div class="flex items-center gap-2">
@@ -5968,7 +5974,7 @@ const app = createApp({
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
       examFilter: { pending:true, done:false, upcoming:true, past:false, cats:[], q:'', qRaw:'' },
       examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
-      guardSnap: {}, guardAsk: '', leavePrompt: null, examFormBase: '', examSnForm: null, examSnError: '',
+      guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, examFormBase: '', examSnForm: null, examSnError: '',
       examTab: 'ALL', examContestId: null, examSel: [], examShowJoinNo: false,
       examContactForm: null,
       examContactPop: { show:false, x:0, y:0, name:'', rows:[] },
@@ -6936,6 +6942,11 @@ const app = createApp({
     },
     // 브라우저 기본 확인창은 우리 화면과 생김새가 따로 논다. 화면 안 띠로 물어본다.
     askLeave(run){ this.leavePrompt = { run }; },
+    // 지우기 확인. 브라우저 confirm 처럼 예/아니오를 돌려주되 화면 안 띠로 묻는다.
+    // 되돌릴 수 없는 일이라 이탈(주황)과 달리 붉은색으로 구분한다.
+    askConfirm(msg){ return new Promise(res => { this.confirmPrompt = { msg, res }; }); },
+    confirmYes(){ const p = this.confirmPrompt; this.confirmPrompt = null; if (p) p.res(true); },
+    confirmNo(){ const p = this.confirmPrompt; this.confirmPrompt = null; if (p) p.res(false); },
     leaveGo(){ const p = this.leavePrompt; this.leavePrompt = null; if (p && p.run) p.run(); },
     onTab(key){
       if (key==='timetable') this.loadMyTimetable();
@@ -7762,7 +7773,7 @@ const app = createApp({
       if (!affected.length) return;
       const lines = affected.map(s=> '· '+(s.real_name||s.username)+': 등록 주 '+s.weekly_sessions+'회 / 시간표 '+s.slot_count+'개').join('\n');
       const msg = '등록된 주 횟수와 시간표 수가 맞지 않습니다.\n기존 정보를 수정하거나 삭제하셔야 합니다.\n\n'+lines+'\n\n주 횟수가 변경되었다면, 학생 등록 정보의 주 횟수를 실제 시간표 수로 수정하시겠습니까?';
-      if (window.confirm(msg)){
+      if (await this.askConfirm(msg)){
         let n=0;
         for (const s of affected){ try { await api('POST','/api/admin/academy/student_weekly', { student_id:s.id, weekly_sessions:s.slot_count }); n++; } catch(e){} }
         this.notify(n+'명의 주 횟수를 시간표 수에 맞게 수정했습니다.');
@@ -7805,7 +7816,7 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     async toggleDocVisible(d){ d.visible_to_staff=!d.visible_to_staff; this.saveStaffDoc(d); },
-    async delStaffDoc(d){ if(!window.confirm('"'+(d.title||'문서')+'" 삭제?')) return; try{ await api('DELETE','/api/admin/academy/staff_doc?id='+d.id); this.loadStaffDetail(this.hrDetail.staff.user_id);}catch(e){this.notify(e.message,false);} },
+    async delStaffDoc(d){ if (!await this.askConfirm('"'+(d.title||'문서')+'" 삭제?')) return; try{ await api('DELETE','/api/admin/academy/staff_doc?id='+d.id); this.loadStaffDetail(this.hrDetail.staff.user_id);}catch(e){this.notify(e.message,false);} },
     async reorderDocs(group, docs){ try{ await api('POST','/api/admin/academy/staff_doc/reorder', { ids:docs.map(d=>d.id) }); this.loadStaffDetail(this.hrDetail.staff.user_id);}catch(e){this.notify(e.message,false);} },
     moveDoc(group, docs, i, dir){ const j=i+dir; if(j<0||j>=docs.length)return; const a=docs.slice(); const t=a[i];a[i]=a[j];a[j]=t; this.reorderDocs(group,a); },
     onDocDragStart(group,i){ this.docDragGroup=group; this.docDragIndex=i; },
@@ -7940,7 +7951,7 @@ const app = createApp({
       const msg = '사번 재발급 안내\n\n사번 재발급은 지점을 옮기거나, 지부장이 지점에 소속되는 등 지역 소속이 변경될 경우 사용합니다.\n'
         + '기존 ['+prev.old_sabun+'] → 선택한 소속 ['+prev.branch+'] 기준 ['+prev.new_sabun+'] 으로 재발급합니다.\n'
         + '기존 이력은 모두 보존되며 로그인 아이디(사번)만 바뀝니다.';
-      if (!window.confirm(msg)) return;
+      if (!await this.askConfirm(msg)) return;
       const reason = window.prompt('재발급 사유를 입력하세요 (이력에 기록됩니다)');
       if (reason===null) return;
       try { const d = await api('POST','/api/admin/academy/staff/reissue_sabun', { user_id:s.user_id, reason }); this.notify('사번 재발급: '+d.old_sabun+' → '+d.new_sabun); this.loadStaff(); }
@@ -8017,7 +8028,7 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     async deleteBranch(b){
-      if (!window.confirm(b.name+' 지점을 삭제하시겠습니까? (연결된 정보가 없을 때만 가능)')) return;
+      if (!await this.askConfirm(b.name+' 지점을 삭제하시겠습니까? (연결된 정보가 없을 때만 가능)')) return;
       try { await api('DELETE','/api/admin/academy/branches?id='+b.id); this.notify('삭제되었습니다.'); this.loadBranchAdmin(); this.loadBranches(); }
       catch(e){ this.notify(e.message,false); }
     },
@@ -8043,7 +8054,7 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     async deleteOption(o){
-      if (!window.confirm('"'+o.label+'" 항목을 삭제하시겠습니까?\n(이미 이 값으로 저장된 기록은 코드 그대로 남습니다.)')) return;
+      if (!await this.askConfirm('"'+o.label+'" 항목을 삭제하시겠습니까?\n(이미 이 값으로 저장된 기록은 코드 그대로 남습니다.)')) return;
       try {
         await api('DELETE','/api/admin/academy/options?id='+o.id);
         this.notify('삭제되었습니다.');
@@ -8261,7 +8272,7 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     async deleteLead(r){
-      if (!window.confirm('이 상담을 목록에서 숨기시겠습니까? (영구 삭제가 아니라 숨김 처리됩니다)')) return;
+      if (!await this.askConfirm('이 상담을 목록에서 숨기시겠습니까? (영구 삭제가 아니라 숨김 처리됩니다)')) return;
       try { await api('POST','/api/admin/academy/lead/delete', { lead_id:r.id, hidden:true }); this.notify('숨김 처리되었습니다.'); this.loadLeads(); }
       catch(e){ this.notify(e.message,false); }
     },
@@ -8375,7 +8386,7 @@ const app = createApp({
     attShiftLesson(delta){ if(this.attForm.lessonTime) this.attForm.lessonTime=this.shiftHM(this.attForm.lessonTime,delta); },
     async cancelMakeup(){
       const l = this.attModal;
-      if (!confirm('이 보강 일정을 취소할까요? (결석 연결이 있다면 함께 해제됩니다)')) return;
+      if (!await this.askConfirm('이 보강 일정을 취소할까요? (결석 연결이 있다면 함께 해제됩니다)')) return;
       try {
         await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'CANCELLED', reason:'보강 취소' });
         this.notify('보강이 취소되었습니다.'); this.guardSnap.attModal = undefined; this.attModal=null;
@@ -9172,7 +9183,7 @@ const app = createApp({
       return [...m.values()].sort((a,b)=> a.items[0].date.localeCompare(b.items[0].date));
     },
     async mkgSetNoMakeup(p){
-      if (!confirm(p.student_name+' · '+p.date+' 결석을 보강 안 함으로 처리할까요?')) return;
+      if (!await this.askConfirm(p.student_name+' · '+p.date+' 결석을 보강 안 함으로 처리할까요?')) return;
       try {
         await api('POST','/api/admin/academy/lesson_status', { occ_id:p.occ_id, status:'ABSENT', no_makeup:true });
         this.notify('보강 안 함으로 처리되었습니다.'); this.loadMkgPending();
@@ -9469,7 +9480,7 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     async revokeKioskDevice(d){
-      if (!confirm((d.label||'이 기기')+'의 사용을 취소할까요? 다시 승인하기 전까지 그 기기에서는 못 씁니다.')) return;
+      if (!await this.askConfirm((d.label||'이 기기')+'의 사용을 취소할까요? 다시 승인하기 전까지 그 기기에서는 못 씁니다.')) return;
       try { await api('POST','/api/admin/academy/kiosk_device_action', { id:d.id, action:'revoke' }); this.loadKioskDevices(); }
       catch(e){ this.notify(e.message,false); }
     },
@@ -9502,7 +9513,7 @@ const app = createApp({
     replyMessage(m){ if(!this.ttInstructors.length) this.loadTtInstructors(); const t=this.ttInstructors.find(x=>(x.real_name||x.staff_no)===m.other); this.msgForm={ recipient_id:(t?t.user_id:null), body:'' }; this.msgExpand={}; this.msgPickerOpen=false; this.msgCompose=true; this.$nextTick(()=> this.openGuard('msgCompose')); },
     async sendMessage(){ const f=this.msgForm; if(!f.recipient_id) return this.notify('받는 사람을 선택하세요.', false); if(!(f.body||'').trim()) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/academy/messages', { recipient_id:f.recipient_id, body:f.body }); this.guardSnap.msgCompose = undefined; this.msgCompose=false; this.notify('쪽지를 보냈습니다.'); if(this.msgBox==='sent') this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
     async readMessage(m){ if(this.msgBox!=='inbox' || m.is_read) return; try { await api('PUT','/api/academy/messages', { id:m.id }); m.is_read=true; this.loadNoti(); } catch(e){} },
-    async deleteMessage(m){ if(!confirm('이 쪽지를 삭제할까요?')) return; try { await api('DELETE','/api/academy/messages?id='+m.id); this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
+    async deleteMessage(m){ if (!await this.askConfirm('이 쪽지를 삭제할까요?')) return; try { await api('DELETE','/api/academy/messages?id='+m.id); this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
     // ── 문자 템플릿 ──
     isAutoVar(k){ return MSG_AUTO_VARS.includes(k); },
     givenNameOnly(name){
@@ -9560,7 +9571,7 @@ const app = createApp({
     hideMsgEditPop(){ clearTimeout(this._msgEditTimer); this._msgEditTimer=setTimeout(()=>{ this.msgEditPop.show=false; }, 250); },
     async addMsgGroup(){ const n=prompt('그룹 이름 (예: 방학안내)'); if(!n||!n.trim()) return; try { await api('POST','/api/admin/academy/msg_group', { name:n.trim() }); this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
     async renameMsgGroup(){ const g=this.msgtplGroups.find(x=>x.id===this.msgtplGroupId); if(!g) return; const n=prompt('그룹 이름', g.name); if(!n||!n.trim()) return; try { await api('POST','/api/admin/academy/msg_group', { id:g.id, name:n.trim() }); this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
-    async deleteMsgGroup(){ if(!confirm('이 그룹과 안의 템플릿을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/msg_group?id='+this.msgtplGroupId); this.msgtplGroupId=null; this.msgSel=null; this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
+    async deleteMsgGroup(){ if (!await this.askConfirm('이 그룹과 안의 템플릿을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/msg_group?id='+this.msgtplGroupId); this.msgtplGroupId=null; this.msgSel=null; this.loadMsgtpl(); } catch(e){ this.notify(e.message,false); } },
     newMsgTemplate(){ this.msgEdit=true; this.msgEditForm={ id:null, group_id:this.msgtplGroupId, title:'', body:'' }; this._syncCustomVars(); if(!this.tplPreviewStudent) this._autoPickTplPreviewStudent(); },
     editMsgTemplate(t){ this.msgEdit=true; this.msgEditForm={ id:t.id, group_id:t.group_id, title:t.title, body:t.body }; this._syncCustomVars(); if(!this.tplPreviewStudent) this._autoPickTplPreviewStudent(); },
     _syncCustomVars(){ const set=[]; const re=/\{([^}]+)\}/g; let m; while((m=re.exec(this.msgEditForm.body||''))){ if(!MSG_AUTO_VARS.includes(m[1]) && !set.includes(m[1])) set.push(m[1]); } this.msgCustomVars=set; },
@@ -9576,7 +9587,7 @@ const app = createApp({
     },
     addCustomVar(){ const k=prompt('변수 이름 (중괄호 없이, 예: 금액)'); if(!k||!k.trim()) return; const key=k.trim().replace(/[{}]/g,''); this.insertMsgVar(key); },
     async saveMsgTemplate(){ const f=this.msgEditForm; if(!(f.title||'').trim()) return this.notify('제목을 입력하세요.', false); try { const d=await api('POST','/api/admin/academy/msg_template', { id:f.id, group_id:f.group_id, title:f.title, body:f.body }); this.msgEdit=false; await this.loadMsgTemplates(); const t=this.msgtplList.find(x=>x.id===d.id); if(t) this.selectMsgTemplate(t); this.notify('저장되었습니다.'); } catch(e){ this.notify(e.message,false); } },
-    async deleteMsgTemplate(t){ if(!confirm('이 템플릿을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/msg_template?id='+t.id); this.msgSel=null; this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
+    async deleteMsgTemplate(t){ if (!await this.askConfirm('이 템플릿을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/msg_template?id='+t.id); this.msgSel=null; this.loadMsgTemplates(); } catch(e){ this.notify(e.message,false); } },
     selectMsgTemplate(t){ this.msgSel=t; this.msgEdit=false; this.msgBody=t.body||''; this.msgStudent=null; this.msgStuQ=''; this.msgStuQRaw=''; this.msgVars={}; this.syncMsgVars(); },
     pickMsgStudent(s){ this.msgStudent=s; this.msgStuQ=s.real_name||s.username; this.msgStuQRaw=this.msgStuQ; this.msgStuOpen=false; this.syncMsgVars(); },
     pickTplPreviewStudent(s){ this.tplPreviewStudent=s; this.tplPreviewStuQ=s.real_name||s.username; this.tplPreviewStuQRaw=this.tplPreviewStuQ; this.tplPreviewStuOpen=false; },
@@ -9613,9 +9624,9 @@ const app = createApp({
     },
     backToDbList(){ this._destroyDbEditors(); this.loadDevBoard(); },
     async setDbStatus(st){ try { await api('PUT','/api/academy/dev_request', { id:this.dbDetail.id, status:st }); this.dbDetail.status=st; this.notify('상태가 변경되었습니다.'); } catch(e){ this.notify(e.message,false); } },
-    async deleteDb(){ if(!confirm('이 글을 삭제할까요?')) return; try { await api('DELETE','/api/academy/dev_request?id='+this.dbDetail.id); this.notify('삭제되었습니다.'); this.backToDbList(); } catch(e){ this.notify(e.message,false); } },
+    async deleteDb(){ if (!await this.askConfirm('이 글을 삭제할까요?')) return; try { await api('DELETE','/api/academy/dev_request?id='+this.dbDetail.id); this.notify('삭제되었습니다.'); this.backToDbList(); } catch(e){ this.notify(e.message,false); } },
     async addDbComment(){ const b=(this.dbComment||'').trim(); if(!b) return; try { await api('POST','/api/academy/dev_comment', { request_id:this.dbDetail.id, body:b }); this.dbComment=''; this.openDbDetail(this.dbDetail.id); } catch(e){ this.notify(e.message,false); } },
-    async deleteDbComment(c){ if(!confirm('덧글을 삭제할까요?')) return; try { await api('DELETE','/api/academy/dev_comment?id='+c.id); this.openDbDetail(this.dbDetail.id); } catch(e){ this.notify(e.message,false); } },
+    async deleteDbComment(c){ if (!await this.askConfirm('덧글을 삭제할까요?')) return; try { await api('DELETE','/api/academy/dev_comment?id='+c.id); this.openDbDetail(this.dbDetail.id); } catch(e){ this.notify(e.message,false); } },
     // ── 학생 관리 ──
     async loadStudents(){
       // 켠 열에 필요한 값만 서버에서 계산하게 한다(다 계산하면 목록이 무거워짐)
@@ -9914,7 +9925,7 @@ const app = createApp({
     },
     stuProgCalToday(){ this.stuProgCalMonth = this.todayStr.slice(0,7); this.loadStuProgCal(); },
     async addStuProgress(){ const f=this.stuProgForm; if(!(f.content||'').trim() && !(f.homework||'').trim()) return this.notify('수업 내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/lesson_progress', { student_id:this.stuDetail.id, date:f.date||this.todayStr, content:f.content, homework:f.homework, feedback:f.feedback, memo:f.memo }); this.stuProgForm={ date:'', content:'', homework:'', feedback:'', memo:'' }; this.loadStuProgress(); this.notify('수업일지가 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
-    async deleteStuProgress(p){ if(!confirm('이 진도 기록을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/lesson_progress?id='+p.id); this.loadStuProgress(); } catch(e){ this.notify(e.message,false); } },
+    async deleteStuProgress(p){ if (!await this.askConfirm('이 진도 기록을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/lesson_progress?id='+p.id); this.loadStuProgress(); } catch(e){ this.notify(e.message,false); } },
     async loadStuCreds(){ if(!this.stuDetail) return; try { const d = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); this.stuCreds = d.map(c=>({ ...c, _orig:{ site:c.site, login_id:c.login_id, password:c.password } })); } catch(e){ this.stuCreds=[]; } },
     async loadStuExams(){
       if (!this.stuDetail) return;
@@ -10038,7 +10049,7 @@ const app = createApp({
         const withAtt = ids.filter(id=>{ const r=rowsById[id]; return r && r.status!=='ABSENT' && r.att && (r.att.in || r.att.out); });
         if (withAtt.length){
           const msg = withAtt.length+'건은 이미 등원/하원 기록이 있어요.\n결석 처리하면 그 기록들이 삭제됩니다. 계속할까요?';
-          if (!window.confirm(msg)) return;
+          if (!await this.askConfirm(msg)) return;
         }
       }
       try {
@@ -10262,7 +10273,7 @@ const app = createApp({
     credDirty(c){ return ['site','login_id','password'].some(f=>this.credFieldDirty(c,f)); },
     async saveStuCred(c){ try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, id:c.id, site:c.site, login_id:c.login_id, password:c.password }); c._orig={ site:c.site, login_id:c.login_id, password:c.password }; this.notify('수정되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async addStuCred(){ const n=this.stuCredNew; if(!((n.site||'').trim()||(n.login_id||'').trim()||(n.password||'').trim())) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, site:n.site, login_id:n.login_id, password:n.password }); this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds(); this.notify('추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
-    async deleteStuCred(c){ if(!confirm('이 사이트 계정을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/student_credential?id='+c.id); this.loadStuCreds(); this.notify('삭제되었습니다.'); } catch(e){ this.notify(e.message,false); } },
+    async deleteStuCred(c){ if (!await this.askConfirm('이 사이트 계정을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/student_credential?id='+c.id); this.loadStuCreds(); this.notify('삭제되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async addStuReservation(){ const f=this.stuResvForm; const at=this.composeAt(f); if(!at) return this.notify('예약 날짜와 시(시각)를 선택하세요.', false); try { const lead=await api('POST','/api/admin/academy/lead/reservation', { student_id:this.stuDetail.id, at, note:f.note }); this.stuDetail.lead=lead; this.stuDetail.lead_id=lead.id; this.stuResvForm={ date:'', hour:'', min:'00', note:'' }; this.notify('상담 예약이 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async cancelStuReservation(rv){ const reason=(prompt('취소 사유를 입력하세요.')||'').trim(); if(!reason) return; try { const lead=await api('DELETE','/api/admin/academy/lead/reservation?reservation_id='+rv.id+'&reason='+encodeURIComponent(reason)); this.stuDetail.lead=lead; this.notify('예약이 취소되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     siblingCount(s){ const k=(s.parent_phone||'').replace(/\D/g,''); return k ? (this.siblingGroups[k]||[]).length : 1; },
@@ -10458,7 +10469,7 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     async deleteStuLog(g){
-      if (!window.confirm('이 상담기록을 삭제하시겠습니까?')) return;
+      if (!await this.askConfirm('이 상담기록을 삭제하시겠습니까?')) return;
       try { const lead = await api('DELETE','/api/admin/academy/lead/note?log_id='+g.id+'&hidden=1'); this.stuDetail.lead = lead; this.notify('삭제되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
@@ -10503,7 +10514,7 @@ const app = createApp({
       this.gdSelectedParentId = p.parent_id; this.gdSearchOpen = false;
     },
     async unlinkGuardian(gd){
-      if (!window.confirm(gd.name+' 보호자 연결을 해제하시겠습니까?')) return;
+      if (!await this.askConfirm(gd.name+' 보호자 연결을 해제하시겠습니까?')) return;
       try { await api('DELETE','/api/admin/academy/student_guardian?link_id='+gd.link_id); this.notify('해제되었습니다.'); await this.refreshStuDetail(); this.loadStudents(); }
       catch(e){ this.notify(e.message,false); }
     },
@@ -10621,7 +10632,7 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     async deleteLog(r, g){
-      if (!window.confirm('이 상담기록을 삭제하시겠습니까?')) return;
+      if (!await this.askConfirm('이 상담기록을 삭제하시겠습니까?')) return;
       try { const d = await api('DELETE','/api/admin/academy/lead/note?log_id='+g.id+'&hidden=1'); this.replaceLead(d); this.notify('삭제되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
