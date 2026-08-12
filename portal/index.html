@@ -4234,9 +4234,9 @@
           <div class="bg-white rounded-xl shadow-sm p-4">
             <h3 class="font-semibold mb-2 text-sm">직원 계정 생성</h3>
             <div class="space-y-2">
-              <input v-model="staffForm.real_name" placeholder="이름" class="input" />
-              <input v-model="staffForm.password" type="text" placeholder="비밀번호(6자 이상)" class="input" autocomplete="new-password" />
-              <select v-model="staffForm.role" class="input">
+              <input v-model="staffForm.real_name" placeholder="이름" :class="['input', guardCls('staffForm','real_name')]" />
+              <input v-model="staffForm.password" type="text" placeholder="비밀번호(6자 이상)" :class="['input', guardCls('staffForm','password')]" autocomplete="new-password" />
+              <select v-model="staffForm.role" :class="['input', guardCls('staffForm','role')]">
                 <option value="" disabled>역할 선택</option>
                 <option v-for="r in staffRoleOptions" :key="r.v" :value="r.v">{{ r.l }}</option>
               </select>
@@ -4251,7 +4251,7 @@
                 <template v-else-if="!isAllBranchRole(staffForm.role)">
                   <!-- 본부만 지점 지정·겸직 가능. 원장 등 지점 관리자는 본인 지점 자동(숨김) -->
                   <template v-if="isActorAllBranch">
-                    <select v-model="staffForm.branch_id" class="input">
+                    <select v-model="staffForm.branch_id" :class="['input', guardCls('staffForm','branch_id')]">
                       <option :value="null" disabled>소속 지점 선택</option>
                       <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
                     </select>
@@ -5823,6 +5823,8 @@ const GUARD_FORMS = {
   bulkMakeupOpen:{ get: vm => vm.bulkMakeupItems, close: vm => { vm.bulkMakeupOpen = false; } },
   staffMng:      { get: vm => vm.staffMng,      close: vm => { vm.staffMng = null; } },
   msgCompose:    { get: vm => vm.msgForm,       close: vm => { vm.msgCompose = false; } },
+  // 창이 아니라 화면에 붙어 있는 만들기 폼. 닫을 일은 없고 '적은 칸' 표시만 쓴다
+  staffForm:     { get: vm => vm.staffForm,     close: () => {} },
   vrModal:       { get: vm => ({ pick: vm.vrPick, custom: vm.vrCustom, add: vm.vrAdd, fmt: vm.vrFmt }),
                    close: vm => { vm.vrModal = null; } },
 };
@@ -7895,6 +7897,7 @@ const app = createApp({
       // 지점 소속 직원이면 생성 폼 지점 기본값을 본인 지점으로
       const defBranch = (this.myProfile && this.myProfile.branch) ? this.myProfile.branch.id : null;
       this.staffForm = { real_name:'', password:'', role:'', branch_id:defBranch, managed_branch_ids:[] };
+      this.$nextTick(()=> this.openGuard('staffForm'));   // 빈 폼을 기준으로 삼는다
       try {
         const d = await api('GET','/api/admin/academy/staff' + (this.staffShowInactive ? '?show_inactive=1' : ''));
         this.staff = (d.results || d).map(s=>({ ...s, _role:s.role, _branch_id: s.branch ? s.branch.id : null,
