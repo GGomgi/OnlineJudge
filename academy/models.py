@@ -1286,6 +1286,13 @@ class ExamEntry(models.Model):
                                 related_name="entries")
     level = models.CharField(max_length=16, blank=True, default="")   # 2급
     track = models.CharField(max_length=32, blank=True, default="")   # Python
+    round = models.CharField(max_length=64, blank=True, default="")   # 대회의 진행(예선1차·본선)
+    # 자격증은 학생마다 시험 보는 날이 다르다. 날짜마다 회차를 새로 만들면 같은 자격증이
+    # 여러 개로 갈라져 불편해서 날짜를 학생 쪽에 둔다. 대회는 날이 하나라 회차 것을 쓴다.
+    exam_date = models.DateField(null=True, blank=True)
+    apply_until = models.DateField(null=True, blank=True)
+    result_date = models.DateField(null=True, blank=True)
+    place = models.CharField(max_length=128, blank=True, default="")
     team = models.ForeignKey(ExamTeam, null=True, blank=True, on_delete=models.SET_NULL,
                              related_name="members")
     stage = models.CharField(max_length=16, default=ExamStage.CANDIDATE)

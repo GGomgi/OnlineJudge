@@ -263,15 +263,21 @@ class ExamSessionAdminAPI(APIView):
             return self.error("회차가 없습니다.")
         kind = d.get("kind") or ExamKind.CERT
         exam_date = parse_date(d.get("exam_date"))
-        if kind == ExamKind.CERT and not exam_date:
-            return self.error("시험일을 정하세요.")
+        cid = d.get("catalog_id") or None
+        if not cid:
+            return self.error("어떤 자격증인지 고르세요." if kind == ExamKind.CERT
+                              else "어떤 대회인지 고르세요.")
         if not sn:
             sn = ExamSession(created_by=request.user)
+            # 자격증은 학생마다 보는 날이 달라 날짜별로 회차를 만들면 같은 자격증이 여러 개로
+            # 갈라진다. 종류마다 하나만 두고 날짜는 학생 쪽에 둔다.
+            if kind == ExamKind.CERT:
+                dup = ExamSession.objects.filter(kind=ExamKind.CERT, catalog_id=int(cid),
+                                                 is_deleted=False).first()
+                if dup:
+                    sn = dup
         sn.kind = kind
-        cid = d.get("catalog_id") or None
-        sn.catalog_id = int(cid) if cid else None
-        if kind == ExamKind.CONTEST and not sn.catalog_id:
-            return self.error("어떤 대회인지 고르세요.")
+        sn.catalog_id = int(cid)
         sn.title = (d.get("title") or "").strip()[:128]
         sn.exam_date = exam_date
         sn.apply_from = parse_date(d.get("apply_from"))
@@ -331,6 +337,9 @@ def entry_row(e):
         what.append(e.track)
     if e.team_id:
         what.append("팀 " + e.team.name)
+    ed = e.exam_date or sn.exam_date
+    au = e.apply_until or sn.apply_until
+    rd = e.result_date or sn.result_date or ed
     return {
         "id": e.id, "session_id": sn.id, "kind": sn.kind,
         "kind_label": KIND_LABEL.get(sn.kind, sn.kind),
@@ -340,11 +349,15 @@ def entry_row(e):
         "team_id": e.team_id, "team": (e.team.name if e.team_id else ""),
         "what": " ".join(what) or session_label(sn),
         "session_label": session_label(sn),
-        "exam_date": str(sn.exam_date) if sn.exam_date else "",
+        # 자격증은 학생 쪽 날짜가 먼저다. 없으면 회차 것을 쓴다(대회는 늘 회차 것).
+        "exam_date": str(ed) if ed else "",
         "confirmed": sn.confirmed,
-        "apply_until": str(sn.apply_until) if sn.apply_until else "",
-        "d_exam": ((sn.exam_date - today).days if sn.exam_date else None),
-        "d_apply": ((sn.apply_until - today).days if sn.apply_until else None),
+        "apply_until": str(au) if au else "",
+        "result_date": str(rd) if rd else "",
+        "place": e.place or sn.place,
+        "round": e.round or sn.round,
+        "d_exam": ((ed - today).days if ed else None),
+        "d_apply": ((au - today).days if au else None),
         "stage": e.stage, "stage_label": stage_text(e),
         "contacts": [{"kind": c.kind, "kind_label": CONTACT_LABEL.get(c.kind, c.kind),
                       "note": c.note, "actor": name_of(c.actor),
@@ -471,6 +484,20 @@ class ExamEntryAdminAPI(APIView):
             e.level = (d.get("level") or "").strip()[:16]
         if "track" in d:
             e.track = (d.get("track") or "").strip()[:32]
+        if "round" in d:
+            e.round = (d.get("round") or "").strip()[:64]
+        if "place" in d:
+            e.place = (d.get("place") or "").strip()[:128]
+        # 자격증은 학생마다 보는 날이 다르다. 비워 두면 회차 날짜를 그대로 쓴다.
+        if "exam_date" in d:
+            e.exam_date = parse_date(d.get("exam_date"))
+        if "apply_until" in d:
+            e.apply_until = parse_date(d.get("apply_until"))
+        if "result_date" in d:
+            e.result_date = parse_date(d.get("result_date"))
+        # 접수 마감을 안 적으면 시험 이틀 전으로 잡는다(회차에서 하던 것과 같은 규칙)
+        if e.exam_date and not e.apply_until:
+            e.apply_until = e.exam_date - timedelta(days=2)
         if "team_id" in d:
             e.team_id = int(d["team_id"]) if d.get("team_id") else None
         if "stage" in d and d.get("stage"):
