@@ -8748,9 +8748,23 @@ const app = createApp({
     },
     async deleteExamSession(){
       const f = this.examSnForm;
+      // 회차를 지우면 붙어 있던 학생의 참가 기록도 함께 내려간다. 누가 딸려 가는지 먼저 보여준다.
+      const kids = (this.examEntries||[]).filter(e => e.session_id === f.id).map(e => e.student);
+      let msg = '이 회차를 지웁니다.';
+      if (kids.length){
+        const shown = kids.slice(0, 10).join(', ');
+        msg += '\n붙어 있는 학생 ' + kids.length + '명의 참가 기록도 함께 내려갑니다.\n'
+             + shown + (kids.length > 10 ? ' 외 ' + (kids.length - 10) + '명' : '');
+        msg += '\n\n학생 계정과 정보는 그대로 남습니다.';
+      } else {
+        msg += '\n붙어 있는 학생은 없습니다.';
+      }
+      if (!await this.askConfirm(msg)) return;
       try {
         await api('DELETE','/api/admin/academy/exam_session?id='+f.id);
-        this.examSnForm = null; this.notify('삭제되었습니다. 참가 기록도 함께 정리됩니다.'); this.loadExamAll();
+        this.guardSnap.examSnForm = undefined; this.examSnForm = null;
+        this.notify('삭제되었습니다.' + (kids.length ? ' 학생 '+kids.length+'명의 참가 기록도 함께 내려갔습니다.' : ''));
+        this.loadExamAll();
       } catch(e){ this.examSnError = e.message; }
     },
     // 참가
