@@ -1191,6 +1191,11 @@ class ExamSession(models.Model):
     apply_until = models.DateField(null=True, blank=True)        # 자격증은 시험일-2일 기본
     result_date = models.DateField(null=True, blank=True)
     entry_mode = models.CharField(max_length=16, blank=True, default="")  # 종류가 '개인+단체'일 때 회차에서 결정
+    # 이 회차가 어떤 급수·언어·진행 단계인지. 종류에 적어 둔 목록에서 고른다.
+    # 학생을 붙일 때 미리 채워지고, 학생마다 다르면 각자 바꾼다.
+    level = models.CharField(max_length=64, blank=True, default="")
+    track = models.CharField(max_length=64, blank=True, default="")
+    round = models.CharField(max_length=64, blank=True, default="")   # 대회만(예선1차·본선)
     place = models.CharField(max_length=128, blank=True, default="")
     fee = models.PositiveIntegerField(null=True, blank=True)
     note = models.TextField(blank=True, default="")

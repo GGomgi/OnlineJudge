@@ -221,6 +221,7 @@ def session_row(sn, counts=None):
         "result_date": str(sn.result_date) if sn.result_date else "",
         "result_same_day": bool(sn.result_date and sn.exam_date and sn.result_date == sn.exam_date),
         "entry_mode": sn.entry_mode or (sn.catalog.entry_mode if sn.catalog_id else ""),
+        "level": sn.level, "track": sn.track, "round": sn.round,
         "place": sn.place, "fee": sn.fee, "note": sn.note,
         "branch_id": sn.branch_id, "branch": (sn.branch.name if sn.branch_id else ""),
         "d_exam": (d - today).days if d else None,
@@ -285,6 +286,9 @@ class ExamSessionAdminAPI(APIView):
             rd = exam_date
         sn.result_date = rd
         sn.entry_mode = (d.get("entry_mode") or "").strip()
+        sn.level = (d.get("level") or "").strip()[:64]
+        sn.track = (d.get("track") or "").strip()[:64]
+        sn.round = (d.get("round") or "").strip()[:64]
         sn.place = (d.get("place") or "").strip()[:128]
         try:
             sn.fee = int(d.get("fee")) if str(d.get("fee") or "").strip() else None
