@@ -1430,7 +1430,7 @@
             </label>
           </div>
           <div class="flex items-center gap-2">
-            <search-box v-model="examAdd.qRaw" placeholder="학생 검색" class="flex-1"></search-box>
+            <search-box v-model="examAdd.qRaw" placeholder="학생 검색 — 쉼표로 여러 명 (예: 김유건, 박지한, 윤성우)" class="flex-1"></search-box>
             <button @click="examAdd.f={school:[],grade:[],subject:[]}; examAdd.qRaw=''" class="text-xs text-slate-400 hover:underline whitespace-nowrap">조건 지우기</button>
           </div>
         </div>
@@ -1442,6 +1442,14 @@
           </label>
           <span class="ml-auto text-indigo-600 font-semibold">{{ examAdd.sel.length }}명 담김</span>
           <button v-if="examAdd.sel.length" @click="examAdd.sel=[]" class="text-slate-400 hover:underline">선택 해제</button>
+        </div>
+        <!-- 조건을 바꿔 가며 담다 보면 누구를 담았는지 놓친다. 담은 사람을 이름으로 내놓는다 -->
+        <div v-if="examAdd.sel.length" class="flex flex-wrap gap-1 rounded-lg border border-indigo-200 bg-indigo-50 p-2">
+          <span v-for="st in examAddPicked" :key="st.id"
+                class="px-1.5 py-0.5 rounded bg-white border border-indigo-200 text-indigo-700 text-xs whitespace-nowrap">
+            {{ st.real_name || st.username }}
+            <button @click="examAdd.sel = examAdd.sel.filter(id=>id!==st.id)" class="ml-0.5 text-indigo-400 hover:text-rose-500">✕</button>
+          </span>
         </div>
 
         <div class="border rounded-lg max-h-72 overflow-y-auto divide-y">
@@ -6548,7 +6556,10 @@ const app = createApp({
     },
     examAddCandidates(){
       if (!this.examAdd) return [];
-      const a = this.examAdd, f = a.f, q = (a.q||'').trim().toLowerCase();
+      const a = this.examAdd, f = a.f;
+      // 명단을 아는 상태에서 한 명씩 치고 지우기를 반복하기 번거로워, 쉼표로 여러 이름을
+      // 한 번에 넣을 수 있게 한다. 하나라도 맞으면 남는다.
+      const qs = (a.q||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
       const taken = new Set(this.examEntries.filter(e=>e.session_id===a.sn.id).map(e=>e.student_id));
       return (this.students||[]).filter(st=>{
         if (taken.has(st.id)) return false;
@@ -6556,9 +6567,17 @@ const app = createApp({
         if (f.school.length && !f.school.includes(st.school_type)) return false;
         if (f.grade.length && !f.grade.includes(String(st.grade||''))) return false;
         if (f.subject.length && !(st.subjects||[]).some(x=>f.subject.includes(x))) return false;
-        if (q && !((st.real_name||'')+' '+(st.username||'')+' '+(st.school_name||'')).toLowerCase().includes(q)) return false;
+        if (qs.length){
+          const hay = ((st.real_name||'')+' '+(st.username||'')+' '+(st.school_name||'')).toLowerCase();
+          if (!qs.some(x => hay.includes(x))) return false;
+        }
         return true;
       });
+    },
+    examAddPicked(){
+      if (!this.examAdd) return [];
+      const ids = new Set(this.examAdd.sel);
+      return (this.students||[]).filter(st => ids.has(st.id));
     },
     examAddSubjects(){
       const set = new Set();
