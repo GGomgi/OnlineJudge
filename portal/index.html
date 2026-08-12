@@ -4129,18 +4129,21 @@
                 <option v-for="k in examKinds" :key="k.value" :value="k.value">{{ k.label }}</option>
               </select>
             </div>
-            <div><label class="lbl">이름 <span class="text-rose-500">*</span></label><input v-model="examForm.name" placeholder="예: COS Pro" class="input py-1 w-36" /></div>
-            <div><label class="lbl">주관</label><input v-model="examForm.organizer" placeholder="예: YBM" class="input py-1 w-28" /></div>
+            <div><label class="lbl">이름 <span class="text-rose-500">*</span></label><input id="examCatName" v-model="examForm.name" :placeholder="examPh.name" class="input py-1 w-44" /></div>
+            <div><label class="lbl">주관</label><input v-model="examForm.organizer" :placeholder="examPh.organizer" class="input py-1 w-28" /></div>
             <div><label class="lbl">접수 방식</label>
               <select v-model="examForm.entry_mode" class="input py-1 w-32">
                 <option v-for="m in examModes" :key="m.value" :value="m.value">{{ m.label }}</option>
               </select>
             </div>
-            <div><label class="lbl">응시료 <span class="text-slate-400">(안내용)</span></label><input v-model="examForm.fee" inputmode="numeric" placeholder="35000" class="input py-1 w-24" /></div>
+            <div><label class="lbl">응시료 <span class="text-slate-400">(안내용)</span></label><input v-model="examForm.fee" inputmode="numeric" :placeholder="examPh.fee" class="input py-1 w-24" /></div>
           </div>
           <div class="flex flex-wrap items-end gap-2 mt-2">
-            <div class="flex-1 min-w-[12rem]"><label class="lbl">급수</label><input v-model="examForm.levelsRaw" placeholder="1급:40000, 2급:35000, 3급" class="input py-1" /></div>
-            <div class="flex-1 min-w-[14rem]"><label class="lbl">언어·부문</label><input v-model="examForm.tracksRaw" placeholder="스크래치, 엔트리, C, Python" class="input py-1" /></div>
+            <!-- 자격증은 '급수', 대회는 '종류'라고 부른다(같은 칸이지만 현장 말이 다름) -->
+            <div class="flex-1 min-w-[12rem]"><label class="lbl">{{ examIsContest ? '종류' : '급수' }}</label><input v-model="examForm.levelsRaw" :placeholder="examPh.levels" class="input py-1" /></div>
+            <div class="flex-1 min-w-[14rem]"><label class="lbl">언어·부문</label><input v-model="examForm.tracksRaw" :placeholder="examPh.tracks" class="input py-1" /></div>
+            <!-- 대회는 예선1차·본선처럼 여러 번에 나눠 치른다. 자격증에는 없는 개념이라 대회일 때만 -->
+            <div v-if="examIsContest" class="flex-1 min-w-[12rem]"><label class="lbl">진행 <span class="text-slate-400">(예선·본선)</span></label><input v-model="examForm.roundsRaw" placeholder="예선1차, 예선2차, 본선" class="input py-1" /></div>
           </div>
           <p class="text-[11px] text-slate-400 mt-1">쉼표로 구분합니다. <b>응시료가 다르면 <code>이름:금액</code></b>으로 적으세요(예: <code>1급:40000</code>). 금액을 안 적으면 위 <b>응시료</b>를 씁니다. 대회는 부문마다 다를 때 부문 쪽에 적으면 됩니다.</p>
           <div class="flex flex-wrap items-end gap-2 mt-2">
@@ -4148,11 +4151,12 @@
             <div class="flex-1 min-w-[12rem]"><label class="lbl">접수 링크</label><input v-model="examForm.apply_url" placeholder="https://" class="input py-1" /></div>
             <div class="flex-1 min-w-[12rem]"><label class="lbl">공지사항 링크</label><input v-model="examForm.notice_url" placeholder="https://" class="input py-1" /></div>
           </div>
-          <div class="flex flex-wrap items-end gap-2 mt-2">
+          <!-- 누르는 것은 오른쪽 끝에 모은다(다른 화면과 같은 자리) -->
+          <div class="flex flex-wrap items-end justify-end gap-2 mt-2">
+            <div v-if="examForm.annual" class="mr-auto"><label class="lbl">확인 시작 <span class="text-slate-400">(MM-DD)</span></label><input v-model="examForm.check_from" placeholder="03-01" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
             <label class="flex items-center gap-1.5 text-sm pb-2 whitespace-nowrap cursor-pointer select-none">
               <input type="checkbox" v-model="examForm.annual" class="w-3.5 h-3.5" />해마다 열림
             </label>
-            <div v-if="examForm.annual"><label class="lbl">확인 시작 <span class="text-slate-400">(MM-DD)</span></label><input v-model="examForm.check_from" placeholder="03-01" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
             <button @click="saveExamCatalog" class="btn-primary text-sm">{{ examForm.id ? '수정 저장' : '+ 종류 등록' }}</button>
             <button v-if="examForm.id" @click="resetExamForm" class="btn-secondary text-sm">취소</button>
           </div>
@@ -4168,8 +4172,9 @@
                 <th class="px-3 py-2 text-left">주관</th>
                 <th class="px-3 py-2 text-left">접수</th>
                 <th class="px-3 py-2 text-left">응시료</th>
-                <th class="px-3 py-2 text-left">급수</th>
+                <th class="px-3 py-2 text-left">급수 · 종류</th>
                 <th class="px-3 py-2 text-left">언어·부문</th>
+                <th class="px-3 py-2 text-left">진행</th>
                 <th class="px-3 py-2 text-left">해마다</th>
                 <th class="px-3 py-2"></th>
               </tr>
@@ -4187,16 +4192,19 @@
                 <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ c.fee ? c.fee.toLocaleString()+'원' : '-' }}</td>
                 <td class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{{ examItems(c.levels, c.fee) }}</td>
                 <td class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{{ examItems(c.tracks, c.fee) }}</td>
+                <td class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{{ (c.rounds||[]).length ? c.rounds.map(x=>x.name).join(' › ') : '-' }}</td>
                 <td class="px-3 py-2 text-xs whitespace-nowrap">
                   <span v-if="c.annual" class="text-emerald-600">해마다{{ c.check_from ? ' · '+c.check_from+'부터 확인' : '' }}</span>
                   <span v-else class="text-slate-300">-</span>
                 </td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
                   <button @click="editExamCatalog(c)" class="text-xs text-indigo-600 hover:underline">수정</button>
+                  <!-- 비슷한 것을 또 만들 때가 많다(COS ↔ COS Pro). 채워진 칸을 그대로 가져와 이름만 바꾸면 된다 -->
+                  <button @click="copyExamCatalog(c)" class="ml-2 text-xs text-slate-500 hover:underline">복사</button>
                   <button v-if="isDirectorUp" @click="deleteExamCatalog(c)" class="ml-2 text-xs text-rose-500 hover:underline">숨김</button>
                 </td>
               </tr>
-              <tr v-if="!examCatalogs.length"><td colspan="9" class="px-3 py-6 text-center text-xs text-slate-400">등록된 종류가 없습니다. 위에서 추가하세요.</td></tr>
+              <tr v-if="!examCatalogs.length"><td colspan="10" class="px-3 py-6 text-center text-xs text-slate-400">등록된 종류가 없습니다. 위에서 추가하세요.</td></tr>
             </tbody>
           </table>
         </div>
@@ -6265,6 +6273,15 @@ const app = createApp({
       return list;
     },
     canManageOptions(){ return this.isActorAllBranch; },
+    examIsContest(){ return !!(this.examForm && this.examForm.kind === 'CONTEST'); },
+    // 자격증과 대회는 적는 내용이 아주 달라 예시를 따로 보여준다(회색 예시라 치면 사라진다)
+    examPh(){
+      return this.examIsContest
+        ? { name:'전국학생 AI 경진대회', organizer:'와이즈교육', fee:'10000',
+            levels:'Pre-AI 부문(10000), AI코딩(10000)', tracks:'스크래치&엔트리, AI코디니' }
+        : { name:'COS Pro', organizer:'YBMIT', fee:'35000',
+            levels:'1급:40000, 2급:35000, 3급', tracks:'스크래치, 엔트리, C, Python' };
+    },
     // 로고는 전 지점 공통이라 본부에서만 손댄다(원장이 지점마다 바꾸면 학원이 여러 곳처럼 보인다)
     isHqAdmin(){
       if (this.me && this.me.user.admin_type === 'Super Admin') return true;
@@ -8365,15 +8382,27 @@ const app = createApp({
     },
     resetExamForm(){
       this.examForm = { id:null, kind:'CERT', name:'', organizer:'', entry_mode:'INDIVIDUAL', fee:'',
-                        levelsRaw:'', tracksRaw:'', homepage:'', apply_url:'', notice_url:'',
+                        levelsRaw:'', tracksRaw:'', roundsRaw:'', homepage:'', apply_url:'', notice_url:'',
                         annual:false, check_from:'' };
     },
-    editExamCatalog(c){
-      this.examForm = { id:c.id, kind:c.kind, name:c.name, organizer:c.organizer,
-                        entry_mode:c.entry_mode, fee:(c.fee||''),
-                        levelsRaw:c.levels_text||'', tracksRaw:c.tracks_text||'',
-                        homepage:c.homepage, apply_url:c.apply_url||'', notice_url:c.notice_url||'',
-                        annual:!!c.annual, check_from:c.check_from||'' };
+    examCatalogForm(c, keepId){
+      return { id:(keepId ? c.id : null), kind:c.kind, name:c.name, organizer:c.organizer,
+               entry_mode:c.entry_mode, fee:(c.fee||''),
+               levelsRaw:c.levels_text||'', tracksRaw:c.tracks_text||'', roundsRaw:c.rounds_text||'',
+               homepage:c.homepage, apply_url:c.apply_url||'', notice_url:c.notice_url||'',
+               annual:!!c.annual, check_from:c.check_from||'' };
+    },
+    editExamCatalog(c){ this.examForm = this.examCatalogForm(c, true); },
+    // 비슷한 것을 또 만들 때가 많다(COS ↔ COS Pro). 채워진 칸을 그대로 가져오되
+    // 이름만 비워 둔다 — 같은 이름으로 두 개가 생기는 걸 막고, 무엇을 고쳐야 하는지도 분명해진다.
+    copyExamCatalog(c){
+      this.examForm = this.examCatalogForm(c, false);
+      this.examForm.name = '';
+      this.notify('복사했습니다. 이름을 적고 등록하세요.');
+      this.$nextTick(()=>{
+        const el = document.querySelector('#examCatName');
+        if (el) el.focus();
+      });
     },
     async saveExamCatalog(){
       const f = this.examForm;
@@ -8382,7 +8411,7 @@ const app = createApp({
       try {
         await api('POST','/api/admin/academy/exam_catalog', {
           id:f.id, kind:f.kind, name:f.name, organizer:f.organizer, entry_mode:f.entry_mode,
-          fee:f.fee, levels:split(f.levelsRaw), tracks:split(f.tracksRaw),
+          fee:f.fee, levels:split(f.levelsRaw), tracks:split(f.tracksRaw), rounds:split(f.roundsRaw),
           homepage:f.homepage, apply_url:f.apply_url, notice_url:f.notice_url,
           annual:f.annual, check_from:f.check_from });
         this.notify(f.id ? '수정되었습니다.' : '등록되었습니다.');

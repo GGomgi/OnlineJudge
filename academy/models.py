@@ -1155,6 +1155,8 @@ class ExamCatalog(models.Model):
     # 급수·부문은 응시료가 저마다 다를 수 있어 [{"name","fee"}] 로 담는다(fee 가 없으면 기본 응시료).
     levels = models.TextField(blank=True, default="")            # [{"name":"1급","fee":40000}, ...]
     tracks = models.TextField(blank=True, default="")            # [{"name":"Python","fee":null}, ...]
+    # 대회는 예선1차·예선2차·본선처럼 여러 번에 나눠 치른다. 회차를 만들 때 골라 쓴다.
+    rounds = models.TextField(blank=True, default="")            # [{"name":"예선1차","fee":null}, ...]
     annual = models.BooleanField(default=False)                  # 해마다 열리는가(대회)
     # 작년 기록이 없을 때 쓸 '확인 시작 시기'(MM-DD). 이 무렵이면 올해 일정을 확인하라고 알린다.
     check_from = models.CharField(max_length=8, blank=True, default="")

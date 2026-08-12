@@ -108,7 +108,9 @@ def catalog_row(c):
             "apply_url": c.apply_url, "notice_url": c.notice_url,
             "fee": c.fee,
             "levels": load_list(c.levels), "tracks": load_list(c.tracks),
+            "rounds": load_list(c.rounds),
             "levels_text": item_text(load_list(c.levels)), "tracks_text": item_text(load_list(c.tracks)),
+            "rounds_text": item_text(load_list(c.rounds)),
             "annual": c.annual, "check_from": c.check_from, "note": c.note,
             "branch_id": c.branch_id, "branch": (c.branch.name if c.branch_id else "전 지점"),
             "is_active": c.is_active, "order": c.order}
@@ -159,6 +161,7 @@ class ExamCatalogAdminAPI(APIView):
             c.fee = None
         c.levels = _json.dumps(parse_items(d.get("levels")), ensure_ascii=False)
         c.tracks = _json.dumps(parse_items(d.get("tracks")), ensure_ascii=False)
+        c.rounds = _json.dumps(parse_items(d.get("rounds")), ensure_ascii=False)
         c.annual = bool(d.get("annual"))
         c.check_from = (d.get("check_from") or "").strip()[:8]
         c.note = (d.get("note") or "").strip()[:255]
