@@ -540,6 +540,8 @@ from ..services import editable_branch_ids
 
 # 화면의 메뉴 순서와 같게 둔다. always=True 는 끌 수 없다 —
 # 학원 관리를 꺼버리면 되돌릴 방법이 없어지기 때문.
+# floor: 코드에서 이미 막고 있는 최소 권한. 메뉴 설정으로 더 열 수는 없고 더 좁힐 수만 있다
+# (직원 관리에는 인사 정보가 들어 있어 화면 설정만으로 열려서는 안 된다).
 MENU_DEFS = [
     {"key": "dashboard", "label": "오늘 운영", "always": True},
     {"key": "leadmgr", "label": "신규 상담·등록"},
@@ -548,12 +550,14 @@ MENU_DEFS = [
     {"key": "makeup", "label": "보강 관리"},
     {"key": "classes", "label": "그룹·특강"},
     {"key": "exam", "label": "자격증·대회"},
-    {"key": "staff", "label": "직원 관리"},
+    {"key": "staff", "label": "직원 관리", "floor": "원장 이상",
+     "floor_roles": ["HQ_ADMIN", "HR_ADMIN", "BRANCH_MANAGER"]},
     {"key": "hr", "label": "내 정보", "always": True},
-    {"key": "options", "label": "학원 관리", "always": True},
+    {"key": "options", "label": "학원 관리", "always": True, "floor": "원장 이상",
+     "floor_roles": ["HQ_ADMIN", "HR_ADMIN", "REGIONAL_MANAGER", "BRANCH_MANAGER"]},
     {"key": "msgtpl", "label": "문자 템플릿"},
     {"key": "devboard", "label": "개발 요청"},
-    {"key": "devlog", "label": "개발일지"},
+    {"key": "devlog", "label": "개발일지", "floor": "본부 관리자", "floor_roles": []},
 ]
 MENU_ALWAYS = {m["key"] for m in MENU_DEFS if m.get("always")}
 ROLE_LABEL = dict(ACADEMY_ROLE_CHOICES)
@@ -565,6 +569,15 @@ MENU_SUPER_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN, AcademyRole.REGI
 MENU_LIMITABLE_ROLES = [r for r in STAFF_ROLES if r not in MENU_SUPER_ROLES]
 
 
+def _floor_ok(d, role, is_super):
+    """코드에서 정해 둔 최소 권한을 만족하는가. floor_roles 가 없으면 제한 없음."""
+    if "floor_roles" not in d:
+        return True
+    if is_super:
+        return True
+    return role in set(d["floor_roles"])
+
+
 def menu_setting_for(key_map, key, branch_id):
     """지점 설정이 있으면 그것, 없으면 전 지점 기본값."""
     return key_map.get((key, branch_id)) or key_map.get((key, None))
@@ -574,14 +587,20 @@ def menu_allowed_keys(user):
     """이 사람이 볼 수 있는 메뉴 키. 개인 예외 > 직급 제한 > 지점 설정 > 전 지점 기본값."""
     prof = getattr(user, "academy_profile", None)
     role = prof.role if prof else ""
-    if role in MENU_SUPER_ROLES or user.is_super_admin():
-        return [d["key"] for d in MENU_DEFS]
+    is_super = user.is_super_admin()
+    if role in MENU_SUPER_ROLES or is_super:
+        # 상위 직급도 코드로 막아 둔 곳(개발일지)은 그대로 따른다
+        return [d["key"] for d in MENU_DEFS
+                if _floor_ok(d, role, is_super)]
     branch_id = prof.branch_id if prof else None
     key_map = {(m.key, m.branch_id): m for m in MenuSetting.objects.all()}
     over = {o.key: o.allow for o in MenuOverride.objects.filter(staff=user)}
     out = []
     for d in MENU_DEFS:
         k = d["key"]
+        # 코드에서 막아 둔 것은 설정으로도 열 수 없다(직원 관리엔 인사 정보가 들어 있음)
+        if not _floor_ok(d, role, is_super):
+            continue
         if k in MENU_ALWAYS:
             out.append(k)
             continue
@@ -592,7 +611,8 @@ def menu_allowed_keys(user):
         st = menu_setting_for(key_map, k, branch_id)
         if st and not st.enabled:
             continue
-        roles = load_list_plain(st.roles) if st else []
+        # 저장된 설정이 없으면 기본 제한을 쓴다(직원 관리는 원장 이상만 보는 게 기본)
+        roles = load_list_plain(st.roles) if st else list(d.get("default_roles") or [])
         if roles and role not in roles:
             continue
         out.append(k)
@@ -646,8 +666,9 @@ class MenuSettingAdminAPI(APIView):
         for d in MENU_DEFS:
             st = menu_setting_for(key_map, d["key"], bid)
             rows.append({"key": d["key"], "label": d["label"], "always": bool(d.get("always")),
+                         "floor": d.get("floor", ""),
                          "enabled": (st.enabled if st else True),
-                         "roles": load_list_plain(st.roles) if st else [],
+                         "roles": (load_list_plain(st.roles) if st else list(d.get("default_roles") or [])),
                          "overrides": over.get(d["key"], [])})
         staff = [{"user_id": p.user_id, "name": name_of(p.user), "role": p.role,
                   "role_label": ROLE_LABEL.get(p.role, p.role),

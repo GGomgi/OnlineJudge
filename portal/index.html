@@ -4668,6 +4668,8 @@
                 <td class="px-3 py-2 whitespace-nowrap font-medium">
                   {{ m.label }}
                   <span v-if="m.always" class="ml-1 text-[10px] text-slate-400">(항상)</span>
+                  <!-- 코드에서 이미 막고 있는 것은 여기서 더 열 수 없다는 걸 알려준다 -->
+                  <span v-if="m.floor" class="block text-[10px] text-rose-500">🔒 {{ m.floor }}만 (더 열 수 없음)</span>
                 </td>
                 <td class="px-3 py-2 text-center">
                   <input type="checkbox" :checked="m.enabled" :disabled="m.always"
