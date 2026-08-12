@@ -1,7 +1,7 @@
 from django.conf.urls import url
 
 from ..views.verify import ProfileVerifyAdminAPI, ProfileVerifyResolveAPI, StudentVoiceAdminAPI
-from ..views.exam import (ExamChangeAdminAPI, ExamCatalogAdminAPI, ExamSessionAdminAPI, ExamEntryAdminAPI,
+from ..views.exam import (SavedSearchAPI, ExamChangeAdminAPI, ExamCatalogAdminAPI, ExamSessionAdminAPI, ExamEntryAdminAPI,
                           ExamContactAdminAPI, ExamStageAdminAPI,
                           MenuSettingAdminAPI, MyMenuAPI)
 from ..views.hr import (HolidayAdminAPI, WorkScheduleAdminAPI, StaffAttendanceAPI,
@@ -125,6 +125,7 @@ urlpatterns = [
     url(r"^academy/exam_catalog/?$", ExamCatalogAdminAPI.as_view(), name="academy_exam_catalog"),
     url(r"^academy/exam_session/?$", ExamSessionAdminAPI.as_view(), name="academy_exam_session"),
     url(r"^academy/exam_entry/?$", ExamEntryAdminAPI.as_view(), name="academy_exam_entry"),
+    url(r"^academy/saved_search/?$", SavedSearchAPI.as_view(), name="academy_saved_search"),
     url(r"^academy/exam_change/?$", ExamChangeAdminAPI.as_view(), name="academy_exam_change"),
     url(r"^academy/exam_contact/?$", ExamContactAdminAPI.as_view(), name="academy_exam_contact"),
     url(r"^academy/exam_stage/?$", ExamStageAdminAPI.as_view(), name="academy_exam_stage"),

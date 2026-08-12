@@ -966,6 +966,24 @@ class Holiday(models.Model):
         ordering = ["date", "id"]
 
 
+class SavedSearch(models.Model):
+    """자주 쓰는 검색어. 사람에게 딸린 것이라 브라우저가 아니라 서버에 둔다
+    (집 컴퓨터에서 만든 검색어를 학원 컴퓨터에서도 그대로 써야 한다)."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="saved_searches")
+    scope = models.CharField(max_length=32, default="phone")   # 어느 화면의 검색인지
+    query = models.CharField(max_length=200)
+    is_favorite = models.BooleanField(default=False)
+    use_count = models.PositiveIntegerField(default=1)
+    last_used_at = models.DateTimeField(auto_now=True)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_saved_search"
+        unique_together = ("user", "scope", "query")
+        ordering = ["-is_favorite", "-last_used_at"]
+
+
 class HolidayOptOut(models.Model):
     """전 지점 공통 휴무일을 그 지점만 쉬지 않기.
 

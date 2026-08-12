@@ -21,7 +21,7 @@ from ..models import (ExamCatalog, ExamSession, ExamEntry, ExamTeam, ExamKind, E
                       EXAM_STAGE_CHOICES, EXAM_CONTACT_CHOICES)
 from ..services import viewable_branch_ids, can_manage_branch, can_view_branch
 from .admin import DIRECTOR_UP_ROLES
-from ..models import ExamChange, ExamChangeKind, EXAM_CHANGE_CHOICES
+from ..models import ExamChange, ExamChangeKind, EXAM_CHANGE_CHOICES, SavedSearch
 from ..services_brand import (KINDS as BRAND_KINDS, MAX_UPLOAD_BYTES as BRAND_MAX_BYTES,
                               ALLOWED_EXT as BRAND_EXT, brand_all, save_brand, delete_brand)
 
@@ -912,3 +912,39 @@ class BrandAPI(APIView):
         if not ok:
             return self.error(msg)
         return self.success(brand_all())
+
+
+class SavedSearchAPI(APIView):
+    """자주 쓰는 검색어. 사람에게 딸린 것이라 서버에 둔다 — 다른 컴퓨터에서도 그대로 나온다."""
+
+    @admin_role_required
+    def get(self, request):
+        scope = request.GET.get("scope") or "phone"
+        qs = SavedSearch.objects.filter(user=request.user, scope=scope)[:30]
+        return self.success([{
+            "id": r.id, "query": r.query, "favorite": r.is_favorite,
+            "count": r.use_count,
+            "last": str(r.last_used_at + timedelta(hours=9))[:16],
+        } for r in qs])
+
+    @admin_role_required
+    def post(self, request):
+        d = request.data
+        scope = (d.get("scope") or "phone")[:32]
+        q = (d.get("query") or "").strip()[:200]
+        if not q:
+            return self.error("검색어가 없습니다.")
+        row, made = SavedSearch.objects.get_or_create(
+            user=request.user, scope=scope, query=q)
+        if not made:
+            # 같은 검색어를 또 쓰면 새로 만들지 않고 쓴 횟수와 시각만 올린다
+            row.use_count += 1
+        if "favorite" in d:
+            row.is_favorite = bool(d.get("favorite"))
+        row.save()
+        return self.success({"id": row.id, "favorite": row.is_favorite})
+
+    @admin_role_required
+    def delete(self, request):
+        SavedSearch.objects.filter(id=request.GET.get("id"), user=request.user).delete()
+        return self.success("ok")

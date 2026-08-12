@@ -5185,16 +5185,46 @@
         <div class="p-5 space-y-3">
           <div class="flex items-center gap-2">
             <search-box v-model="phonePick.qRaw" placeholder="검색 — 이름·학교·과정·요일 (예: 토요일 블록코딩, 달튼 2)" class="flex-1"></search-box>
-            <button @click="phoneAddFound" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm whitespace-nowrap">찾은 {{ phoneFound.length }}명 담기</button>
+            <button @click="phoneFav" :disabled="!(phonePick.q||'').trim()"
+                    :class="['px-2 py-1.5 rounded border text-sm whitespace-nowrap disabled:opacity-30',
+                             phoneIsFav ? 'border-amber-300 bg-amber-50 text-amber-600' : 'border-slate-300 text-slate-400 hover:bg-slate-50']">
+              {{ phoneIsFav ? '★' : '☆' }}
+            </button>
+            <button @click="phoneAddFound" :disabled="!phoneFound.length"
+                    class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm whitespace-nowrap disabled:opacity-30">
+              찾은 {{ phoneFound.length }}명 모두 담기
+            </button>
           </div>
+          <!-- 자주 쓰는 검색어. 사람에게 딸린 것이라 다른 컴퓨터에서도 그대로 나온다 -->
+          <div v-if="phoneSaved.length" class="flex flex-wrap items-center gap-1">
+            <span v-for="r in phoneSaved" :key="r.id"
+                  :class="['inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded border text-xs',
+                           r.favorite ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white']">
+              <button @click="phonePick.qRaw = r.query; phonePick.q = r.query" class="text-slate-700 hover:underline whitespace-nowrap">
+                <span v-if="r.favorite" class="text-amber-500">★</span>{{ r.query }}
+              </button>
+              <span class="text-[10px] text-slate-400 whitespace-nowrap">{{ r.last.slice(5,10) }}</span>
+              <button @click="phoneDelSaved(r)" class="text-slate-300 hover:text-rose-500">✕</button>
+            </span>
+          </div>
+          <label v-if="phoneFound.length" class="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+            <input type="checkbox" :checked="phoneAllSel" @change="phoneToggleAll" class="w-3.5 h-3.5" />
+            찾은 {{ phoneFound.length }}명 전체 선택
+          </label>
           <div class="border rounded-lg max-h-48 overflow-y-auto divide-y">
-            <label v-for="st in phoneFound" :key="st.id" class="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-slate-50">
+            <label v-for="st in phoneFound" :key="st.id"
+                   class="grid grid-cols-[1.25rem_5rem_6rem_auto_7rem_minmax(0,1fr)] items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-slate-50">
               <input type="checkbox" :checked="phonePick.ids.includes(st.id)" @change="phoneToggle(st)" class="w-3.5 h-3.5" />
-              <span class="font-medium">{{ st.real_name || st.username }}</span>
-              <span class="text-xs text-slate-400">{{ schoolGradeShort(st.school_name, st.school_type, st.grade) }}</span>
-              <span class="text-xs text-slate-500">{{ phoneDays(st) || '-' }}</span>
-              <span class="text-xs text-slate-400">{{ (st.subjects||[]).join(' · ') }}</span>
-              <span class="ml-auto text-xs text-slate-400 font-mono">{{ st.parent_phone || '-' }} / {{ st.student_phone || '-' }}</span>
+              <span class="font-medium truncate">{{ st.real_name || st.username }}</span>
+              <span class="text-xs text-slate-400 truncate">{{ schoolGradeShort(st.school_name, st.school_type, st.grade) }}</span>
+              <!-- 오늘 운영과 같은 모양 — 요일을 다 놓고 오는 요일만 진하게 -->
+              <span class="inline-flex gap-px">
+                <span v-for="(w,wi) in ['월','화','수','목','금','토','일']" :key="wi"
+                      :class="['w-3.5 h-4 text-[10px] leading-4 text-center rounded-sm',
+                               phoneHasDay(st,wi) ? 'bg-indigo-100 text-indigo-700 font-semibold' : 'text-slate-200']">{{ w }}</span>
+              </span>
+              <span class="text-xs text-slate-400 truncate">{{ (st.subjects||[]).join(' · ') }}</span>
+              <span class="text-xs text-slate-400 font-mono text-right whitespace-nowrap">{{ st.parent_phone || '-' }} / {{ st.student_phone || '-' }}</span>
             </label>
             <div v-if="!phoneFound.length" class="px-3 py-6 text-center text-xs text-slate-400">
               {{ (phonePick.q||'').trim() ? '찾은 학생이 없습니다.' : '검색어를 넣으면 학생이 나옵니다.' }}
@@ -6166,7 +6196,7 @@ const app = createApp({
       examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
       examChgOpen: false, examChanges: [], stuExamShowCancelled: false,
       guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
-      phonePick: null,
+      phonePick: null, phoneSaved: [],
       leaveCols: (localStorage.getItem('portal_leave_cols') || 'auto'), examFormBase: '', examSnForm: null, examSnError: '',
       examTab: 'ALL', examContestId: null, examSel: [], examShowJoinNo: false,
       examContactForm: null,
@@ -6861,6 +6891,15 @@ const app = createApp({
       return (p.rows||[]).filter(st => st.enrollment_status==='ENROLLED'
                  && (!groups.length || groups.some(terms => terms.every(t => hit(st, t)))))
                  .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
+    },
+    phoneAllSel(){
+      const f = this.phoneFound; if (!f.length) return false;
+      const ids = new Set(this.phonePick.ids);
+      return f.every(st => ids.has(st.id));
+    },
+    phoneIsFav(){
+      const q = (this.phonePick && this.phonePick.q || '').trim();
+      return !!q && (this.phoneSaved||[]).some(r => r.query===q && r.favorite);
     },
     phonePicked(){
       const p = this.phonePick; if (!p) return [];
@@ -10260,7 +10299,11 @@ const app = createApp({
     async addStuProgress(){ const f=this.stuProgForm; if(!(f.content||'').trim() && !(f.homework||'').trim()) return this.notify('수업 내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/lesson_progress', { student_id:this.stuDetail.id, date:f.date||this.todayStr, content:f.content, homework:f.homework, feedback:f.feedback, memo:f.memo }); this.stuProgForm={ date:'', content:'', homework:'', feedback:'', memo:'' }; this.loadStuProgress(); this.notify('수업일지가 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async deleteStuProgress(p){ if (!await this.askConfirm('이 진도 기록을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/lesson_progress?id='+p.id); this.loadStuProgress(); } catch(e){ this.notify(e.message,false); } },
     async loadStuCreds(){ if(!this.stuDetail) return; try { const d = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); this.stuCreds = d.map(c=>({ ...c, _orig:{ site:c.site, login_id:c.login_id, password:c.password } })); } catch(e){ this.stuCreds=[]; } },
-    // 이 학생이 오는 요일(월화수…). 요일로 찾고 목록에도 보여준다
+    phoneHasDay(st, wi){
+      const w = (st.extra||{}).weekdays || {};
+      return ((w[wi] || w[String(wi)] || []).length) > 0;
+    },
+    // 이 학생이 오는 요일(월화수…). 요일로 찾을 때 쓴다
     phoneDays(st){
       const w = (st.extra||{}).weekdays || {};
       return ['월','화','수','목','금','토','일'].filter((_,i)=> (w[i]||w[String(i)]||[]).length).join('');
@@ -10269,6 +10312,34 @@ const app = createApp({
       // 요일은 열 설정과 무관하게 늘 필요하므로 여기서 따로 받아 둔다
       this.phonePick = { q:'', qRaw:'', ids:[], comma:false, rows:[] };
       try { this.phonePick.rows = await api('GET','/api/admin/academy/students?cols=weekdays') || []; }
+      catch(e){ this.notify(e.message, false); }
+      this.loadPhoneSaved();
+    },
+    phoneToggleAll(){
+      const p = this.phonePick, ids = new Set(p.ids);
+      if (this.phoneAllSel) this.phoneFound.forEach(st => ids.delete(st.id));
+      else this.phoneFound.forEach(st => ids.add(st.id));
+      p.ids = [...ids];
+    },
+    async loadPhoneSaved(){
+      try { this.phoneSaved = await api('GET','/api/admin/academy/saved_search?scope=phone') || []; }
+      catch(e){ this.phoneSaved = []; }
+    },
+    // 쓴 검색어는 저절로 쌓인다(같은 것은 하나로, 쓴 횟수만 올라간다)
+    async phoneRemember(q){
+      const t = (q||'').trim(); if (!t) return;
+      try { await api('POST','/api/admin/academy/saved_search', { scope:'phone', query:t }); this.loadPhoneSaved(); }
+      catch(e){}
+    },
+    async phoneFav(){
+      const t = (this.phonePick.q||'').trim(); if (!t) return;
+      try {
+        await api('POST','/api/admin/academy/saved_search', { scope:'phone', query:t, favorite: !this.phoneIsFav });
+        this.loadPhoneSaved();
+      } catch(e){ this.notify(e.message, false); }
+    },
+    async phoneDelSaved(r){
+      try { await api('DELETE','/api/admin/academy/saved_search?id='+r.id); this.loadPhoneSaved(); }
       catch(e){ this.notify(e.message, false); }
     },
     phoneToggle(st){
@@ -10283,6 +10354,7 @@ const app = createApp({
       this.phoneFound.forEach(st => set.add(st.id));
       p.ids = [...set];
       this.notify((p.ids.length - before) + '명 담았습니다. (이미 담긴 사람은 넘어감)');
+      this.phoneRemember(p.q);
     },
     async loadStuExams(){
       if (!this.stuDetail) return;
