@@ -5220,7 +5220,7 @@
           <div class="border rounded-lg max-h-48 overflow-y-auto divide-y">
             <label v-for="st in phoneFound" :key="st.id"
                    class="grid grid-cols-[1.25rem_5rem_6rem_auto_7rem_minmax(0,1fr)] items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-slate-50">
-              <input type="checkbox" :checked="phonePick.ids.includes(st.id)" @change="phoneToggle(st)" class="w-3.5 h-3.5" />
+              <input type="checkbox" :checked="phoneInAny(st.id)" @change="phoneToggle(st)" class="w-3.5 h-3.5" />
               <span class="font-medium truncate">{{ st.real_name || st.username }}</span>
               <span class="text-xs text-slate-400 truncate">{{ schoolGradeShort(st.school_name, st.school_type, st.grade) }}</span>
               <!-- 오늘 운영과 같은 모양 — 요일을 다 놓고 오는 요일만 진하게 -->
@@ -5237,16 +5237,28 @@
             </div>
           </div>
 
-          <div v-if="phonePicked.length" class="rounded-lg border border-indigo-200 bg-indigo-50 p-2">
-            <div class="flex items-center gap-2 text-xs mb-1">
-              <b class="text-indigo-700">담은 학생 {{ phonePicked.length }}명</b>
-              <button @click="phonePick.ids=[]" class="ml-auto text-slate-400 hover:underline">모두 비우기</button>
+          <!-- 어떤 검색으로 누가 담겼는지 묶음으로 보여준다. 앞 묶음에 이미 있는 사람은
+               회색으로 표시하고, 아래 번호 목록에는 한 번만 넣는다. -->
+          <div v-if="phoneBatchView.length" class="space-y-1.5">
+            <div class="flex items-center gap-2 text-xs">
+              <b class="text-indigo-700">번호로 나갈 학생 {{ phonePicked.length }}명</b>
+              <span class="text-slate-400">(겹치는 사람 뺀 수)</span>
+              <button @click="phonePick.batches=[]" class="ml-auto text-slate-400 hover:underline">모두 비우기</button>
             </div>
-            <div class="flex flex-wrap gap-1">
-              <span v-for="st in phonePicked" :key="st.id" class="px-1.5 py-0.5 rounded bg-white border border-indigo-200 text-indigo-700 text-xs whitespace-nowrap">
-                {{ st.real_name || st.username }}
-                <button @click="phoneToggle(st)" class="ml-0.5 text-indigo-400 hover:text-rose-500">✕</button>
-              </span>
+            <div v-for="b in phoneBatchView" :key="b.key" class="rounded-lg border border-indigo-200 bg-indigo-50 p-2">
+              <div class="flex items-center gap-2 text-xs mb-1">
+                <b class="text-indigo-700">"{{ b.q }}" 검색으로 담은 학생 {{ b.rows.length }}명</b>
+                <span v-if="b.dups" class="text-slate-500">— 그중 {{ b.dups }}명은 앞에서 이미 담김</span>
+                <button @click="phoneDropBatch(b.key)" class="ml-auto text-slate-400 hover:underline">이 묶음 빼기</button>
+              </div>
+              <div class="flex flex-wrap gap-1">
+                <span v-for="r in b.rows" :key="r.st.id"
+                      :class="['px-1.5 py-0.5 rounded border text-xs whitespace-nowrap',
+                               r.dup ? 'bg-slate-100 border-slate-200 text-slate-400 line-through' : 'bg-white border-indigo-200 text-indigo-700']">
+                  {{ r.st.real_name || r.st.username }}
+                  <button @click="phoneDropOne(b.key, r.st.id)" class="ml-0.5 text-slate-400 hover:text-rose-500 no-underline">✕</button>
+                </span>
+              </div>
             </div>
           </div>
 
@@ -6011,6 +6023,9 @@ function qGroups(q){
     .filter(g => g.length);
 }
 const WD_FULL = ['월요일','화요일','수요일','목요일','금요일','토요일','일요일'];
+// 학교급은 '초등학교' 로 저장돼 있지만 말할 때는 '초등학생' 이라고도 한다. 둘 다 찾히게.
+const SCHOOL_ALIAS = { '초등학생':'초등학교', '중학생':'중학교', '고등학생':'고등학교',
+                       '대학생':'대학교', '초딩':'초등학교', '중딩':'중학교', '고딩':'고등학교' };
 function qMatch(hay, q){
   const groups = qGroups(q);
   if (!groups.length) return true;
@@ -6041,7 +6056,7 @@ const GUARD_FORMS = {
   staffForm:     { get: vm => vm.staffForm,     close: () => {} },
   vrModal:       { get: vm => ({ pick: vm.vrPick, custom: vm.vrCustom, add: vm.vrAdd, fmt: vm.vrFmt }),
                    close: vm => { vm.vrModal = null; } },
-  phonePick:     { get: vm => (vm.phonePick ? { q: vm.phonePick.q, ids: vm.phonePick.ids } : null),
+  phonePick:     { get: vm => (vm.phonePick ? { q: vm.phonePick.q, b: vm.phonePick.batches } : null),
                    close: vm => { vm.phonePick = null; } },
 };
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
@@ -6893,7 +6908,8 @@ const app = createApp({
       const hit = (st, term) => {
         const wi = WD_FULL.indexOf(term);
         if (wi >= 0) return this.phoneDays(st).includes(WD_FULL[wi][0]);
-        return hay(st).includes(term);
+        const t = SCHOOL_ALIAS[term] || term;      // 초등학생 → 초등학교
+        return hay(st).includes(t);
       };
       const groups = qGroups(p.q);
       return (p.rows||[]).filter(st => st.enrollment_status==='ENROLLED'
@@ -6902,18 +6918,36 @@ const app = createApp({
     },
     phoneAllSel(){
       const f = this.phoneFound; if (!f.length) return false;
-      const ids = new Set(this.phonePick.ids);
-      return f.every(st => ids.has(st.id));
+      return f.every(st => this.phoneInAny(st.id));
+    },
+    // 어떤 검색으로 누가 담겼는지 보이게 묶음별로 낸다.
+    // 앞 묶음에 이미 있는 사람은 '겹침'으로 표시하고 번호는 한 번만 넣는다.
+    phoneBatchView(){
+      const p = this.phonePick; if (!p) return [];
+      const byId = new Map((p.rows||[]).map(st => [st.id, st]));
+      const seen = new Set();
+      return (p.batches||[]).map(b => {
+        const rows = b.ids.map(id => byId.get(id)).filter(Boolean)
+          .sort((x,y)=> String(x.real_name||'').localeCompare(String(y.real_name||''),'ko'))
+          .map(st => { const dup = seen.has(st.id); seen.add(st.id); return { st, dup }; });
+        return { key:b.key, q:b.q, rows, dups: rows.filter(r=>r.dup).length };
+      });
     },
     phoneIsFav(){
       const q = (this.phonePick && this.phonePick.q || '').trim();
       return !!q && (this.phoneSaved||[]).some(r => r.query===q && r.favorite);
     },
+    // 번호로 뽑을 사람 — 묶음 순서대로 모으되 겹치는 사람은 한 번만
     phonePicked(){
       const p = this.phonePick; if (!p) return [];
-      const ids = new Set(p.ids);
-      return (p.rows||[]).filter(s => ids.has(s.id))
-                 .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
+      const byId = new Map((p.rows||[]).map(st => [st.id, st]));
+      const seen = new Set(); const out = [];
+      (p.batches||[]).forEach(b => b.ids.forEach(id => {
+        if (seen.has(id)) return;
+        seen.add(id);
+        const st = byId.get(id); if (st) out.push(st);
+      }));
+      return out.sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
     },
     phoneGroups(){
       const p = this.phonePick; if (!p) return [];
@@ -10318,17 +10352,37 @@ const app = createApp({
     },
     async openPhonePick(){
       // 요일은 열 설정과 무관하게 늘 필요하므로 여기서 따로 받아 둔다
-      this.phonePick = { q:'', qRaw:'', ids:[], comma:false, rows:[] };
+      this.phonePick = { q:'', qRaw:'', batches:[], seq:1, comma:false, rows:[] };
       try { this.phonePick.rows = await api('GET','/api/admin/academy/students?cols=weekdays') || []; }
       catch(e){ this.notify(e.message, false); }
       this.loadPhoneSaved();
       this.$nextTick(()=> this.openGuard('phonePick'));
     },
+    phoneInAny(id){ return (this.phonePick.batches||[]).some(b => b.ids.includes(id)); },
+    // 지금 검색어로 된 묶음을 찾거나 새로 만든다 — 어떤 검색으로 담았는지 남기기 위함
+    phoneBatch(){
+      const p = this.phonePick;
+      const q = (p.q||'').trim() || '직접 고름';
+      let b = p.batches.find(x => x.q === q);
+      if (!b){ b = { key: 'b'+(p.seq++), q, ids: [] }; p.batches.push(b); }
+      return b;
+    },
     phoneToggleAll(){
-      const p = this.phonePick, ids = new Set(p.ids);
-      if (this.phoneAllSel) this.phoneFound.forEach(st => ids.delete(st.id));
-      else this.phoneFound.forEach(st => ids.add(st.id));
-      p.ids = [...ids];
+      if (this.phoneAllSel){
+        const ids = new Set(this.phoneFound.map(st => st.id));
+        this.phonePick.batches.forEach(b => { b.ids = b.ids.filter(id => !ids.has(id)); });
+        this.phoneClean();
+      } else {
+        const b = this.phoneBatch();
+        const set = new Set(b.ids);
+        this.phoneFound.forEach(st => set.add(st.id));
+        b.ids = [...set];
+      }
+    },
+    // 빈 묶음은 남겨 둘 이유가 없다
+    phoneClean(){ this.phonePick.batches = this.phonePick.batches.filter(b => b.ids.length); },
+    phoneDropBatch(key){
+      this.phonePick.batches = this.phonePick.batches.filter(b => b.key !== key);
     },
     async loadPhoneSaved(){
       try { this.phoneSaved = await api('GET','/api/admin/academy/saved_search?scope=phone') || []; }
@@ -10352,17 +10406,32 @@ const app = createApp({
       catch(e){ this.notify(e.message, false); }
     },
     phoneToggle(st){
-      const p = this.phonePick;
-      p.ids = p.ids.includes(st.id) ? p.ids.filter(id => id!==st.id) : [...p.ids, st.id];
+      if (this.phoneInAny(st.id)){
+        // 빼는 것은 모든 묶음에서 뺀다(어느 묶음에 있었는지 일일이 찾게 하지 않는다)
+        this.phonePick.batches.forEach(b => { b.ids = b.ids.filter(id => id!==st.id); });
+        this.phoneClean();
+        return;
+      }
+      const b = this.phoneBatch();
+      b.ids = [...b.ids, st.id];
+    },
+    // 묶음 안에서 한 명만 빼기
+    phoneDropOne(key, id){
+      const b = this.phonePick.batches.find(x => x.key===key); if (!b) return;
+      b.ids = b.ids.filter(x => x!==id);
+      this.phoneClean();
     },
     // 조건을 바꿔 가며 여러 번 담는다. 이미 담은 사람은 다시 담기지 않는다.
     phoneAddFound(){
       const p = this.phonePick;
-      const before = p.ids.length;
-      const set = new Set(p.ids);
+      const before = this.phonePicked.length;
+      const b = this.phoneBatch();
+      const set = new Set(b.ids);
       this.phoneFound.forEach(st => set.add(st.id));
-      p.ids = [...set];
-      this.notify((p.ids.length - before) + '명 담았습니다. (이미 담긴 사람은 넘어감)');
+      b.ids = [...set];
+      const added = this.phonePicked.length - before;
+      this.notify('"' + b.q + '" 로 ' + this.phoneFound.length + '명 담았습니다.'
+                  + (added < this.phoneFound.length ? ' (겹치는 ' + (this.phoneFound.length - added) + '명은 번호에서 한 번만 나갑니다)' : ''));
       this.phoneRemember(p.q);
     },
     async loadStuExams(){
