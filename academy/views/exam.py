@@ -200,6 +200,7 @@ def session_row(sn, counts=None):
         "apply_from": str(sn.apply_from) if sn.apply_from else "",
         "apply_until": str(sn.apply_until) if sn.apply_until else "",
         "result_date": str(sn.result_date) if sn.result_date else "",
+        "result_same_day": bool(sn.result_date and sn.exam_date and sn.result_date == sn.exam_date),
         "entry_mode": sn.entry_mode or (sn.catalog.entry_mode if sn.catalog_id else ""),
         "place": sn.place, "fee": sn.fee, "note": sn.note,
         "branch_id": sn.branch_id, "branch": (sn.branch.name if sn.branch_id else ""),
@@ -259,7 +260,11 @@ class ExamSessionAdminAPI(APIView):
             # 특별시험은 시험 이틀 전까지 접수 — 비워 두면 자동으로 채운다
             au = exam_date - timedelta(days=CERT_APPLY_LEAD_DAYS)
         sn.apply_until = au
-        sn.result_date = parse_date(d.get("result_date"))
+        rd = parse_date(d.get("result_date"))
+        if rd is None and exam_date:
+            # 자체 시험은 그날 시험이 끝나면 바로 결과가 나온다 — 비워 두면 시험일로
+            rd = exam_date
+        sn.result_date = rd
         sn.entry_mode = (d.get("entry_mode") or "").strip()
         sn.place = (d.get("place") or "").strip()[:128]
         try:

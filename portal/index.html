@@ -1071,6 +1071,14 @@
             <option v-for="c in examCatsBy('CONTEST')" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </div>
+        <div v-else>
+          <label class="lbl">어떤 시험</label>
+          <select v-model.number="examSnForm.catalog_id" class="input py-1">
+            <option :value="null">여러 종류 섞음 (학생마다 다름)</option>
+            <option v-for="c in examCatsBy('CERT')" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+          <p class="text-[11px] text-slate-400 mt-0.5">고르면 학생을 붙일 때 미리 채워집니다. 학생마다 다른 시험을 보면 <b>여러 종류 섞음</b>으로 두고 각자 고르세요.</p>
+        </div>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="lbl">이름 <span class="text-slate-400">(선택)</span></label><input v-model="examSnForm.title" :placeholder="examSnForm.kind==='CERT' ? '9월 특별시험' : '제21회'" class="input py-1" /></div>
           <div><label class="lbl">시험·대회일 <span v-if="examSnForm.kind==='CERT'" class="text-rose-500">*</span></label><input v-model="examSnForm.exam_date" type="date" class="input py-1" /></div>
@@ -1091,7 +1099,11 @@
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="lbl">장소</label><input v-model="examSnForm.place" class="input py-1" /></div>
-          <div><label class="lbl">발표일</label><input v-model="examSnForm.result_date" type="date" class="input py-1" /></div>
+          <div>
+            <label class="lbl">발표일</label>
+            <input v-model="examSnForm.result_date" type="date" class="input py-1" />
+            <p class="text-[11px] text-slate-400 mt-0.5">비워두면 <b>시험일 당일</b>(시험 종료 후 발표)</p>
+          </div>
         </div>
         <div><label class="lbl">비고</label><input v-model="examSnForm.note" class="input py-1" /></div>
         <div v-if="examSnError" class="px-3 py-2 rounded bg-rose-50 text-rose-700 border border-rose-200 text-sm">{{ examSnError }}</div>
@@ -7789,8 +7801,12 @@ const app = createApp({
     // 회차
     openExamSession(kind){
       this.examSnError = '';
+      // 대부분 자체 시험이라 장소는 우리 학원으로 미리 채운다
+      const bn = (this.myProfile && this.myProfile.branch && this.myProfile.branch.name) || '';
       this.examSnForm = { id:null, kind, catalog_id:null, title:'', exam_date:'', apply_from:'',
-                          apply_until:'', result_date:'', place:'', note:'', unconfirmed:false };
+                          apply_until:'', result_date:'',
+                          place:(kind==='CERT' ? ('두잉창의코딩' + (bn ? '('+bn+')' : '')) : ''),
+                          note:'', unconfirmed:false };
     },
     editExamSession(sn){
       this.examSnError = '';
