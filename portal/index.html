@@ -1055,8 +1055,15 @@
                         :class="['px-2 py-0.5 rounded text-xs border', stuExamAdd.place===v.name ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100']">{{ v.name }}</button>
               </div>
             </div>
+            <div v-if="guardAsk==='stuExamAdd'" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 flex items-center justify-between gap-3">
+              <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs">계속 쓰기</button>
+                <button @click="closeGuard('stuExamAdd')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs">버리고 닫기</button>
+              </div>
+            </div>
             <div class="flex justify-end gap-2">
-              <button @click="stuExamAdd=null" class="btn-secondary text-xs">취소</button>
+              <button @click="askClose('stuExamAdd')" class="btn-secondary text-xs">취소</button>
               <button @click="saveStuExamAdd" class="btn-primary text-xs">붙이기</button>
             </div>
           </div>
@@ -1178,12 +1185,20 @@
   </div>
 
   <!-- 회차(시험일·대회) 등록·수정 -->
-  <div v-if="examSnForm" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="examSnForm=null">
+  <div v-if="examSnForm" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="askClose('examSnForm')">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-lg">
       <div class="flex items-center justify-between px-5 py-3 border-b">
         <div class="font-bold">{{ examSnForm.id ? '수정' : (examSnForm.kind==='CERT' ? '자격증 등록' : '대회 등록') }}</div>
-        <button @click="examSnForm=null" class="text-slate-400 hover:text-slate-600">✕</button>
+        <button @click="askClose('examSnForm')" class="text-slate-400 hover:text-slate-600">✕</button>
       </div>
+        <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+        <div v-if="guardAsk==='examSnForm'" class="mx-5 mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 flex items-center justify-between gap-3">
+          <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs">계속 쓰기</button>
+            <button @click="closeGuard('examSnForm')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs">버리고 닫기</button>
+          </div>
+        </div>
       <div class="p-5 space-y-3">
         <!-- 자격증은 어떤 자격증인지가 곧 이름이라 이름 칸을 두지 않는다.
              대회는 '제8회 예선(Pre-AI)' 처럼 같은 대회 안에서 회차를 구분해야 해 이름을 받는다. -->
@@ -1264,7 +1279,7 @@
         <div v-if="examSnError" class="px-3 py-2 rounded bg-rose-50 text-rose-700 border border-rose-200 text-sm">{{ examSnError }}</div>
         <div class="flex justify-end gap-2">
           <button v-if="examSnForm.id" @click="deleteExamSession" class="text-xs text-rose-500 hover:underline mr-auto">이 회차 삭제</button>
-          <button @click="examSnForm=null" class="btn-secondary text-sm">취소</button>
+          <button @click="askClose('examSnForm')" class="btn-secondary text-sm">취소</button>
           <button @click="saveExamSession" class="btn-primary text-sm">저장</button>
         </div>
       </div>
@@ -1272,15 +1287,23 @@
   </div>
 
   <!-- 참가 학생 추가 -->
-  <div v-if="examAdd" class="fixed inset-0 z-[65] bg-black/40 flex items-start justify-center overflow-y-auto py-8 p-4" @click.self="examAdd=null">
+  <div v-if="examAdd" class="fixed inset-0 z-[65] bg-black/40 flex items-start justify-center overflow-y-auto py-8 p-4" @click.self="askClose('examAdd')">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl">
       <div class="flex items-center justify-between px-5 py-3 border-b">
         <div>
           <div class="font-bold">{{ examAdd.sn.label }} — 학생 추가</div>
           <div class="text-xs text-slate-400">{{ examAdd.sn.exam_date || '일정 미정' }}</div>
         </div>
-        <button @click="examAdd=null" class="text-slate-400 hover:text-slate-600">✕</button>
+        <button @click="askClose('examAdd')" class="text-slate-400 hover:text-slate-600">✕</button>
       </div>
+        <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+        <div v-if="guardAsk==='examAdd'" class="mx-5 mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 flex items-center justify-between gap-3">
+          <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs">계속 쓰기</button>
+            <button @click="closeGuard('examAdd')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs">버리고 닫기</button>
+          </div>
+        </div>
       <div class="p-5 space-y-3">
         <div v-if="examAdd.sn.kind==='CERT'" class="grid grid-cols-3 gap-2">
           <div><label class="lbl">무엇 <span class="text-rose-500">*</span></label>
@@ -1383,7 +1406,7 @@
         </div>
         <div v-if="examAddError" class="px-3 py-2 rounded bg-rose-50 text-rose-700 border border-rose-200 text-sm">{{ examAddError }}</div>
         <div class="flex justify-end gap-2">
-          <button @click="examAdd=null" class="btn-secondary text-sm">취소</button>
+          <button @click="askClose('examAdd')" class="btn-secondary text-sm">취소</button>
           <button @click="saveExamAdd" class="btn-primary text-sm">{{ examAdd.sel.length }}명 추가</button>
         </div>
       </div>
@@ -1391,28 +1414,36 @@
   </div>
 
   <!-- 참가 한 줄 수정 -->
-  <div v-if="examEntryForm" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="examEntryForm=null">
+  <div v-if="examEntryForm" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="askClose('examEntryForm')">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-lg">
       <div class="flex items-center justify-between px-5 py-3 border-b">
         <div class="font-bold">{{ examEntryForm.student }} — {{ examEntryForm.session_label }}</div>
-        <button @click="examEntryForm=null" class="text-slate-400 hover:text-slate-600">✕</button>
+        <button @click="askClose('examEntryForm')" class="text-slate-400 hover:text-slate-600">✕</button>
       </div>
+        <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+        <div v-if="guardAsk==='examEntryForm'" class="mx-5 mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 flex items-center justify-between gap-3">
+          <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs">계속 쓰기</button>
+            <button @click="closeGuard('examEntryForm')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs">버리고 닫기</button>
+          </div>
+        </div>
       <div class="p-5 space-y-3">
         <div class="grid grid-cols-3 gap-2">
           <div><label class="lbl">무엇</label>
-            <select v-model.number="examEntryForm.catalog_id" class="input py-1">
+            <select v-model.number="examEntryForm.catalog_id" :class="['input py-1', guardCls('examEntryForm','catalog_id')]">
               <option :value="null">선택</option>
               <option v-for="c in examCatalogs" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
           </div>
           <div><label class="lbl">급수</label>
-            <select v-model="examEntryForm.level" class="input py-1">
+            <select v-model="examEntryForm.level" :class="['input py-1', guardCls('examEntryForm','level')]">
               <option value="">선택</option>
               <option v-for="x in examEntryItems('levels')" :key="x.name" :value="x.name">{{ x.name }}</option>
             </select>
           </div>
           <div><label class="lbl">언어·부문</label>
-            <select v-model="examEntryForm.track" class="input py-1">
+            <select v-model="examEntryForm.track" :class="['input py-1', guardCls('examEntryForm','track')]">
               <option value="">선택</option>
               <option v-for="x in examEntryItems('tracks')" :key="x.name" :value="x.name">{{ x.name }}</option>
             </select>
@@ -1420,9 +1451,9 @@
         </div>
         <!-- 자격증은 학생마다 날짜·시각·장소가 다르다. 붙인 뒤 바꿀 곳이 여기다 -->
         <div class="grid grid-cols-3 gap-2">
-          <div><label class="lbl">시험일</label><input v-model="examEntryForm.exam_date" type="date" class="input py-1" /></div>
-          <div><label class="lbl">시각</label><input v-model="examEntryForm.exam_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 text-center font-mono" /></div>
-          <div><label class="lbl">접수 마감</label><input v-model="examEntryForm.apply_until" type="date" class="input py-1" /></div>
+          <div><label class="lbl">시험일</label><input v-model="examEntryForm.exam_date" type="date" :class="['input py-1', guardCls('examEntryForm','exam_date')]" /></div>
+          <div><label class="lbl">시각</label><input v-model="examEntryForm.exam_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 text-center font-mono', guardCls('examEntryForm','exam_time')]" /></div>
+          <div><label class="lbl">접수 마감</label><input v-model="examEntryForm.apply_until" type="date" :class="['input py-1', guardCls('examEntryForm','apply_until')]" /></div>
         </div>
         <div v-if="examEntryVenues.length">
           <label class="lbl">장소</label>
@@ -1437,12 +1468,12 @@
               <button v-if="!examCredNew" type="button" @click="openExamCredNew"
                       class="ml-auto text-[11px] text-indigo-600 hover:underline font-normal">+ 등록</button>
             </label>
-            <select v-model.number="examEntryForm.credential_id" class="input py-1">
+            <select v-model.number="examEntryForm.credential_id" :class="['input py-1', guardCls('examEntryForm','credential_id')]">
               <option :value="null">선택 안 함</option>
               <option v-for="c in examCreds" :key="c.id" :value="c.id">{{ c.site }} / {{ c.login_id }}</option>
             </select>
           </div>
-          <div><label class="lbl">접수일</label><input v-model="examEntryForm.applied_at" type="date" class="input py-1" /></div>
+          <div><label class="lbl">접수일</label><input v-model="examEntryForm.applied_at" type="date" :class="['input py-1', guardCls('examEntryForm','applied_at')]" /></div>
         </div>
         <!-- 아이디 만들기. 사이트 이름은 자격증 이름을 그대로 쓴다(COS·COS PRO) -->
         <div v-if="examCredNew" class="rounded-lg border border-indigo-200 bg-indigo-50 p-2.5 space-y-2">
@@ -1458,12 +1489,12 @@
           </div>
         </div>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="lbl">결과</label><input v-model="examEntryForm.result" placeholder="합격 / 금상" class="input py-1" /></div>
-          <div><label class="lbl">점수</label><input v-model="examEntryForm.score" placeholder="920점" class="input py-1" /></div>
+          <div><label class="lbl">결과</label><input v-model="examEntryForm.result" placeholder="합격 / 금상" :class="['input py-1', guardCls('examEntryForm','result')]" /></div>
+          <div><label class="lbl">점수</label><input v-model="examEntryForm.score" placeholder="920점" :class="['input py-1', guardCls('examEntryForm','score')]" /></div>
         </div>
-        <div><label class="lbl">비고</label><input v-model="examEntryForm.note" class="input py-1" /></div>
+        <div><label class="lbl">비고</label><input v-model="examEntryForm.note" :class="['input py-1', guardCls('examEntryForm','note')]" /></div>
         <div class="flex justify-end gap-2">
-          <button @click="examEntryForm=null" class="btn-secondary text-sm">취소</button>
+          <button @click="askClose('examEntryForm')" class="btn-secondary text-sm">취소</button>
           <button @click="saveExamEntry" class="btn-primary text-sm">저장</button>
         </div>
       </div>
@@ -5684,6 +5715,15 @@ const { createApp } = Vue;
 
 const ROLE_LABELS = {HQ_ADMIN:'본부 관리자',HR_ADMIN:'인사 관리자',REGIONAL_MANAGER:'지부장',BRANCH_MANAGER:'원장',VICE_PRINCIPAL:'부원장',INSTRUCTOR:'강사',TA:'조교',STUDENT:'학생',PARENT:'학부모',EXTERNAL_INSTRUCTOR_ADMIN:'외부 강사'};
 const EARLY_LEAVE_TAG = 'EARLY_LEAVE_EXPECTED';
+// 바탕을 잘못 눌러 쓰던 내용이 통째로 날아가는 일이 잦다. 여기 적어 둔 창은
+// 바깥을 눌러도 곧장 닫지 않고, 손댄 게 있으면 먼저 물어본다.
+// 새 창을 만들 때 여기에 한 줄 더하고 openGuard/askClose 만 이어주면 된다.
+const GUARD_FORMS = {
+  examEntryForm: { get: vm => vm.examEntryForm, close: vm => { vm.examEntryForm = null; vm.examCredNew = null; } },
+  examSnForm:    { get: vm => vm.examSnForm,    close: vm => { vm.examSnForm = null; } },
+  examAdd:       { get: vm => vm.examAdd,       close: vm => { vm.examAdd = null; } },
+  stuExamAdd:    { get: vm => vm.stuExamAdd,    close: vm => { vm.stuExamAdd = null; } },
+};
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
 // 옛 비고 태그 코드(선택목록 개편 전 데이터) 폴백 라벨·색
 const LEGACY_TAG_LABELS = {LATE:'지각',EXCUSED:'사유결석',LEAVE:'조퇴',EARLY_LEAVE:'조퇴',PRE_CONTACT:'사전연락',MAKEUP:'보강',ABSENT:'결석',PRESENT:'출석'};
@@ -5841,7 +5881,8 @@ const app = createApp({
       examSessions: [], examEntries: [], examLoading: false,
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
       examFilter: { pending:true, done:false, upcoming:true, past:false, cats:[], q:'', qRaw:'' },
-      examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null, examFormBase: '', examSnForm: null, examSnError: '',
+      examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
+      guardSnap: {}, guardAsk: '', examFormBase: '', examSnForm: null, examSnError: '',
       examTab: 'ALL', examContestId: null, examSel: [], examShowJoinNo: false,
       examContactForm: null,
       examContactPop: { show:false, x:0, y:0, name:'', rows:[] },
@@ -8496,6 +8537,7 @@ const app = createApp({
                           apply_from:(kind==='CERT' ? this.todayStr : ''),
                           exam_time:'', apply_until:'', result_date:'', level:'', track:'', round:'',
                           place:'', note:'' };
+      this.$nextTick(()=> this.openGuard('examSnForm'));
     },
     editExamSession(sn){
       this.examSnError = '';
@@ -8504,6 +8546,7 @@ const app = createApp({
                           apply_until:sn.apply_until||'', result_date:sn.result_date||'',
                           place:sn.place||'', note:sn.note||'',
                           level:sn.level||'', track:sn.track||'', round:sn.round||'' };
+      this.$nextTick(()=> this.openGuard('examSnForm'));
     },
     // 비슷한 회차를 또 만드는 일이 잦다(다음 급수·다음 예선). 날짜만 비우고 나머지는 그대로 가져온다
     copyExamSession(sn){
@@ -8530,7 +8573,7 @@ const app = createApp({
         await api('POST','/api/admin/academy/exam_session', f);
         // 자격증 표를 보다가 대회를 등록하면 방금 만든 게 안 보인다. 그쪽 표로 옮겨 준다
         this.examTab = f.kind;
-        this.examSnForm = null; this.notify('저장되었습니다.'); this.loadExamAll();
+        this.guardSnap.examSnForm = undefined; this.examSnForm = null; this.notify('저장되었습니다.'); this.loadExamAll();
       } catch(e){ this.examSnError = e.message; }
     },
     async deleteExamSession(){
@@ -8551,6 +8594,7 @@ const app = createApp({
                        f:{ school:[], grade:[], subject:[] } };
       if (!(this.options.school_type||[]).length) this.loadOptions();
       if (!this.students.length) this.loadStudents();
+      this.$nextTick(()=> this.openGuard('examAdd'));
     },
     toggleExamAddAll(){
       const c = this.examAddCandidates;
@@ -8612,7 +8656,7 @@ const app = createApp({
           session_id:a.sn.id, student_ids:a.sel, catalog_id:a.catalog_id, level:a.level, track:a.track,
           round:a.round, place:a.place, exam_date:a.exam_date, exam_time:a.exam_time,
           apply_until:a.apply_until, result_date:a.result_date });
-        this.examAdd = null;
+        this.guardSnap.examAdd = undefined; this.examAdd = null;
         this.notify(d.made+'명 추가되었습니다.'+(d.skipped.length ? ' (이미 있음: '+d.skipped.join(', ')+')' : ''));
         this.loadExamAll();
       } catch(e){ this.examAddError = e.message; }
@@ -8637,6 +8681,7 @@ const app = createApp({
                              apply_until:e.apply_until||'', place:e.place||'',
                              credential_id:e.credential_id, applied_at:e.applied_at,
                              result:e.result, score:e.score, note:e.note };
+      this.$nextTick(()=> this.openGuard('examEntryForm'));
       // 접수에 쓴 계정을 고를 수 있게 그 학생의 아이디 목록을 가져온다
       try { this.examCreds = await api('GET','/api/admin/academy/student_credential?student_id='+e.student_id) || []; }
       catch(err){ this.examCreds = []; }
@@ -8663,7 +8708,7 @@ const app = createApp({
       const f = this.examEntryForm;
       try {
         await api('POST','/api/admin/academy/exam_entry', f);
-        this.examEntryForm = null; this.notify('저장되었습니다.');
+        this.guardSnap.examEntryForm = undefined; this.examEntryForm = null; this.notify('저장되었습니다.');
         if (this.stuDetail && this.stuTab==='exam') this.loadStuExams(); else this.loadExamAll();
       } catch(e){ this.notify(e.message,false); }
     },
@@ -9774,6 +9819,7 @@ const app = createApp({
     openStuExamAdd(){
       this.stuExamAdd = { session_id:null, exam_date:'', exam_time:'', apply_until:'',
                           level:'', track:'', place:'' };
+      this.$nextTick(()=> this.openGuard('stuExamAdd'));
     },
     onStuExamSession(){
       const a = this.stuExamAdd; if (!a) return;
@@ -9800,8 +9846,41 @@ const app = createApp({
           session_id:a.session_id, student_ids:[this.stuDetail.id],
           catalog_id:(sn ? sn.catalog_id : null), level:a.level, track:a.track, place:a.place,
           exam_date:a.exam_date, exam_time:a.exam_time, apply_until:a.apply_until });
-        this.stuExamAdd = null; this.notify('붙였습니다.'); this.loadStuExams();
+        this.guardSnap.stuExamAdd = undefined; this.stuExamAdd = null; this.notify('붙였습니다.'); this.loadStuExams();
       } catch(e){ this.notify(e.message, false); }
+    },
+    // ── 쓰던 내용 지키기(창 공통) ──
+    // 창을 열 때 그 순간을 새겨 둔다. 이후 이 값과 달라진 것이 '손댄 것'이다.
+    openGuard(key){
+      const g = GUARD_FORMS[key]; if (!g) return;
+      this.guardSnap[key] = JSON.stringify(g.get(this) || null);
+      this.guardAsk = '';
+    },
+    guardDirty(key){
+      const g = GUARD_FORMS[key]; if (!g) return false;
+      const base = this.guardSnap[key];
+      return base !== undefined && JSON.stringify(g.get(this) || null) !== base;
+    },
+    // 그 칸만 달라졌는지. 어디를 고쳤는지 테두리로 알려 준다
+    guardFieldDirty(key, field){
+      const g = GUARD_FORMS[key]; if (!g) return false;
+      const base = this.guardSnap[key];
+      if (base === undefined) return false;
+      let old; try { old = JSON.parse(base) || {}; } catch(e){ return false; }
+      const cur = g.get(this) || {};
+      return String(old[field] ?? '') !== String(cur[field] ?? '');
+    },
+    guardCls(key, field){ return this.guardFieldDirty(key, field) ? 'ring-2 ring-amber-400 border-amber-400' : ''; },
+    // 바깥을 눌렀을 때. 손댄 게 없으면 그냥 닫고, 있으면 먼저 물어본다
+    askClose(key){
+      if (this.guardDirty(key)){ this.guardAsk = key; return; }
+      this.closeGuard(key);
+    },
+    closeGuard(key){
+      const g = GUARD_FORMS[key]; if (!g) return;
+      g.close(this);
+      delete this.guardSnap[key];
+      this.guardAsk = '';
     },
     async selectStuTab(k){
       this.stuTab=k;
