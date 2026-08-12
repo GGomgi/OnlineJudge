@@ -1047,10 +1047,14 @@
              달라 표로 만들면 빈 칸이 절반이다. 이력서처럼 세로로 쌓는다. -->
         <div v-if="stuTab==='exam'" class="space-y-3">
           <div class="flex items-center gap-2 flex-wrap">
-            <span class="text-sm font-semibold text-slate-700">{{ stuExams.length }}건</span>
+            <span class="text-sm font-semibold text-slate-700">{{ stuExamLive.length }}건</span>
             <span v-if="stuExamDone" class="text-sm text-emerald-600">· 취득·수상 {{ stuExamDone }}</span>
             <span v-if="stuExamSoon" class="text-sm text-rose-600">· 접수 전 {{ stuExamSoon }}</span>
-            <button v-if="stuCanEdit" @click="openStuExamAdd" class="ml-auto px-2.5 py-1 rounded bg-indigo-600 text-white text-xs whitespace-nowrap">+ 시험 추가</button>
+            <!-- 도전하려다 그만둔 것도 이력이라 볼 수 있게 한다. 있을 때만 내놓는다 -->
+            <label v-if="stuExamCancelled" class="ml-auto flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none whitespace-nowrap">
+              <input type="checkbox" v-model="stuExamShowCancelled" class="w-3.5 h-3.5" />취소한 기록도 보기 ({{ stuExamCancelled }})
+            </label>
+            <button v-if="stuCanEdit" @click="openStuExamAdd" :class="['px-2.5 py-1 rounded bg-indigo-600 text-white text-xs whitespace-nowrap', stuExamCancelled ? '' : 'ml-auto']">+ 시험 추가</button>
           </div>
 
           <!-- 붙일 회차 고르기 -->
@@ -1100,7 +1104,9 @@
           <div v-for="grp in stuExamGroups" :key="grp.k">
             <div v-if="grp.rows.length" class="text-[11px] font-semibold text-slate-400 mb-1">{{ grp.label }}</div>
             <div v-for="e in grp.rows" :key="e.id"
-                 :class="['rounded-lg border px-3 py-2 mb-1.5', grp.k==='soon' ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white']">
+                 :class="['rounded-lg border px-3 py-2 mb-1.5',
+                          e.cancelled ? 'border-slate-200 bg-slate-50 opacity-60'
+                                      : (grp.k==='soon' ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white')]">
               <div class="flex items-baseline gap-2 flex-wrap">
                 <span class="font-mono text-slate-700">{{ e.exam_date || '일정 미정' }}</span>
                 <span v-if="e.exam_date" class="text-xs text-slate-400">({{ wdOf(e.exam_date) }})</span>
@@ -1108,16 +1114,18 @@
                 <b class="text-slate-800">{{ e.what }}</b>
                 <span :class="['px-1.5 py-0.5 rounded text-[11px]', e.kind==='CERT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700']">{{ e.kind_label }}</span>
                 <span class="ml-auto flex items-center gap-2 shrink-0">
-                  <span v-if="e.result" class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[11px] font-semibold">{{ e.result }}<span v-if="e.score"> · {{ e.score }}</span></span>
+                  <span v-if="e.cancelled" class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 text-[11px]">취소</span>
+                  <span v-else-if="e.result" class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[11px] font-semibold">{{ e.result }}<span v-if="e.score"> · {{ e.score }}</span></span>
                   <span v-else-if="e.applied" class="text-[11px] text-emerald-600">접수완료</span>
                   <span v-else class="text-[11px] text-rose-600 font-semibold">미접수</span>
-                  <button v-if="stuCanEdit" @click="openExamEntry(e)" class="text-[11px] text-indigo-600 hover:underline">수정</button>
+                  <button v-if="stuCanEdit && !e.cancelled" @click="openExamEntry(e)" class="text-[11px] text-indigo-600 hover:underline">수정</button>
                 </span>
               </div>
               <div class="mt-0.5 flex items-center gap-2 flex-wrap text-[11px] text-slate-500">
                 <span v-if="e.place">{{ e.place }}</span>
                 <span v-if="e.apply_until">· 접수 마감 {{ e.apply_until.slice(5) }}<span v-if="e.d_apply!==null && e.d_apply>=0"> (D-{{ e.d_apply }})</span></span>
                 <span v-if="e.note" class="text-slate-400">· {{ e.note }}</span>
+                <span v-if="e.cancelled" class="text-slate-400">· {{ e.cancelled_reason==='SESSION' ? '시험·대회가 없어짐' : '취소' }} {{ e.cancelled_at }}<span v-if="e.cancelled_by"> ({{ e.cancelled_by }})</span></span>
               </div>
             </div>
           </div>
@@ -4403,6 +4411,36 @@
       </div>
     </section>
 
+    <!-- ===== 등록·삭제 이력 (원장 이상) =====
+         지웠다 다시 만드는 일이 잦아 '언제 무엇을 지웠는지' 를 되짚을 일이 생긴다. -->
+    <div v-if="examChgOpen" class="fixed inset-0 bg-black/40 z-50 flex items-start justify-center p-4 overflow-auto" @click.self="examChgOpen=false">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl my-4">
+        <div class="flex items-center justify-between px-4 py-3 border-b">
+          <div>
+            <div class="font-bold">시험·대회 등록·삭제 이력</div>
+            <div class="text-[11px] text-slate-400">원장 이상만 볼 수 있습니다. 최근 것부터 300건.</div>
+          </div>
+          <button @click="examChgOpen=false" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+        </div>
+        <div class="p-3 max-h-[70vh] overflow-y-auto">
+          <div v-for="c in examChanges" :key="c.id" class="border-b last:border-0 py-2 text-sm">
+            <div class="flex items-baseline gap-2 flex-wrap">
+              <span class="font-mono text-xs text-slate-400">{{ c.time }}</span>
+              <span :class="['px-1.5 py-0.5 rounded text-[11px]', c.kind==='DELETE' ? 'bg-rose-100 text-rose-700' : (c.kind==='CREATE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600')]">{{ c.kind_label }}</span>
+              <span class="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 text-slate-500">{{ c.exam_kind_label }}</span>
+              <b class="text-slate-700">{{ c.label }}</b>
+              <span v-if="c.detail" class="text-xs text-slate-400">{{ c.detail }}</span>
+              <span class="ml-auto text-xs text-slate-400">{{ c.actor }}<span v-if="c.branch"> · {{ c.branch }}</span></span>
+            </div>
+            <div v-if="c.entry_count" class="mt-0.5 text-[11px] text-rose-600">
+              함께 내려간 학생 {{ c.entry_count }}명 — <span class="text-slate-500">{{ c.students }}</span>
+            </div>
+          </div>
+          <div v-if="!examChanges.length" class="text-center text-xs text-slate-400 py-8">아직 이력이 없습니다.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== 자격증·대회 종류 관리 =====
          시험을 실제로 굴리는 건 선생님이라 종류 등록도 이 화면에서 바로 하게 한다.
          한 곳에서만 고치도록 학원 관리 탭에서 떼어 여기로 모았다. -->
@@ -4525,6 +4563,7 @@
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 class="text-lg font-bold">자격증 · 대회</h2>
         <div class="flex items-center gap-2">
+          <button v-if="isDirectorUp" @click="openExamChanges" class="px-3 py-1.5 rounded border border-slate-300 text-slate-600 text-sm hover:bg-slate-100 whitespace-nowrap">이력</button>
           <button @click="openExamCatalogs" class="px-3 py-1.5 rounded border border-slate-300 text-slate-600 text-sm hover:bg-slate-100 whitespace-nowrap">종류 관리</button>
           <!-- 어느 표를 보고 있든 둘 다 등록할 수 있게 나란히 둔다. 저장하면 그쪽 표로 옮겨 간다 -->
           <button @click="openExamSession('CERT')" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 자격증 등록</button>
@@ -5997,6 +6036,7 @@ const app = createApp({
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
       examFilter: { pending:true, done:false, upcoming:true, past:false, cats:[], q:'', qRaw:'' },
       examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
+      examChgOpen: false, examChanges: [], stuExamShowCancelled: false,
       guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
       leaveCols: (localStorage.getItem('portal_leave_cols') || 'auto'), examFormBase: '', examSnForm: null, examSnError: '',
       examTab: 'ALL', examContestId: null, examSel: [], examShowJoinNo: false,
@@ -6664,12 +6704,15 @@ const app = createApp({
       ];
     },
     // 학생 상세의 자격증·대회
-    stuExamDone(){ return this.stuExams.filter(e => !!e.result).length; },
-    stuExamSoon(){ return this.stuExams.filter(e => !e.applied && !e.result).length; },
+    stuExamLive(){ return this.stuExams.filter(e => !e.cancelled); },
+    stuExamCancelled(){ return this.stuExams.filter(e => e.cancelled).length; },
+    stuExamDone(){ return this.stuExamLive.filter(e => !!e.result).length; },
+    stuExamSoon(){ return this.stuExamLive.filter(e => !e.applied && !e.result).length; },
     stuExamGroups(){
       const today = this.todayStr;
       const up = [], past = [];
-      this.stuExams.forEach(e => {
+      const rows = this.stuExamShowCancelled ? this.stuExams : this.stuExamLive;
+      rows.forEach(e => {
         if (!e.exam_date || e.exam_date >= today) up.push(e); else past.push(e);
       });
       // 앞으로 볼 것은 가까운 순, 지난 것은 최근 순
@@ -8906,6 +8949,11 @@ const app = createApp({
     // ── 자격증·대회 종류 ──
     // 종류 등록은 시험을 실제로 굴리는 선생님이 하는 게 맞아 이 화면에서 바로 연다.
     // 목록에는 꺼 둔 것까지 나와야 해서(all=1) 다시 불러온다.
+    async openExamChanges(){
+      this.examChgOpen = true;
+      try { this.examChanges = await api('GET','/api/admin/academy/exam_change') || []; }
+      catch(e){ this.examChanges = []; this.notify(e.message, false); }
+    },
     openExamCatalogs(){ this.examCatMgr = true; this.resetExamForm(); this.loadExamCatalogs(); },
     async loadExamCatalogs(){
       try {
@@ -9996,7 +10044,8 @@ const app = createApp({
     async loadStuCreds(){ if(!this.stuDetail) return; try { const d = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); this.stuCreds = d.map(c=>({ ...c, _orig:{ site:c.site, login_id:c.login_id, password:c.password } })); } catch(e){ this.stuCreds=[]; } },
     async loadStuExams(){
       if (!this.stuDetail) return;
-      try { this.stuExams = await api('GET','/api/admin/academy/exam_entry?student_id='+this.stuDetail.id) || []; }
+      // 도전하려다 그만둔 것도 이력이라 함께 받아 두고, 볼지 말지는 화면에서 고른다
+      try { this.stuExams = await api('GET','/api/admin/academy/exam_entry?include_deleted=1&student_id='+this.stuDetail.id) || []; }
       catch(e){ this.stuExams = []; }
       // 붙일 회차를 고르려면 목록이 있어야 한다
       if (!this.examSessions.length){

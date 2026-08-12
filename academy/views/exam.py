@@ -21,6 +21,7 @@ from ..models import (ExamCatalog, ExamSession, ExamEntry, ExamTeam, ExamKind, E
                       EXAM_STAGE_CHOICES, EXAM_CONTACT_CHOICES)
 from ..services import viewable_branch_ids, can_manage_branch, can_view_branch
 from .admin import DIRECTOR_UP_ROLES
+from ..models import ExamChange, ExamChangeKind, EXAM_CHANGE_CHOICES
 from ..services_brand import (KINDS as BRAND_KINDS, MAX_UPLOAD_BYTES as BRAND_MAX_BYTES,
                               ALLOWED_EXT as BRAND_EXT, brand_all, save_brand, delete_brand)
 
@@ -198,6 +199,15 @@ class ExamCatalogAdminAPI(APIView):
 
 # ─────────────────────── 회차 ───────────────────────
 
+def log_exam_change(sn, kind, actor, detail="", entries=None):
+    """회차 등록·수정·삭제를 남긴다. 회차가 지워져도 읽히게 이름을 글로 함께 적는다."""
+    names = [name_of(e.student) for e in (entries or [])]
+    ExamChange.objects.create(
+        session=sn, kind=kind, exam_kind=sn.kind, label=session_label(sn)[:160],
+        detail=detail[:2000], entry_count=len(names),
+        students=", ".join(names)[:2000], branch_id=sn.branch_id, actor=actor)
+
+
 def _hhmm(v):
     """시각을 HH:MM 로 맞춘다. 못 읽으면 빈 값(미정)으로 둔다."""
     t = (v or "").strip().replace("：", ":")
@@ -328,7 +338,14 @@ class ExamSessionAdminAPI(APIView):
         if bid and not can_manage_branch(request.user, int(bid)):
             return self.error("이 지점을 관리할 권한이 없습니다.")
         sn.branch_id = int(bid) if bid else None
+        is_new = not sn.id
         sn.save()
+        bits = []
+        if sn.exam_date: bits.append("시험일 " + str(sn.exam_date))
+        if sn.exam_time: bits.append(sn.exam_time)
+        if sn.apply_until: bits.append("접수 마감 " + str(sn.apply_until))
+        log_exam_change(sn, ExamChangeKind.CREATE if is_new else ExamChangeKind.UPDATE,
+                        request.user, " · ".join(bits))
         return self.success(session_row(sn))
 
     @admin_role_required
@@ -338,9 +355,15 @@ class ExamSessionAdminAPI(APIView):
             return self.error("회차가 없습니다.")
         if sn.branch_id and not can_manage_branch(request.user, sn.branch_id):
             return self.error("권한이 없습니다.")
+        # 함께 내려가는 학생을 이력에 남긴다(지운 뒤에는 누가 붙어 있었는지 알 수 없다)
+        kids = list(ExamEntry.objects.filter(session=sn, is_deleted=False)
+                    .select_related("student", "student__userprofile"))
+        log_exam_change(sn, ExamChangeKind.DELETE, request.user,
+                        ("시험일 " + str(sn.exam_date)) if sn.exam_date else "", kids)
         sn.is_deleted = True
         sn.save(update_fields=["is_deleted"])
-        ExamEntry.objects.filter(session=sn).update(is_deleted=True)
+        ExamEntry.objects.filter(session=sn, is_deleted=False).update(
+            is_deleted=True, deleted_at=now(), deleted_by=request.user, deleted_reason="SESSION")
         return self.success("ok")
 
 
@@ -382,6 +405,10 @@ def entry_row(e):
         "d_exam": ((ed - today).days if ed else None),
         "d_apply": ((au - today).days if au else None),
         "stage": e.stage, "stage_label": stage_text(e),
+        "cancelled": bool(e.is_deleted),
+        "cancelled_at": (str(e.deleted_at + timedelta(hours=9))[:16] if e.deleted_at else ""),
+        "cancelled_by": (name_of(e.deleted_by) if e.deleted_by_id else ""),
+        "cancelled_reason": e.deleted_reason,
         "contacts": [{"kind": c.kind, "kind_label": CONTACT_LABEL.get(c.kind, c.kind),
                       "note": c.note, "actor": name_of(c.actor),
                       "time": str(c.create_time + timedelta(hours=9))[:16]}
@@ -450,8 +477,14 @@ class ExamEntryAdminAPI(APIView):
         qs = ExamEntry.objects.select_related(
             "session", "session__catalog", "session__branch", "catalog", "team",
             "student", "student__userprofile", "student__student_profile",
-            "credential", "instructor").prefetch_related("contacts", "contacts__actor").filter(
-            is_deleted=False, session__is_deleted=False)
+            "credential", "instructor", "deleted_by", "deleted_by__userprofile").prefetch_related(
+            "contacts", "contacts__actor")
+        if request.GET.get("include_deleted") == "1":
+            # 도전하려다 그만둔 것도 이력이라 학생 화면에서는 함께 본다.
+            # 이 기능을 만들기 전에 지운 것은 지운 때가 없지만 그래도 보여야 한다.
+            pass
+        else:
+            qs = qs.filter(is_deleted=False, session__is_deleted=False)
         if view is not None:
             qs = qs.filter(Q(session__branch_id=None) | Q(session__branch_id__in=view))
         if request.GET.get("session_id"):
@@ -551,8 +584,38 @@ class ExamEntryAdminAPI(APIView):
         if not e:
             return self.error("참가 기록이 없습니다.")
         e.is_deleted = True
-        e.save(update_fields=["is_deleted"])
+        e.deleted_at = now()
+        e.deleted_by = request.user
+        e.save(update_fields=["is_deleted", "deleted_at", "deleted_by"])
         return self.success("ok")
+
+
+class ExamChangeAdminAPI(APIView):
+    """회차 등록·수정·삭제 이력. 지웠다 다시 만드는 일이 잦아 나중에 되짚을 일이 생긴다.
+
+    누가 무엇을 지웠는지는 운영 책임에 걸리는 내용이라 원장 이상만 본다."""
+
+    @admin_role_required
+    def get(self, request):
+        prof = getattr(request.user, "academy_profile", None)
+        role = prof.role if prof else ""
+        if not (role in DIRECTOR_UP_ROLES or request.user.is_super_admin()):
+            return self.error("원장 이상만 볼 수 있습니다.")
+        view = viewable_branch_ids(request.user)
+        qs = ExamChange.objects.select_related("actor", "actor__userprofile", "branch")
+        if view is not None:
+            qs = qs.filter(Q(branch_id=None) | Q(branch_id__in=view))
+        rows = [{
+            "id": c.id, "kind": c.kind, "kind_label": dict(EXAM_CHANGE_CHOICES).get(c.kind, c.kind),
+            "exam_kind": c.exam_kind,
+            "exam_kind_label": KIND_LABEL.get(c.exam_kind, c.exam_kind),
+            "label": c.label, "detail": c.detail,
+            "entry_count": c.entry_count, "students": c.students,
+            "branch": (c.branch.name if c.branch_id else ""),
+            "actor": name_of(c.actor) if c.actor_id else "",
+            "time": str(c.create_time + timedelta(hours=9))[:16],
+        } for c in qs[:300]]
+        return self.success(rows)
 
 
 class ExamContactAdminAPI(APIView):

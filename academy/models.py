@@ -1277,6 +1277,40 @@ class ExamContact(models.Model):
         ordering = ["-create_time", "-id"]
 
 
+class ExamChangeKind(object):
+    CREATE = "CREATE"
+    UPDATE = "UPDATE"
+    DELETE = "DELETE"
+
+
+EXAM_CHANGE_CHOICES = ((ExamChangeKind.CREATE, "등록"), (ExamChangeKind.UPDATE, "수정"),
+                       (ExamChangeKind.DELETE, "삭제"))
+
+
+class ExamChange(models.Model):
+    """회차(시험·대회) 등록·수정·삭제 이력.
+
+    지웠다 다시 만드는 일이 잦아 '언제 무엇을 지웠는지' 를 나중에 확인해야 한다.
+    회차가 지워져도 남아야 하므로 이름은 글로 함께 적어 둔다."""
+    session = models.ForeignKey(ExamSession, null=True, blank=True, on_delete=models.SET_NULL,
+                                related_name="changes")
+    kind = models.CharField(max_length=16, default=ExamChangeKind.CREATE)
+    exam_kind = models.CharField(max_length=16, blank=True, default="")   # CERT / CONTEST
+    label = models.CharField(max_length=160, blank=True, default="")      # 회차 이름(지워져도 남게)
+    detail = models.TextField(blank=True, default="")                     # 날짜·바뀐 값 등
+    entry_count = models.PositiveSmallIntegerField(default=0)             # 함께 내려간 참가 수
+    students = models.TextField(blank=True, default="")                   # 함께 내려간 학생 이름
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="+")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_exam_change"
+        ordering = ["-id"]
+
+
 class ExamEntry(models.Model):
     """참가 — 목록 화면의 한 줄. '누구 / 무엇 / 언제 / 접수했나'."""
     session = models.ForeignKey(ExamSession, on_delete=models.CASCADE, related_name="entries")
@@ -1310,6 +1344,11 @@ class ExamEntry(models.Model):
     instructor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     is_deleted = models.BooleanField(default=False)
+    # 도전하려다 그만둔 것도 이력이라 지운 때와 지운 사람을 남긴다
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    deleted_reason = models.CharField(max_length=32, blank=True, default="")   # SESSION=회차가 지워짐
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     create_time = models.DateTimeField(auto_now_add=True)
