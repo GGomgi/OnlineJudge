@@ -255,6 +255,12 @@
   </div>
 
   <!-- 상단 바 -->
+  <!-- 화면을 벗어날 때 묻는 띠. 브라우저 기본 확인창은 우리 화면과 생김새가 따로 놀아 쓰지 않는다 -->
+  <div v-if="leavePrompt" class="fixed left-1/2 -translate-x-1/2 top-3 z-[90] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+    <div class="text-sm text-amber-800">작성 중인 내용이 있습니다. 나가면 <b>적은 내용이 사라집니다.</b></div>
+    <button @click="leavePrompt=null" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+    <button @click="leaveGo" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 나가기</button>
+  </div>
   <header v-if="!enrollMode && !verifyMode" class="bg-slate-900 text-white">
     <div :class="[mainMaxW, 'mx-auto px-4 h-14 flex items-center justify-between']">
       <div class="flex items-center gap-2">
@@ -5962,7 +5968,7 @@ const app = createApp({
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
       examFilter: { pending:true, done:false, upcoming:true, past:false, cats:[], q:'', qRaw:'' },
       examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
-      guardSnap: {}, guardAsk: '', examFormBase: '', examSnForm: null, examSnError: '',
+      guardSnap: {}, guardAsk: '', leavePrompt: null, examFormBase: '', examSnForm: null, examSnError: '',
       examTab: 'ALL', examContestId: null, examSel: [], examShowJoinNo: false,
       examContactForm: null,
       examContactPop: { show:false, x:0, y:0, name:'', rows:[] },
@@ -6866,7 +6872,10 @@ const app = createApp({
     dt(s){ return s ? String(s).slice(0,16).replace('T',' ') : ''; },
     channelLabel(c){ return ({VISIT:'방문',CALL:'전화',MESSAGE:'문자',KAKAO:'카카오',ETC:'기타'})[c] || c || '방문'; },
     go(key){
-      if (key!==this.tab && this.isDirty() && !this.confirmLeave()) return;
+      if (key!==this.tab && this.isDirty()){ this.askLeave(()=> this._goNow(key)); return; }
+      this._goNow(key);
+    },
+    _goNow(key){
       if (key!==this.tab){ this.convertingLead=null; this.directReg=false; this.showLeadForm=false; this.noteText=''; }
       this.tab = key; this.flash.msg=''; this.onTab(key);
       this._syncTabUrl(key);
@@ -6887,9 +6896,17 @@ const app = createApp({
       if (this.enrollMode || !this.me) return;
       const key = new URL(location.href).searchParams.get('tab');
       if (!key || key===this.tab || !this._tabValid(key)) return;
-      if (this.isDirty() && !this.confirmLeave()){ this._syncTabUrl(this.tab, true); return; }
-      this.convertingLead=null; this.showLeadForm=false; this.noteText='';
-      this.tab = key; this.flash.msg=''; this.onTab(key);
+      const move = ()=>{
+        this.convertingLead=null; this.showLeadForm=false; this.noteText='';
+        this.tab = key; this.flash.msg=''; this.onTab(key);
+      };
+      if (this.isDirty()){
+        // 주소는 이미 바뀌었으니 되돌려 두고, 답을 들은 뒤에 다시 옮긴다
+        this._syncTabUrl(this.tab, true);
+        this.askLeave(()=>{ move(); this._syncTabUrl(key, true); });
+        return;
+      }
+      move();
     },
     // ── 작성 중 이탈 방지 ──
     leadFormDirty(){
@@ -6917,7 +6934,9 @@ const app = createApp({
       if (this.tab==='indtt') return this.ttDirty();
       return false;
     },
-    confirmLeave(){ return window.confirm('작성 중인 내용이 저장되지 않았습니다.\n페이지를 벗어나면 작성한 내용이 삭제됩니다.\n나가시겠습니까?'); },
+    // 브라우저 기본 확인창은 우리 화면과 생김새가 따로 논다. 화면 안 띠로 물어본다.
+    askLeave(run){ this.leavePrompt = { run }; },
+    leaveGo(){ const p = this.leavePrompt; this.leavePrompt = null; if (p && p.run) p.run(); },
     onTab(key){
       if (key==='timetable') this.loadMyTimetable();
       else if (key==='attendance') this.loadMyAttendance();
@@ -8193,7 +8212,11 @@ const app = createApp({
       this.leadForm = { branch_id:defBranch, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
       this.flash.msg = '';
     },
-    closeLeadForm(){ if (this.leadFormDirty() && !this.confirmLeave()) return; this.showLeadForm = false; this.flash.msg = ''; },
+    closeLeadForm(){
+      const done = ()=>{ this.showLeadForm = false; this.flash.msg = ''; };
+      if (this.leadFormDirty()){ this.askLeave(done); return; }
+      done();
+    },
     async loadMyTimetable(){ try { const d = await api('GET','/api/academy/my_timetable'); this.myInd = d.individual||[]; this.myClasses = d.groups||[]; } catch(e){ this.notify(e.message,false); } },
     async loadMyAttendance(){ try { this.myAtt = await api('GET','/api/academy/my_attendance'); } catch(e){ this.notify(e.message,false); } },
     async loadLeads(){
@@ -10717,7 +10740,11 @@ const app = createApp({
         this.notify(d.student_name+' 등록 대기 생성됨 — 학부모에게 작성 링크를 전달하세요.');
       } catch(e){ this.failConvert(e.message); }
     },
-    closeConvert(){ if (this.convertDirty() && !this.confirmLeave()) return; this.convertingLead = null; this.directReg = false; this.convertError = ''; },
+    closeConvert(){
+      const done = ()=>{ this.convertingLead = null; this.directReg = false; this.convertError = ''; };
+      if (this.convertDirty()){ this.askLeave(done); return; }
+      done();
+    },
     syncProgramCount(){
       const n = this.convertForm.program_count || 1;
       const cur = this.convertForm.programs;
