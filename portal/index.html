@@ -4101,7 +4101,8 @@
               <th class="text-center px-3 py-2">접수</th>
               <th class="text-left px-3 py-2">응시료</th>
               <th class="text-left px-3 py-2">접수 계정</th>
-              <th class="text-left px-3 py-2">결과</th>
+              <!-- 결과는 지난 것을 볼 때만 의미가 있다. 예정만 볼 때는 늘 비어 있어 자리만 차지함 -->
+              <th v-if="examFilter.past" class="text-left px-3 py-2">결과</th>
               <th class="px-3 py-2"></th>
             </tr>
           </thead>
@@ -4138,7 +4139,7 @@
                 </span>
               </td>
               <td class="px-3 py-2 whitespace-nowrap text-xs text-slate-500">{{ e.credential || '-' }}</td>
-              <td class="px-3 py-2 whitespace-nowrap text-xs">
+              <td v-if="examFilter.past" class="px-3 py-2 whitespace-nowrap text-xs">
                 <span v-if="e.result" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{{ e.result }}<span v-if="e.score"> {{ e.score }}</span></span>
                 <span v-else class="text-slate-300">-</span>
               </td>
@@ -4147,7 +4148,7 @@
                 <button @click="deleteExamEntry(e)" class="ml-2 text-xs text-rose-400 hover:underline">삭제</button>
               </td>
             </tr>
-            <tr v-if="!examRows.length"><td colspan="10" class="px-3 py-8 text-center text-sm text-slate-400">{{ examEmptyMsg }}</td></tr>
+            <tr v-if="!examRows.length"><td :colspan="examFilter.past ? 10 : 9" class="px-3 py-8 text-center text-sm text-slate-400">{{ examEmptyMsg }}</td></tr>
           </tbody>
         </table>
       </div>
