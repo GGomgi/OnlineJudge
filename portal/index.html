@@ -1142,13 +1142,12 @@
                       :class="['px-2 py-0.5 rounded text-xs border', examSnForm[pk.field]===o ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100']">{{ o }}</button>
             </div>
           </div>
-          <div>
+          <!-- 손으로 치지 않고 고르기만 한다. 없는 곳이 필요하면 종류 관리에서 늘린다 -->
+          <div v-if="examSnVenues.length">
             <label class="lbl">장소</label>
-            <input v-model="examSnForm.place" class="input py-1" />
-            <!-- 종류에 적어 둔 응시 장소를 눌러서 채운다(매번 손으로 치지 않게) -->
-            <div v-if="examSnVenues.length" class="flex flex-wrap gap-1 mt-1">
-              <button v-for="v in examSnVenues" :key="v" type="button" @click="examSnForm.place = v"
-                      :class="['px-1.5 py-0.5 rounded text-[11px] border', examSnForm.place===v ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50']">{{ v }}</button>
+            <div class="flex flex-wrap gap-1">
+              <button v-for="v in examSnVenues" :key="v" type="button" @click="examSnForm.place = (examSnForm.place===v ? '' : v)"
+                      :class="['px-2 py-0.5 rounded text-xs border', examSnForm.place===v ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100']">{{ v }}</button>
             </div>
           </div>
           <p class="text-[11px] text-slate-400">학생을 붙일 때 미리 채워집니다. 학생마다 다르면 그때 각자 바꾸면 됩니다.</p>
@@ -1161,23 +1160,24 @@
           여기서는 자격증마다 한 번만 만들어 두면 됩니다.
         </div>
         <template v-else>
-          <div class="grid grid-cols-3 gap-3">
-            <div><label class="lbl">대회일</label><input v-model="examSnForm.exam_date" type="date" class="input py-1" /></div>
-            <div><label class="lbl">접수 시작</label><input v-model="examSnForm.apply_from" type="date" class="input py-1" /></div>
-            <div><label class="lbl">접수 마감</label><input v-model="examSnForm.apply_until" type="date" class="input py-1" /></div>
+          <!-- 주최측이 대회일만 먼저 내고 접수·발표는 나중에 내는 일이 잦다. 날짜마다 따로 미정을 둔다 -->
+          <div class="grid grid-cols-2 gap-3">
+            <div v-for="f in examSnDateFields" :key="f.k">
+              <label class="lbl flex items-center gap-2">
+                <span>{{ f.label }}</span>
+                <label class="flex items-center gap-1 text-[11px] text-slate-400 font-normal cursor-pointer select-none">
+                  <input type="checkbox" :checked="!examSnForm[f.k]" @change="examSnForm[f.k] = ($event.target.checked ? '' : (examSnForm.exam_date || todayStr))" class="w-3 h-3" />미정
+                </label>
+              </label>
+              <input v-model="examSnForm[f.k]" type="date" class="input py-1" />
+              <p v-if="f.hint" class="text-[11px] text-slate-400 mt-0.5">{{ f.hint }}</p>
+            </div>
           </div>
-          <p class="text-[11px] text-slate-400 -mt-1.5">대회는 주최측이 정하는 날이라 미리 채우지 않습니다. 공지를 보고 그대로 넣으세요.</p>
-          <div>
-            <label class="flex items-center gap-1.5 text-sm cursor-pointer select-none">
-              <input type="checkbox" v-model="examSnForm.unconfirmed" class="w-4 h-4" />
-              <span>아직 <b>일정 미확정</b> — 주최측 발표 전이라도 학생을 미리 붙여둘 수 있습니다</span>
-            </label>
-          </div>
-          <div>
-            <label class="lbl">발표일</label>
-            <input v-model="examSnForm.result_date" type="date" class="input py-1" />
-            <p class="text-[11px] text-slate-400 mt-0.5">비워두면 <b>대회일 당일</b>(종료 후 발표)</p>
-          </div>
+          <p class="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-2">
+            <b>미정</b>은 그 날짜를 비워 둔다는 뜻입니다. 주최측이 대회일만 먼저 내고 접수·발표는 나중에 내는 일이 많아
+            <b>날짜마다 따로</b> 둡니다. 미정이어도 <b>학생을 미리 붙여둘 수 있고</b>, 마감 임박 알림은 접수 마감이 정해진 뒤부터 나옵니다.
+            <span class="block mt-1">목록에는 <b>대회일이 미정일 때만</b> ‘일정 미확정’으로 표시합니다.</span>
+          </p>
         </template>
         <div><label class="lbl">비고</label><input v-model="examSnForm.note" class="input py-1" /></div>
         <div v-if="examSnError" class="px-3 py-2 rounded bg-rose-50 text-rose-700 border border-rose-200 text-sm">{{ examSnError }}</div>
@@ -1236,12 +1236,11 @@
                     :class="['px-2 py-0.5 rounded text-xs border', examAdd.round===r ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100']">{{ r }}</button>
           </div>
         </div>
-        <div>
+        <div v-if="examAddVenues.length">
           <label class="lbl">장소</label>
-          <input v-model="examAdd.place" class="input py-1" />
-          <div v-if="examAddVenues.length" class="flex flex-wrap gap-1 mt-1">
-            <button v-for="v in examAddVenues" :key="v" type="button" @click="examAdd.place = v"
-                    :class="['px-1.5 py-0.5 rounded text-[11px] border', examAdd.place===v ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50']">{{ v }}</button>
+          <div class="flex flex-wrap gap-1">
+            <button v-for="v in examAddVenues" :key="v" type="button" @click="examAdd.place = (examAdd.place===v ? '' : v)"
+                    :class="['px-2 py-0.5 rounded text-xs border', examAdd.place===v ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100']">{{ v }}</button>
           </div>
         </div>
         <p class="text-[11px] text-slate-400">여기서 고른 값으로 선택한 학생이 한 번에 등록됩니다. 학생마다 다르면 등록 후 각 줄에서 수정하세요.</p>
@@ -6361,6 +6360,15 @@ const app = createApp({
       return out;
     },
     // 학생을 붙일 때 고를 수 있는 진행·응시 장소(회차가 아니라 지금 고른 종류 기준)
+    // 대회 날짜 칸들. 주최측이 따로따로 내므로 각각 '미정'을 둔다
+    examSnDateFields(){
+      return [
+        { k:'exam_date',   label:'대회일' },
+        { k:'apply_from',  label:'접수 시작' },
+        { k:'apply_until', label:'접수 마감' },
+        { k:'result_date', label:'발표일', hint:'비워두면 대회일 당일(종료 후 발표)' },
+      ];
+    },
     examAddCat(){
       const a = this.examAdd; if (!a) return null;
       const id = a.catalog_id || (a.sn && a.sn.catalog_id);
@@ -8335,22 +8343,21 @@ const app = createApp({
     // 회차
     openExamSession(kind){
       this.examSnError = '';
-      // 대부분 자체 시험이라 장소는 우리 학원으로 미리 채운다
-      const bn = (this.myProfile && this.myProfile.branch && this.myProfile.branch.name) || '';
+      // 장소는 종류에 적어 둔 것 중에서만 고른다. 목록에 없는 값을 미리 넣으면 아무것도
+      // 안 골라진 것처럼 보여, 종류를 고른 뒤 하나뿐이면 그때 자동으로 고른다.
       this.examSnForm = { id:null, kind, catalog_id:null, title:'', exam_date:'',
                           // 자격증은 우리가 날을 잡으니 오늘부터 받는다. 대회는 주최측이 정해 미리 못 채운다
                           apply_from:(kind==='CERT' ? this.todayStr : ''),
                           apply_until:'', result_date:'', level:'', track:'', round:'',
-                          place:(kind==='CERT' ? ('두잉창의코딩' + (bn ? '('+bn+')' : '')) : ''),
-                          note:'', unconfirmed:false };
+                          place:'', note:'' };
     },
     editExamSession(sn){
       this.examSnError = '';
       this.examSnForm = { id:sn.id, kind:sn.kind, catalog_id:sn.catalog_id, title:sn.title,
-                          exam_date:sn.exam_date, apply_from:sn.apply_from, apply_until:sn.apply_until,
-                          result_date:sn.result_date, place:sn.place, note:sn.note,
-                          level:sn.level||'', track:sn.track||'', round:sn.round||'',
-                          unconfirmed:!sn.confirmed };
+                          exam_date:sn.exam_date||'', apply_from:sn.apply_from||'',
+                          apply_until:sn.apply_until||'', result_date:sn.result_date||'',
+                          place:sn.place||'', note:sn.note||'',
+                          level:sn.level||'', track:sn.track||'', round:sn.round||'' };
     },
     // 비슷한 회차를 또 만드는 일이 잦다(다음 급수·다음 예선). 날짜만 비우고 나머지는 그대로 가져온다
     copyExamSession(sn){
@@ -8374,7 +8381,7 @@ const app = createApp({
       const f = this.examSnForm; this.examSnError = '';
       if (!f.catalog_id) return this.examSnError = (f.kind==='CERT' ? '어떤 자격증인지 고르세요.' : '어떤 대회인지 고르세요.');
       try {
-        await api('POST','/api/admin/academy/exam_session', { ...f, confirmed: !f.unconfirmed });
+        await api('POST','/api/admin/academy/exam_session', f);
         // 자격증 표를 보다가 대회를 등록하면 방금 만든 게 안 보인다. 그쪽 표로 옮겨 준다
         this.examTab = f.kind;
         this.examSnForm = null; this.notify('저장되었습니다.'); this.loadExamAll();
