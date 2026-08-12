@@ -8474,10 +8474,8 @@ const app = createApp({
         names: sel.slice(0,6).map(e=>e.student).join(', ') + (sel.length>6 ? ' 외 '+(sel.length-6)+'명' : ''),
         note: (last && last.note) || '' };
     },
-    copyExamContact(){
-      const t = this.examContactForm.note || '';
-      navigator.clipboard.writeText(t).then(()=>this.notify('복사했습니다.')).catch(()=>this.notify('복사하지 못했습니다.', false));
-    },
+    // 이 서버는 http 라 navigator.clipboard 가 아예 없다. 폴백까지 있는 doCopy 를 쓴다
+    async copyExamContact(){ await this.copyText(this.examContactForm.note || ''); },
     async saveExamContact(){
       const f = this.examContactForm;
       try {
@@ -9780,8 +9778,9 @@ const app = createApp({
     async issueVerifyLink(){
       try {
         const d = await api('POST','/api/admin/academy/profile_verify', { student_id:this.stuDetail.id });
-        await navigator.clipboard.writeText(d.url).catch(()=>{});
-        this.notify('학부모 확인 링크를 복사했습니다 ('+d.expires+'까지). 학부모에게 전달하세요.');
+        const ok = await this.doCopy(d.url);
+        this.notify(ok ? ('학부모 확인 링크를 복사했습니다 ('+d.expires+'까지). 학부모에게 전달하세요.')
+                       : ('링크를 만들었습니다 ('+d.expires+'까지). 복사가 막혀 있어 링크를 직접 선택해 복사하세요.'), ok);
         this.loadStuVerify();
       } catch(e){ this.notify(e.message,false); }
     },
