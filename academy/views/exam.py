@@ -20,6 +20,7 @@ from ..models import (ExamCatalog, ExamSession, ExamEntry, ExamTeam, ExamKind, E
                       StudentCredential, ExamStage, ExamContact, ExamContactKind,
                       EXAM_STAGE_CHOICES, EXAM_CONTACT_CHOICES)
 from ..services import viewable_branch_ids, can_manage_branch, can_view_branch
+from .admin import DIRECTOR_UP_ROLES
 from ..services_brand import (KINDS as BRAND_KINDS, MAX_UPLOAD_BYTES as BRAND_MAX_BYTES,
                               ALLOWED_EXT as BRAND_EXT, brand_all, save_brand, delete_brand)
 
@@ -174,6 +175,12 @@ class ExamCatalogAdminAPI(APIView):
     @admin_role_required
     def delete(self, request):
         """실제로 지우지 않고 숨긴다(이미 쌓인 참가 기록을 살려두기 위함)."""
+        # 만들고 고치는 건 시험을 굴리는 선생님이 하지만, 치우는 건 원장 이상만 한다.
+        # 남이 쓰던 종류를 치우면 그 회차·참가 기록이 한꺼번에 안 보이게 된다.
+        prof = getattr(request.user, "academy_profile", None)
+        role = prof.role if prof else ""
+        if not (role in DIRECTOR_UP_ROLES or request.user.is_super_admin()):
+            return self.error("원장 이상만 치울 수 있습니다.")
         c = ExamCatalog.objects.filter(id=request.GET.get("id")).first()
         if not c:
             return self.error("종류가 없습니다.")

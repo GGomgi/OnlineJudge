@@ -1923,7 +1923,7 @@
         <div v-if="tempLeavesNow.length" class="flex items-start gap-2 py-1">
           <span class="shrink-0 px-1.5 py-0.5 rounded bg-purple-200 text-purple-800 font-semibold">진행중 {{ tempLeavesNow.length }}명</span>
           <!-- 한 명이 한 줄, 한 줄에 2명씩. 이름·기간·복귀일의 자리를 맞춰 세로로 훑어보기 쉽게 -->
-          <div class="flex-1 grid grid-cols-1 md:grid-cols-2 min-[1900px]:grid-cols-3 gap-x-6 gap-y-1 min-w-0">
+          <div class="flex-1 grid grid-cols-[repeat(auto-fit,minmax(29rem,1fr))] gap-x-6 gap-y-1 min-w-0">
             <div v-for="t in tempLeavesNow" :key="t.student_id"
                  class="grid grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)] items-baseline gap-x-2 min-w-0">
               <button @click="goStudentAttend(t.student_id)" class="text-left font-medium text-slate-700 hover:underline truncate">{{ t.name }}</button>
@@ -1941,7 +1941,7 @@
         </div>
         <div v-if="tempLeavesSoon.length" :class="['flex items-start gap-2 py-1', tempLeavesNow.length ? 'border-t border-purple-100 mt-1 pt-1.5' : '']">
           <span class="shrink-0 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">예정 {{ tempLeavesSoon.length }}명</span>
-          <div class="flex-1 grid grid-cols-1 md:grid-cols-2 min-[1900px]:grid-cols-3 gap-x-6 gap-y-1 min-w-0">
+          <div class="flex-1 grid grid-cols-[repeat(auto-fit,minmax(29rem,1fr))] gap-x-6 gap-y-1 min-w-0">
             <div v-for="t in tempLeavesSoon" :key="t.student_id"
                  class="grid grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)] items-baseline gap-x-2 min-w-0">
               <button @click="goStudentAttend(t.student_id)" class="text-left font-medium text-slate-700 hover:underline truncate">{{ t.name }}</button>
@@ -4108,11 +4108,108 @@
       </div>
     </section>
 
+    <!-- ===== 자격증·대회 종류 관리 =====
+         시험을 실제로 굴리는 건 선생님이라 종류 등록도 이 화면에서 바로 하게 한다.
+         한 곳에서만 고치도록 학원 관리 탭에서 떼어 여기로 모았다. -->
+    <div v-if="examCatMgr" class="fixed inset-0 bg-black/40 z-50 flex items-start justify-center p-4 overflow-auto" @click.self="examCatMgr=false">
+      <div class="bg-slate-50 rounded-xl shadow-xl w-full max-w-6xl my-4">
+        <div class="flex items-center justify-between px-4 py-3 border-b bg-white rounded-t-xl sticky top-0 z-10">
+          <div>
+            <div class="font-bold">자격증 · 대회 종류</div>
+            <div class="text-[11px] text-slate-400">한 번 등록해 두면 시험·대회를 만들 때 골라 쓸 수 있습니다.</div>
+          </div>
+          <button @click="examCatMgr=false" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+        </div>
+        <div class="p-4">
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <p class="text-xs text-slate-400 mb-3">한 번 등록해 두고 계속 씁니다. 급수·언어는 여기에 <b>고를 수 있는 목록</b>만 두고, 실제로 무엇을 보는지는 <b>학생마다</b> 정합니다(같은 시험일에 학생마다 다른 급수·언어를 보기 때문).</p>
+          <div class="flex flex-wrap items-end gap-2">
+            <div><label class="lbl">구분</label>
+              <select v-model="examForm.kind" class="input py-1 w-24">
+                <option v-for="k in examKinds" :key="k.value" :value="k.value">{{ k.label }}</option>
+              </select>
+            </div>
+            <div><label class="lbl">이름 <span class="text-rose-500">*</span></label><input v-model="examForm.name" placeholder="예: COS Pro" class="input py-1 w-36" /></div>
+            <div><label class="lbl">주관</label><input v-model="examForm.organizer" placeholder="예: YBM" class="input py-1 w-28" /></div>
+            <div><label class="lbl">접수 방식</label>
+              <select v-model="examForm.entry_mode" class="input py-1 w-32">
+                <option v-for="m in examModes" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
+            </div>
+            <div><label class="lbl">응시료 <span class="text-slate-400">(안내용)</span></label><input v-model="examForm.fee" inputmode="numeric" placeholder="35000" class="input py-1 w-24" /></div>
+          </div>
+          <div class="flex flex-wrap items-end gap-2 mt-2">
+            <div class="flex-1 min-w-[12rem]"><label class="lbl">급수</label><input v-model="examForm.levelsRaw" placeholder="1급:40000, 2급:35000, 3급" class="input py-1" /></div>
+            <div class="flex-1 min-w-[14rem]"><label class="lbl">언어·부문</label><input v-model="examForm.tracksRaw" placeholder="스크래치, 엔트리, C, Python" class="input py-1" /></div>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">쉼표로 구분합니다. <b>응시료가 다르면 <code>이름:금액</code></b>으로 적으세요(예: <code>1급:40000</code>). 금액을 안 적으면 위 <b>응시료</b>를 씁니다. 대회는 부문마다 다를 때 부문 쪽에 적으면 됩니다.</p>
+          <div class="flex flex-wrap items-end gap-2 mt-2">
+            <div class="flex-1 min-w-[12rem]"><label class="lbl">홈페이지 <span class="text-slate-400">(일정 확인)</span></label><input v-model="examForm.homepage" placeholder="https://" class="input py-1" /></div>
+            <div class="flex-1 min-w-[12rem]"><label class="lbl">접수 링크</label><input v-model="examForm.apply_url" placeholder="https://" class="input py-1" /></div>
+            <div class="flex-1 min-w-[12rem]"><label class="lbl">공지사항 링크</label><input v-model="examForm.notice_url" placeholder="https://" class="input py-1" /></div>
+          </div>
+          <div class="flex flex-wrap items-end gap-2 mt-2">
+            <label class="flex items-center gap-1.5 text-sm pb-2 whitespace-nowrap cursor-pointer select-none">
+              <input type="checkbox" v-model="examForm.annual" class="w-3.5 h-3.5" />해마다 열림
+            </label>
+            <div v-if="examForm.annual"><label class="lbl">확인 시작 <span class="text-slate-400">(MM-DD)</span></label><input v-model="examForm.check_from" placeholder="03-01" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
+            <button @click="saveExamCatalog" class="btn-primary text-sm">{{ examForm.id ? '수정 저장' : '+ 종류 등록' }}</button>
+            <button v-if="examForm.id" @click="resetExamForm" class="btn-secondary text-sm">취소</button>
+          </div>
+          <p v-if="examForm.annual" class="text-[11px] text-slate-400 mt-1">해마다 열리는 대회는 작년 회차를 근거로 그 시기에 “올해 일정 확인 필요”를 알려줍니다. 작년 기록이 없을 때는 위 <b>확인 시작</b> 날짜를 씁니다.</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-3 overflow-x-auto">
+          <table class="w-full min-w-max text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs">
+              <tr>
+                <th class="px-3 py-2 text-left">구분</th>
+                <th class="px-3 py-2 text-left">이름</th>
+                <th class="px-3 py-2 text-left">주관</th>
+                <th class="px-3 py-2 text-left">접수</th>
+                <th class="px-3 py-2 text-left">응시료</th>
+                <th class="px-3 py-2 text-left">급수</th>
+                <th class="px-3 py-2 text-left">언어·부문</th>
+                <th class="px-3 py-2 text-left">해마다</th>
+                <th class="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in examCatalogs" :key="c.id" class="border-t align-middle">
+                <td class="px-3 py-2 whitespace-nowrap"><span :class="['px-1.5 py-0.5 rounded text-[11px]', c.kind==='CERT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700']">{{ c.kind_label }}</span></td>
+                <td class="px-3 py-2 font-medium whitespace-nowrap">{{ c.name }}
+                  <a v-if="c.homepage" :href="c.homepage" target="_blank" class="ml-1 text-xs text-indigo-500 hover:underline">사이트</a>
+                  <a v-if="c.apply_url" :href="c.apply_url" target="_blank" class="ml-1 text-xs text-emerald-600 hover:underline">접수</a>
+                  <a v-if="c.notice_url" :href="c.notice_url" target="_blank" class="ml-1 text-xs text-amber-600 hover:underline">공지</a>
+                </td>
+                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ c.organizer || '-' }}</td>
+                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ c.entry_mode_label }}</td>
+                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ c.fee ? c.fee.toLocaleString()+'원' : '-' }}</td>
+                <td class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{{ examItems(c.levels, c.fee) }}</td>
+                <td class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{{ examItems(c.tracks, c.fee) }}</td>
+                <td class="px-3 py-2 text-xs whitespace-nowrap">
+                  <span v-if="c.annual" class="text-emerald-600">해마다{{ c.check_from ? ' · '+c.check_from+'부터 확인' : '' }}</span>
+                  <span v-else class="text-slate-300">-</span>
+                </td>
+                <td class="px-3 py-2 text-right whitespace-nowrap">
+                  <button @click="editExamCatalog(c)" class="text-xs text-indigo-600 hover:underline">수정</button>
+                  <button v-if="isDirectorUp" @click="deleteExamCatalog(c)" class="ml-2 text-xs text-rose-500 hover:underline">숨김</button>
+                </td>
+              </tr>
+              <tr v-if="!examCatalogs.length"><td colspan="9" class="px-3 py-6 text-center text-xs text-slate-400">등록된 종류가 없습니다. 위에서 추가하세요.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ============ 자격증 · 대회 ============ -->
     <section v-if="tab==='exam'">
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 class="text-lg font-bold">자격증 · 대회</h2>
         <div class="flex items-center gap-2">
+          <button @click="openExamCatalogs" class="px-3 py-1.5 rounded border border-slate-300 text-slate-600 text-sm hover:bg-slate-100 whitespace-nowrap">종류 관리</button>
           <button v-if="examTab==='CERT'" @click="openExamSession('CERT')" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 시험 등록</button>
           <button v-else @click="openExamSession('CONTEST')" class="px-3 py-1.5 rounded bg-amber-500 text-white text-sm hover:bg-amber-600 whitespace-nowrap">+ 대회 등록</button>
         </div>
@@ -4567,89 +4664,6 @@
       </div>
 
       <!-- ===== 자격증·대회 종류 ===== -->
-      <div v-if="acadTab==='exam'">
-        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
-          <h2 class="text-lg font-bold mb-1">자격증 · 대회 종류</h2>
-          <p class="text-xs text-slate-400 mb-3">한 번 등록해 두고 계속 씁니다. 급수·언어는 여기에 <b>고를 수 있는 목록</b>만 두고, 실제로 무엇을 보는지는 <b>학생마다</b> 정합니다(같은 시험일에 학생마다 다른 급수·언어를 보기 때문).</p>
-          <div class="flex flex-wrap items-end gap-2">
-            <div><label class="lbl">구분</label>
-              <select v-model="examForm.kind" class="input py-1 w-24">
-                <option v-for="k in examKinds" :key="k.value" :value="k.value">{{ k.label }}</option>
-              </select>
-            </div>
-            <div><label class="lbl">이름 <span class="text-rose-500">*</span></label><input v-model="examForm.name" placeholder="예: COS Pro" class="input py-1 w-36" /></div>
-            <div><label class="lbl">주관</label><input v-model="examForm.organizer" placeholder="예: YBM" class="input py-1 w-28" /></div>
-            <div><label class="lbl">접수 방식</label>
-              <select v-model="examForm.entry_mode" class="input py-1 w-32">
-                <option v-for="m in examModes" :key="m.value" :value="m.value">{{ m.label }}</option>
-              </select>
-            </div>
-            <div><label class="lbl">응시료 <span class="text-slate-400">(안내용)</span></label><input v-model="examForm.fee" inputmode="numeric" placeholder="35000" class="input py-1 w-24" /></div>
-          </div>
-          <div class="flex flex-wrap items-end gap-2 mt-2">
-            <div class="flex-1 min-w-[12rem]"><label class="lbl">급수</label><input v-model="examForm.levelsRaw" placeholder="1급:40000, 2급:35000, 3급" class="input py-1" /></div>
-            <div class="flex-1 min-w-[14rem]"><label class="lbl">언어·부문</label><input v-model="examForm.tracksRaw" placeholder="스크래치, 엔트리, C, Python" class="input py-1" /></div>
-          </div>
-          <p class="text-[11px] text-slate-400 mt-1">쉼표로 구분합니다. <b>응시료가 다르면 <code>이름:금액</code></b>으로 적으세요(예: <code>1급:40000</code>). 금액을 안 적으면 위 <b>응시료</b>를 씁니다. 대회는 부문마다 다를 때 부문 쪽에 적으면 됩니다.</p>
-          <div class="flex flex-wrap items-end gap-2 mt-2">
-            <div class="flex-1 min-w-[12rem]"><label class="lbl">홈페이지 <span class="text-slate-400">(일정 확인)</span></label><input v-model="examForm.homepage" placeholder="https://" class="input py-1" /></div>
-            <div class="flex-1 min-w-[12rem]"><label class="lbl">접수 링크</label><input v-model="examForm.apply_url" placeholder="https://" class="input py-1" /></div>
-            <div class="flex-1 min-w-[12rem]"><label class="lbl">공지사항 링크</label><input v-model="examForm.notice_url" placeholder="https://" class="input py-1" /></div>
-          </div>
-          <div class="flex flex-wrap items-end gap-2 mt-2">
-            <label class="flex items-center gap-1.5 text-sm pb-2 whitespace-nowrap cursor-pointer select-none">
-              <input type="checkbox" v-model="examForm.annual" class="w-3.5 h-3.5" />해마다 열림
-            </label>
-            <div v-if="examForm.annual"><label class="lbl">확인 시작 <span class="text-slate-400">(MM-DD)</span></label><input v-model="examForm.check_from" placeholder="03-01" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
-            <button @click="saveExamCatalog" class="btn-primary text-sm">{{ examForm.id ? '수정 저장' : '+ 종류 등록' }}</button>
-            <button v-if="examForm.id" @click="resetExamForm" class="btn-secondary text-sm">취소</button>
-          </div>
-          <p v-if="examForm.annual" class="text-[11px] text-slate-400 mt-1">해마다 열리는 대회는 작년 회차를 근거로 그 시기에 “올해 일정 확인 필요”를 알려줍니다. 작년 기록이 없을 때는 위 <b>확인 시작</b> 날짜를 씁니다.</p>
-        </div>
-
-        <div class="bg-white rounded-xl shadow-sm p-3 overflow-x-auto">
-          <table class="w-full min-w-max text-sm">
-            <thead class="bg-slate-50 text-slate-500 text-xs">
-              <tr>
-                <th class="px-3 py-2 text-left">구분</th>
-                <th class="px-3 py-2 text-left">이름</th>
-                <th class="px-3 py-2 text-left">주관</th>
-                <th class="px-3 py-2 text-left">접수</th>
-                <th class="px-3 py-2 text-left">응시료</th>
-                <th class="px-3 py-2 text-left">급수</th>
-                <th class="px-3 py-2 text-left">언어·부문</th>
-                <th class="px-3 py-2 text-left">해마다</th>
-                <th class="px-3 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="c in examCatalogs" :key="c.id" class="border-t align-middle">
-                <td class="px-3 py-2 whitespace-nowrap"><span :class="['px-1.5 py-0.5 rounded text-[11px]', c.kind==='CERT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700']">{{ c.kind_label }}</span></td>
-                <td class="px-3 py-2 font-medium whitespace-nowrap">{{ c.name }}
-                  <a v-if="c.homepage" :href="c.homepage" target="_blank" class="ml-1 text-xs text-indigo-500 hover:underline">사이트</a>
-                  <a v-if="c.apply_url" :href="c.apply_url" target="_blank" class="ml-1 text-xs text-emerald-600 hover:underline">접수</a>
-                  <a v-if="c.notice_url" :href="c.notice_url" target="_blank" class="ml-1 text-xs text-amber-600 hover:underline">공지</a>
-                </td>
-                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ c.organizer || '-' }}</td>
-                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ c.entry_mode_label }}</td>
-                <td class="px-3 py-2 text-slate-500 whitespace-nowrap">{{ c.fee ? c.fee.toLocaleString()+'원' : '-' }}</td>
-                <td class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{{ examItems(c.levels, c.fee) }}</td>
-                <td class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{{ examItems(c.tracks, c.fee) }}</td>
-                <td class="px-3 py-2 text-xs whitespace-nowrap">
-                  <span v-if="c.annual" class="text-emerald-600">해마다{{ c.check_from ? ' · '+c.check_from+'부터 확인' : '' }}</span>
-                  <span v-else class="text-slate-300">-</span>
-                </td>
-                <td class="px-3 py-2 text-right whitespace-nowrap">
-                  <button @click="editExamCatalog(c)" class="text-xs text-indigo-600 hover:underline">수정</button>
-                  <button @click="deleteExamCatalog(c)" class="ml-2 text-xs text-rose-500 hover:underline">숨김</button>
-                </td>
-              </tr>
-              <tr v-if="!examCatalogs.length"><td colspan="9" class="px-3 py-6 text-center text-xs text-slate-400">등록된 종류가 없습니다. 위에서 추가하세요.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       <!-- ===== 메뉴 관리 ===== -->
       <div v-if="acadTab==='menu'">
         <!-- 로고는 전 지점이 함께 쓰는 얼굴이라 지점마다 달라지면 안 된다. 본부에서만 올린다 -->
@@ -5630,7 +5644,7 @@ const app = createApp({
       examSessions: [], examEntries: [], examLoading: false,
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
       examFilter: { pending:true, done:false, upcoming:true, past:false, cats:[], q:'', qRaw:'' },
-      examCatOpen: false, examSnForm: null, examSnError: '',
+      examCatOpen: false, examCatMgr: false, examSnForm: null, examSnError: '',
       examTab: 'CERT', examContestId: null, examSel: [], examShowJoinNo: false,
       examContactForm: null,
       examContactPop: { show:false, x:0, y:0, name:'', rows:[] },
@@ -6041,7 +6055,7 @@ const app = createApp({
       const t = [];
       if (this.canManageOptions) t.push({k:'options',l:'선택 목록'}, {k:'branch',l:'지점'});
       if (this.isDirectorUp) t.push({k:'holiday',l:'휴무일'}, {k:'work',l:'근무 기준'},
-                                    {k:'exam',l:'자격증·대회 종류'}, {k:'menu',l:'메뉴'},
+                                    {k:'menu',l:'메뉴'},
                                     {k:'notice',l:'공지'});
       return t;
     },
@@ -6965,7 +6979,6 @@ const app = createApp({
           this.hdForm.branch_id = (this.myProfile && this.myProfile.branch && this.myProfile.branch.id) || '';
         this.loadHolidays();
       }
-      if (k==='exam') this.loadExamCatalogs();
       if (k==='menu') this.loadMenuSettings();
       if (k==='work'){
         if (!this.wsForm.branch_id) this.wsForm.branch_id = (this.myProfile && this.myProfile.branch_id) || '';
@@ -8341,6 +8354,9 @@ const app = createApp({
       } catch(err){ this.notify(err.message,false); }
     },
     // ── 자격증·대회 종류 ──
+    // 종류 등록은 시험을 실제로 굴리는 선생님이 하는 게 맞아 이 화면에서 바로 연다.
+    // 목록에는 꺼 둔 것까지 나와야 해서(all=1) 다시 불러온다.
+    openExamCatalogs(){ this.examCatMgr = true; this.resetExamForm(); this.loadExamCatalogs(); },
     async loadExamCatalogs(){
       try {
         const d = await api('GET','/api/admin/academy/exam_catalog?all=1');
