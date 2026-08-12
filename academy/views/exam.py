@@ -667,6 +667,9 @@ class MenuSettingAdminAPI(APIView):
             st = menu_setting_for(key_map, d["key"], bid)
             rows.append({"key": d["key"], "label": d["label"], "always": bool(d.get("always")),
                          "floor": d.get("floor", ""),
+                         # 제한을 만족하는 직급이 하나도 없으면(개발일지) 사용·예외까지 손댈 게 없다
+                         "floor_open": [r for r in MENU_LIMITABLE_ROLES
+                                        if r in set(d.get("floor_roles") or [])],
                          "enabled": (st.enabled if st else True),
                          "roles": (load_list_plain(st.roles) if st else list(d.get("default_roles") or [])),
                          "overrides": over.get(d["key"], [])})
