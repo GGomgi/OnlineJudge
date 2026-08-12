@@ -435,7 +435,13 @@
        :style="{ left: navTip.x+'px', top: navTip.y+'px' }">{{ navTip.text }}</div>
 
   <!-- 등원/하원 이미 체크됨 → 시간변경/취소 팝업(시간 조정 후 바로 적용) -->
-  <div v-if="attEditPop.show" class="fixed inset-0 z-40 flex items-center justify-center bg-black/20" @click.self="attEditPop.show=false">
+  <div v-if="attEditPop.show" class="fixed inset-0 z-40 flex items-center justify-center bg-black/20" @click.self="askClose('attEditPop')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='attEditPop'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('attEditPop')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
     <div class="bg-white rounded-xl shadow-lg p-4 w-72">
       <div class="text-sm font-semibold mb-1">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} {{ attEditPop.cur }}</div>
       <div class="text-xs text-slate-400 mb-3">
@@ -1141,7 +1147,13 @@
   </div>
 
   <!-- 안내 기록 — 2차·3차는 같은 내용일 수도, 고친 내용일 수도 있어 지난 내용을 채워주고 고치게 한다 -->
-  <div v-if="examContactForm" class="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" @click.self="examContactForm=null">
+  <div v-if="examContactForm" class="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" @click.self="askClose('examContactForm')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='examContactForm'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('examContactForm')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
     <div class="bg-white rounded-xl shadow-xl w-full max-w-lg">
       <div class="flex items-center justify-between px-5 py-3 border-b">
         <div>
@@ -1502,7 +1514,13 @@
   </div>
 
   <!-- 학부모 확인 대조 — 우리 값/학부모 값/직접 입력 중에서 최종값을 정한다 -->
-  <div v-if="vrModal" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="vrModal=null">
+  <div v-if="vrModal" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="askClose('vrModal')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='vrModal'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('vrModal')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
     <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
       <div class="flex items-center justify-between px-5 py-3 border-b shrink-0">
         <div>
@@ -1678,7 +1696,13 @@
   </div>
 
   <!-- 연차·휴가 등록 -->
-  <div v-if="leaveForm" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="leaveForm=null">
+  <div v-if="leaveForm" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="askClose('leaveForm')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='leaveForm'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('leaveForm')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
     <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
       <div class="flex items-center justify-between px-5 py-3 border-b">
         <div class="font-bold">연차·휴가 등록</div>
@@ -1712,7 +1736,13 @@
   </div>
 
   <!-- 근태 시각 수정 요청 -->
-  <div v-if="attEditForm" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="attEditForm=null">
+  <div v-if="attEditForm" class="fixed inset-0 z-[65] bg-black/40 flex items-center justify-center p-4" @click.self="askClose('attEditForm')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='attEditForm'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('attEditForm')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
     <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
       <div class="flex items-center justify-between px-5 py-3 border-b">
         <div class="font-bold">{{ attEditForm.fieldLabel }} 시각 수정 {{ attEditForm.canDirect ? '' : '요청' }}</div>
@@ -2502,7 +2532,13 @@
     </section>
 
     <!-- 출결 상세(시각 수정·비고·이력) 모달 — 오늘 운영·시간표·학생 상세 어디서든 열림(탭과 무관하게 항상 렌더링) -->
-    <div v-if="attModal" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="attModal=null">
+    <div v-if="attModal" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="askClose('attModal')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='attModal'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('attModal')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
       <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4">
         <div class="flex items-center justify-between px-5 py-3 border-b">
           <div class="font-bold">{{ attModal.student_name }} <span class="text-xs font-normal text-slate-400">{{ attModal.date || dashDate }} · {{ attModal.subject }}</span></div>
@@ -2611,7 +2647,13 @@
     </div>
 
     <!-- 보강 추가 모달 — 탭과 무관하게 항상 렌더링(오늘 운영·학생 상세 출결기록 어디서든 사용) -->
-    <div v-if="makeupOpen" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="makeupOpen=false">
+    <div v-if="makeupOpen" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="askClose('makeupOpen')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='makeupOpen'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('makeupOpen')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
       <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
         <div class="flex items-center justify-between px-5 py-3 border-b">
           <div class="font-bold">보강 추가</div>
@@ -2739,7 +2781,13 @@
     </div>
 
     <!-- 일괄 보강 일정 지정 — 탭과 무관하게 항상 렌더링 -->
-    <div v-if="bulkMakeupOpen" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="bulkMakeupOpen=false">
+    <div v-if="bulkMakeupOpen" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="askClose('bulkMakeupOpen')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='bulkMakeupOpen'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('bulkMakeupOpen')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
       <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
         <div class="flex items-center justify-between px-5 py-3 border-b">
           <div class="font-bold">보강 일정 일괄 지정 <span class="text-xs font-normal text-slate-400">({{ bulkMakeupItems.length }}건)</span></div>
@@ -3727,7 +3775,13 @@
       </div>
 
       <!-- 엑셀 일괄등록 모달 -->
-      <div v-if="bulkOpen" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-4" @click.self="bulkOpen=false">
+      <div v-if="bulkOpen" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-4" @click.self="askClose('bulkOpen')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='bulkOpen'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('bulkOpen')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
         <div class="bg-white rounded-xl shadow-xl w-full max-w-[97vw] mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b">
             <div class="font-bold">엑셀 일괄등록</div>
@@ -4255,7 +4309,13 @@
       </div>
 
       <!-- 직원 관리 모달 -->
-      <div v-if="staffMng" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="staffMng=null">
+      <div v-if="staffMng" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="askClose('staffMng')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='staffMng'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('staffMng')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
         <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b">
             <div class="font-bold">{{ staffMng.real_name || '-' }} <span class="text-xs font-normal text-slate-400 font-mono">{{ staffMng.staff_no }}</span>
@@ -5249,7 +5309,13 @@
       </div>
 
       <!-- 쪽지 쓰기 모달 -->
-      <div v-if="msgCompose" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="msgCompose=false">
+      <div v-if="msgCompose" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="askClose('msgCompose')">
+      <!-- 바탕을 잘못 눌러 쓰던 게 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='msgCompose'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+        <button @click="closeGuard('msgCompose')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
         <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
           <div class="flex items-center justify-between px-5 py-3 border-b">
             <div class="font-bold">쪽지 쓰기</div>
@@ -5723,6 +5789,20 @@ const GUARD_FORMS = {
   examSnForm:    { get: vm => vm.examSnForm,    close: vm => { vm.examSnForm = null; } },
   examAdd:       { get: vm => vm.examAdd,       close: vm => { vm.examAdd = null; } },
   stuExamAdd:    { get: vm => vm.stuExamAdd,    close: vm => { vm.stuExamAdd = null; } },
+  examContactForm: { get: vm => vm.examContactForm, close: vm => { vm.examContactForm = null; } },
+  // 창은 껍데기이고 실제로 적는 곳은 따로인 경우 — 적는 쪽을 지킨다
+  attModal:      { get: vm => vm.attForm,       close: vm => { vm.attModal = null; } },
+  attEditPop:    { get: vm => ({ time: vm.attEditPop.time, cancelReason: vm.attEditPop.cancelReason }),
+                   close: vm => { vm.attEditPop.show = false; } },
+  attEditForm:   { get: vm => vm.attEditForm,   close: vm => { vm.attEditForm = null; } },
+  leaveForm:     { get: vm => vm.leaveForm,     close: vm => { vm.leaveForm = null; } },
+  makeupOpen:    { get: vm => vm.mkForm,        close: vm => { vm.makeupOpen = false; } },
+  bulkOpen:      { get: vm => vm.bulkRows,      close: vm => { vm.bulkOpen = false; } },
+  bulkMakeupOpen:{ get: vm => vm.bulkMakeupItems, close: vm => { vm.bulkMakeupOpen = false; } },
+  staffMng:      { get: vm => vm.staffMng,      close: vm => { vm.staffMng = null; } },
+  msgCompose:    { get: vm => vm.msgForm,       close: vm => { vm.msgCompose = false; } },
+  vrModal:       { get: vm => ({ pick: vm.vrPick, custom: vm.vrCustom, add: vm.vrAdd, fmt: vm.vrFmt }),
+                   close: vm => { vm.vrModal = null; } },
 };
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
 // 옛 비고 태그 코드(선택목록 개편 전 데이터) 폴백 라벨·색
@@ -7443,6 +7523,7 @@ const app = createApp({
     openLeaveForm(){
       if (!this.leaveKinds.length) this.loadLeaveKinds();
       this.leaveForm = { staff_id:null, date:this.todayStr, date_to:'', kind:'ANNUAL', reason:'' };
+      this.$nextTick(()=> this.openGuard('leaveForm'));
     },
     async loadLeaveKinds(){
       try { const d = await api('GET','/api/admin/academy/staff_leave'); this.leaveKinds = d.kinds || []; }
@@ -7455,7 +7536,7 @@ const app = createApp({
       try {
         const d = await api('POST','/api/admin/academy/staff_leave', f);
         this.notify(d.created.length+'일 등록되었습니다.'+(d.skipped.length ? ' (이미 등록: '+d.skipped.join(', ')+')' : ''));
-        this.leaveForm = null; this.loadHrAtt(); this.loadHrToday();
+        this.guardSnap.leaveForm = undefined; this.leaveForm = null; this.loadHrAtt(); this.loadHrToday();
       } catch(e){ this.notify(e.message,false); }
     },
 
@@ -7480,6 +7561,7 @@ const app = createApp({
       this.attEditForm = { att_id:d.id, staff_id:null, date:d.date, field,
         fieldLabel:(field==='IN'?'출근':'퇴근'), old:(field==='IN'?d.in:d.out),
         value:(field==='IN'?d.in:d.out), reason:'', canDirect:!!(this.hrToday && this.hrToday.can_manage) };
+      this.$nextTick(()=> this.openGuard('attEditForm'));
     },
     async saveAttEdit(){
       const f = this.attEditForm;
@@ -7489,7 +7571,7 @@ const app = createApp({
         if (f.att_id) body.att_id = f.att_id; else { body.staff_id = f.staff_id; body.date = f.date; }
         const d = await api('POST','/api/admin/academy/staff_attendance/edit', body);
         this.notify(d.requested ? '수정 요청이 접수되었습니다. 원장 승인 후 반영됩니다.' : '수정되었습니다.');
-        this.attEditForm = null; this.loadMyAtt(); this.loadHrToday(); this.loadHrPending();
+        this.guardSnap.attEditForm = undefined; this.attEditForm = null; this.loadMyAtt(); this.loadHrToday(); this.loadHrPending();
       } catch(e){ this.notify(e.message,false); }
     },
     async saveMyNote(d, value){
@@ -7852,10 +7934,11 @@ const app = createApp({
     openStaffManage(s){
       this.staffMng = { ...s, _role:s.role, _branch_id: s.branch ? s.branch.id : null,
         _managed_branch_ids: (s.managed_branches||[]).map(b=>b.id) };
+      this.$nextTick(()=> this.openGuard('staffMng'));
     },
     async saveStaffManage(){
       await this.applyStaffRole(this.staffMng);
-      this.staffMng = null;
+      this.guardSnap.staffMng = undefined; this.staffMng = null;
     },
     staffMngDirty(){
       const m = this.staffMng; if (!m) return false;
@@ -8246,6 +8329,7 @@ const app = createApp({
       this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0, absentPlan:plan0,
                         instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0,
                         progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:''), progFeedback:(l.progress?l.progress.feedback:''), progMemo:(l.progress?l.progress.memo:'') };
+      this.$nextTick(()=> this.openGuard('attModal'));
       if (!this.ttInstructors.length) this.loadTtInstructors();
       this.mkLinkCandidates = [];
       if (l.is_makeup){
@@ -8271,7 +8355,7 @@ const app = createApp({
       if (!confirm('이 보강 일정을 취소할까요? (결석 연결이 있다면 함께 해제됩니다)')) return;
       try {
         await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'CANCELLED', reason:'보강 취소' });
-        this.notify('보강이 취소되었습니다.'); this.attModal=null;
+        this.notify('보강이 취소되었습니다.'); this.guardSnap.attModal = undefined; this.attModal=null;
         if (this.stuDetail && this.stuTab==='attend'){ this.loadStuAttHist(this.stuAttHist.fwdDays); this.loadStuMakeups(); }
         else if (l.date) this.loadTtCal(); else this.loadDashboard();
       } catch(e){ this.notify(e.message,false); }
@@ -8426,7 +8510,7 @@ const app = createApp({
         if (this.attForm.progContent!==this._attOrig.progContent || this.attForm.progHomework!==this._attOrig.progHomework || this.attForm.progFeedback!==this._attOrig.progFeedback || this.attForm.progMemo!==this._attOrig.progMemo){
           await api('POST','/api/admin/academy/lesson_progress', { occ_id:l.occ_id, content:this.attForm.progContent, homework:this.attForm.progHomework, feedback:this.attForm.progFeedback, memo:this.attForm.progMemo });
         }
-        this.notify('저장되었습니다.'); this.attModal=null;
+        this.notify('저장되었습니다.'); this.guardSnap.attModal = undefined; this.attModal=null;
         if (this.stuDetail && this.stuTab==='attend'){ this.loadStuAttHist(this.stuAttHist.fwdDays); this.loadStuMakeups(); }
         else if (this.stuDetail && this.stuTab==='progress'){ this.loadStuProgress(); this.loadStuProgCal(); }
         else if (l.date) this.loadTtCal(); else await this.loadDashboard();
@@ -8628,6 +8712,7 @@ const app = createApp({
       this.examContactForm = { kind, kindLabel:label, ids:this.examSel.slice(), seq,
         names: sel.slice(0,6).map(e=>e.student).join(', ') + (sel.length>6 ? ' 외 '+(sel.length-6)+'명' : ''),
         note: (last && last.note) || '' };
+      this.$nextTick(()=> this.openGuard('examContactForm'));
     },
     // 이 서버는 http 라 navigator.clipboard 가 아예 없다. 폴백까지 있는 doCopy 를 쓴다
     async copyExamContact(){ await this.copyText(this.examContactForm.note || ''); },
@@ -8635,7 +8720,7 @@ const app = createApp({
       const f = this.examContactForm;
       try {
         const d = await api('POST','/api/admin/academy/exam_contact', { entry_ids:f.ids, kind:f.kind, note:f.note });
-        this.examContactForm = null; this.examSel = [];
+        this.guardSnap.examContactForm = undefined; this.examContactForm = null; this.examSel = [];
         this.notify(d.made+'명 기록되었습니다.'); this.loadExamAll();
       } catch(e){ this.notify(e.message,false); }
     },
@@ -9028,7 +9113,8 @@ const app = createApp({
       return this.mkPending.filter(p=>(p.student_name||'').includes(q));
     },
     async openMakeup(){
-      this.mkMode='pending'; this.mkStep='pick'; this._resetMkForm(); this.makeupOpen=true; this.mkPending=[]; this.mkPendingSearch=''; this.mkPendingSearchRaw='';
+      this.mkMode='pending'; this.mkStep='pick'; this._resetMkForm(); this.makeupOpen=true;
+      this.$nextTick(()=> this.openGuard('makeupOpen')); this.mkPending=[]; this.mkPendingSearch=''; this.mkPendingSearchRaw='';
       this.mkSearch={ query:'', queryRaw:'', student:null, candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' };
       if (!this.students.length) this.loadStudents();
       try { this.mkPending = await api('GET','/api/admin/academy/pending_makeup') || []; } catch(e){ this.mkPending=[]; }
@@ -9137,7 +9223,7 @@ const app = createApp({
           const t2 = this.shiftHM(f.time, f.pair.offsetMinutes);
           await api('POST','/api/admin/academy/makeup_add', { student_id:f.student_id, date:f.date, start_time:t2, makeup_for:f.pair.occ_id, note:f.note });
         }
-        this.notify('보강이 추가되었습니다.'); this.makeupOpen=false;
+        this.notify('보강이 추가되었습니다.'); this.guardSnap.makeupOpen = undefined; this.makeupOpen=false;
         if (this.stuDetail && this.stuTab==='attend'){ this.loadStuAttHist(this.stuAttHist.fwdDays); this.loadStuMakeups(); }
         else if (this.tab==='timetable') this.loadTtCal();
         else this.loadDashboard();
@@ -9206,6 +9292,7 @@ const app = createApp({
     },
     openAttTimePop(l, kind, cur, date, from){
       this.attEditPop = { show:true, l, kind, cur, time:cur, date, from, cancelMode:false, cancelReason:'' };
+      this.$nextTick(()=> this.openGuard('attEditPop'));
       this.loadAttHist(l.student_id, date);
     },
     // 학생 상세 → 출결기록에서 등원/하원 칸을 눌렀을 때. 오늘 운영과 같은 팝업을 그대로 쓴다
@@ -9388,9 +9475,9 @@ const app = createApp({
     async loadMessages(){ if(!this.ttInstructors.length) this.loadTtInstructors(); try { const d=await api('GET','/api/academy/messages?box='+this.msgBox); this.msgList=d.items||[]; this.msgUnread=d.unread||0; } catch(e){ this.notify(e.message,false); } },
     async loadMsgUnread(){ if(!this.isStaff) return; try { const d=await api('GET','/api/academy/messages?box=inbox'); this.msgUnread=d.unread||0; } catch(e){} },
     pickMsgRecipient(t){ this.msgForm.recipient_id=t.user_id; this.msgPickerOpen=false; },
-    openMsgCompose(){ if(!this.ttInstructors.length) this.loadTtInstructors(); this.msgForm={ recipient_id:null, body:'' }; this.msgExpand={}; this.msgPickerOpen=false; this.msgCompose=true; },
-    replyMessage(m){ if(!this.ttInstructors.length) this.loadTtInstructors(); const t=this.ttInstructors.find(x=>(x.real_name||x.staff_no)===m.other); this.msgForm={ recipient_id:(t?t.user_id:null), body:'' }; this.msgExpand={}; this.msgPickerOpen=false; this.msgCompose=true; },
-    async sendMessage(){ const f=this.msgForm; if(!f.recipient_id) return this.notify('받는 사람을 선택하세요.', false); if(!(f.body||'').trim()) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/academy/messages', { recipient_id:f.recipient_id, body:f.body }); this.msgCompose=false; this.notify('쪽지를 보냈습니다.'); if(this.msgBox==='sent') this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
+    openMsgCompose(){ if(!this.ttInstructors.length) this.loadTtInstructors(); this.msgForm={ recipient_id:null, body:'' }; this.msgExpand={}; this.msgPickerOpen=false; this.msgCompose=true; this.$nextTick(()=> this.openGuard('msgCompose')); },
+    replyMessage(m){ if(!this.ttInstructors.length) this.loadTtInstructors(); const t=this.ttInstructors.find(x=>(x.real_name||x.staff_no)===m.other); this.msgForm={ recipient_id:(t?t.user_id:null), body:'' }; this.msgExpand={}; this.msgPickerOpen=false; this.msgCompose=true; this.$nextTick(()=> this.openGuard('msgCompose')); },
+    async sendMessage(){ const f=this.msgForm; if(!f.recipient_id) return this.notify('받는 사람을 선택하세요.', false); if(!(f.body||'').trim()) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/academy/messages', { recipient_id:f.recipient_id, body:f.body }); this.guardSnap.msgCompose = undefined; this.msgCompose=false; this.notify('쪽지를 보냈습니다.'); if(this.msgBox==='sent') this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
     async readMessage(m){ if(this.msgBox!=='inbox' || m.is_read) return; try { await api('PUT','/api/academy/messages', { id:m.id }); m.is_read=true; this.loadNoti(); } catch(e){} },
     async deleteMessage(m){ if(!confirm('이 쪽지를 삭제할까요?')) return; try { await api('DELETE','/api/academy/messages?id='+m.id); this.loadMessages(); } catch(e){ this.notify(e.message,false); } },
     // ── 문자 템플릿 ──
@@ -9517,7 +9604,7 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     // ── 엑셀 일괄등록 ──
-    openBulk(){ this.bulkOpen=true; this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; this.bulkConverted=false; this.bulkFileName=''; if(!(this.options.program||[]).length||!(this.options.program_language||[]).length) this.loadOptions(); if(!this.branches.length) this.loadBranches(); if(!this.ttInstructors.length) this.loadTtInstructors(); if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
+    openBulk(){ this.bulkOpen=true; this.$nextTick(()=> this.openGuard('bulkOpen')); this.bulkRows=[]; this.bulkValidated=null; this.bulkResults=null; this.bulkConverted=false; this.bulkFileName=''; if(!(this.options.program||[]).length||!(this.options.program_language||[]).length) this.loadOptions(); if(!this.branches.length) this.loadBranches(); if(!this.ttInstructors.length) this.loadTtInstructors(); if(this.$refs.bulkFile) this.$refs.bulkFile.value=''; },
     bulkTtSlots(){ return 4; },
     bulkColumns(){
       const cols = ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','보호자관계','등하원알림','기타보호자연락처','기타보호자관계','학생연락처','우편번호','주소','상세주소','등록과정','주횟수'];
@@ -9979,6 +10066,7 @@ const app = createApp({
       this.bulkMakeupItems = this.bulkAbsentPrompt.items.map(it=>({ occ_id:it.occ_id, date:it.date, start_time:it.start_time, subject:it.subject, mk_date:'', mk_time:it.start_time||'' }));
       this.bulkAbsentPrompt = null;
       this.bulkMakeupOpen = true;
+      this.$nextTick(()=> this.openGuard('bulkMakeupOpen'));
     },
     async submitBulkMakeup(){
       const items = this.bulkMakeupItems.filter(it=>it.mk_date && it.mk_time);
@@ -9988,7 +10076,7 @@ const app = createApp({
           await api('POST','/api/admin/academy/makeup_add', { student_id:this.stuDetail.id, date:it.mk_date, start_time:it.mk_time, makeup_for:it.occ_id, note:(it.date+' 결석 보강') });
         }
         this.notify(items.length+'건 보강이 추가되었습니다.');
-        this.bulkMakeupOpen=false; this.bulkMakeupItems=[];
+        this.guardSnap.bulkMakeupOpen = undefined; this.bulkMakeupOpen=false; this.bulkMakeupItems=[];
         this.loadStuAttHist(this.stuAttHist.fwdDays); this.loadStuMakeups();
       } catch(e){ this.notify(e.message,false); }
     },
@@ -10053,6 +10141,7 @@ const app = createApp({
       v.diff.format.forEach(r=>{ this.vrFmt[r.field] = false; }); // 표기 차이는 우리 값 유지
       this.vrShowFormat = false; this.vrError = '';
       this.vrModal = v;
+      this.$nextTick(()=> this.openGuard('vrModal'));
     },
     vrShow(field, val){
       if (field==='notify_optin') return (val===true || val==='True' || val==='true') ? '수신' : '미수신';
@@ -10078,7 +10167,7 @@ const app = createApp({
       for (const r of v.diff.format){ if (this.vrFmt[r.field]) values[r.field] = r.parent; }
       try {
         const d = await api('POST','/api/admin/academy/profile_verify/resolve', { id:v.id, values });
-        this.vrModal = null;
+        this.guardSnap.vrModal = undefined; this.vrModal = null;
         this.notify('학부모 확인이 완료되었습니다.'+(d.changed.length ? ' ('+d.changed.length+'개 항목 반영)' : ' (변경 없음)'));
         this.loadStuVerify();
         if (this.stuDetail) this.openStudent({ id:this.stuDetail.id });
