@@ -5173,7 +5173,13 @@
     <!-- ===== 전화번호 모으기 =====
          문자 프로그램마다 번호 구분 방식이 달라(줄바꿈만 / 쉼표+줄바꿈) 골라서 복사한다.
          조건을 바꿔 가며 여러 번 담고, 학부모와 학생을 나눠 복사한다(보내는 내용이 다르다). -->
-    <div v-if="phonePick" class="fixed inset-0 z-[65] bg-black/40 flex items-start justify-center overflow-y-auto py-8 p-4" @click.self="phonePick=null">
+    <div v-if="phonePick" class="fixed inset-0 z-[65] bg-black/40 flex items-start justify-center overflow-y-auto py-8 p-4" @click.self="askClose('phonePick')">
+      <!-- 바탕을 잘못 눌러 담아 둔 명단이 날아가는 걸 막는다 -->
+      <div v-if="guardAsk==='phonePick'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">검색 중입니다. 닫으면 <b>담아 둔 명단이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 하기</button>
+        <button @click="closeGuard('phonePick')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+      </div>
       <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl">
         <div class="flex items-center justify-between px-5 py-3 border-b">
           <div>
@@ -6035,6 +6041,8 @@ const GUARD_FORMS = {
   staffForm:     { get: vm => vm.staffForm,     close: () => {} },
   vrModal:       { get: vm => ({ pick: vm.vrPick, custom: vm.vrCustom, add: vm.vrAdd, fmt: vm.vrFmt }),
                    close: vm => { vm.vrModal = null; } },
+  phonePick:     { get: vm => (vm.phonePick ? { q: vm.phonePick.q, ids: vm.phonePick.ids } : null),
+                   close: vm => { vm.phonePick = null; } },
 };
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
 // 옛 비고 태그 코드(선택목록 개편 전 데이터) 폴백 라벨·색
@@ -10314,6 +10322,7 @@ const app = createApp({
       try { this.phonePick.rows = await api('GET','/api/admin/academy/students?cols=weekdays') || []; }
       catch(e){ this.notify(e.message, false); }
       this.loadPhoneSaved();
+      this.$nextTick(()=> this.openGuard('phonePick'));
     },
     phoneToggleAll(){
       const p = this.phonePick, ids = new Set(p.ids);
