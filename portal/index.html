@@ -4643,6 +4643,67 @@
         </div>
       </div>
 
+      <!-- ===== 메뉴 관리 ===== -->
+      <div v-if="acadTab==='menu'">
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <h2 class="text-lg font-bold mb-1">메뉴 관리</h2>
+          <p class="text-xs text-slate-400">지금 안 쓰는 메뉴를 감춰 둡니다(없애는 게 아니라 나중에 다시 켤 수 있습니다). 직급으로 제한하거나 특정 직원만 예외를 둘 수도 있습니다. 바꾼 내용은 <b>각자 다음 접속</b>부터 적용됩니다.</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+          <table class="w-full min-w-max text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs">
+              <tr>
+                <th class="px-3 py-2 text-left">메뉴</th>
+                <th class="px-3 py-2 text-center">사용</th>
+                <th class="px-3 py-2 text-left">볼 수 있는 직급 <span class="font-normal text-slate-400">(아무것도 안 고르면 전체)</span></th>
+                <th class="px-3 py-2 text-left">직원 예외</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="m in menuRows" :key="m.key" :class="['border-t align-top', !m.enabled && !m.always ? 'bg-slate-50 opacity-70' : '']">
+                <td class="px-3 py-2 whitespace-nowrap font-medium">
+                  {{ m.label }}
+                  <span v-if="m.always" class="ml-1 text-[10px] text-slate-400">(항상)</span>
+                </td>
+                <td class="px-3 py-2 text-center">
+                  <input type="checkbox" :checked="m.enabled" :disabled="m.always"
+                         @change="saveMenu(m, { enabled: $event.target.checked })" class="w-4 h-4" />
+                </td>
+                <td class="px-3 py-2">
+                  <div v-if="m.always" class="text-xs text-slate-300">제한 없음</div>
+                  <div v-else class="flex flex-wrap gap-1.5 text-xs">
+                    <label v-for="r in menuRoles" :key="r.value" class="flex items-center gap-1 cursor-pointer select-none">
+                      <input type="checkbox" :checked="m.roles.includes(r.value)"
+                             @change="toggleMenuRole(m, r.value, $event.target.checked)" class="w-3 h-3" />{{ r.label }}
+                    </label>
+                    <span v-if="!m.roles.length" class="text-slate-400">— 전체 공개</span>
+                  </div>
+                </td>
+                <td class="px-3 py-2">
+                  <div class="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span v-for="o in m.overrides" :key="o.staff_id"
+                          :class="['px-1.5 py-0.5 rounded cursor-pointer', o.allow ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600']"
+                          @click="saveMenu(m, { override:{ staff_id:o.staff_id, allow:null } })">
+                      {{ o.name }} {{ o.allow ? '열기' : '막기' }} ✕
+                    </span>
+                    <select v-if="!m.always" :value="''" @change="addMenuOverride(m, $event)" class="input py-0.5 text-xs w-32">
+                      <option value="">+ 직원 예외</option>
+                      <optgroup label="이 사람만 열기">
+                        <option v-for="st in menuStaff" :key="'y'+st.user_id" :value="st.user_id+':1'">{{ st.name }} 열기</option>
+                      </optgroup>
+                      <optgroup label="이 사람만 막기">
+                        <option v-for="st in menuStaff" :key="'n'+st.user_id" :value="st.user_id+':0'">{{ st.name }} 막기</option>
+                      </optgroup>
+                    </select>
+                    <span v-if="m.always" class="text-slate-300">-</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div v-if="acadTab==='notice'" class="bg-white rounded-xl shadow-sm p-10 text-center text-sm text-slate-400">
         준비 중인 기능입니다.<br><span class="text-xs">로그인 첫 화면에 뜨는 한 줄 공지를 등록하는 곳입니다.</span>
       </div>
@@ -5521,6 +5582,7 @@ const app = createApp({
       // 오늘 운영 표시 항목(기기별 저장). 기본은 지금까지 보이던 열만 — 처음부터 다
       // 켜져 있으면 복잡해 보이고 대부분 다시 끄게 된다.
       COLDEFS: COLDEFS,
+      menuRows: [], menuStaff: [], menuRoles: [], myMenus: null,
       examCatalogs: [], examKinds: [], examModes: [],
       examSessions: [], examEntries: [], examLoading: false,
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
@@ -5931,7 +5993,8 @@ const app = createApp({
       const t = [];
       if (this.canManageOptions) t.push({k:'options',l:'선택 목록'}, {k:'branch',l:'지점'});
       if (this.isDirectorUp) t.push({k:'holiday',l:'휴무일'}, {k:'work',l:'근무 기준'},
-                                    {k:'exam',l:'자격증·대회 종류'}, {k:'notice',l:'공지'});
+                                    {k:'exam',l:'자격증·대회 종류'}, {k:'menu',l:'메뉴'},
+                                    {k:'notice',l:'공지'});
       return t;
     },
     hrGridDays(){ const p=(this.hrAtt.people||[])[0]; return p ? p.days : []; },
@@ -6324,6 +6387,8 @@ const app = createApp({
         t.push({key:'msgtpl',label:'문자 템플릿'});
         t.push({key:'devboard',label:'개발 요청'});
         if (this.me.user.admin_type === 'Super Admin') t.push({key:'devlog',label:'개발일지'});
+        // 학원 관리 → 메뉴에서 꺼둔 것은 감춘다(아직 못 받았으면 그대로 보여준다)
+        if (this.myMenus) return t.filter(x => this.myMenus.includes(x.key));
         return t;
       }
       if (this.isParent) return [ {key:'children',label:'자녀'}, {key:'lead',label:'상담 신청'}, {key:'me',label:'내 정보'} ];
@@ -6848,6 +6913,7 @@ const app = createApp({
         this.loadHolidays();
       }
       if (k==='exam') this.loadExamCatalogs();
+      if (k==='menu') this.loadMenuSettings();
       if (k==='work'){
         if (!this.wsForm.branch_id) this.wsForm.branch_id = (this.myProfile && this.myProfile.branch_id) || '';
         if (!this.ttInstructors.length) this.loadTtInstructors();
@@ -7606,7 +7672,7 @@ const app = createApp({
       await this.loadBranches();
       await this.loadOptions();
       this.leadForm.branch_id = this.savedLeadBranch();
-      if (this.me) { await this.loadMyProfile(); if (this.isStaff) await this.loadStaffProfile(); }
+      if (this.me) { await this.loadMyProfile(); if (this.isStaff){ await this.loadStaffProfile(); await this.loadMyMenus(); } }
       let initial = this.me ? this.tabs[0].key : 'login';
       const urlTab = new URL(location.href).searchParams.get('tab');
       if (this.me && urlTab && this._tabValid(urlTab)) initial = urlTab;
@@ -7985,6 +8051,34 @@ const app = createApp({
     isAbsent(l){ return l.status==='ABSENT'; },
     isLeave(l){ return l.status==='LEAVE'; },
     isHoliday(l){ return l.status==='HOLIDAY'; },
+    // ── 메뉴 관리 ──
+    async loadMenuSettings(){
+      try {
+        const d = await api('GET','/api/admin/academy/menu_setting');
+        this.menuRows = d.rows || []; this.menuStaff = d.staff || []; this.menuRoles = d.roles || [];
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async saveMenu(m, patch){
+      try {
+        await api('POST','/api/admin/academy/menu_setting', { key:m.key, ...patch });
+        this.loadMenuSettings();
+        this.loadMyMenus();
+      } catch(e){ this.notify(e.message,false); this.loadMenuSettings(); }
+    },
+    toggleMenuRole(m, role, on){
+      const roles = on ? [...m.roles, role] : m.roles.filter(x=>x!==role);
+      this.saveMenu(m, { roles });
+    },
+    addMenuOverride(m, ev){
+      const v = ev.target.value; ev.target.value = '';
+      if (!v) return;
+      const [sid, allow] = v.split(':');
+      this.saveMenu(m, { override:{ staff_id:Number(sid), allow: allow==='1' } });
+    },
+    async loadMyMenus(){
+      try { const d = await api('GET','/api/admin/academy/my_menus'); this.myMenus = d.keys || null; }
+      catch(e){ this.myMenus = null; }
+    },
     // ── 자격증·대회 목록 ──
     async loadExamAll(){
       this.examLoading = true;

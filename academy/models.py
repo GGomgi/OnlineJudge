@@ -1300,3 +1300,30 @@ class ExamEntry(models.Model):
     class Meta:
         db_table = "academy_exam_entry"
         ordering = ["-id"]
+
+
+class MenuSetting(models.Model):
+    """포털 상단 메뉴 켜고 끄기.
+
+    지금 안 쓰는 메뉴(그룹·특강, 개발 요청)를 감추되 없애지는 않는다 — 나중에 다시
+    쓸 수 있기 때문. 역할별로 제한하거나 특정 직원만 예외를 둘 수도 있다."""
+    key = models.CharField(max_length=32, unique=True)     # dashboard, classes, devboard …
+    enabled = models.BooleanField(default=True)            # 꺼두면 아무도 볼 수 없다
+    roles = models.TextField(blank=True, default="")       # JSON 역할 목록. 비면 제한 없음
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_menu_setting"
+
+
+class MenuOverride(models.Model):
+    """직원 개인별 예외. 역할 규칙보다 우선한다(이 사람만 열어주거나 이 사람만 막을 때)."""
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                              related_name="menu_overrides")
+    key = models.CharField(max_length=32)
+    allow = models.BooleanField(default=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_menu_override"
+        unique_together = ("staff", "key")

@@ -530,3 +530,126 @@ class ExamStageAdminAPI(APIView):
             return self.error("값이 올바르지 않습니다.")
         n = ExamEntry.objects.filter(id__in=ids, is_deleted=False).update(stage=stage)
         return self.success({"changed": n})
+
+
+# ─────────────────────── 포털 메뉴 켜고 끄기 ───────────────────────
+
+from ..models import MenuSetting, MenuOverride, AcademyProfile, ACADEMY_ROLE_CHOICES, STAFF_ROLES
+
+# 화면의 메뉴 순서와 같게 둔다. always=True 는 끌 수 없다 —
+# 학원 관리를 꺼버리면 되돌릴 방법이 없어지기 때문.
+MENU_DEFS = [
+    {"key": "dashboard", "label": "오늘 운영", "always": True},
+    {"key": "leadmgr", "label": "신규 상담·등록"},
+    {"key": "students", "label": "학생 관리"},
+    {"key": "indtt", "label": "시간표"},
+    {"key": "makeup", "label": "보강 관리"},
+    {"key": "classes", "label": "그룹·특강"},
+    {"key": "exam", "label": "자격증·대회"},
+    {"key": "staff", "label": "직원 관리"},
+    {"key": "hr", "label": "내 정보", "always": True},
+    {"key": "options", "label": "학원 관리", "always": True},
+    {"key": "msgtpl", "label": "문자 템플릿"},
+    {"key": "devboard", "label": "개발 요청"},
+    {"key": "devlog", "label": "개발일지"},
+]
+MENU_ALWAYS = {m["key"] for m in MENU_DEFS if m.get("always")}
+ROLE_LABEL = dict(ACADEMY_ROLE_CHOICES)
+
+
+def menu_allowed_keys(user):
+    """이 사람이 볼 수 있는 메뉴 키. 개인 예외 > 역할 제한 > 전체 on/off 순."""
+    prof = getattr(user, "academy_profile", None)
+    role = prof.role if prof else ""
+    settings_by_key = {m.key: m for m in MenuSetting.objects.all()}
+    over = {o.key: o.allow for o in MenuOverride.objects.filter(staff=user)}
+    out = []
+    for d in MENU_DEFS:
+        k = d["key"]
+        if k in MENU_ALWAYS:
+            out.append(k)
+            continue
+        if k in over:
+            if over[k]:
+                out.append(k)
+            continue
+        st = settings_by_key.get(k)
+        if st and not st.enabled:
+            continue
+        roles = load_list_plain(st.roles) if st else []
+        if roles and role not in roles:
+            continue
+        out.append(k)
+    return out
+
+
+def load_list_plain(s):
+    try:
+        v = _json.loads(s) if s else []
+        return [str(x) for x in v] if isinstance(v, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
+class MyMenuAPI(APIView):
+    """로그인한 사람이 볼 수 있는 메뉴 목록."""
+
+    @admin_role_required
+    def get(self, request):
+        return self.success({"keys": menu_allowed_keys(request.user)})
+
+
+class MenuSettingAdminAPI(APIView):
+    """메뉴 관리 — 전체 on/off, 역할 제한, 직원 예외."""
+
+    @admin_role_required
+    def get(self, request):
+        if not can_manage_branch(request.user, None) and not request.user.is_super_admin():
+            pass  # 조회는 막지 않는다(설정 화면 자체가 원장 이상에게만 보임)
+        by_key = {m.key: m for m in MenuSetting.objects.all()}
+        over = {}
+        for o in MenuOverride.objects.select_related("staff", "staff__userprofile"):
+            over.setdefault(o.key, []).append(
+                {"staff_id": o.staff_id, "name": name_of(o.staff), "allow": o.allow})
+        rows = []
+        for d in MENU_DEFS:
+            st = by_key.get(d["key"])
+            rows.append({"key": d["key"], "label": d["label"], "always": bool(d.get("always")),
+                         "enabled": (st.enabled if st else True),
+                         "roles": load_list_plain(st.roles) if st else [],
+                         "overrides": over.get(d["key"], [])})
+        staff = [{"user_id": p.user_id, "name": name_of(p.user), "role": p.role,
+                  "role_label": ROLE_LABEL.get(p.role, p.role)}
+                 for p in AcademyProfile.objects.filter(role__in=STAFF_ROLES, is_deleted=False)
+                                                .select_related("user", "user__userprofile")]
+        staff.sort(key=lambda x: x["name"])
+        return self.success({
+            "rows": rows, "staff": staff,
+            "roles": [{"value": k, "label": v} for k, v in ACADEMY_ROLE_CHOICES if k in STAFF_ROLES],
+        })
+
+    @admin_role_required
+    def post(self, request):
+        d = request.data
+        key = d.get("key")
+        if not key or key not in {m["key"] for m in MENU_DEFS}:
+            return self.error("메뉴가 올바르지 않습니다.")
+        if key in MENU_ALWAYS and "enabled" in d and not d.get("enabled"):
+            return self.error("이 메뉴는 끌 수 없습니다(끄면 설정으로 돌아올 수 없습니다).")
+        st, _ = MenuSetting.objects.get_or_create(key=key)
+        if "enabled" in d:
+            st.enabled = bool(d.get("enabled"))
+        if "roles" in d:
+            st.roles = _json.dumps([str(x) for x in (d.get("roles") or [])], ensure_ascii=False)
+        st.save()
+        # 직원 예외
+        if "override" in d:
+            o = d["override"] or {}
+            sid, allow = o.get("staff_id"), o.get("allow")
+            if sid:
+                if allow is None:
+                    MenuOverride.objects.filter(staff_id=sid, key=key).delete()
+                else:
+                    MenuOverride.objects.update_or_create(
+                        staff_id=sid, key=key, defaults={"allow": bool(allow)})
+        return self.success("ok")
