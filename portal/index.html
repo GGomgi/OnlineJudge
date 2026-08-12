@@ -1393,11 +1393,15 @@
           <input v-model="examAdd.exam_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5"
                  style="width:5.5rem" :class="['input py-1 text-center font-mono', guardCls('examAdd','exam_time')]" />
         </div>
-        <div v-if="examAdd.sn.kind==='CONTEST' && examAddRounds.length">
-          <label class="lbl">진행</label>
-          <div class="flex flex-wrap gap-1">
-            <button v-for="r in examAddRounds" :key="r" type="button" @click="examAdd.round = (examAdd.round===r ? '' : r)"
-                    :class="['px-2 py-0.5 rounded text-xs border', examAdd.round===r ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100']">{{ r }}</button>
+        <!-- 대회도 종류·부문·진행을 여기서 고른다. 회차 등록에서 고르는 것과 같은 것들이고,
+             학생마다 다를 수 있어 담을 때 정해 준다. -->
+        <div v-if="examAdd.sn.kind==='CONTEST' && examAddPicks.length" class="rounded-lg border border-slate-200 bg-slate-50 p-2.5 space-y-2">
+          <div v-for="pk in examAddPicks" :key="pk.field">
+            <label class="lbl">{{ pk.label }}</label>
+            <div class="flex flex-wrap gap-1">
+              <button v-for="o in pk.options" :key="o" type="button" @click="examAdd[pk.field] = (examAdd[pk.field]===o ? '' : o)"
+                      :class="['px-2 py-0.5 rounded text-xs border', examAdd[pk.field]===o ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100']">{{ o }}</button>
+            </div>
           </div>
         </div>
         <div v-if="examAddVenues.length">
@@ -6785,6 +6789,17 @@ const app = createApp({
       return (this.examCatalogs||[]).find(x => x.id === id) || null;
     },
     examAddRounds(){ const c = this.examAddCat; return c ? (c.rounds||[]).map(x=>x.name) : []; },
+    // 대회에서 고를 것들 — 종류·언어 부문·진행. 회차 등록 화면과 같은 목록을 쓴다
+    examAddPicks(){
+      const c = this.examAddCat; if (!c) return [];
+      const names = k => (c[k]||[]).map(x=>x.name).filter(Boolean);
+      const out = [];
+      const lv = names('levels'), tr = names('tracks'), rd = names('rounds');
+      if (lv.length) out.push({ field:'level', label:'종류', options:lv });
+      if (tr.length) out.push({ field:'track', label:'언어·부문', options:tr });
+      if (rd.length) out.push({ field:'round', label:'진행', options:rd });
+      return out;
+    },
     examAddVenues(){ const c = this.examAddCat; return c ? (c.venues||[]).map(x=>x.name) : []; },
     // 지금 고른 종류에 적어 둔 응시 장소
     examSnVenues(){
