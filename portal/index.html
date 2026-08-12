@@ -268,25 +268,23 @@
     <button @click="confirmYes" class="px-2.5 py-1 rounded bg-rose-600 text-white text-xs whitespace-nowrap">네, 지웁니다</button>
   </div>
   <!-- 사유처럼 글을 받는 띠. 확인만 하는 것이 아니라 적어야 해서 입력칸이 붙는다 -->
-  <!-- 글·날짜를 받는 창. 화면 위에 띠로 띄웠더니 브라우저 기본 창처럼 보여서
-       다른 창과 같은 모양(가운데 카드 + 뒷배경 어둡게)으로 맞췄다. -->
-  <div v-if="inputPrompt" class="fixed inset-0 z-[95] bg-black/40 flex items-center justify-center p-4" @click.self="inputCancel">
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm">
-      <div class="flex items-center justify-between px-5 py-3 border-b">
-        <div class="font-bold text-sm">{{ inputPrompt.title || '입력' }}</div>
-        <button @click="inputCancel" class="text-slate-400 hover:text-slate-600">✕</button>
-      </div>
-      <div class="p-5 space-y-3">
-        <div class="text-sm text-slate-600 whitespace-pre-line">{{ inputPrompt.msg }}</div>
-        <input ref="inputPromptBox" v-model="inputPrompt.val"
-               :type="inputPrompt.password ? 'password' : (inputPrompt.date ? 'date' : 'text')"
-               @keyup.enter="inputOk" @keyup.esc="inputCancel" class="input py-1 w-full" />
-        <div class="flex justify-end gap-2">
-          <!-- 세 갈래가 필요한 경우(날짜 고치기 / 아예 되돌리기 / 그만두기) -->
-          <button v-if="inputPrompt.altLabel" @click="inputAlt" class="mr-auto text-xs text-rose-500 hover:underline">{{ inputPrompt.altLabel }}</button>
-          <button @click="inputCancel" class="btn-secondary text-sm">그만두기</button>
-          <button @click="inputOk" class="btn-primary text-sm">{{ inputPrompt.okLabel || '확인' }}</button>
-        </div>
+  <!-- 글·날짜를 받는 창. 묻는 것들(이탈·지우기)이 모두 화면 위 가운데에 뜨므로 자리를 맞춘다.
+       확인만 하는 띠와 달리 적을 칸이 있어 카드 모양은 유지한다. -->
+  <div v-if="inputPrompt" class="fixed left-1/2 -translate-x-1/2 top-3 z-[95] rounded-xl border border-slate-200 bg-white shadow-2xl w-[min(24rem,92vw)]">
+    <div class="flex items-center justify-between px-4 py-2 border-b">
+      <div class="font-bold text-sm">{{ inputPrompt.title || '입력' }}</div>
+      <button @click="inputCancel" class="text-slate-400 hover:text-slate-600 leading-none">✕</button>
+    </div>
+    <div class="p-4 space-y-2.5">
+      <div class="text-sm text-slate-600 whitespace-pre-line">{{ inputPrompt.msg }}</div>
+      <input ref="inputPromptBox" v-model="inputPrompt.val"
+             :type="inputPrompt.password ? 'password' : (inputPrompt.date ? 'date' : 'text')"
+             @keyup.enter="inputOk" @keyup.esc="inputCancel" class="input py-1 w-full" />
+      <div class="flex items-center justify-end gap-2">
+        <!-- 되돌리는 버튼은 왼쪽 끝으로 빼 실수로 누르지 않게 한다 -->
+        <button v-if="inputPrompt.altLabel" @click="inputAlt" class="mr-auto text-xs text-rose-500 hover:underline">{{ inputPrompt.altLabel }}</button>
+        <button @click="inputCancel" class="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-600 text-xs">그만두기</button>
+        <button @click="inputOk" class="px-2.5 py-1 rounded bg-indigo-600 text-white text-xs">{{ inputPrompt.okLabel || '확인' }}</button>
       </div>
     </div>
   </div>
