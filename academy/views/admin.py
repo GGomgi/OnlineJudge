@@ -2423,6 +2423,35 @@ class StudentWeeklyAdminAPI(APIView):
         return self.success({"student_id": sid, "weekly_sessions": sp.weekly_sessions})
 
 
+def sync_program_to_profile(student, program, language=""):
+    """시간표에 넣은 과목을 등록 과정에도 담는다.
+
+    둘을 따로 고치게 두었더니 과정을 바꿀 때마다 두 군데를 손봐야 했고, 등록 과정에
+    없는 과목은 시간표에서 고를 수조차 없었다. 시간표가 실제로 듣는 수업이므로
+    그쪽을 따라간다. 빼는 것은 하지 않는다 — 지난 과정도 등록 이력이기 때문."""
+    if not program:
+        return
+    sp = getattr(student, "student_profile", None)
+    if not sp:
+        return
+    try:
+        progs = _json.loads(sp.programs) if sp.programs else []
+    except (ValueError, TypeError):
+        progs = []
+    lang = language or ""
+    for p in progs:
+        if not isinstance(p, dict):
+            continue
+        if p.get("value") == program and (program != "LANG" or (p.get("language") or "") == lang):
+            return                      # 이미 있다
+    progs.append({"value": program, "language": lang, "custom": ""})
+    sp.programs = _json.dumps(progs, ensure_ascii=False)
+    if not sp.program:
+        sp.program = program
+        sp.program_language = lang
+    sp.save(update_fields=["programs", "program", "program_language"])
+
+
 class StudentTimetableAdminAPI(APIView):
     """학생별 개별 수업 시간표(12) 관리. 지점 스코프."""
 
@@ -2496,6 +2525,7 @@ class StudentTimetableAdminAPI(APIView):
             # 적용 시작일을 남겨야 나중에 같은 요일·시각으로 되돌릴 때 지난 행과 구분된다
             active_from=(_to_date(data["active_from"]) if data.get("active_from") else None),
             active_until=(_to_date(data["active_until"]) if data.get("active_until") else None))
+        sync_program_to_profile(student, prog, data.get("language") or "")
         slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=slot.pk)
         TimetableChange.objects.create(
             student=student, actor=request.user, action="CREATE",
@@ -2537,6 +2567,7 @@ class StudentTimetableAdminAPI(APIView):
             return self.error(_conflict_msg(_name_of(slot.student), "%s요일" % _WD[conf.weekday],
                                             conf.start_time, conf.duration_minutes, "정규수업"))
         slot.save()
+        sync_program_to_profile(slot.student, slot.program, data.get("language") or "")
         # 전체수정("처음부터 잘못 입력") — 이력을 나누지 않으므로 이미 만들어져 있던 수업 인스턴스도
         # 전부 새 값에 맞춘다. 안 그러면 요일을 바꿨을 때 옛 요일 수업이 남은 채 새 요일 수업이 따로
         # 생겨 두 요일이 섞여 보인다. 실제 기록(등원·결석·비고·수업일지·연결된 보강)은 보존.
@@ -2623,6 +2654,7 @@ class StudentTimetableAdminAPI(APIView):
         else:
             new_kwargs["instructor"] = slot.instructor
         new_slot = StudentTimetable.objects.create(**new_kwargs)
+        sync_program_to_profile(new_slot.student, new_slot.program, data.get("language") or "")
 
         # 적용일 이후 이미 찍혀 있던 스냅샷을 새 시간표에 맞게 정리(적용일 이전은 옛 시간표 그대로).
         _reconcile_slot_occurrences(
