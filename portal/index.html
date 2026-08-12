@@ -2261,7 +2261,7 @@
       </div>
       <div class="flex items-center gap-2 mb-3">
         <!-- v-model은 한글 조합 중 값 갱신을 보류하므로, 조합 중 글자까지 받도록 원시 input 이벤트로 바인딩 -->
-        <search-box v-model="dashFilter.qRaw" placeholder="학생 검색 — 띄어쓰기는 그리고, 쉼표는 또는 (오늘 수업 + 전체 학생)" class="flex-1 min-w-0"></search-box>
+        <search-box v-model="dashFilter.qRaw" placeholder="학생 검색 — 이름·학교·과정·요일 (토요일 C언어, 초등학생 3)" class="flex-1 min-w-0"></search-box>
         <div class="w-32 shrink-0"><select v-model="dashFilter.subject" class="input py-1"><option value="">과목 전체</option><option v-for="s in dashSubjects" :key="s" :value="s">{{ s }}</option></select></div>
         <div class="w-32 shrink-0"><select v-model="dashFilter.instructor" class="input py-1"><option value="">강사 전체</option><option v-for="t in dashInstructors" :key="t" :value="t">{{ t }}</option></select></div>
         <div v-if="showBranchCol" class="w-32 shrink-0"><select v-model="dashFilter.branch" class="input py-1"><option value="">지점 전체</option><option v-for="b in dashBranches" :key="b" :value="b">{{ b }}</option></select></div>
@@ -3942,7 +3942,7 @@
       <!-- 검색/필터 -->
       <div class="flex items-center gap-2 mb-3">
         <!-- 두 칸으로 나눠 두었던 1차·2차가 하던 일이 곧 '그리고' 라서 한 칸으로 합쳤다 -->
-        <search-box v-model="stuSearchRaw" ref="stuSearchInput" placeholder="검색 — 띄어쓰기는 그리고, 쉼표는 또는 (예: 달튼 2, 청람 5)" class="flex-1 min-w-0"></search-box>
+        <search-box v-model="stuSearchRaw" ref="stuSearchInput" placeholder="검색 — 이름·학교·과정·요일 (토요일 C언어, 초등학생 3)" class="flex-1 min-w-0"></search-box>
         <div class="shrink-0 w-28">
           <select v-model="stuStatusFilter" class="input py-1">
             <option value="">상태 전체</option>
@@ -6028,6 +6028,16 @@ const WD_FULL = ['월요일','화요일','수요일','목요일','금요일','�
 // 학교급은 '초등학교' 로 저장돼 있지만 말할 때는 '초등학생' 이라고도 한다. 둘 다 찾히게.
 const SCHOOL_ALIAS = { '초등학생':'초등학교', '중학생':'중학교', '고등학생':'고등학교',
                        '대학생':'대학교', '초딩':'초등학교', '중딩':'중학교', '고딩':'고등학교' };
+// 과목은 짧게 저장돼 있다(C·Py·Ja). 글자로 찾으면 학교 이름과 겹치므로
+// (C 가 ICS 에 걸린다) 이 말들은 과목값과 통째로 맞춰 본다.
+const LANG_CODES = ['c', 'c++', 'c#', 'py', 'ja'];
+const SUBJ_ALIAS = {
+  'c언어': ['c'], 'c': null,                       // 'c' 한 글자는 과목으로 치지 않는다
+  'c++': ['c++'], 'c#': ['c#'],
+  'python': ['py'], '파이썬': ['py'], 'py': ['py'],
+  'java': ['ja'], '자바': ['ja'], 'ja': ['ja'],
+  '프로그래밍언어': LANG_CODES, '프로그래밍': LANG_CODES, '언어': LANG_CODES,
+};
 function qMatch(hay, q){
   const groups = qGroups(q);
   if (!groups.length) return true;
@@ -6768,11 +6778,7 @@ const app = createApp({
     dashStuFound(){
       const q = (this.dashFilter.q||'').trim().toLowerCase();
       if (!q || !this.dashStuAll) return [];
-      const hay = s => [s.enroll_no, s.real_name, s.username, s.school_name,
-                        this.schoolLabel(s.school_type), String(s.grade||''),
-                        s.parent_name, s.parent_phone, s.student_phone]
-                        .filter(Boolean).join(' ').toLowerCase();
-      return this.dashStuAll.filter(s => qMatch(hay(s), q))
+      return this.dashStuAll.filter(s => this.stuMatch(s, q))
                  .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
     },
     dashColsView(){ return this.colOrder('dash').filter(c => c.k!=='branch' || this.showBranchCol); },
@@ -6846,7 +6852,7 @@ const app = createApp({
             String(s.grade||''), s.parent_name, s.parent_phone].filter(Boolean).join(' ').toLowerCase();
       let list = this.students.slice();
       if (this.stuStatusFilter) list = list.filter(s => s.enrollment_status===this.stuStatusFilter);
-      if ((this.stuSearch||'').trim()) list = list.filter(s => qMatch(hay(s), this.stuSearch));
+      if ((this.stuSearch||'').trim()) list = list.filter(s => this.stuMatch(s, this.stuSearch));
       const key = this.stuSortKey, dir = this.stuSortDir==='asc' ? 1 : -1;
       list.sort((a,b)=>{ const x=(a[key]??'')+'', y=(b[key]??'')+''; return x.localeCompare(y,'ko')*dir; });
       return list;
@@ -6902,20 +6908,7 @@ const app = createApp({
     // 전화번호 모으기 — 검색은 학생 관리와 같은 규칙(띄어쓰기=그리고, 쉼표=또는)
     phoneFound(){
       const p = this.phonePick; if (!p || !(p.q||'').trim()) return [];
-      const hay = s => [s.enroll_no, s.real_name, s.username, s.school_name,
-                        this.schoolLabel(s.school_type), String(s.grade||''),
-                        s.parent_name, s.parent_phone, s.student_phone,
-                        (s.subjects||[]).join(' ')].filter(Boolean).join(' ').toLowerCase();
-      // 요일은 '토요일' 처럼 다 써야 요일로 친다 — '일' 한 글자는 이름에도 흔해 겹친다
-      const hit = (st, term) => {
-        const wi = WD_FULL.indexOf(term);
-        if (wi >= 0) return this.phoneDays(st).includes(WD_FULL[wi][0]);
-        const t = SCHOOL_ALIAS[term] || term;      // 초등학생 → 초등학교
-        return hay(st).includes(t);
-      };
-      const groups = qGroups(p.q);
-      return (p.rows||[]).filter(st => st.enrollment_status==='ENROLLED'
-                 && (!groups.length || groups.some(terms => terms.every(t => hit(st, t)))))
+      return (p.rows||[]).filter(st => st.enrollment_status==='ENROLLED' && this.stuMatch(st, p.q))
                  .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
     },
     phoneAllSel(){
@@ -9437,6 +9430,7 @@ const app = createApp({
         const heavy = ['missing','weekdays','instructor','month','mk','last_attend','verify','sibling'];
         const need = heavy.filter(k=>this.colOn('stu', k));
         if (this.colOn('stu','tenure') || this.colOn('stu','enrolled_at')) need.push('verify');
+        need.push('weekdays');
         const qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
         this.dashStuAll = await api('GET','/api/admin/academy/students'+qs) || [];
       } catch(e){ this.dashStuAll = []; }
@@ -10049,6 +10043,7 @@ const app = createApp({
       const heavy = ['missing','weekdays','instructor','month','mk','last_attend','verify','sibling'];
       const need = heavy.filter(k=>this.colOn('stu', k));
       if (this.colOn('stu','tenure') || this.colOn('stu','enrolled_at')) need.push('verify');
+      need.push('weekdays');    // 요일로 찾을 수 있어야 해서 열을 껐어도 받아 둔다
       const qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
       try { this.students = await api('GET','/api/admin/academy/students'+qs); }
       catch(e){ this.notify(e.message,false); }
@@ -10343,6 +10338,33 @@ const app = createApp({
     async addStuProgress(){ const f=this.stuProgForm; if(!(f.content||'').trim() && !(f.homework||'').trim()) return this.notify('수업 내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/lesson_progress', { student_id:this.stuDetail.id, date:f.date||this.todayStr, content:f.content, homework:f.homework, feedback:f.feedback, memo:f.memo }); this.stuProgForm={ date:'', content:'', homework:'', feedback:'', memo:'' }; this.loadStuProgress(); this.notify('수업일지가 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async deleteStuProgress(p){ if (!await this.askConfirm('이 진도 기록을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/lesson_progress?id='+p.id); this.loadStuProgress(); } catch(e){ this.notify(e.message,false); } },
     async loadStuCreds(){ if(!this.stuDetail) return; try { const d = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); this.stuCreds = d.map(c=>({ ...c, _orig:{ site:c.site, login_id:c.login_id, password:c.password } })); } catch(e){ this.stuCreds=[]; } },
+    // ── 학생 검색(공용) ──
+    // 어디서 학생을 찾든 같은 규칙: 띄어쓰기=그리고, 쉼표=또는.
+    // 요일과 과목은 글자로 찾으면 다른 것에 걸려서(일→이름, C→ICS) 따로 맞춰 본다.
+    stuMatch(st, q){
+      const groups = qGroups(q);
+      if (!groups.length) return true;
+      const hay = [st.enroll_no, st.real_name, st.username, st.school_name,
+                   this.schoolLabel(st.school_type), String(st.grade||''),
+                   st.parent_name, st.parent_phone, st.student_phone,
+                   (st.subjects||[]).join(' ')].filter(Boolean).join(' ').toLowerCase();
+      const subj = (st.subjects||[]).map(x => String(x).toLowerCase());
+      const hit = (term) => {
+        const wi = WD_FULL.indexOf(term);
+        if (wi >= 0) return this.stuHasWeekday(st, wi);
+        if (Object.prototype.hasOwnProperty.call(SUBJ_ALIAS, term)){
+          const want = SUBJ_ALIAS[term];
+          if (want) return subj.some(x => want.includes(x));
+          return hay.includes(term);           // 'c' 한 글자는 그냥 글자로 찾는다
+        }
+        return hay.includes(SCHOOL_ALIAS[term] || term);
+      };
+      return groups.some(terms => terms.every(hit));
+    },
+    stuHasWeekday(st, wi){
+      const w = (st.extra||{}).weekdays || {};
+      return ((w[wi] || w[String(wi)] || []).length) > 0;
+    },
     phoneHasDay(st, wi){
       const w = (st.extra||{}).weekdays || {};
       return ((w[wi] || w[String(wi)] || []).length) > 0;
