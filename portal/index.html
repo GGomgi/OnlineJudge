@@ -5184,7 +5184,7 @@
         </div>
         <div class="p-5 space-y-3">
           <div class="flex items-center gap-2">
-            <search-box v-model="phonePick.qRaw" placeholder="검색 — 띄어쓰기는 그리고, 쉼표는 또는 (예: 달튼 2, 청람 5)" class="flex-1"></search-box>
+            <search-box v-model="phonePick.qRaw" placeholder="검색 — 이름·학교·과정·요일 (예: 토요일 블록코딩, 달튼 2)" class="flex-1"></search-box>
             <button @click="phoneAddFound" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm whitespace-nowrap">찾은 {{ phoneFound.length }}명 담기</button>
           </div>
           <div class="border rounded-lg max-h-48 overflow-y-auto divide-y">
@@ -5192,6 +5192,8 @@
               <input type="checkbox" :checked="phonePick.ids.includes(st.id)" @change="phoneToggle(st)" class="w-3.5 h-3.5" />
               <span class="font-medium">{{ st.real_name || st.username }}</span>
               <span class="text-xs text-slate-400">{{ schoolGradeShort(st.school_name, st.school_type, st.grade) }}</span>
+              <span class="text-xs text-slate-500">{{ phoneDays(st) || '-' }}</span>
+              <span class="text-xs text-slate-400">{{ (st.subjects||[]).join(' · ') }}</span>
               <span class="ml-auto text-xs text-slate-400 font-mono">{{ st.parent_phone || '-' }} / {{ st.student_phone || '-' }}</span>
             </label>
             <div v-if="!phoneFound.length" class="px-3 py-6 text-center text-xs text-slate-400">
@@ -5972,6 +5974,7 @@ function qGroups(q){
     .map(g => g.replace(/&/g, ' ').trim().toLowerCase().split(/\s+/).filter(Boolean))
     .filter(g => g.length);
 }
+const WD_FULL = ['월요일','화요일','수요일','목요일','금요일','토요일','일요일'];
 function qMatch(hay, q){
   const groups = qGroups(q);
   if (!groups.length) return true;
@@ -6846,14 +6849,23 @@ const app = createApp({
       const p = this.phonePick; if (!p || !(p.q||'').trim()) return [];
       const hay = s => [s.enroll_no, s.real_name, s.username, s.school_name,
                         this.schoolLabel(s.school_type), String(s.grade||''),
-                        s.parent_name, s.parent_phone, s.student_phone].filter(Boolean).join(' ');
-      return (this.students||[]).filter(s => s.enrollment_status==='ENROLLED' && qMatch(hay(s), p.q))
+                        s.parent_name, s.parent_phone, s.student_phone,
+                        (s.subjects||[]).join(' ')].filter(Boolean).join(' ').toLowerCase();
+      // 요일은 '토요일' 처럼 다 써야 요일로 친다 — '일' 한 글자는 이름에도 흔해 겹친다
+      const hit = (st, term) => {
+        const wi = WD_FULL.indexOf(term);
+        if (wi >= 0) return this.phoneDays(st).includes(WD_FULL[wi][0]);
+        return hay(st).includes(term);
+      };
+      const groups = qGroups(p.q);
+      return (p.rows||[]).filter(st => st.enrollment_status==='ENROLLED'
+                 && (!groups.length || groups.some(terms => terms.every(t => hit(st, t)))))
                  .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
     },
     phonePicked(){
       const p = this.phonePick; if (!p) return [];
       const ids = new Set(p.ids);
-      return (this.students||[]).filter(s => ids.has(s.id))
+      return (p.rows||[]).filter(s => ids.has(s.id))
                  .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
     },
     phoneGroups(){
@@ -10248,9 +10260,16 @@ const app = createApp({
     async addStuProgress(){ const f=this.stuProgForm; if(!(f.content||'').trim() && !(f.homework||'').trim()) return this.notify('수업 내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/lesson_progress', { student_id:this.stuDetail.id, date:f.date||this.todayStr, content:f.content, homework:f.homework, feedback:f.feedback, memo:f.memo }); this.stuProgForm={ date:'', content:'', homework:'', feedback:'', memo:'' }; this.loadStuProgress(); this.notify('수업일지가 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async deleteStuProgress(p){ if (!await this.askConfirm('이 진도 기록을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/lesson_progress?id='+p.id); this.loadStuProgress(); } catch(e){ this.notify(e.message,false); } },
     async loadStuCreds(){ if(!this.stuDetail) return; try { const d = await api('GET','/api/admin/academy/student_credential?student_id='+this.stuDetail.id); this.stuCreds = d.map(c=>({ ...c, _orig:{ site:c.site, login_id:c.login_id, password:c.password } })); } catch(e){ this.stuCreds=[]; } },
-    openPhonePick(){
-      this.phonePick = { q:'', qRaw:'', ids:[], comma:false };
-      if (!this.students.length) this.loadStudents();
+    // 이 학생이 오는 요일(월화수…). 요일로 찾고 목록에도 보여준다
+    phoneDays(st){
+      const w = (st.extra||{}).weekdays || {};
+      return ['월','화','수','목','금','토','일'].filter((_,i)=> (w[i]||w[String(i)]||[]).length).join('');
+    },
+    async openPhonePick(){
+      // 요일은 열 설정과 무관하게 늘 필요하므로 여기서 따로 받아 둔다
+      this.phonePick = { q:'', qRaw:'', ids:[], comma:false, rows:[] };
+      try { this.phonePick.rows = await api('GET','/api/admin/academy/students?cols=weekdays') || []; }
+      catch(e){ this.notify(e.message, false); }
     },
     phoneToggle(st){
       const p = this.phonePick;
