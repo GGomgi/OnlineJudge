@@ -662,8 +662,14 @@ class MenuSettingAdminAPI(APIView):
                                      .select_related("staff", "staff__userprofile"):
             over.setdefault(o.key, []).append(
                 {"staff_id": o.staff_id, "name": name_of(o.staff), "allow": o.allow})
+        me = getattr(request.user, "academy_profile", None)
+        my_role = me.role if me else ""
+        my_super = request.user.is_super_admin()
         rows = []
         for d in MENU_DEFS:
+            # 자기가 못 보는 메뉴는 손댈 수도 없으니 목록에서 뺀다(원장에게 개발일지 등)
+            if not _floor_ok(d, my_role, my_super):
+                continue
             st = menu_setting_for(key_map, d["key"], bid)
             rows.append({"key": d["key"], "label": d["label"], "always": bool(d.get("always")),
                          "floor": d.get("floor", ""),

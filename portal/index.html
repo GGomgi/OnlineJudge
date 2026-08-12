@@ -1920,7 +1920,7 @@
         <div v-if="tempLeavesNow.length" class="flex items-start gap-2 py-1">
           <span class="shrink-0 px-1.5 py-0.5 rounded bg-purple-200 text-purple-800 font-semibold">진행중 {{ tempLeavesNow.length }}명</span>
           <!-- 한 명이 한 줄, 한 줄에 2명씩. 이름·기간·복귀일의 자리를 맞춰 세로로 훑어보기 쉽게 -->
-          <div class="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-1 min-w-0">
+          <div class="flex-1 grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-x-6 gap-y-1 min-w-0">
             <div v-for="t in tempLeavesNow" :key="t.student_id"
                  class="grid grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)] items-baseline gap-x-2 min-w-0">
               <button @click="goStudentAttend(t.student_id)" class="text-left font-medium text-slate-700 hover:underline truncate">{{ t.name }}</button>
@@ -1930,7 +1930,7 @@
               </span>
               <span v-else class="text-slate-400 whitespace-nowrap">복귀일 미정</span>
               <!-- 사유는 길이가 제각각이라 줄을 밀어낸다. 앞부분만 두고 올려다보면 전체를 보여준다 -->
-              <span v-if="t.note" class="text-slate-400 whitespace-nowrap cursor-default"
+              <span v-if="t.note" class="text-slate-400 truncate cursor-default"
                     @mouseenter="showTextPop('사유', t.note, $event)" @mouseleave="hideNotePop">{{ shortNote(t.note) }}</span>
               <span v-else></span>
             </div>
@@ -1938,7 +1938,7 @@
         </div>
         <div v-if="tempLeavesSoon.length" :class="['flex items-start gap-2 py-1', tempLeavesNow.length ? 'border-t border-purple-100 mt-1 pt-1.5' : '']">
           <span class="shrink-0 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">예정 {{ tempLeavesSoon.length }}명</span>
-          <div class="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-1 min-w-0">
+          <div class="flex-1 grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-x-6 gap-y-1 min-w-0">
             <div v-for="t in tempLeavesSoon" :key="t.student_id"
                  class="grid grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)] items-baseline gap-x-2 min-w-0">
               <button @click="goStudentAttend(t.student_id)" class="text-left font-medium text-slate-700 hover:underline truncate">{{ t.name }}</button>
@@ -1949,7 +1949,7 @@
                 복귀 {{ t.back_date.slice(5) }}({{ wdOf(t.back_date) }}) D-{{ t.back_in }}
               </span>
               <span v-else class="text-slate-400 whitespace-nowrap">복귀일 미정</span>
-              <span v-if="t.note" class="text-slate-400 whitespace-nowrap cursor-default"
+              <span v-if="t.note" class="text-slate-400 truncate cursor-default"
                     @mouseenter="showTextPop('사유', t.note, $event)" @mouseleave="hideNotePop">{{ shortNote(t.note) }}</span>
               <span v-else></span>
             </div>
@@ -4681,7 +4681,7 @@
                 </td>
                 <td class="px-3 py-2">
                   <!-- 코드에서 이미 막고 있는 것은 여기서 더 열 수 없으므로 체크박스를 두지 않는다 -->
-                  <div v-if="m.floor" class="text-xs text-rose-500">{{ m.floor }}만</div>
+                  <div v-if="m.floor" class="text-xs text-slate-400">{{ m.floor }}만 공개</div>
                   <div v-else-if="m.always" class="text-xs text-slate-300">제한 없음</div>
                   <div v-else class="flex flex-wrap gap-1.5 text-xs">
                     <label v-for="r in menuRoles" :key="r.value" class="flex items-center gap-1 cursor-pointer select-none">
