@@ -267,6 +267,16 @@
     <button @click="confirmNo" class="px-2.5 py-1 rounded bg-white border border-rose-300 text-rose-800 text-xs whitespace-nowrap">그만두기</button>
     <button @click="confirmYes" class="px-2.5 py-1 rounded bg-rose-600 text-white text-xs whitespace-nowrap">네, 지웁니다</button>
   </div>
+  <!-- 사유처럼 글을 받는 띠. 확인만 하는 것이 아니라 적어야 해서 입력칸이 붙는다 -->
+  <div v-if="inputPrompt" class="fixed left-1/2 -translate-x-1/2 top-3 z-[95] rounded-lg border border-slate-300 bg-white shadow-xl px-3 py-2.5 w-[min(34rem,92vw)]">
+    <div class="text-sm text-slate-700 whitespace-pre-line mb-1.5">{{ inputPrompt.msg }}</div>
+    <input ref="inputPromptBox" v-model="inputPrompt.val" :type="inputPrompt.password ? 'password' : 'text'"
+           @keyup.enter="inputOk" @keyup.esc="inputCancel" class="input py-1 w-full" />
+    <div class="flex justify-end gap-2 mt-2">
+      <button @click="inputCancel" class="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-600 text-xs">그만두기</button>
+      <button @click="inputOk" class="px-2.5 py-1 rounded bg-indigo-600 text-white text-xs">확인</button>
+    </div>
+  </div>
   <header v-if="!enrollMode && !verifyMode" class="bg-slate-900 text-white">
     <div :class="[mainMaxW, 'mx-auto px-4 h-14 flex items-center justify-between']">
       <div class="flex items-center gap-2">
@@ -5974,7 +5984,7 @@ const app = createApp({
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
       examFilter: { pending:true, done:false, upcoming:true, past:false, cats:[], q:'', qRaw:'' },
       examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
-      guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, examFormBase: '', examSnForm: null, examSnError: '',
+      guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null, examFormBase: '', examSnForm: null, examSnError: '',
       examTab: 'ALL', examContestId: null, examSel: [], examShowJoinNo: false,
       examContactForm: null,
       examContactPop: { show:false, x:0, y:0, name:'', rows:[] },
@@ -6947,6 +6957,19 @@ const app = createApp({
     askConfirm(msg){ return new Promise(res => { this.confirmPrompt = { msg, res }; }); },
     confirmYes(){ const p = this.confirmPrompt; this.confirmPrompt = null; if (p) p.res(true); },
     confirmNo(){ const p = this.confirmPrompt; this.confirmPrompt = null; if (p) p.res(false); },
+    // 사유처럼 글을 받아야 할 때. 브라우저 prompt 와 쓰는 모양을 같게 맞춰
+    // 취소하면 null, 적으면 그 글을 돌려준다.
+    askInput(msg, preset, opt){
+      return new Promise(res => {
+        this.inputPrompt = { msg, val: preset || '', res, ...(opt || {}) };
+        this.$nextTick(()=> { const el = this.$refs.inputPromptBox; if (el) el.focus(); });
+      });
+    },
+    inputOk(){
+      const p = this.inputPrompt; if (!p) return;
+      this.inputPrompt = null; p.res(p.val);
+    },
+    inputCancel(){ const p = this.inputPrompt; this.inputPrompt = null; if (p) p.res(null); },
     leaveGo(){ const p = this.leavePrompt; this.leavePrompt = null; if (p && p.run) p.run(); },
     onTab(key){
       if (key==='timetable') this.loadMyTimetable();
@@ -7829,7 +7852,7 @@ const app = createApp({
     async saveTt(s){
       if (!this.ttRowDirty(s)) return this.notify('변경된 내용이 없습니다.', false);
       if (!s._fullEdit && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
-      const reason = window.prompt(s._fullEdit
+      const reason = await this.askInput(s._fullEdit
         ? '전체 수정 이유 (요청자 + 사유까지 적어주세요)\n예) 처음부터 요일이 잘못 입력됨'
         : '시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침');
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
@@ -7841,7 +7864,7 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     async delTt(s){
-      const reason = window.prompt('삭제 이유 (요청자 + 사유까지 적어주세요)\n예) 학생 퇴원 - 이사');
+      const reason = await this.askInput('삭제 이유 (요청자 + 사유까지 적어주세요)\n예) 학생 퇴원 - 이사');
       if (reason===null) return; if (!reason.trim()) return this.notify('삭제 이유가 필요합니다.', false);
       try { await api('DELETE','/api/admin/academy/student_timetable?id='+s.id+'&reason='+encodeURIComponent(reason)); this.loadAllTt(); }
       catch(e){ this.notify(e.message,false); }
@@ -7857,7 +7880,7 @@ const app = createApp({
     },
     scheduleCloseTt(){ if (this.ttPopTimer) clearTimeout(this.ttPopTimer); this.ttPopTimer = setTimeout(()=>{ if (!this.ttPopHover) this.closeTtHistory(); }, 200); },
     async editTtChange(h){
-      const r = window.prompt('이력 사유 수정 (요청자 + 사유)', h.reason || '');
+      const r = await this.askInput('이력 사유 수정 (요청자 + 사유)', h.reason || '');
       if (r===null) return; if (!r.trim()) return this.notify('사유가 필요합니다.', false);
       try {
         await api('POST','/api/admin/academy/timetable_change/edit', { id:h.id, reason:r });
@@ -7918,7 +7941,7 @@ const app = createApp({
       if (this.isRegionalRole(s._role)) {
         if (!(s._managed_branch_ids||[]).length) return this.notify('관리 지점을 1개 이상 선택하세요.', false);
       } else if (this.isActorAllBranch && !this.isAllBranchRole(s._role) && !s._branch_id) return this.notify('지점을 선택하세요.', false);
-      const reason = window.prompt('변경 사유를 입력하세요 (이력에 기록됩니다)');
+      const reason = await this.askInput('변경 사유를 입력하세요 (이력에 기록됩니다)');
       if (reason===null) return;
       const oldBranchId = s.branch ? s.branch.id : null;
       const branchChanged = this.isActorAllBranch && !this.isAllBranchRole(s._role) && !this.isRegionalRole(s._role) && s._branch_id!==oldBranchId;
@@ -7935,7 +7958,7 @@ const app = createApp({
     },
     async toggleStaffActive(s){
       const act = !s.is_active;
-      const reason = window.prompt((act?'활성화':'비활성화')+' 사유를 입력하세요 (이력에 기록됩니다)');
+      const reason = await this.askInput((act?'활성화':'비활성화')+' 사유를 입력하세요 (이력에 기록됩니다)');
       if (reason===null) return;
       try {
         await api('POST','/api/admin/academy/staff/status', { user_id:s.user_id, is_active: act, reason });
@@ -7952,7 +7975,7 @@ const app = createApp({
         + '기존 ['+prev.old_sabun+'] → 선택한 소속 ['+prev.branch+'] 기준 ['+prev.new_sabun+'] 으로 재발급합니다.\n'
         + '기존 이력은 모두 보존되며 로그인 아이디(사번)만 바뀝니다.';
       if (!await this.askConfirm(msg)) return;
-      const reason = window.prompt('재발급 사유를 입력하세요 (이력에 기록됩니다)');
+      const reason = await this.askInput('재발급 사유를 입력하세요 (이력에 기록됩니다)');
       if (reason===null) return;
       try { const d = await api('POST','/api/admin/academy/staff/reissue_sabun', { user_id:s.user_id, reason }); this.notify('사번 재발급: '+d.old_sabun+' → '+d.new_sabun); this.loadStaff(); }
       catch(e){ this.notify(e.message,false); }
@@ -9131,7 +9154,7 @@ const app = createApp({
       this.goStudentAttend(l.student_id);
     },
     async setAbsent(l){
-      const note = window.prompt('결석 사유 (선택)') ?? '';
+      const note = await this.askInput('결석 사유 (선택)') ?? '';
       try { await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'ABSENT', note }); this.notify('결석 처리되었습니다.'); this.loadDashboard(); }
       catch(e){ this.notify(e.message,false); }
     },
@@ -10344,7 +10367,7 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     async delStuTt(s){
-      const reason = window.prompt('시간표 삭제 이유 (요청자 + 사유까지 적어주세요)\n예) 학생 요청 - 요일 변경으로 통합');
+      const reason = await this.askInput('시간표 삭제 이유 (요청자 + 사유까지 적어주세요)\n예) 학생 요청 - 요일 변경으로 통합');
       if (reason===null) return; if (!reason.trim()) return this.notify('삭제 이유가 필요합니다.', false);
       try {
         await api('DELETE','/api/admin/academy/student_timetable?id='+s.id+'&reason='+encodeURIComponent(reason));
@@ -10358,7 +10381,7 @@ const app = createApp({
       const rows = this.stuTimetables.filter(s=>s.id && this.ttRowDirty(s));
       if (!rows.length) return this.notify('변경된 내용이 없습니다.', false);
       for (const s of rows){ if (!s._fullEdit && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false); }
-      const reason = window.prompt('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침'+(rows.length>1 ? '\n(변경된 '+rows.length+'건에 함께 기록됩니다)' : ''));
+      const reason = await this.askInput('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침'+(rows.length>1 ? '\n(변경된 '+rows.length+'건에 함께 기록됩니다)' : ''));
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
       const bodies = rows.map(s=>{
         const b = { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes,
@@ -10375,7 +10398,7 @@ const app = createApp({
     async saveStuTt(s){
       if (!this.ttRowDirty(s)) return this.notify('변경된 내용이 없습니다.', false);
       if (!s._fullEdit && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
-      const reason = window.prompt(s._fullEdit
+      const reason = await this.askInput(s._fullEdit
         ? '전체 수정 이유 (요청자 + 사유까지 적어주세요)\n예) 처음부터 요일이 잘못 입력됨'
         : '시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침');
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
@@ -10443,7 +10466,7 @@ const app = createApp({
       const progsDirty = this.stuProgramsDirty();
       let reason = '';
       if (progsDirty){
-        reason = window.prompt('등록 과정 변경 이유를 입력하세요 (요청자 + 사유)\n예) 학부모 요청 - 문법 과정 끝나서 웹 과정으로 변경');
+        reason = await this.askInput('등록 과정 변경 이유를 입력하세요 (요청자 + 사유)\n예) 학부모 요청 - 문법 과정 끝나서 웹 과정으로 변경');
         if (reason===null) return;
         if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
       }
@@ -10519,7 +10542,7 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     async resetGuardianPw(gd){
-      const pw = window.prompt(gd.name+' 보호자 새 비밀번호(6자 이상)');
+      const pw = await this.askInput(gd.name+' 보호자 새 비밀번호(6자 이상)', '', { password:true });
       if (pw===null) return; if (pw.trim().length<6) return this.notify('비밀번호는 6자 이상이어야 합니다.',false);
       try { await api('PUT','/api/admin/academy/student_guardian', { parent_id:gd.parent_id, password:pw }); this.notify('비밀번호가 초기화되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
