@@ -4454,6 +4454,7 @@
           <div>
             <div class="font-bold">자격증 · 대회 종류</div>
             <div class="text-[11px] text-slate-400">한 번 등록해 두면 시험·대회를 만들 때 골라 쓸 수 있습니다.</div>
+            <div class="text-[11px] text-amber-700 mt-0.5">⚠ <b>전 지점이 함께 쓰는 목록</b>입니다 — 여기서 고치면 다른 지점 화면에도 그대로 반영됩니다.</div>
           </div>
           <button @click="examCatMgr=false; examCatWarn=false" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
         </div>
@@ -4565,7 +4566,9 @@
     <!-- ============ 자격증 · 대회 ============ -->
     <section v-if="tab==='exam'">
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <h2 class="text-lg font-bold">자격증 · 대회</h2>
+        <h2 class="text-lg font-bold">자격증 · 대회
+          <span class="ml-1 text-[11px] font-normal text-slate-400">시험·대회는 전 지점 공용 · 학생은 우리 지점만</span>
+        </h2>
         <div class="flex items-center gap-2">
           <button v-if="isDirectorUp" @click="openExamChanges" class="px-3 py-1.5 rounded border border-slate-300 text-slate-600 text-sm hover:bg-slate-100 whitespace-nowrap">이력</button>
           <button @click="openExamCatalogs" class="px-3 py-1.5 rounded border border-slate-300 text-slate-600 text-sm hover:bg-slate-100 whitespace-nowrap">종류 관리</button>
@@ -4949,9 +4952,20 @@
                 <td class="px-3 py-2 font-mono">{{ h.date }} <span class="text-slate-400">({{ h.wd }})</span></td>
                 <td class="px-3 py-2">{{ h.name }}</td>
                 <td class="px-3 py-2 text-slate-500">{{ h.kind_label }}</td>
-                <td class="px-3 py-2 text-slate-500">{{ h.branch }}</td>
+                <td class="px-3 py-2 text-slate-500">{{ h.branch }}
+                  <span v-if="h.my_off" class="ml-1 px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 text-[10px]">우리 지점 쉬지 않음</span>
+                  <span v-else-if="canManageOptions && (h.off_branches||[]).length" class="ml-1 text-[10px] text-slate-400">— {{ h.off_branches.join(', ') }} 쉬지 않음</span>
+                </td>
                 <td class="px-3 py-2 text-xs text-slate-400">{{ h.created_by }}</td>
-                <td class="px-3 py-2 text-right"><button @click="deleteHoliday(h)" class="text-xs text-rose-500 hover:underline">삭제</button></td>
+                <td class="px-3 py-2 text-right whitespace-nowrap">
+                  <!-- 전 지점 휴무를 한 지점이 지우면 다른 지점까지 영향을 받는다.
+                       지우는 대신 우리 지점만 빼고, 언제든 되돌린다. -->
+                  <template v-if="h.branch_id === null && !canManageOptions">
+                    <button v-if="h.my_off" @click="toggleHolidayOff(h, false)" class="text-xs text-indigo-600 hover:underline">다시 사용</button>
+                    <button v-else @click="toggleHolidayOff(h, true)" class="text-xs text-slate-500 hover:underline">우리 지점 사용 안 함</button>
+                  </template>
+                  <button v-else @click="deleteHoliday(h)" class="text-xs text-rose-500 hover:underline">삭제</button>
+                </td>
               </tr>
               <tr v-if="!holidays.length"><td colspan="6" class="px-3 py-6 text-center text-xs text-slate-400">등록된 휴무일이 없습니다.</td></tr>
             </tbody>
@@ -6457,9 +6471,8 @@ const app = createApp({
     acadTabs(){
       const t = [];
       if (this.canManageOptions) t.push({k:'options',l:'선택 목록'}, {k:'branch',l:'지점'});
-      if (this.isDirectorUp) t.push({k:'holiday',l:'휴무일'}, {k:'work',l:'근무 기준'},
-                                    {k:'menu',l:'메뉴'},
-                                    {k:'notice',l:'공지'});
+      if (this.isDirectorUp) t.push({k:'notice',l:'공지'}, {k:'work',l:'근무 기준'},
+                                    {k:'holiday',l:'휴무일'}, {k:'menu',l:'메뉴'});
       return t;
     },
     hrGridDays(){ const p=(this.hrAtt.people||[])[0]; return p ? p.days : []; },
@@ -7548,6 +7561,15 @@ const app = createApp({
         if (d.skipped.length) msg += ' (이미 등록: '+d.skipped.join(', ')+')';
         this.notify(msg); this.loadHolidays();
       } catch(e){ this.notify(e.message,false); }
+    },
+    async toggleHolidayOff(h, off){
+      const what = off ? '우리 지점은 이 날 쉬지 않게 합니다.' : '우리 지점도 이 날 다시 쉬게 합니다.';
+      if (!await this.askConfirm(h.date + ' ' + h.name + '\n' + what + '\n그날 수업 상태도 함께 바뀝니다.')) return;
+      try {
+        const d = await api('PUT','/api/admin/academy/holiday', { id:h.id, off:off });
+        this.notify((off ? '우리 지점은 쉬지 않게 했습니다.' : '다시 쉬게 했습니다.') + ' 수업 ' + d.changed + '건 반영');
+        this.loadHolidays();
+      } catch(e){ this.notify(e.message, false); }
     },
     async deleteHoliday(h){
       try {

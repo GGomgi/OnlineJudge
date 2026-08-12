@@ -569,8 +569,11 @@ def _validate_role_branches(request, role):
 
 
 def _apply_managed(profile, role, managed_ids):
-    if managed_ids:
-        profile.managed_branches.set(Branch.objects.filter(id__in=managed_ids))
+    # 소속 지점은 어차피 관리 대상이라(editable_branch_ids 가 늘 넣는다) 겸직 목록에
+    # 또 넣을 필요가 없다. 넣어 두면 목록에 '김포 +김포' 처럼 같은 이름이 두 번 보인다.
+    ids = [b for b in (managed_ids or []) if b != profile.branch_id]
+    if ids:
+        profile.managed_branches.set(Branch.objects.filter(id__in=ids))
     else:
         profile.managed_branches.clear()
 

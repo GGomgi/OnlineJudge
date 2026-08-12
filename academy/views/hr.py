@@ -13,7 +13,7 @@ from utils.api import APIView
 from account.decorators import admin_role_required
 from account.models import User
 
-from ..models import (AcademyProfile, AcademyRole, Branch, Holiday, HolidayKind,
+from ..models import (AcademyProfile, AcademyRole, Branch, Holiday, HolidayOptOut, HolidayKind,
                       HOLIDAY_KIND_CHOICES, WorkSchedule, StaffAttendance,
                       StaffAttendanceChange, StaffLeave, LeaveKind, LEAVE_KIND_CHOICES,
                       LessonOccurrence, OccurrenceStatus, STAFF_ROLES)
@@ -99,9 +99,14 @@ def my_branch_id(user):
 # ─────────────────────────── 학원 휴무일 ───────────────────────────
 
 def holidays_on(d, branch_id):
-    """그 날짜에 해당 지점이 쉬는지. 전지점 휴무(branch=None)도 포함."""
-    return Holiday.objects.filter(date=d, is_deleted=False).filter(
+    """그 날짜에 해당 지점이 쉬는지. 전지점 휴무(branch=None)도 포함.
+
+    전지점 휴무라도 그 지점이 '사용 안 함'으로 빼 두었으면 쉬지 않는다."""
+    qs = Holiday.objects.filter(date=d, is_deleted=False).filter(
         Q(branch_id=None) | Q(branch_id=branch_id))
+    if branch_id:
+        qs = qs.exclude(opt_outs__branch_id=branch_id)
+    return qs
 
 
 def apply_holiday(h):
@@ -111,6 +116,10 @@ def apply_holiday(h):
     qs = LessonOccurrence.objects.filter(date=h.date, status=OccurrenceStatus.SCHEDULED)
     if h.branch_id:
         qs = qs.filter(branch_id=h.branch_id)
+    else:
+        off = list(h.opt_outs.values_list("branch_id", flat=True))
+        if off:
+            qs = qs.exclude(branch_id__in=off)
     from ..models import DailyAttendance
     attended = set(DailyAttendance.objects.filter(date=h.date, check_in_at__isnull=False)
                    .values_list("student_id", flat=True))
@@ -153,12 +162,22 @@ class HolidayAdminAPI(APIView):
                             .select_related("branch", "created_by")
         if view is not None:
             qs = qs.filter(Q(branch_id=None) | Q(branch_id__in=view))
+        qs = qs.prefetch_related("opt_outs", "opt_outs__branch")
+        # 내가 관리하는 지점 기준으로 '우리 지점은 쉬지 않음' 을 함께 내려준다
+        mine = editable_branch_ids(request.user)
         out = []
         for h in qs:
+            offs = list(h.opt_outs.all())
+            off_ids = {o.branch_id for o in offs}
+            my_off = None
+            if mine is not None:
+                my_off = bool(off_ids & set(mine))
             out.append({"id": h.id, "date": str(h.date), "wd": _WD[h.date.weekday()],
                         "name": h.name, "kind": h.kind, "kind_label": HOLIDAY_KIND_LABEL.get(h.kind, h.kind),
                         "branch_id": h.branch_id, "branch": (h.branch.name if h.branch_id else "전 지점"),
                         "note": h.note, "created_by": name_of(h.created_by),
+                        "off_branches": [o.branch.name for o in offs],
+                        "my_off": my_off,
                         "time": kst_dt(h.create_time)})
         return self.success({"rows": out, "kinds": [{"value": k, "label": v} for k, v in HOLIDAY_KIND_CHOICES]})
 
@@ -200,6 +219,50 @@ class HolidayAdminAPI(APIView):
         return self.success({"created": made, "skipped": skipped, "lessons": applied})
 
     @admin_role_required
+    def put(self, request):
+        """전 지점 휴무일을 우리 지점만 쉬지 않기(끄기)·다시 쉬기(켜기).
+
+        공휴일이라도 지점 사정에 따라 수업을 하는 날이 있다. 전 지점 휴무를 지워
+        버리면 다른 지점까지 영향을 받으므로 지우는 대신 지점별로 뺀다."""
+        if not is_director_up(request.user):
+            return self.error("원장 이상만 바꿀 수 있습니다.")
+        d = request.data
+        h = Holiday.objects.filter(id=d.get("id"), is_deleted=False).first()
+        if not h:
+            return self.error("휴무일이 없습니다.")
+        if h.branch_id is not None:
+            return self.error("전 지점 휴무일에만 쓸 수 있습니다.")
+        bid = d.get("branch_id") or None
+        if not bid:
+            mine = editable_branch_ids(request.user)
+            bid = mine[0] if mine else None
+        if not bid:
+            return self.error("어느 지점인지 알 수 없습니다.")
+        bid = int(bid)
+        if not can_manage_branch(request.user, bid):
+            return self.error("이 지점을 관리할 권한이 없습니다.")
+        if d.get("off"):
+            HolidayOptOut.objects.get_or_create(
+                holiday=h, branch_id=bid,
+                defaults={"actor": request.user, "reason": (d.get("reason") or "").strip()})
+            # 이미 휴무로 바뀌어 있던 그 지점 수업을 예정으로 되돌린다
+            n = LessonOccurrence.objects.filter(
+                date=h.date, branch_id=bid, status=OccurrenceStatus.HOLIDAY
+            ).update(status=OccurrenceStatus.SCHEDULED)
+            return self.success({"off": True, "changed": n})
+        HolidayOptOut.objects.filter(holiday=h, branch_id=bid).delete()
+        # 다시 쉬기 — 그날 그 지점 예정 수업을 휴무로
+        from ..models import DailyAttendance
+        attended = set(DailyAttendance.objects.filter(date=h.date, check_in_at__isnull=False)
+                       .values_list("student_id", flat=True))
+        ids = [o.id for o in LessonOccurrence.objects.filter(
+            date=h.date, branch_id=bid, status=OccurrenceStatus.SCHEDULED)
+            if o.student_id not in attended]
+        if ids:
+            LessonOccurrence.objects.filter(id__in=ids).update(status=OccurrenceStatus.HOLIDAY)
+        return self.success({"off": False, "changed": len(ids)})
+
+    @admin_role_required
     def delete(self, request):
         if not is_director_up(request.user):
             return self.error("휴무일 삭제는 원장 이상만 가능합니다.")
@@ -208,6 +271,11 @@ class HolidayAdminAPI(APIView):
             return self.error("휴무일이 없습니다.")
         if h.branch_id and not can_manage_branch(request.user, h.branch_id):
             return self.error("이 지점을 관리할 권한이 없습니다.")
+        # 전 지점 휴무를 한 지점 원장이 지우면 다른 지점까지 영향을 받는다.
+        # 지우는 건 전 지점을 볼 수 있는 사람만, 원장은 '우리 지점 사용 안 함'을 쓴다.
+        if h.branch_id is None and editable_branch_ids(request.user) is not None:
+            return self.error("전 지점 휴무일은 지울 수 없습니다. "
+                              "우리 지점만 쉬지 않으려면 [우리 지점 사용 안 함]을 쓰세요.")
         reverted = revert_holiday(h)
         h.is_deleted = True
         h.deleted_by = request.user

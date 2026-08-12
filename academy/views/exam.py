@@ -199,6 +199,18 @@ class ExamCatalogAdminAPI(APIView):
 
 # ─────────────────────── 회차 ───────────────────────
 
+def limit_entries_to_my_students(qs, user):
+    """참가는 학생 기준으로 거른다.
+
+    시험·대회 일정은 전 지점이 함께 쓴다(같은 날 같은 시험을 본다). 그래서 회차에는
+    지점을 두지 않는데, 그대로 두면 다른 지점 학생까지 보인다. 붙어 있는 학생이
+    우리 지점 학생인지로 걸러야 맞다."""
+    view = viewable_branch_ids(user)
+    if view is None:
+        return qs
+    return qs.filter(student__academy_profile__branch_id__in=view)
+
+
 def log_exam_change(sn, kind, actor, detail="", entries=None):
     """회차 등록·수정·삭제를 남긴다. 회차가 지워져도 읽히게 이름을 글로 함께 적는다."""
     names = [name_of(e.student) for e in (entries or [])]
@@ -278,7 +290,9 @@ class ExamSessionAdminAPI(APIView):
         if request.GET.get("upcoming") == "1":
             qs = qs.filter(Q(exam_date__gte=kst_today()) | Q(exam_date__isnull=True))
         counts = {}
-        for e in ExamEntry.objects.filter(session__in=qs, is_deleted=False).values("session_id", "applied"):
+        eq = limit_entries_to_my_students(
+            ExamEntry.objects.filter(session__in=qs, is_deleted=False), request.user)
+        for e in eq.values("session_id", "applied"):
             c = counts.setdefault(e["session_id"], {"total": 0, "applied": 0})
             c["total"] += 1
             if e["applied"]:
@@ -489,8 +503,7 @@ class ExamEntryAdminAPI(APIView):
             pass
         else:
             qs = qs.filter(is_deleted=False, session__is_deleted=False)
-        if view is not None:
-            qs = qs.filter(Q(session__branch_id=None) | Q(session__branch_id__in=view))
+        qs = limit_entries_to_my_students(qs, request.user)
         if request.GET.get("session_id"):
             qs = qs.filter(session_id=request.GET["session_id"])
         if request.GET.get("student_id"):
@@ -506,7 +519,8 @@ class ExamEntryAdminAPI(APIView):
         d = request.data
         eid = d.get("id")
         if eid:
-            e = ExamEntry.objects.filter(id=eid, is_deleted=False).first()
+            e = limit_entries_to_my_students(
+                ExamEntry.objects.filter(id=eid, is_deleted=False), request.user).first()
             if not e:
                 return self.error("참가 기록이 없습니다.")
             self._apply(e, d, request.user)
@@ -519,6 +533,7 @@ class ExamEntryAdminAPI(APIView):
         sn = ExamSession.objects.filter(id=d.get("session_id"), is_deleted=False).first()
         if not sn:
             return self.error("회차가 없습니다.")
+        view = viewable_branch_ids(request.user)
         ids = d.get("student_ids") or ([d.get("student_id")] if d.get("student_id") else [])
         if not ids:
             return self.error("학생을 고르세요.")
@@ -527,6 +542,12 @@ class ExamEntryAdminAPI(APIView):
             u = User.objects.filter(id=sid).first()
             if not u:
                 continue
+            # 남의 지점 학생을 붙이지 못하게 막는다(목록에서는 어차피 안 보이지만 요청은 올 수 있다)
+            if view is not None:
+                sp = getattr(u, "academy_profile", None)
+                if not sp or sp.branch_id not in view:
+                    skipped.append(name_of(u))
+                    continue
             if ExamEntry.objects.filter(session=sn, student=u, is_deleted=False).exists():
                 skipped.append(name_of(u))
                 continue
@@ -584,7 +605,8 @@ class ExamEntryAdminAPI(APIView):
 
     @admin_role_required
     def delete(self, request):
-        e = ExamEntry.objects.filter(id=request.GET.get("id"), is_deleted=False).first()
+        e = limit_entries_to_my_students(
+            ExamEntry.objects.filter(id=request.GET.get("id"), is_deleted=False), request.user).first()
         if not e:
             return self.error("참가 기록이 없습니다.")
         e.is_deleted = True

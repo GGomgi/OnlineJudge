@@ -966,6 +966,24 @@ class Holiday(models.Model):
         ordering = ["date", "id"]
 
 
+class HolidayOptOut(models.Model):
+    """전 지점 공통 휴무일을 그 지점만 쉬지 않기.
+
+    공휴일이라도 지점 사정에 따라 수업을 하는 날이 있다. 그렇다고 원장이 전 지점
+    휴무일을 지워 버리면 다른 지점까지 영향을 받으므로, 지우는 대신 '우리 지점만
+    사용 안 함' 으로 둔다. 언제든 다시 사용할 수 있다."""
+    holiday = models.ForeignKey(Holiday, on_delete=models.CASCADE, related_name="opt_outs")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="holiday_opt_outs")
+    reason = models.TextField(blank=True, default="")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_holiday_optout"
+        unique_together = ("holiday", "branch")
+
+
 class WorkSchedule(models.Model):
     """정규 근무 기준. 학생 시간표와 같은 '적용 시작일' 방식 — 바꾸면 이전 것은 전날로
     끝나고 새 줄이 생겨 과거 기록이 그대로 남는다.
