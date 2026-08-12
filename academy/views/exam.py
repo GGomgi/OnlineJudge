@@ -9,6 +9,8 @@ from datetime import timedelta, datetime
 from django.db.models import Q
 from django.utils.timezone import now
 
+import os
+
 from utils.api import APIView
 from account.decorators import admin_role_required
 from account.models import User
@@ -18,6 +20,8 @@ from ..models import (ExamCatalog, ExamSession, ExamEntry, ExamTeam, ExamKind, E
                       StudentCredential, ExamStage, ExamContact, ExamContactKind,
                       EXAM_STAGE_CHOICES, EXAM_CONTACT_CHOICES)
 from ..services import viewable_branch_ids, can_manage_branch, can_view_branch
+from ..services_brand import (KINDS as BRAND_KINDS, MAX_UPLOAD_BYTES as BRAND_MAX_BYTES,
+                              ALLOWED_EXT as BRAND_EXT, brand_all, save_brand, delete_brand)
 
 KIND_LABEL = dict(EXAM_KIND_CHOICES)
 MODE_LABEL = dict(ENTRY_MODE_CHOICES)
@@ -718,3 +722,36 @@ class MenuSettingAdminAPI(APIView):
                     MenuOverride.objects.update_or_create(
                         staff_id=sid, key=key, defaults={"allow": bool(allow)})
         return self.success("ok")
+
+
+class BrandAPI(APIView):
+    """학원 로고·아이콘. 읽기는 누구나(로그인 화면에도 걸리므로), 올리는 건 본부만."""
+    request_parsers = ()
+
+    def get(self, request):
+        return self.success(brand_all())
+
+    def post(self, request):
+        # 지점마다 다르면 학원이 여러 곳처럼 보인다. 전 지점 공통이라 본부에서만 올린다
+        prof = getattr(request.user, "academy_profile", None)
+        role = prof.role if prof else ""
+        if not (request.user.is_authenticated
+                and (role == AcademyRole.HQ_ADMIN or request.user.is_super_admin())):
+            return self.error("본부 관리자만 올릴 수 있습니다.")
+        kind = request.POST.get("kind", "")
+        if kind not in BRAND_KINDS:
+            return self.error("종류가 올바르지 않습니다.")
+        if request.POST.get("clear") == "1":
+            delete_brand(kind)
+            return self.success(brand_all())
+        f = request.FILES.get("file")
+        if not f:
+            return self.error("파일이 없습니다.")
+        if f.size > BRAND_MAX_BYTES:
+            return self.error("파일이 너무 큽니다(최대 8MB).")
+        if os.path.splitext(f.name)[-1].lower() not in BRAND_EXT:
+            return self.error("이미지 파일만 올릴 수 있습니다(png·jpg·gif·webp).")
+        ok, msg = save_brand(kind, f)
+        if not ok:
+            return self.error(msg)
+        return self.success(brand_all())

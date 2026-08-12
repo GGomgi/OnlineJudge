@@ -30,6 +30,7 @@
   <div v-if="enrollMode" class="min-h-screen bg-slate-50">
     <header class="bg-slate-900 text-white">
       <div class="max-w-lg mx-auto px-4 h-14 flex items-center gap-2">
+        <img v-if="brand.logo" :src="brand.logo" alt="" class="h-7 w-auto max-w-[8rem] object-contain shrink-0" />
         <span class="text-lg font-bold tracking-tight">두잉창의코딩</span>
         <span class="text-xs text-slate-300">입회원 신청서</span>
       </div>
@@ -144,6 +145,7 @@
   <div v-if="verifyMode" class="min-h-screen bg-slate-50">
     <header class="bg-slate-900 text-white">
       <div class="max-w-lg mx-auto px-4 h-14 flex items-center gap-2">
+        <img v-if="brand.logo" :src="brand.logo" alt="" class="h-7 w-auto max-w-[8rem] object-contain shrink-0" />
         <span class="text-lg font-bold tracking-tight">두잉창의코딩</span>
         <span class="text-xs text-slate-300">학생 정보 확인</span>
       </div>
@@ -256,6 +258,7 @@
   <header v-if="!enrollMode && !verifyMode" class="bg-slate-900 text-white">
     <div :class="[mainMaxW, 'mx-auto px-4 h-14 flex items-center justify-between']">
       <div class="flex items-center gap-2">
+        <img v-if="brand.logo" :src="brand.logo" alt="" class="h-7 w-auto max-w-[10rem] object-contain shrink-0" />
         <span class="text-lg font-bold tracking-tight">두잉창의코딩</span>
         <span class="text-xs text-slate-300 hidden sm:inline">학원 포털</span>
       </div>
@@ -1920,7 +1923,7 @@
         <div v-if="tempLeavesNow.length" class="flex items-start gap-2 py-1">
           <span class="shrink-0 px-1.5 py-0.5 rounded bg-purple-200 text-purple-800 font-semibold">진행중 {{ tempLeavesNow.length }}명</span>
           <!-- 한 명이 한 줄, 한 줄에 2명씩. 이름·기간·복귀일의 자리를 맞춰 세로로 훑어보기 쉽게 -->
-          <div class="flex-1 grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-x-6 gap-y-1 min-w-0">
+          <div class="flex-1 grid grid-cols-1 md:grid-cols-2 min-[1900px]:grid-cols-3 gap-x-6 gap-y-1 min-w-0">
             <div v-for="t in tempLeavesNow" :key="t.student_id"
                  class="grid grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)] items-baseline gap-x-2 min-w-0">
               <button @click="goStudentAttend(t.student_id)" class="text-left font-medium text-slate-700 hover:underline truncate">{{ t.name }}</button>
@@ -1938,7 +1941,7 @@
         </div>
         <div v-if="tempLeavesSoon.length" :class="['flex items-start gap-2 py-1', tempLeavesNow.length ? 'border-t border-purple-100 mt-1 pt-1.5' : '']">
           <span class="shrink-0 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">예정 {{ tempLeavesSoon.length }}명</span>
-          <div class="flex-1 grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-x-6 gap-y-1 min-w-0">
+          <div class="flex-1 grid grid-cols-1 md:grid-cols-2 min-[1900px]:grid-cols-3 gap-x-6 gap-y-1 min-w-0">
             <div v-for="t in tempLeavesSoon" :key="t.student_id"
                  class="grid grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)] items-baseline gap-x-2 min-w-0">
               <button @click="goStudentAttend(t.student_id)" class="text-left font-medium text-slate-700 hover:underline truncate">{{ t.name }}</button>
@@ -4649,6 +4652,32 @@
 
       <!-- ===== 메뉴 관리 ===== -->
       <div v-if="acadTab==='menu'">
+        <!-- 로고는 전 지점이 함께 쓰는 얼굴이라 지점마다 달라지면 안 된다. 본부에서만 올린다 -->
+        <div v-if="isHqAdmin" class="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <h2 class="text-lg font-bold mb-1">로고 <span class="text-sm font-normal text-slate-400">— 전 지점 공통</span></h2>
+          <p class="text-xs text-slate-400 mb-3">올리면 화면에 맞게 자동으로 줄여 저장합니다(원본을 그대로 두면 화면이 느려집니다). 바꾼 로고는 <b>각자 다음 접속</b>부터 보입니다.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div v-for="b in brandKinds" :key="b.k" class="border border-slate-200 rounded-lg p-3">
+              <div class="text-sm font-semibold mb-0.5">{{ b.label }}</div>
+              <div class="text-[11px] text-slate-400 mb-2">{{ b.hint }}</div>
+              <div class="flex items-center gap-3">
+                <div :class="['shrink-0 border border-dashed border-slate-200 rounded flex items-center justify-center bg-slate-800',
+                              b.k==='icon' ? 'w-14 h-14' : 'w-32 h-14']">
+                  <img v-if="brand[b.k]" :src="brand[b.k]" alt="" class="max-w-full max-h-full object-contain" />
+                  <span v-else class="text-[10px] text-slate-500">없음</span>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="px-2 py-1 rounded border border-slate-200 text-xs text-slate-600 cursor-pointer hover:bg-slate-50 text-center">
+                    {{ brand[b.k] ? '바꾸기' : '올리기' }}
+                    <input type="file" accept="image/*" class="hidden" @change="uploadBrand(b.k, $event)" />
+                  </label>
+                  <button v-if="brand[b.k]" @click="clearBrand(b.k)" class="px-2 py-1 rounded border border-slate-200 text-xs text-rose-500 hover:bg-rose-50">지우기</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-if="brandMsg" class="mt-2 text-xs" :class="brandOk ? 'text-emerald-600' : 'text-rose-500'">{{ brandMsg }}</div>
+        </div>
         <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
           <h2 class="text-lg font-bold mb-1">메뉴 관리 <span class="text-sm font-normal text-slate-400">— {{ menuScope }}</span></h2>
           <p class="text-xs text-slate-400">지금 안 쓰는 메뉴를 감춰 둡니다(없애는 게 아니라 나중에 다시 켤 수 있습니다). 직급으로 제한하거나 특정 직원만 예외를 둘 수도 있습니다. 바꾼 내용은 <b>각자 다음 접속</b>부터 적용됩니다.</p>
@@ -5673,6 +5702,11 @@ const app = createApp({
       linkedPrompt: null,
       adhocLinkModal: null,
       notePop: { show:false, x:0, y:0, tag:'', note:'', tagStyle:{} },
+      brand: { logo:'', icon:'' }, brandMsg: '', brandOk: false,
+      brandKinds: [
+        { k:'logo', label:'로고 (가로형)', hint:'화면 맨 위 학원 이름 왼쪽에 놓입니다. 가로로 긴 그림을 올리세요.' },
+        { k:'icon', label:'아이콘 (정사각형)', hint:'즐겨찾기·주소창 탭에 붙습니다. 정사각형이 아니면 가운데를 잘라 맞춥니다.' },
+      ],
       tcPop: { show:false, x:0, y:0, orig:'', now:'', reason:'' },
       progPop: { show:false, x:0, y:0, content:'', homework:'', feedback:'', memo:'' },
       dashFilter: { q:'', qRaw:'', subject:'', instructor:'', branch:'' }, dashPop: { show:false, x:0, y:0, l:{att:{}} },
@@ -6217,6 +6251,11 @@ const app = createApp({
       return list;
     },
     canManageOptions(){ return this.isActorAllBranch; },
+    // 로고는 전 지점 공통이라 본부에서만 손댄다(원장이 지점마다 바꾸면 학원이 여러 곳처럼 보인다)
+    isHqAdmin(){
+      if (this.me && this.me.user.admin_type === 'Super Admin') return true;
+      return !!(this.myProfile && this.myProfile.role === 'HQ_ADMIN');
+    },
     needsOnboarding(){ return !!(this.me && this.isStaff && this.staffProfile && !this.staffProfile.completed && !this.onboardingDismissed); },
     isParent(){ return !!(this.myProfile && this.myProfile.role === 'PARENT'); },
     todayStr(){ return this.today.y + '-' + String(this.today.m).padStart(2,'0') + '-' + String(this.today.d).padStart(2,'0'); },
@@ -7922,6 +7961,36 @@ const app = createApp({
       x:Math.min(e.clientX+10, window.innerWidth-260), y:Math.min(e.clientY+10, window.innerHeight-80) }; },
     // 한 줄에 맞추려고 앞부분만 남긴다. 잘린 건 ... 로 알리고 전체는 올려다보면 나온다
     shortNote(s, n){ s=String(s||''); n=n||8; return s.length>n ? s.slice(0,n)+'…' : s; },
+    // 로고·아이콘. 즐겨찾기 아이콘은 주소만 바꿔서는 안 바뀌는 브라우저가 있어 link를 새로 단다
+    applyBrand(d){
+      this.brand = { logo:(d && d.logo) || '', icon:(d && d.icon) || '' };
+      const href = this.brand.icon || 'data:,';
+      document.querySelectorAll("link[rel='icon']").forEach(el=> el.remove());
+      const link = document.createElement('link');
+      link.rel = 'icon'; link.href = href;
+      document.head.appendChild(link);
+    },
+    async loadBrand(){
+      try { this.applyBrand(await api('GET','/api/academy/brand')); } catch(e){}
+    },
+    async uploadBrand(kind, ev){
+      const f = ev.target.files && ev.target.files[0];
+      ev.target.value = '';
+      if (!f) return;
+      const fd = new FormData(); fd.append('kind', kind); fd.append('file', f);
+      this.brandMsg = '올리는 중...'; this.brandOk = true;
+      try {
+        this.applyBrand(await this.apiUpload('/api/academy/brand', fd));
+        this.brandOk = true; this.brandMsg = '올렸습니다. 다른 사람 화면에는 다음 접속부터 보입니다.';
+      } catch(e){ this.brandOk=false; this.brandMsg = e.message || '올리지 못했습니다.'; }
+    },
+    async clearBrand(kind){
+      const fd = new FormData(); fd.append('kind', kind); fd.append('clear', '1');
+      try {
+        this.applyBrand(await this.apiUpload('/api/academy/brand', fd));
+        this.brandOk = true; this.brandMsg = '지웠습니다.';
+      } catch(e){ this.brandOk=false; this.brandMsg = e.message || '지우지 못했습니다.'; }
+    },
     hideNotePop(){ this.notePop.show=false; },
     async saveAtt(){
       const l=this.attModal;
@@ -10420,6 +10489,7 @@ const app = createApp({
   },
   mounted(){
     this.boot();
+    this.loadBrand();
     // 검색창들: 입력창(Raw)은 즉시 반영, 실제 검색어(목록 필터링에 쓰는 값)는 타이핑이 잠깐
     // 멈췄을 때만 갱신(한글 조합 중 다른 사람 결과가 잠깐 섞여 보이는 문제 완화).
     // $watch(getter, handler) 형태로 직접 등록 — options의 'a.b' 문자열 watch보다 확실히 동작.

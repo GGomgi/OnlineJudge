@@ -1,6 +1,7 @@
 from django.conf.urls import url
 
 from ..views.verify import ProfileVerifyPublicAPI
+from ..views.exam import BrandAPI
 
 from ..views.oj import (BranchListAPI, OptionListAPI, LeadCreateAPI, MyTimetableAPI,
                         MyAttendanceAPI, MyAcademyProfileAPI, MyChildrenAPI, GuardianMeAPI,
@@ -9,6 +10,7 @@ from ..views.oj import (BranchListAPI, OptionListAPI, LeadCreateAPI, MyTimetable
                         KioskLookupAPI, KioskPinEntryAPI, KioskCheckAPI, KioskStaffLookupAPI, KioskStaffCheckAPI, KioskBoardAPI, KioskDeviceRequestAPI)
 
 urlpatterns = [
+    url(r"^academy/brand/?$", BrandAPI.as_view(), name="academy_brand"),
     url(r"^academy/branches/?$", BranchListAPI.as_view(), name="academy_branch_list"),
     url(r"^academy/options/?$", OptionListAPI.as_view(), name="academy_option_list"),
     url(r"^academy/my_profile/?$", MyAcademyProfileAPI.as_view(), name="academy_my_profile"),

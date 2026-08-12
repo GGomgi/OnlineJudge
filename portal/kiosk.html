@@ -45,6 +45,7 @@ async function kioskApi(method, path, body){
 createApp({
   data(){
     return {
+      brandLogo: '',
       b: getParam('b'), t: getParam('t'),
       clock: '', digits: '',
       stage: 'keypad',       // keypad | matches | result | error | staffpad | staffpick | staffconfirm
@@ -454,6 +455,8 @@ createApp({
     },
   },
   async mounted(){
+    // 화면 로고는 포털에서 본부가 올린 것을 그대로 쓴다(키오스크는 설정 화면이 없다)
+    try { const r = await fetch('/api/academy/brand'); const j = await r.json(); this.brandLogo = (j.data && j.data.logo) || ''; } catch(e){}
     this.tickClock();
     setInterval(this.tickClock, 1000);
     document.addEventListener('fullscreenchange', ()=>{ this.isFullscreen = !!document.fullscreenElement; });
@@ -628,7 +631,10 @@ createApp({
     <!-- 오른쪽: 시계 + 키패드 -->
     <div class="h-full flex flex-col items-center justify-center p-6 overflow-auto" :style="{width: (100-leftRatio)+'%'}">
       <div class="text-center w-full max-w-xs" :style="{zoom: rightZoom/100}">
-        <div class="text-sm text-slate-400 mb-1">두잉창의코딩 · 출결</div>
+        <div class="flex items-center justify-center gap-2 mb-1">
+          <img v-if="brandLogo" :src="brandLogo" alt="" class="h-6 w-auto max-w-[8rem] object-contain" />
+          <span class="text-sm text-slate-400">두잉창의코딩 · 출결</span>
+        </div>
         <div class="font-mono text-2xl font-bold mb-6 tracking-wider">{{ clock }}</div>
 
         <template v-if="stage==='keypad'">
