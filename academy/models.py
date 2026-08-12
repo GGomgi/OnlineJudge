@@ -253,7 +253,7 @@ class AttendanceRecord(models.Model):
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                 related_name="attendance_records")
     status = models.CharField(max_length=16, default=AttendanceStatus.PRESENT)
-    memo = models.CharField(max_length=255, blank=True, default="")
+    memo = models.TextField(blank=True, default="")
     marked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                   on_delete=models.SET_NULL, related_name="marked_attendances")
     update_time = models.DateTimeField(auto_now=True)
@@ -366,7 +366,7 @@ class CounselReservation(models.Model):
     DONE = "DONE"
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="reservations")
     scheduled_at = models.DateTimeField()
-    note = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
     channel = models.CharField(max_length=16, blank=True, default="VISIT")  # 방문/전화/기타(CounselingLog와 동일 체계)
     status = models.CharField(max_length=16, default=ACTIVE)  # ACTIVE / CANCELLED / DONE
     cancel_reason = models.CharField(max_length=255, blank=True, default="")
@@ -694,7 +694,7 @@ class StudentStatusChange(models.Model):
                                 related_name="status_changes")
     from_status = models.CharField(max_length=16, blank=True, default="")
     to_status = models.CharField(max_length=16)
-    reason = models.CharField(max_length=255, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
     effective_date = models.DateField(null=True, blank=True)  # 휴원/퇴원/재등록 적용일
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="+")
@@ -735,7 +735,7 @@ class LessonOccurrence(models.Model):
     no_makeup = models.BooleanField(default=False)
     # 보강 안 함일 때의 구분: HOMEWORK=숙제로 대체 / NONE=숙제도 없음 (빈값=옛 데이터, 미구분)
     no_makeup_kind = models.CharField(max_length=16, blank=True, default="")          # 결석이지만 보강 안 함(학부모 미희망)
-    note = models.CharField(max_length=255, blank=True, default="")  # 결석/보강 사유
+    note = models.TextField(blank=True, default="")  # 결석/보강 사유
     time_change_reason = models.CharField(max_length=255, blank=True, default="")  # 오늘 하루 시각 변경 사유
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
@@ -779,7 +779,7 @@ class DailyAttendance(models.Model):
     check_in_at = models.DateTimeField(null=True, blank=True)
     check_out_at = models.DateTimeField(null=True, blank=True)
     note_tag = models.CharField(max_length=32, blank=True, default="")  # 출결 비고 표시(선택목록 value)
-    note = models.CharField(max_length=255, blank=True, default="")     # 긴 사유
+    note = models.TextField(blank=True, default="")     # 긴 사유
     update_time = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -793,7 +793,7 @@ class AttendanceChange(models.Model):
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="+")
     detail = models.CharField(max_length=255, blank=True, default="")
-    reason = models.CharField(max_length=255, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -809,7 +809,7 @@ class StaffChangeLog(models.Model):
                               on_delete=models.SET_NULL, related_name="+")
     change_type = models.CharField(max_length=16)   # ROLE / BRANCH / ACTIVE / SABUN
     detail = models.CharField(max_length=255, blank=True, default="")  # 기존 → 변경
-    reason = models.CharField(max_length=255, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -892,7 +892,7 @@ class TimetableChange(models.Model):
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="+")
     action = models.CharField(max_length=16)  # CREATE/UPDATE/DELETE
-    reason = models.CharField(max_length=255, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
     detail = models.CharField(max_length=255, blank=True, default="")
     create_time = models.DateTimeField(auto_now_add=True)
 
@@ -950,7 +950,7 @@ class Holiday(models.Model):
     kind = models.CharField(max_length=16, default=HolidayKind.PUBLIC)
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
                                related_name="holidays")
-    note = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     # 소프트삭제(모든 삭제는 기록을 남긴다)
@@ -981,7 +981,7 @@ class WorkSchedule(models.Model):
     workdays = models.CharField(max_length=16, default="012345")  # 0=월 … 6=일
     break_per_hours = models.PositiveSmallIntegerField(default=4)   # N시간마다
     break_minutes = models.PositiveSmallIntegerField(default=30)    # M분 휴게
-    reason = models.CharField(max_length=255, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     create_time = models.DateTimeField(auto_now_add=True)
@@ -1002,7 +1002,7 @@ class StaffAttendance(models.Model):
     check_out_at = models.DateTimeField(null=True, blank=True)
     in_source = models.CharField(max_length=16, blank=True, default="")   # KIOSK / PORTAL
     out_source = models.CharField(max_length=16, blank=True, default="")
-    note = models.CharField(max_length=255, blank=True, default="")       # 본인이 쓰는 비고
+    note = models.TextField(blank=True, default="")       # 본인이 쓰는 비고
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 
@@ -1027,7 +1027,7 @@ class StaffAttendanceChange(models.Model):
     field = models.CharField(max_length=16)      # IN / OUT / NOTE / CHECK / CANCEL
     old_value = models.CharField(max_length=64, blank=True, default="")
     new_value = models.CharField(max_length=64, blank=True, default="")
-    reason = models.CharField(max_length=255, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
     status = models.CharField(max_length=16, default=DIRECT)
     approver = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                  on_delete=models.SET_NULL, related_name="+")
@@ -1066,7 +1066,7 @@ class StaffLeave(models.Model):
                               related_name="staff_leaves")
     date = models.DateField()
     kind = models.CharField(max_length=16, default=LeaveKind.ANNUAL)
-    reason = models.CharField(max_length=255, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     is_deleted = models.BooleanField(default=False)
@@ -1158,7 +1158,7 @@ class ExamCatalog(models.Model):
     annual = models.BooleanField(default=False)                  # 해마다 열리는가(대회)
     # 작년 기록이 없을 때 쓸 '확인 시작 시기'(MM-DD). 이 무렵이면 올해 일정을 확인하라고 알린다.
     check_from = models.CharField(max_length=8, blank=True, default="")
-    note = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
                                related_name="exam_catalogs")     # 비우면 전 지점
     is_active = models.BooleanField(default=True)
@@ -1189,7 +1189,7 @@ class ExamSession(models.Model):
     entry_mode = models.CharField(max_length=16, blank=True, default="")  # 종류가 '개인+단체'일 때 회차에서 결정
     place = models.CharField(max_length=128, blank=True, default="")
     fee = models.PositiveIntegerField(null=True, blank=True)
-    note = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
     confirmed = models.BooleanField(default=True)                # 대회 일정 미확정 표시
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
                                related_name="exam_sessions")
@@ -1207,7 +1207,7 @@ class ExamTeam(models.Model):
     """대회 팀. 한 대회 안에 개인전·팀전이 섞이므로 팀은 회차에 딸린다."""
     session = models.ForeignKey(ExamSession, on_delete=models.CASCADE, related_name="teams")
     name = models.CharField(max_length=64)
-    note = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1257,7 +1257,7 @@ class ExamContact(models.Model):
     꾸준히 독려하고 있다는 근거가 필요하기 때문."""
     entry = models.ForeignKey("ExamEntry", on_delete=models.CASCADE, related_name="contacts")
     kind = models.CharField(max_length=16, default=ExamContactKind.APPLY_GUIDE)
-    note = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="+")
     create_time = models.DateTimeField(auto_now_add=True)
@@ -1288,7 +1288,7 @@ class ExamEntry(models.Model):
     fee_paid = models.BooleanField(default=False)     # 단체 접수일 때만 쓴다
     result = models.CharField(max_length=32, blank=True, default="")   # 합격/불합격/수상
     score = models.CharField(max_length=32, blank=True, default="")
-    note = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
     instructor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     is_deleted = models.BooleanField(default=False)
