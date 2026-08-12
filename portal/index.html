@@ -268,16 +268,26 @@
     <button @click="confirmYes" class="px-2.5 py-1 rounded bg-rose-600 text-white text-xs whitespace-nowrap">네, 지웁니다</button>
   </div>
   <!-- 사유처럼 글을 받는 띠. 확인만 하는 것이 아니라 적어야 해서 입력칸이 붙는다 -->
-  <div v-if="inputPrompt" class="fixed left-1/2 -translate-x-1/2 top-3 z-[95] rounded-lg border border-slate-300 bg-white shadow-xl px-3 py-2.5 w-[min(34rem,92vw)]">
-    <div class="text-sm text-slate-700 whitespace-pre-line mb-1.5">{{ inputPrompt.msg }}</div>
-    <input ref="inputPromptBox" v-model="inputPrompt.val"
-           :type="inputPrompt.password ? 'password' : (inputPrompt.date ? 'date' : 'text')"
-           @keyup.enter="inputOk" @keyup.esc="inputCancel" class="input py-1 w-full" />
-    <div class="flex justify-end gap-2 mt-2">
-      <button @click="inputCancel" class="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-600 text-xs">그만두기</button>
-      <!-- 세 갈래가 필요한 경우(날짜 고치기 / 아예 되돌리기 / 그만두기) -->
-      <button v-if="inputPrompt.altLabel" @click="inputAlt" class="px-2.5 py-1 rounded bg-rose-600 text-white text-xs">{{ inputPrompt.altLabel }}</button>
-      <button @click="inputOk" class="px-2.5 py-1 rounded bg-indigo-600 text-white text-xs">{{ inputPrompt.okLabel || '확인' }}</button>
+  <!-- 글·날짜를 받는 창. 화면 위에 띠로 띄웠더니 브라우저 기본 창처럼 보여서
+       다른 창과 같은 모양(가운데 카드 + 뒷배경 어둡게)으로 맞췄다. -->
+  <div v-if="inputPrompt" class="fixed inset-0 z-[95] bg-black/40 flex items-center justify-center p-4" @click.self="inputCancel">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm">
+      <div class="flex items-center justify-between px-5 py-3 border-b">
+        <div class="font-bold text-sm">{{ inputPrompt.title || '입력' }}</div>
+        <button @click="inputCancel" class="text-slate-400 hover:text-slate-600">✕</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <div class="text-sm text-slate-600 whitespace-pre-line">{{ inputPrompt.msg }}</div>
+        <input ref="inputPromptBox" v-model="inputPrompt.val"
+               :type="inputPrompt.password ? 'password' : (inputPrompt.date ? 'date' : 'text')"
+               @keyup.enter="inputOk" @keyup.esc="inputCancel" class="input py-1 w-full" />
+        <div class="flex justify-end gap-2">
+          <!-- 세 갈래가 필요한 경우(날짜 고치기 / 아예 되돌리기 / 그만두기) -->
+          <button v-if="inputPrompt.altLabel" @click="inputAlt" class="mr-auto text-xs text-rose-500 hover:underline">{{ inputPrompt.altLabel }}</button>
+          <button @click="inputCancel" class="btn-secondary text-sm">그만두기</button>
+          <button @click="inputOk" class="btn-primary text-sm">{{ inputPrompt.okLabel || '확인' }}</button>
+        </div>
+      </div>
     </div>
   </div>
   <header v-if="!enrollMode && !verifyMode" class="bg-slate-900 text-white">
@@ -8970,14 +8980,14 @@ const app = createApp({
       const who = e.student + ' · ' + e.what;
       let body = null;
       if (!e.applied){
-        const d = await this.askInput('접수 처리합니다.\n' + who + '\n\n접수한 날을 고르세요.',
-                                      this.todayStr, { date:true, okLabel:'접수 처리' });
+        const d = await this.askInput('접수한 날을 고르세요.\n' + who,
+                                      this.todayStr, { date:true, okLabel:'접수 처리', title:'접수 처리' });
         if (d === null) return;
         body = { id:e.id, applied:true, applied_at:d || this.todayStr };
       } else {
-        const d = await this.askInput('이미 접수한 건입니다.\n' + who + '\n\n접수일을 고쳐 저장하거나, 접수를 되돌립니다.',
+        const d = await this.askInput('접수일을 고쳐 저장하거나, 접수를 되돌립니다.\n' + who,
                                       e.applied_at || this.todayStr,
-                                      { date:true, okLabel:'날짜 저장', altLabel:'접수 취소' });
+                                      { date:true, okLabel:'날짜 저장', altLabel:'접수 취소', title:'접수 수정' });
         if (d === null) return;
         body = (d === '__ALT__') ? { id:e.id, applied:false }
                                  : { id:e.id, applied:true, applied_at:d || this.todayStr };
