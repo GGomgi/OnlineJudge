@@ -198,6 +198,24 @@ class ExamCatalogAdminAPI(APIView):
 
 # ─────────────────────── 회차 ───────────────────────
 
+def _hhmm(v):
+    """시각을 HH:MM 로 맞춘다. 못 읽으면 빈 값(미정)으로 둔다."""
+    t = (v or "").strip().replace("：", ":")
+    if not t:
+        return ""
+    if ":" not in t and t.isdigit():          # 1430 처럼 적은 경우
+        t = t.rjust(4, "0")
+        t = t[:2] + ":" + t[2:]
+    try:
+        h, m = t.split(":")[:2]
+        h, m = int(h), int(m)
+    except (TypeError, ValueError):
+        return ""
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        return ""
+    return "%02d:%02d" % (h, m)
+
+
 def session_label(sn):
     """목록에 쓸 이름. 자격증 특별시험은 날짜가 곧 이름이라 제목이 없어도 읽히게 만든다."""
     if sn.title:
@@ -215,7 +233,7 @@ def session_row(sn, counts=None):
         "id": sn.id, "kind": sn.kind, "kind_label": KIND_LABEL.get(sn.kind, sn.kind),
         "catalog_id": sn.catalog_id, "catalog": (sn.catalog.name if sn.catalog_id else ""),
         "title": sn.title, "label": session_label(sn),
-        "exam_date": str(d) if d else "", "confirmed": sn.confirmed,
+        "exam_date": str(d) if d else "", "exam_time": sn.exam_time, "confirmed": sn.confirmed,
         "apply_from": str(sn.apply_from) if sn.apply_from else "",
         "apply_until": str(sn.apply_until) if sn.apply_until else "",
         "result_date": str(sn.result_date) if sn.result_date else "",
@@ -291,6 +309,7 @@ class ExamSessionAdminAPI(APIView):
         # 발표일을 비워 두면 시험일 당일로 본다. 다만 저장까지 해 버리면 '미정'으로 둔 것이
         # 정해진 것처럼 보이므로, 채우지 않고 보여줄 때만 시험일을 쓴다.
         sn.result_date = parse_date(d.get("result_date"))
+        sn.exam_time = _hhmm(d.get("exam_time"))
         sn.entry_mode = (d.get("entry_mode") or "").strip()
         sn.level = (d.get("level") or "").strip()[:64]
         sn.track = (d.get("track") or "").strip()[:64]
@@ -358,6 +377,7 @@ def entry_row(e):
         "apply_until": str(au) if au else "",
         "result_date": str(rd) if rd else "",
         "place": e.place or sn.place,
+        "exam_time": e.exam_time or sn.exam_time,
         "round": e.round or sn.round,
         "d_exam": ((ed - today).days if ed else None),
         "d_apply": ((au - today).days if au else None),
@@ -491,6 +511,8 @@ class ExamEntryAdminAPI(APIView):
             e.round = (d.get("round") or "").strip()[:64]
         if "place" in d:
             e.place = (d.get("place") or "").strip()[:128]
+        if "exam_time" in d:
+            e.exam_time = _hhmm(d.get("exam_time"))
         # 자격증은 학생마다 보는 날이 다르다. 비워 두면 회차 날짜를 그대로 쓴다.
         if "exam_date" in d:
             e.exam_date = parse_date(d.get("exam_date"))

@@ -1187,6 +1187,7 @@ class ExamSession(models.Model):
                                 related_name="sessions")
     title = models.CharField(max_length=128, blank=True, default="")
     exam_date = models.DateField(null=True, blank=True)          # 미확정이면 비움
+    exam_time = models.CharField(max_length=5, blank=True, default="")   # HH:MM (비우면 미정)
     apply_from = models.DateField(null=True, blank=True)
     apply_until = models.DateField(null=True, blank=True)        # 자격증은 시험일-2일 기본
     result_date = models.DateField(null=True, blank=True)
@@ -1290,6 +1291,7 @@ class ExamEntry(models.Model):
     # 자격증은 학생마다 시험 보는 날이 다르다. 날짜마다 회차를 새로 만들면 같은 자격증이
     # 여러 개로 갈라져 불편해서 날짜를 학생 쪽에 둔다. 대회는 날이 하나라 회차 것을 쓴다.
     exam_date = models.DateField(null=True, blank=True)
+    exam_time = models.CharField(max_length=5, blank=True, default="")   # HH:MM
     apply_until = models.DateField(null=True, blank=True)
     result_date = models.DateField(null=True, blank=True)
     place = models.CharField(max_length=128, blank=True, default="")
