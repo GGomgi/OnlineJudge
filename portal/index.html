@@ -1040,7 +1040,7 @@
           <button @click="gdSearchOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
         </div>
         <div class="p-4 space-y-2">
-          <input v-model="gdSearchQ" @input="searchGuardians" placeholder="이름·연락처·연결 학생명 검색" class="input py-1" />
+          <search-box v-model="gdSearchQ" @update:model-value="searchGuardians" placeholder="이름·연락처·연결 학생명 검색"></search-box>
           <ul class="space-y-1 max-h-96 overflow-y-auto">
             <li v-for="p in gdSearchList" :key="p.parent_id" class="flex items-start gap-2 bg-slate-50 rounded px-3 py-2">
               <div class="min-w-0">
@@ -1214,7 +1214,7 @@
             </label>
           </div>
           <div class="flex items-center gap-2">
-            <input :value="examAdd.qRaw" @input="examAdd.qRaw=$event.target.value" placeholder="학생 검색" class="input py-1 flex-1" />
+            <search-box v-model="examAdd.qRaw" placeholder="학생 검색" class="flex-1"></search-box>
             <button @click="examAdd.f={school:[],grade:[],subject:[]}; examAdd.qRaw=''" class="text-xs text-slate-400 hover:underline whitespace-nowrap">조건 지우기</button>
           </div>
         </div>
@@ -1616,7 +1616,7 @@
         <button @click="showStudentModal=false" class="text-slate-400 text-xl leading-none">×</button>
       </div>
       <div class="p-3 border-b space-y-2">
-        <input :value="studentModalFilterRaw" @input="studentModalFilterRaw=$event.target.value" placeholder="이름/아이디로 필터" class="input" />
+        <search-box v-model="studentModalFilterRaw" placeholder="이름/아이디로 필터" box-class="input"></search-box>
         <label class="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" v-model="modalUnassignedOnly" class="w-4 h-4"> 시간표 미등록 학생만 보기</label>
       </div>
       <div class="flex-1 overflow-y-auto px-3 py-1">
@@ -1919,45 +1919,46 @@
         <!-- 지금 쉬는 중과 앞으로 쉴 예정을 줄로 나눠 한눈에 구분 -->
         <div v-if="tempLeavesNow.length" class="flex items-start gap-2 py-1">
           <span class="shrink-0 px-1.5 py-0.5 rounded bg-purple-200 text-purple-800 font-semibold">진행중 {{ tempLeavesNow.length }}명</span>
-          <!-- 한 줄에 3명씩, 이름·기간·복귀일의 자리를 맞춰 세로로 훑어보기 쉽게 -->
-          <div class="flex-1 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-1 min-w-0">
+          <!-- 한 명이 한 줄, 한 줄에 2명씩. 이름·기간·복귀일의 자리를 맞춰 세로로 훑어보기 쉽게 -->
+          <div class="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-1 min-w-0">
             <div v-for="t in tempLeavesNow" :key="t.student_id"
-                 class="grid grid-cols-[4.5rem_10.5rem_auto] items-baseline gap-x-2 min-w-0">
+                 class="grid grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)] items-baseline gap-x-2 min-w-0">
               <button @click="goStudentAttend(t.student_id)" class="text-left font-medium text-slate-700 hover:underline truncate">{{ t.name }}</button>
               <span class="text-slate-500 whitespace-nowrap">{{ t.start_date.slice(5) }} ~ {{ t.last_date.slice(5) }} {{ t.count }}회</span>
-              <span v-if="t.back_date" :class="['px-1.5 py-0.5 rounded whitespace-nowrap', t.back_in<=7 ? 'bg-amber-100 text-amber-700 font-semibold' : 'bg-white text-purple-600']">
+              <span v-if="t.back_date" :class="['px-1.5 py-0.5 rounded whitespace-nowrap justify-self-start', t.back_in<=7 ? 'bg-amber-100 text-amber-700 font-semibold' : 'bg-white text-purple-600']">
                 복귀 {{ t.back_date.slice(5) }}({{ wdOf(t.back_date) }}) D-{{ t.back_in }}
               </span>
               <span v-else class="text-slate-400 whitespace-nowrap">복귀일 미정</span>
-              <!-- 사유는 길이가 제각각이라 자리를 못 맞춘다. 아랫줄로 내리고 넘치면 줄임 -->
-              <span v-if="t.note" class="col-span-3 text-slate-400 truncate">{{ t.note }}</span>
+              <!-- 사유는 길이가 제각각이라 줄을 밀어낸다. 앞부분만 두고 올려다보면 전체를 보여준다 -->
+              <span v-if="t.note" class="text-slate-400 whitespace-nowrap cursor-default"
+                    @mouseenter="showTextPop('사유', t.note, $event)" @mouseleave="hideNotePop">{{ shortNote(t.note) }}</span>
+              <span v-else></span>
             </div>
           </div>
         </div>
         <div v-if="tempLeavesSoon.length" :class="['flex items-start gap-2 py-1', tempLeavesNow.length ? 'border-t border-purple-100 mt-1 pt-1.5' : '']">
           <span class="shrink-0 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">예정 {{ tempLeavesSoon.length }}명</span>
-          <div class="flex-1 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-1 min-w-0">
+          <div class="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-1 min-w-0">
             <div v-for="t in tempLeavesSoon" :key="t.student_id"
-                 class="grid grid-cols-[4.5rem_10.5rem_auto] items-baseline gap-x-2 min-w-0">
+                 class="grid grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)] items-baseline gap-x-2 min-w-0">
               <button @click="goStudentAttend(t.student_id)" class="text-left font-medium text-slate-700 hover:underline truncate">{{ t.name }}</button>
               <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold whitespace-nowrap justify-self-start">
-                {{ t.start_date.slice(5) }}({{ wdOf(t.start_date) }})부터 D-{{ t.starts_in }}
+                {{ t.start_date.slice(5) }}부터 D-{{ t.starts_in }} · {{ t.count }}회
               </span>
-              <span v-if="t.back_date" class="px-1.5 py-0.5 rounded bg-white text-purple-600 whitespace-nowrap">
+              <span v-if="t.back_date" class="px-1.5 py-0.5 rounded bg-white text-purple-600 whitespace-nowrap justify-self-start">
                 복귀 {{ t.back_date.slice(5) }}({{ wdOf(t.back_date) }}) D-{{ t.back_in }}
               </span>
               <span v-else class="text-slate-400 whitespace-nowrap">복귀일 미정</span>
-              <span class="col-span-3 text-slate-400 truncate">
-                <span class="text-slate-500">{{ t.last_date.slice(5) }}까지 {{ t.count }}회</span>
-                <span v-if="t.note"> · {{ t.note }}</span>
-              </span>
+              <span v-if="t.note" class="text-slate-400 whitespace-nowrap cursor-default"
+                    @mouseenter="showTextPop('사유', t.note, $event)" @mouseleave="hideNotePop">{{ shortNote(t.note) }}</span>
+              <span v-else></span>
             </div>
           </div>
         </div>
       </div>
       <div class="flex items-center gap-2 mb-3">
         <!-- v-model은 한글 조합 중 값 갱신을 보류하므로, 조합 중 글자까지 받도록 원시 input 이벤트로 바인딩 -->
-        <input :value="dashFilter.qRaw" @input="dashFilter.qRaw=$event.target.value" placeholder="학생 검색 (오늘 수업 + 전체 학생)" class="input flex-1 min-w-0 py-1" />
+        <search-box v-model="dashFilter.qRaw" placeholder="학생 검색 (오늘 수업 + 전체 학생)" class="flex-1 min-w-0"></search-box>
         <div class="w-32 shrink-0"><select v-model="dashFilter.subject" class="input py-1"><option value="">과목 전체</option><option v-for="s in dashSubjects" :key="s" :value="s">{{ s }}</option></select></div>
         <div class="w-32 shrink-0"><select v-model="dashFilter.instructor" class="input py-1"><option value="">강사 전체</option><option v-for="t in dashInstructors" :key="t" :value="t">{{ t }}</option></select></div>
         <div v-if="showBranchCol" class="w-32 shrink-0"><select v-model="dashFilter.branch" class="input py-1"><option value="">지점 전체</option><option v-for="b in dashBranches" :key="b" :value="b">{{ b }}</option></select></div>
@@ -2421,7 +2422,7 @@
             <!-- 결석 목록에서 고르기 -->
             <div v-if="mkMode==='pending'">
               <p class="text-xs text-slate-400 mb-1">결석했지만 아직 보강을 잡지 않은 수업입니다. 보강할 대상을 선택하세요.</p>
-              <input :value="mkPendingSearchRaw" @input="mkPendingSearchRaw=$event.target.value" placeholder="이름으로 검색" class="input py-1 mb-1" />
+              <search-box v-model="mkPendingSearchRaw" placeholder="이름으로 검색" class="mb-1"></search-box>
               <ul class="mt-1 max-h-60 overflow-y-auto border rounded-lg divide-y">
                 <li v-for="p in mkPendingFiltered()" :key="p.occ_id" @click="pickPending(p)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
                   <span class="font-medium">{{ p.student_name }}</span>
@@ -2435,7 +2436,7 @@
             <!-- 학생 검색해서 고르기 -->
             <div v-else>
               <label class="lbl">학생 검색</label>
-              <input :value="mkSearch.queryRaw" @input="mkSearch.queryRaw=$event.target.value" placeholder="이름/아이디로 검색" class="input py-1" />
+              <search-box v-model="mkSearch.queryRaw" placeholder="이름/아이디로 검색"></search-box>
               <ul v-if="mkSearch.query && !mkSearch.student" class="mt-1 max-h-48 overflow-y-auto border rounded-lg divide-y">
                 <li v-for="s in mkSearchResults" :key="s.id" @click="pickMkStudent(s)" class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-center gap-2">
                   <span class="font-medium">{{ s.real_name || s.username }}</span>
@@ -2567,8 +2568,8 @@
         </div>
       </div>
       <div class="flex items-center gap-2 mb-2">
-        <input :value="leadSearchRaw" @input="leadSearchRaw=$event.target.value" placeholder="1차 검색 (이름·전화·학교·학년)" class="input flex-1 min-w-0 py-1" />
-        <input :value="leadSearch2Raw" @input="leadSearch2Raw=$event.target.value" placeholder="2차 검색" class="input flex-1 min-w-0 py-1" />
+        <search-box v-model="leadSearchRaw" placeholder="1차 검색 (이름·전화·학교·학년)" class="flex-1 min-w-0"></search-box>
+        <search-box v-model="leadSearch2Raw" placeholder="2차 검색" class="flex-1 min-w-0"></search-box>
         <div class="flex items-center gap-1 shrink-0">
           <button @click="toggleSort('reg')"
             :class="['px-2 py-1 rounded text-sm border', leadSortKey==='reg' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500']">
@@ -3427,7 +3428,7 @@
       <div v-if="ttView==='list'" class="bg-white rounded-xl shadow-sm p-3 mb-3">
         <div class="text-xs font-semibold text-slate-500 mb-2">🔍 검색 / 필터 <span class="font-normal text-slate-400">(아래는 등록된 시간표 조회용입니다)</span></div>
         <div class="flex flex-wrap items-end gap-2">
-        <div><label class="lbl">학생</label><input v-model="ttFilter.name" placeholder="이름/아이디" class="input w-28" /></div>
+        <div><label class="lbl">학생</label><search-box v-model="ttFilter.name" placeholder="이름/아이디" class="w-28"></search-box></div>
         <div><label class="lbl">요일</label><select v-model="ttFilter.weekday" class="input w-20"><option value="">전체</option><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
         <div><label class="lbl">시작 이상</label><input v-model="ttFilter.from" @change="onFilterFrom" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" /></div>
         <div><label class="lbl">종료 이하</label><input v-model="ttFilter.to" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" /></div>
@@ -3614,8 +3615,8 @@
       </div>
       <!-- 검색/필터 -->
       <div class="flex items-center gap-2 mb-3">
-        <input :value="stuSearchRaw" @input="stuSearchRaw=$event.target.value" ref="stuSearchInput" placeholder="1차 검색 (원번·이름·학교·학년·보호자)" class="input flex-1 min-w-0 py-1" />
-        <input :value="stuSearch2Raw" @input="stuSearch2Raw=$event.target.value" placeholder="2차 검색" class="input flex-1 min-w-0 py-1" />
+        <search-box v-model="stuSearchRaw" ref="stuSearchInput" placeholder="1차 검색 (원번·이름·학교·학년·보호자)" class="flex-1 min-w-0"></search-box>
+        <search-box v-model="stuSearch2Raw" placeholder="2차 검색" class="flex-1 min-w-0"></search-box>
         <div class="shrink-0 w-28">
           <select v-model="stuStatusFilter" class="input py-1">
             <option value="">상태 전체</option>
@@ -4006,7 +4007,7 @@
             </ul>
           </div>
           <div class="mb-2 flex items-center gap-2">
-            <input :value="staffFilterRaw" @input="staffFilterRaw=$event.target.value" placeholder="이름·사번·역할·지점 검색" class="input" />
+            <search-box v-model="staffFilterRaw" placeholder="이름·사번·역할·지점 검색" box-class="input"></search-box>
             <label class="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap"><input type="checkbox" v-model="staffShowInactive" @change="loadStaff" class="w-4 h-4"> 비활성 포함</label>
           </div>
           <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
@@ -4149,7 +4150,7 @@
             </template>
           </div>
         </div>
-        <input :value="examFilter.qRaw" @input="examFilter.qRaw=$event.target.value" placeholder="학생 검색" class="input py-1 w-40" />
+        <search-box v-model="examFilter.qRaw" placeholder="학생 검색" class="w-40"></search-box>
         <span class="ml-auto text-slate-400">{{ examRows.length }}건</span>
       </div>
 
@@ -4744,7 +4745,7 @@
       </div>
       <!-- 검색 + 삭제내역 -->
       <div v-if="!fixedSel" class="flex items-center gap-2 mb-3">
-        <input :value="msgSearchRaw" @input="msgSearchRaw=$event.target.value" placeholder="🔍 제목·내용 검색" class="input py-1.5 text-sm flex-1" />
+        <search-box v-model="msgSearchRaw" placeholder="🔍 제목·내용 검색" box-class="input py-1.5 text-sm" class="flex-1"></search-box>
         <label v-if="isManager" class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer whitespace-nowrap">
           <input type="checkbox" v-model="msgShowHidden" @change="loadMsgTemplates" class="w-3.5 h-3.5"> 삭제내역 보기
         </label>
@@ -4830,7 +4831,7 @@
             <!-- 학생 연결 -->
             <div>
               <label class="lbl">학생 연결 <span v-if="msgStudent" class="text-emerald-600">· {{ msgStudent.real_name||msgStudent.username }}</span></label>
-              <input :value="msgStuQRaw" @input="msgStuQRaw=$event.target.value" @focus="msgStuOpen=true" placeholder="이름·원번 검색(선택)" class="input py-1" />
+              <search-box v-model="msgStuQRaw" @focus="msgStuOpen=true" placeholder="이름·원번 검색(선택)"></search-box>
               <ul v-if="msgStuOpen && msgStuQ" class="border rounded-lg max-h-40 overflow-auto divide-y mt-1">
                 <li v-for="s in msgStuList" :key="s.id" @click="pickMsgStudent(s)" class="px-2 py-1.5 text-sm hover:bg-indigo-50 cursor-pointer">{{ s.real_name||s.username }} <span class="text-xs text-slate-400">{{ s.enroll_no }} · {{ s.branch }}</span></li>
                 <li v-if="msgStuList.length===0" class="px-2 py-2 text-xs text-slate-400 text-center">결과 없음</li>
@@ -4860,7 +4861,7 @@
           <div class="text-xs font-semibold text-slate-500">실시간 미리보기</div>
           <div>
             <label class="lbl">미리보기 학생<span v-if="tplPreviewStudent" class="text-emerald-600"> · {{ tplPreviewStudent.real_name||tplPreviewStudent.username }}</span></label>
-            <input :value="tplPreviewStuQRaw" @input="tplPreviewStuQRaw=$event.target.value" @focus="tplPreviewStuOpen=true" placeholder="다른 학생 검색(이름·원번)" class="input py-1 text-sm" />
+            <search-box v-model="tplPreviewStuQRaw" @focus="tplPreviewStuOpen=true" placeholder="다른 학생 검색(이름·원번)" box-class="input py-1 text-sm"></search-box>
             <ul v-if="tplPreviewStuOpen && tplPreviewStuQ" class="border rounded-lg max-h-40 overflow-auto divide-y mt-1">
               <li v-for="s in tplPreviewStuList" :key="s.id" @click="pickTplPreviewStudent(s)" class="px-2 py-1.5 text-sm hover:bg-indigo-50 cursor-pointer">{{ s.real_name||s.username }} <span class="text-xs text-slate-400">{{ s.enroll_no }} · {{ s.branch }}</span></li>
               <li v-if="tplPreviewStuList.length===0" class="px-2 py-2 text-xs text-slate-400 text-center">결과 없음</li>
@@ -5312,7 +5313,7 @@
           </div>
           <div class="flex-1 min-w-[10rem]">
             <label class="lbl">검색</label>
-            <input :value="actFilter.qRaw" @input="actFilter.qRaw=$event.target.value" placeholder="학생명·내용·사유" class="input py-1" />
+            <search-box v-model="actFilter.qRaw" placeholder="학생명·내용·사유"></search-box>
           </div>
         </div>
         <div class="flex items-center gap-2 text-xs text-slate-400">
@@ -7916,6 +7917,11 @@ const app = createApp({
     hideTcPop(){ this.tcPop.show=false; },
     showProgPop(l,e){ const p=l.progress||{}; if(!p.content && !p.homework && !p.feedback && !p.memo) return; this.progPop={ show:true, content:p.content||'', homework:p.homework||'', feedback:p.feedback||'', memo:p.memo||'', x:Math.min(e.clientX+12,window.innerWidth-280), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
     hideProgPop(){ this.progPop.show=false; },
+    // 줄여 보여준 글의 전체 내용을 올려다볼 때 띄운다(비고 팝오버를 그대로 재사용)
+    showTextPop(tag, text, e){ this.notePop={ show:true, tag:tag, note:text||'', tagStyle:{backgroundColor:'#ede9fe',color:'#7c3aed'},
+      x:Math.min(e.clientX+10, window.innerWidth-260), y:Math.min(e.clientY+10, window.innerHeight-80) }; },
+    // 한 줄에 맞추려고 앞부분만 남긴다. 잘린 건 ... 로 알리고 전체는 올려다보면 나온다
+    shortNote(s, n){ s=String(s||''); n=n||8; return s.length>n ? s.slice(0,n)+'…' : s; },
     hideNotePop(){ this.notePop.show=false; },
     async saveAtt(){
       const l=this.attModal;
@@ -10446,6 +10452,26 @@ const app = createApp({
       if (this.isDirty()){ e.preventDefault(); e.returnValue=''; return ''; }
     });
   },
+});
+// 검색창. 지우려고 백스페이스를 길게 누르는 게 번거로워 오른쪽에 ✕ 를 둔다.
+// 값이 있을 때만 나타나고, 지운 뒤에는 이어서 칠 수 있게 입력칸에 초점을 남긴다.
+app.component('search-box', {
+  props: { modelValue: { default: '' }, placeholder: { default: '' },
+           boxClass: { default: 'input py-1' } },
+  emits: ['update:modelValue', 'focus'],
+  methods: {
+    focus(){ this.$refs.el && this.$refs.el.focus(); },
+    clear(){ this.$emit('update:modelValue', ''); this.$nextTick(()=> this.focus()); },
+  },
+  template: `<div class="relative w-full min-w-0">
+    <input ref="el" :value="modelValue" @input="$emit('update:modelValue', $event.target.value)"
+           @focus="$emit('focus', $event)" :placeholder="placeholder"
+           :class="[boxClass, 'w-full', modelValue ? 'pr-7' : '']" />
+    <button v-if="modelValue" type="button" @click="clear" tabindex="-1"
+            class="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center
+                   text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+            style="font-size:11px;line-height:1">✕</button>
+  </div>`
 });
 app.component('call-btn', {
   props: { phone: String },
