@@ -1652,6 +1652,17 @@
           </span>
         </div>
       </div>
+      <!-- 임시휴원은 표가 아니라 카드라 열 설정과 별개다. 화면 배율에 따라 몇 명이 들어가는지가
+           달라 자동으로는 원하는 수가 안 나올 때가 있어 손으로도 정할 수 있게 둔다 -->
+      <div v-if="colCfg.page==='dash'" class="px-3 py-2 border-t shrink-0">
+        <div class="text-[11px] text-slate-500 mb-1">임시휴원 — 한 줄에</div>
+        <div class="flex gap-1">
+          <button v-for="o in [{v:'auto',l:'자동'},{v:'2',l:'2명'},{v:'3',l:'3명'},{v:'4',l:'4명'}]" :key="o.v"
+                  @click="setLeaveCols(o.v)"
+                  :class="['px-2 py-1 rounded text-xs border flex-1', leaveCols===o.v ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50']">{{ o.l }}</button>
+        </div>
+        <div class="text-[10px] text-slate-400 mt-1">자동은 자리가 되는 만큼 넣습니다. 수를 정하면 좁아져도 그 수를 지키고 글이 잘립니다.</div>
+      </div>
       <div class="flex items-center justify-between px-3 py-2 border-t shrink-0">
         <button @click="resetCols" class="text-xs text-slate-400 hover:underline">초기화</button>
         <span class="text-[11px] text-slate-400">이 브라우저에만 적용</span>
@@ -2177,9 +2188,9 @@
         <div v-if="tempLeavesNow.length" class="flex items-start gap-2 py-1">
           <span class="shrink-0 px-1.5 py-0.5 rounded bg-purple-200 text-purple-800 font-semibold">진행중 {{ tempLeavesNow.length }}명</span>
           <!-- 한 명이 한 줄, 한 줄에 2명씩. 이름·기간·복귀일의 자리를 맞춰 세로로 훑어보기 쉽게 -->
-          <div class="flex-1 grid grid-cols-[repeat(auto-fit,minmax(29rem,1fr))] gap-x-6 gap-y-1 min-w-0">
+          <div :class="['flex-1 grid gap-x-6 gap-y-1 min-w-0', leaveGridCls]">
             <div v-for="t in tempLeavesNow" :key="t.student_id"
-                 class="grid grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)] items-baseline gap-x-2 min-w-0">
+                 :class="['grid items-baseline gap-x-2 min-w-0', leaveItemCls]">
               <button @click="goStudentAttend(t.student_id)" class="text-left font-medium text-slate-700 hover:underline truncate">{{ t.name }}</button>
               <span class="text-slate-500 whitespace-nowrap">{{ t.start_date.slice(5) }} ~ {{ t.last_date.slice(5) }} {{ t.count }}회</span>
               <span v-if="t.back_date" :class="['px-1.5 py-0.5 rounded whitespace-nowrap justify-self-start', t.back_in<=7 ? 'bg-amber-100 text-amber-700 font-semibold' : 'bg-white text-purple-600']">
@@ -2195,9 +2206,9 @@
         </div>
         <div v-if="tempLeavesSoon.length" :class="['flex items-start gap-2 py-1', tempLeavesNow.length ? 'border-t border-purple-100 mt-1 pt-1.5' : '']">
           <span class="shrink-0 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">예정 {{ tempLeavesSoon.length }}명</span>
-          <div class="flex-1 grid grid-cols-[repeat(auto-fit,minmax(29rem,1fr))] gap-x-6 gap-y-1 min-w-0">
+          <div :class="['flex-1 grid gap-x-6 gap-y-1 min-w-0', leaveGridCls]">
             <div v-for="t in tempLeavesSoon" :key="t.student_id"
-                 class="grid grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)] items-baseline gap-x-2 min-w-0">
+                 :class="['grid items-baseline gap-x-2 min-w-0', leaveItemCls]">
               <button @click="goStudentAttend(t.student_id)" class="text-left font-medium text-slate-700 hover:underline truncate">{{ t.name }}</button>
               <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold whitespace-nowrap justify-self-start">
                 {{ t.start_date.slice(5) }}부터 D-{{ t.starts_in }} · {{ t.count }}회
@@ -5986,7 +5997,8 @@ const app = createApp({
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
       examFilter: { pending:true, done:false, upcoming:true, past:false, cats:[], q:'', qRaw:'' },
       examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
-      guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null, examFormBase: '', examSnForm: null, examSnError: '',
+      guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
+      leaveCols: (localStorage.getItem('portal_leave_cols') || 'auto'), examFormBase: '', examSnForm: null, examSnError: '',
       examTab: 'ALL', examContestId: null, examSel: [], examShowJoinNo: false,
       examContactForm: null,
       examContactPop: { show:false, x:0, y:0, name:'', rows:[] },
@@ -6629,6 +6641,20 @@ const app = createApp({
     },
     // 학생을 붙일 때 고를 수 있는 진행·응시 장소(회차가 아니라 지금 고른 종류 기준)
     // 대회 날짜 칸들. 주최측이 따로따로 내므로 각각 '미정'을 둔다
+    // 자동은 '한 명당 29rem' 을 기준으로 자리가 되는 만큼 넣는다. 수를 정하면 그 수를 지킨다.
+    leaveGridCls(){
+      const n = this.leaveCols;
+      if (n === 'auto') return 'grid-cols-[repeat(auto-fit,minmax(29rem,1fr))]';
+      return { '2':'grid-cols-1 md:grid-cols-2', '3':'grid-cols-1 md:grid-cols-3',
+               '4':'grid-cols-1 md:grid-cols-4' }[n] || 'grid-cols-1';
+    },
+    // 수를 정하면 칸이 좁아지므로 이름·기간·복귀일을 글자만큼만 쓰게 바꾼다.
+    // 고정 너비를 그대로 두면 칸을 넘겨 가로 스크롤이 생긴다.
+    leaveItemCls(){
+      return this.leaveCols === 'auto'
+        ? 'grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)]'
+        : 'grid-cols-[minmax(3rem,auto)_auto_auto_minmax(0,1fr)]';
+    },
     examSnDateFields(){
       return [
         { k:'exam_date',   label:'대회일' },
@@ -8991,6 +9017,7 @@ const app = createApp({
       const p = this.colCfg.page;
       localStorage.removeItem(this.colKey(p));
       this.colState[p] = buildColState(p);
+      if (p === 'dash') this.setLeaveCols('auto');   // 임시휴원 줄 수도 함께 되돌린다
       this.afterColChange(p);
     },
     afterColChange(page){
@@ -10016,6 +10043,10 @@ const app = createApp({
       let old; try { old = JSON.parse(base) || {}; } catch(e){ return false; }
       const cur = g.get(this) || {};
       return String(old[field] ?? '') !== String(cur[field] ?? '');
+    },
+    setLeaveCols(v){
+      this.leaveCols = v;
+      try { localStorage.setItem('portal_leave_cols', v); } catch(e){}
     },
     guardCls(key, field){ return this.guardFieldDirty(key, field) ? 'ring-2 ring-amber-400 border-amber-400' : ''; },
     // 바깥을 눌렀을 때. 손댄 게 없으면 그냥 닫고, 있으면 먼저 물어본다
