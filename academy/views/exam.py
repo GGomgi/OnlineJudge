@@ -15,11 +15,14 @@ from account.models import User
 
 from ..models import (ExamCatalog, ExamSession, ExamEntry, ExamTeam, ExamKind, EntryMode,
                       EXAM_KIND_CHOICES, ENTRY_MODE_CHOICES, StudentProfile, EnrollmentStatus,
-                      StudentCredential)
+                      StudentCredential, ExamStage, ExamContact, ExamContactKind,
+                      EXAM_STAGE_CHOICES, EXAM_CONTACT_CHOICES)
 from ..services import viewable_branch_ids, can_manage_branch, can_view_branch
 
 KIND_LABEL = dict(EXAM_KIND_CHOICES)
 MODE_LABEL = dict(ENTRY_MODE_CHOICES)
+STAGE_LABEL = dict(EXAM_STAGE_CHOICES)
+CONTACT_LABEL = dict(EXAM_CONTACT_CHOICES)
 
 # 특별시험은 우리가 날짜를 정하고 시험 이틀 전까지 접수한다
 CERT_APPLY_LEAD_DAYS = 2
@@ -322,6 +325,12 @@ def entry_row(e):
         "apply_until": str(sn.apply_until) if sn.apply_until else "",
         "d_exam": ((sn.exam_date - today).days if sn.exam_date else None),
         "d_apply": ((sn.apply_until - today).days if sn.apply_until else None),
+        "stage": e.stage, "stage_label": stage_text(e),
+        "contacts": [{"kind": c.kind, "kind_label": CONTACT_LABEL.get(c.kind, c.kind),
+                      "note": c.note, "actor": name_of(c.actor),
+                      "time": str(c.create_time + timedelta(hours=9))[:16]}
+                     for c in e.contacts.all()[:20]],
+        "last_contact": _last_contact(e),
         "applied": e.applied, "applied_at": str(e.applied_at) if e.applied_at else "",
         "entry_mode": sn.entry_mode or (sn.catalog.entry_mode if sn.catalog_id else
                                         (cat.entry_mode if cat else "")),
@@ -350,6 +359,27 @@ def entry_fee(e, cat, sn):
     return sn.fee
 
 
+def stage_text(e):
+    """상태 표시. 같은 안내를 여러 번 보냈으면 '접수 안내(3차)'처럼 차수를 붙인다."""
+    base = STAGE_LABEL.get(e.stage, e.stage)
+    if e.applied:
+        return STAGE_LABEL[ExamStage.APPLIED]
+    kind = {ExamStage.NOTIFIED: ExamContactKind.NOTIFY,
+            ExamStage.APPLY_GUIDE: ExamContactKind.APPLY_GUIDE}.get(e.stage)
+    if kind:
+        n = sum(1 for c in e.contacts.all() if c.kind == kind)
+        if n > 1:
+            return "%s(%d차)" % (base, n)
+    return base
+
+
+def _last_contact(e):
+    c = next(iter(e.contacts.all()), None)
+    if not c:
+        return ""
+    return "%s %s" % (str(c.create_time + timedelta(hours=9))[5:10], CONTACT_LABEL.get(c.kind, c.kind))
+
+
 def _entry_phone(e):
     sp = getattr(e.student, "student_profile", None)
     return (sp.parent_phone if sp else "") or ""
@@ -364,7 +394,8 @@ class ExamEntryAdminAPI(APIView):
         qs = ExamEntry.objects.select_related(
             "session", "session__catalog", "session__branch", "catalog", "team",
             "student", "student__userprofile", "student__student_profile",
-            "credential", "instructor").filter(is_deleted=False, session__is_deleted=False)
+            "credential", "instructor").prefetch_related("contacts", "contacts__actor").filter(
+            is_deleted=False, session__is_deleted=False)
         if view is not None:
             qs = qs.filter(Q(session__branch_id=None) | Q(session__branch_id__in=view))
         if request.GET.get("session_id"):
@@ -422,11 +453,16 @@ class ExamEntryAdminAPI(APIView):
             e.track = (d.get("track") or "").strip()[:32]
         if "team_id" in d:
             e.team_id = int(d["team_id"]) if d.get("team_id") else None
+        if "stage" in d and d.get("stage"):
+            e.stage = d["stage"]
         if "applied" in d:
             e.applied = bool(d.get("applied"))
             e.applied_at = kst_today() if e.applied else None
             if d.get("applied_at"):
                 e.applied_at = parse_date(d["applied_at"], e.applied_at)
+            # 접수하면 단계도 함께 올린다. 되돌리면 접수 안내 상태로 돌아간다.
+            e.stage = ExamStage.APPLIED if e.applied else (
+                e.stage if e.stage not in (ExamStage.APPLIED,) else ExamStage.APPLY_GUIDE)
         if "credential_id" in d:
             e.credential_id = int(d["credential_id"]) if d.get("credential_id") else None
         if "fee_paid" in d:
@@ -445,3 +481,52 @@ class ExamEntryAdminAPI(APIView):
         e.is_deleted = True
         e.save(update_fields=["is_deleted"])
         return self.success("ok")
+
+
+class ExamContactAdminAPI(APIView):
+    """연락 기록. 여러 명에게 같은 안내를 한 번에 남긴다(문자를 복사해 보낸 뒤 기록).
+
+    기록을 남기면 단계도 함께 올라간다 — 안내를 보냈는데 상태가 그대로면
+    '보냈는지 안 보냈는지'를 또 헷갈리게 되기 때문."""
+
+    @admin_role_required
+    def post(self, request):
+        d = request.data
+        ids = d.get("entry_ids") or ([d.get("entry_id")] if d.get("entry_id") else [])
+        if not ids:
+            return self.error("대상을 고르세요.")
+        kind = d.get("kind") or ExamContactKind.APPLY_GUIDE
+        note = (d.get("note") or "").strip()[:255]
+        stage = {ExamContactKind.NOTIFY: ExamStage.NOTIFIED,
+                 ExamContactKind.APPLY_GUIDE: ExamStage.APPLY_GUIDE}.get(kind)
+        made = 0
+        for e in ExamEntry.objects.filter(id__in=ids, is_deleted=False):
+            ExamContact.objects.create(entry=e, kind=kind, note=note, actor=request.user)
+            # 이미 접수한 사람은 단계를 되돌리지 않는다
+            if stage and not e.applied:
+                e.stage = stage
+                e.save(update_fields=["stage"])
+            made += 1
+        return self.success({"made": made})
+
+    @admin_role_required
+    def delete(self, request):
+        c = ExamContact.objects.filter(id=request.GET.get("id")).first()
+        if not c:
+            return self.error("기록이 없습니다.")
+        c.delete()
+        return self.success("ok")
+
+
+class ExamStageAdminAPI(APIView):
+    """참여 의사 등 단계만 바꾼다(대회의 참여/불참 표시)."""
+
+    @admin_role_required
+    def post(self, request):
+        d = request.data
+        ids = d.get("entry_ids") or ([d.get("entry_id")] if d.get("entry_id") else [])
+        stage = d.get("stage")
+        if not ids or stage not in dict(EXAM_STAGE_CHOICES):
+            return self.error("값이 올바르지 않습니다.")
+        n = ExamEntry.objects.filter(id__in=ids, is_deleted=False).update(stage=stage)
+        return self.success({"changed": n})

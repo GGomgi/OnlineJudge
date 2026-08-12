@@ -1215,6 +1215,58 @@ class ExamTeam(models.Model):
         ordering = ["name"]
 
 
+class ExamStage(object):
+    """진행 단계. 대회는 '참여 의사'를 먼저 묻고 참여하겠다는 학생만 접수로 넘어간다.
+    자격증은 정규 과정 안에서 자연스럽게 진행되므로 준비 안내 → 접수 안내만 쓴다."""
+    CANDIDATE = "CANDIDATE"      # 담아둔 대상(아직 안내 전)
+    NOTIFIED = "NOTIFIED"        # 안내 발송(대회: 참여 의사 확인 / 자격증: 준비 안내)
+    JOIN_YES = "JOIN_YES"        # 참여하겠다고 함(대회)
+    JOIN_NO = "JOIN_NO"          # 안 하겠다고 함(대회)
+    APPLY_GUIDE = "APPLY_GUIDE"  # 접수 안내
+    APPLIED = "APPLIED"          # 접수 완료
+    DONE = "DONE"                # 응시·참가 완료
+
+
+EXAM_STAGE_CHOICES = [
+    (ExamStage.CANDIDATE, "대상"),
+    (ExamStage.NOTIFIED, "안내"),
+    (ExamStage.JOIN_YES, "참여"),
+    (ExamStage.JOIN_NO, "불참"),
+    (ExamStage.APPLY_GUIDE, "접수 안내"),
+    (ExamStage.APPLIED, "접수 완료"),
+    (ExamStage.DONE, "응시 완료"),
+]
+
+
+class ExamContactKind(object):
+    NOTIFY = "NOTIFY"            # 준비·참여 의사 안내
+    APPLY_GUIDE = "APPLY_GUIDE"  # 접수 안내(2차·3차로 이어짐)
+    ETC = "ETC"
+
+
+EXAM_CONTACT_CHOICES = [
+    (ExamContactKind.NOTIFY, "안내"),
+    (ExamContactKind.APPLY_GUIDE, "접수 안내"),
+    (ExamContactKind.ETC, "기타 연락"),
+]
+
+
+class ExamContact(models.Model):
+    """연락 이력. '누구에게 어떤 안내를 언제 보냈나'를 남긴다.
+    같은 종류를 여러 번 보내면 상태가 '접수 안내(2차)'처럼 올라간다 —
+    꾸준히 독려하고 있다는 근거가 필요하기 때문."""
+    entry = models.ForeignKey("ExamEntry", on_delete=models.CASCADE, related_name="contacts")
+    kind = models.CharField(max_length=16, default=ExamContactKind.APPLY_GUIDE)
+    note = models.CharField(max_length=255, blank=True, default="")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_exam_contact"
+        ordering = ["-create_time", "-id"]
+
+
 class ExamEntry(models.Model):
     """참가 — 목록 화면의 한 줄. '누구 / 무엇 / 언제 / 접수했나'."""
     session = models.ForeignKey(ExamSession, on_delete=models.CASCADE, related_name="entries")
@@ -1227,6 +1279,7 @@ class ExamEntry(models.Model):
     track = models.CharField(max_length=32, blank=True, default="")   # Python
     team = models.ForeignKey(ExamTeam, null=True, blank=True, on_delete=models.SET_NULL,
                              related_name="members")
+    stage = models.CharField(max_length=16, default=ExamStage.CANDIDATE)
     applied = models.BooleanField(default=False)
     applied_at = models.DateField(null=True, blank=True)
     # 접수에 쓴 계정(학생 상세의 아이디 관리와 연결) — 부모가 아이디를 잊는 일이 잦다
