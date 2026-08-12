@@ -1401,9 +1401,9 @@
           <input v-model="examAdd.exam_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5"
                  style="width:5.5rem" :class="['input py-1 text-center font-mono', guardCls('examAdd','exam_time')]" />
         </div>
-        <!-- 대회도 종류·부문·진행을 여기서 고른다. 회차 등록에서 고르는 것과 같은 것들이고,
-             학생마다 다를 수 있어 담을 때 정해 준다. -->
-        <div v-if="examAdd.sn.kind==='CONTEST' && examAddPicks.length" class="rounded-lg border border-slate-200 bg-slate-50 p-2.5 space-y-2">
+        <!-- 대회도 종류·부문·진행을 여기서 고른다. 아래 장소와 성격이 같아 같은 높이에 둔다
+             (회차 등록에서는 공통 설명이 붙어 있어 묶었지만 여기는 그 설명이 없다). -->
+        <template v-if="examAdd.sn.kind==='CONTEST'">
           <div v-for="pk in examAddPicks" :key="pk.field">
             <label class="lbl">{{ pk.label }}</label>
             <div class="flex flex-wrap gap-1">
@@ -1411,7 +1411,7 @@
                       :class="['px-2 py-0.5 rounded text-xs border', examAdd[pk.field]===o ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100']">{{ o }}</button>
             </div>
           </div>
-        </div>
+        </template>
         <div v-if="examAddVenues.length">
           <label class="lbl">장소</label>
           <div class="flex flex-wrap gap-1">
