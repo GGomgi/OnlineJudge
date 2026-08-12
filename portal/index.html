@@ -270,11 +270,14 @@
   <!-- 사유처럼 글을 받는 띠. 확인만 하는 것이 아니라 적어야 해서 입력칸이 붙는다 -->
   <div v-if="inputPrompt" class="fixed left-1/2 -translate-x-1/2 top-3 z-[95] rounded-lg border border-slate-300 bg-white shadow-xl px-3 py-2.5 w-[min(34rem,92vw)]">
     <div class="text-sm text-slate-700 whitespace-pre-line mb-1.5">{{ inputPrompt.msg }}</div>
-    <input ref="inputPromptBox" v-model="inputPrompt.val" :type="inputPrompt.password ? 'password' : 'text'"
+    <input ref="inputPromptBox" v-model="inputPrompt.val"
+           :type="inputPrompt.password ? 'password' : (inputPrompt.date ? 'date' : 'text')"
            @keyup.enter="inputOk" @keyup.esc="inputCancel" class="input py-1 w-full" />
     <div class="flex justify-end gap-2 mt-2">
       <button @click="inputCancel" class="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-600 text-xs">그만두기</button>
-      <button @click="inputOk" class="px-2.5 py-1 rounded bg-indigo-600 text-white text-xs">확인</button>
+      <!-- 세 갈래가 필요한 경우(날짜 고치기 / 아예 되돌리기 / 그만두기) -->
+      <button v-if="inputPrompt.altLabel" @click="inputAlt" class="px-2.5 py-1 rounded bg-rose-600 text-white text-xs">{{ inputPrompt.altLabel }}</button>
+      <button @click="inputOk" class="px-2.5 py-1 rounded bg-indigo-600 text-white text-xs">{{ inputPrompt.okLabel || '확인' }}</button>
     </div>
   </div>
   <header v-if="!enrollMode && !verifyMode" class="bg-slate-900 text-white">
@@ -7069,6 +7072,7 @@ const app = createApp({
       this.inputPrompt = null; p.res(p.val);
     },
     inputCancel(){ const p = this.inputPrompt; this.inputPrompt = null; if (p) p.res(null); },
+    inputAlt(){ const p = this.inputPrompt; this.inputPrompt = null; if (p) p.res('__ALT__'); },
     leaveGo(){ const p = this.leavePrompt; this.leavePrompt = null; if (p && p.run) p.run(); },
     onTab(key){
       if (key==='timetable') this.loadMyTimetable();
@@ -8926,10 +8930,28 @@ const app = createApp({
         this.loadExamAll();
       } catch(e){ this.examAddError = e.message; }
     },
+    // 눌렀다고 바로 접수 처리해 버리면 잘못 눌렀을 때 되돌릴 방법을 모른다.
+    // 접수일을 고르게 하고, 이미 접수한 것은 날짜 고치기와 접수 취소를 나눠 묻는다.
     async toggleExamApplied(e){
+      const who = e.student + ' · ' + e.what;
+      let body = null;
+      if (!e.applied){
+        const d = await this.askInput('접수 처리합니다.\n' + who + '\n\n접수한 날을 고르세요.',
+                                      this.todayStr, { date:true, okLabel:'접수 처리' });
+        if (d === null) return;
+        body = { id:e.id, applied:true, applied_at:d || this.todayStr };
+      } else {
+        const d = await this.askInput('이미 접수한 건입니다.\n' + who + '\n\n접수일을 고쳐 저장하거나, 접수를 되돌립니다.',
+                                      e.applied_at || this.todayStr,
+                                      { date:true, okLabel:'날짜 저장', altLabel:'접수 취소' });
+        if (d === null) return;
+        body = (d === '__ALT__') ? { id:e.id, applied:false }
+                                 : { id:e.id, applied:true, applied_at:d || this.todayStr };
+      }
       try {
-        await api('POST','/api/admin/academy/exam_entry', { id:e.id, applied: !e.applied });
-        this.loadExamAll();
+        await api('POST','/api/admin/academy/exam_entry', body);
+        this.notify(body.applied ? '접수로 처리했습니다.' : '접수를 되돌렸습니다.');
+        if (this.stuDetail && this.stuTab==='exam') this.loadStuExams(); else this.loadExamAll();
       } catch(err){ this.notify(err.message,false); }
     },
     async toggleExamPaid(e){
