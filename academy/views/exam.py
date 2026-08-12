@@ -244,6 +244,9 @@ def session_row(sn, counts=None):
         "catalog_id": sn.catalog_id, "catalog": (sn.catalog.name if sn.catalog_id else ""),
         "title": sn.title, "label": session_label(sn),
         "exam_date": str(d) if d else "", "exam_time": sn.exam_time, "confirmed": sn.confirmed,
+        "submit_from": str(sn.submit_from) if sn.submit_from else "",
+        # 온라인이면 '대회일' 이 아니라 '제출 마감' 이다. 화면이 이름표를 바꿔 쓴다.
+        "online": ("온라인" in (sn.place or "")),
         "apply_from": str(sn.apply_from) if sn.apply_from else "",
         "apply_until": str(sn.apply_until) if sn.apply_until else "",
         "result_date": str(sn.result_date) if sn.result_date else "",
@@ -320,6 +323,7 @@ class ExamSessionAdminAPI(APIView):
         # 정해진 것처럼 보이므로, 채우지 않고 보여줄 때만 시험일을 쓴다.
         sn.result_date = parse_date(d.get("result_date"))
         sn.exam_time = _hhmm(d.get("exam_time"))
+        sn.submit_from = parse_date(d.get("submit_from"))
         sn.entry_mode = (d.get("entry_mode") or "").strip()
         sn.level = (d.get("level") or "").strip()[:64]
         sn.track = (d.get("track") or "").strip()[:64]

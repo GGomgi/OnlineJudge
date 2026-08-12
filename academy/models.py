@@ -1188,6 +1188,9 @@ class ExamSession(models.Model):
     title = models.CharField(max_length=128, blank=True, default="")
     exam_date = models.DateField(null=True, blank=True)          # 미확정이면 비움
     exam_time = models.CharField(max_length=5, blank=True, default="")   # HH:MM (비우면 미정)
+    # 온라인 대회는 정해진 날 모여서 보는 게 아니라 기간 안에 올린다. 그 기간의 시작.
+    # 마감은 exam_date 를 그대로 쓴다(D-day·정렬·알림이 모두 그 값을 본다).
+    submit_from = models.DateField(null=True, blank=True)
     apply_from = models.DateField(null=True, blank=True)
     apply_until = models.DateField(null=True, blank=True)        # 자격증은 시험일-2일 기본
     result_date = models.DateField(null=True, blank=True)

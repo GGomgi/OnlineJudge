@@ -1304,13 +1304,17 @@
               <div class="flex items-center gap-1.5">
                 <input v-model="examSnForm[f.k]" type="date" class="input py-1 flex-1 min-w-0" />
                 <!-- 시험 보는 시각은 대회일에만 붙는다(접수·발표는 날짜만 쓴다) -->
-                <input v-if="f.k==='exam_date'" v-model="examSnForm.exam_time" type="text" inputmode="numeric"
+                <input v-if="f.time" v-model="examSnForm.exam_time" type="text" inputmode="numeric"
                        placeholder="HH:MM" maxlength="5" style="width:5.5rem"
                        :class="['input py-1 text-center font-mono shrink-0', guardCls('examSnForm','exam_time')]" />
               </div>
               <p v-if="f.hint" class="text-[11px] text-slate-400 mt-0.5">{{ f.hint }}</p>
             </div>
           </div>
+          <p v-if="examSnOnline" class="text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-2.5 py-2">
+            <b>온라인 대회</b>라 모여서 보는 날이 없습니다. 접수가 끝나면 <b>제출 기간</b>이 열리고,
+            <b>제출 마감</b>이 그 대회의 날짜가 됩니다(목록의 D-일도 이 날을 셉니다). 마감 시각도 함께 적어주세요.
+          </p>
           <p class="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded px-2.5 py-2">
             <b>미정</b>은 그 날짜를 비워 둔다는 뜻입니다. 주최측이 대회일만 먼저 내고 접수·발표는 나중에 내는 일이 많아
             <b>날짜마다 따로</b> 둡니다. 미정이어도 <b>학생을 미리 붙여둘 수 있고</b>, 마감 임박 알림은 접수 마감이 정해진 뒤부터 나옵니다.
@@ -4620,7 +4624,11 @@
             <span :class="['px-1.5 py-0.5 rounded text-[11px]', sn.kind==='CERT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700']">{{ sn.kind_label }}</span>
             <b class="text-slate-700">{{ sn.label }}</b>
             <span v-if="!sn.confirmed" class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">일정 미확정</span>
-            <span v-else class="text-slate-500 font-mono">{{ sn.exam_date }}</span>
+            <!-- 온라인은 그 날 모이는 게 아니라 기간 안에 올린다. 마감 앞에 시작을 함께 보인다 -->
+            <span v-else class="text-slate-500 font-mono">
+              <span v-if="sn.online && sn.submit_from" class="text-slate-400">{{ sn.submit_from.slice(5) }} ~ </span>{{ sn.exam_date }}<span v-if="sn.exam_time"> {{ sn.exam_time }}</span>
+            </span>
+            <span v-if="sn.online" class="px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 text-[10px]">온라인 제출</span>
             <span v-if="sn.d_exam!==null && sn.d_exam>=0" class="text-slate-400">D-{{ sn.d_exam }}</span>
             <!-- 다음 급수·다음 예선처럼 거의 같은 회차를 또 만드는 일이 잦다 -->
             <button @click="copyExamSession(sn)" class="ml-auto text-[11px] text-slate-400 hover:text-slate-600 hover:underline whitespace-nowrap">복사</button>
@@ -6695,13 +6703,20 @@ const app = createApp({
         ? 'grid-cols-[4.5rem_10.5rem_10.5rem_minmax(0,1fr)]'
         : 'grid-cols-[minmax(3rem,auto)_auto_auto_minmax(0,1fr)]';
     },
+    // 온라인 대회는 모여서 보는 게 아니라 기간 안에 올린다. 같은 칸을 '제출 마감'으로 쓴다
+    // (대회일을 비우면 D-일·정렬·알림이 모두 '일정 미정'이 되어 버린다).
+    examSnOnline(){ return !!(this.examSnForm && (this.examSnForm.place||'').includes('온라인')); },
     examSnDateFields(){
-      return [
-        { k:'exam_date',   label:'대회일' },
+      const on = this.examSnOnline;
+      const rows = [
         { k:'apply_from',  label:'접수 시작' },
         { k:'apply_until', label:'접수 마감' },
-        { k:'result_date', label:'발표일', hint:'비워두면 대회일 당일(종료 후 발표)' },
       ];
+      if (on) rows.push({ k:'submit_from', label:'제출 시작' });
+      rows.push({ k:'exam_date', label:(on ? '제출 마감' : '대회일'), time:true });
+      rows.push({ k:'result_date', label:'발표일',
+                  hint:(on ? '비워두면 제출 마감일' : '비워두면 대회일 당일(종료 후 발표)') });
+      return rows;
     },
     // 학생 상세의 자격증·대회
     stuExamLive(){ return this.stuExams.filter(e => !e.cancelled); },
@@ -8748,14 +8763,14 @@ const app = createApp({
       this.examSnForm = { id:null, kind, catalog_id:null, title:'', exam_date:'',
                           // 자격증은 우리가 날을 잡으니 오늘부터 받는다. 대회는 주최측이 정해 미리 못 채운다
                           apply_from:(kind==='CERT' ? this.todayStr : ''),
-                          exam_time:'', apply_until:'', result_date:'', level:'', track:'', round:'',
+                          exam_time:'', submit_from:'', apply_until:'', result_date:'', level:'', track:'', round:'',
                           place:'', note:'' };
       this.$nextTick(()=> this.openGuard('examSnForm'));
     },
     editExamSession(sn){
       this.examSnError = '';
       this.examSnForm = { id:sn.id, kind:sn.kind, catalog_id:sn.catalog_id, title:sn.title,
-                          exam_date:sn.exam_date||'', exam_time:sn.exam_time||'', apply_from:sn.apply_from||'',
+                          exam_date:sn.exam_date||'', exam_time:sn.exam_time||'', submit_from:sn.submit_from||'', apply_from:sn.apply_from||'',
                           apply_until:sn.apply_until||'', result_date:sn.result_date||'',
                           place:sn.place||'', note:sn.note||'',
                           level:sn.level||'', track:sn.track||'', round:sn.round||'' };
@@ -8766,7 +8781,7 @@ const app = createApp({
       this.editExamSession(sn);
       const f = this.examSnForm;
       f.id = null;
-      f.exam_date = ''; f.apply_until = ''; f.result_date = '';
+      f.exam_date = ''; f.apply_until = ''; f.result_date = ''; f.submit_from = '';
       f.apply_from = (f.kind==='CERT' ? this.todayStr : '');
       this.notify('복사했습니다. 날짜를 넣고 저장하세요.');
     },
