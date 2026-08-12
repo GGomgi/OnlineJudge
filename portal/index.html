@@ -1705,6 +1705,17 @@
     </div>
   </div>
 
+  <!-- 이름 위에 올렸을 때 누구인지 — 동명이인 구분 -->
+  <div v-if="stuPop.show" class="fixed z-[90] px-2.5 py-1.5 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none"
+       :style="{ left: stuPop.x+'px', top: stuPop.y+'px' }">
+    <div class="font-semibold">{{ stuPop.name }} <span class="font-normal text-slate-300">{{ stuPop.school }}</span></div>
+    <div class="text-slate-300 mt-0.5">
+      <span class="font-mono">{{ stuPop.days || '요일 없음' }}</span>
+      <span v-if="stuPop.subjects"> · {{ stuPop.subjects }}</span>
+    </div>
+    <div v-if="stuPop.phone" class="text-slate-400 font-mono">{{ stuPop.phone }}</div>
+  </div>
+
   <!-- 요일 칸 호버: 그 요일 수업 시각 -->
   <div v-if="wdPop.show" class="fixed z-[70] px-2 py-1 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
        :style="{ left: wdPop.x+'px', top: wdPop.y+'px' }">
@@ -5257,7 +5268,8 @@
                 <span v-for="r in b.rows" :key="r.st.id"
                       :class="['px-1.5 py-0.5 rounded border text-xs whitespace-nowrap',
                                r.dup ? 'bg-slate-100 border-slate-200 text-slate-400 line-through' : 'bg-white border-indigo-200 text-indigo-700']">
-                  {{ r.st.real_name || r.st.username }}
+                  <!-- 동명이인이면 이름만으로는 누구인지 알 수 없다. 올려다보면 누구인지 나온다 -->
+                  <span class="cursor-default" @mouseenter="showStuPop(r.st, $event)" @mouseleave="stuPop.show=false">{{ r.st.real_name || r.st.username }}</span>
                   <button @click="phoneDropOne(b.key, r.st.id)" class="ml-0.5 text-slate-400 hover:text-rose-500 no-underline">✕</button>
                 </span>
               </div>
@@ -6232,6 +6244,7 @@ const app = createApp({
       examChgOpen: false, examChanges: [], stuExamShowCancelled: false,
       guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
       phonePick: null, phoneSaved: [],
+      stuPop: { show:false, x:0, y:0, name:'', school:'', days:'', subjects:'', phone:'' },
       leaveCols: (localStorage.getItem('portal_leave_cols') || 'auto'), examFormBase: '', examSnForm: null, examSnError: '',
       examTab: 'ALL', examContestId: null, examSel: [], examShowJoinNo: false,
       examContactForm: null,
@@ -10364,6 +10377,16 @@ const app = createApp({
     stuHasWeekday(st, wi){
       const w = (st.extra||{}).weekdays || {};
       return ((w[wi] || w[String(wi)] || []).length) > 0;
+    },
+    showStuPop(st, e){
+      this.stuPop = { show:true,
+        name: st.real_name || st.username,
+        school: this.schoolGradeShort(st.school_name, st.school_type, st.grade),
+        days: this.phoneDays(st),
+        subjects: (st.subjects||[]).join(' · '),
+        phone: st.parent_phone || st.student_phone || '',
+        x: Math.min(e.clientX + 10, window.innerWidth - 220),
+        y: Math.min(e.clientY + 14, window.innerHeight - 90) };
     },
     phoneHasDay(st, wi){
       const w = (st.extra||{}).weekdays || {};
