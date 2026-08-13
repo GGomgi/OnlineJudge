@@ -6995,7 +6995,14 @@ const app = createApp({
       hrDetail: null, hrDocNewGroup: '', docDragGroup: null, docDragIndex: null,
       ttHistory: [], showTtHistory: false, ttHistoryName: '', ttHistoryStudentId: null,
       ttPopX: 0, ttPopY: 0, ttPopHover: false, ttPopTimer: null,
-      hrFieldLabels: { zipcode:'우편번호', address:'주소', address_detail:'상세주소', phone:'연락처', dependents_decided:'피부양자 확인', dependents:'피부양자', emergency_contacts:'비상연락망', waived_docs:'서류 해당사항 없음', sex_offense_consent:'성범죄 조회 동의' },
+      hrFieldLabels: { zipcode:'우편번호', address:'주소', address_detail:'상세주소', phone:'연락처',
+        dependents_decided:'피부양자 확인', dependents:'피부양자', emergency_contacts:'비상연락망',
+        waived_docs:'서류 해당사항 없음', sex_offense_consent:'성범죄 조회 동의',
+        sex_offense_signature:'성범죄 조회 서명', sex_offense_date:'성범죄 조회 동의일',
+        resident_copy:'주민등록등본', bankbook_copy:'통장 사본', graduation_cert:'졸업증명서',
+        transcript:'성적증명서', family_relation_cert:'가족관계증명서',
+        bank_name:'은행', bank_account:'계좌번호', bank_holder:'예금주',
+        work_type:'근무 형태', hourly_wage:'시급' },
       ttStudents: [], ttAddRows: [], showStudentModal: false, studentModalList: [], studentModalFilter: '', studentModalFilterRaw: '', studentModalSel: [], modalUnassignedOnly: false,
       _debounceTimers: {},
       sig: { drawing:false, ctx:null, hasInk:false },
@@ -8997,7 +9004,10 @@ const app = createApp({
     // 피부양자·비상연락처는 JSON 으로 저장돼 이력에 그대로 나오면 읽을 수가 없다
     hrValue(f, v){
       const t = String(v ?? '').trim();
-      if (!t) return '(없음)';
+      if (!t || t === '-') return '(없음)';
+      // 파일은 경로를 보여 봐야 소용이 없다. 올렸는지만 알면 된다.
+      if (['resident_copy','bankbook_copy','graduation_cert','transcript',
+           'family_relation_cert','sex_offense_signature'].includes(f)) return '올림';
       if (f === 'dependents' || f === 'emergency_contacts'){
         let arr; try { arr = JSON.parse(t); } catch(e){ return t; }
         if (!Array.isArray(arr) || !arr.length) return '(없음)';

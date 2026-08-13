@@ -559,6 +559,65 @@ class StaffDocument(models.Model):
         ordering = ["group", "order", "id"]
 
 
+# 사용 이력에 변수명이 그대로 나오면 읽을 수가 없다. 사람이 읽는 이름과 값으로 옮긴다.
+STAFF_FIELD_LABELS = {
+    "zipcode": "우편번호", "address": "주소", "address_detail": "상세주소",
+    "phone": "연락처", "resident_copy": "주민등록등본", "bankbook_copy": "통장 사본",
+    "graduation_cert": "졸업증명서", "transcript": "성적증명서",
+    "family_relation_cert": "가족관계증명서",
+    "dependents": "피부양자", "dependents_decided": "피부양자 확인",
+    "emergency_contacts": "비상연락망",
+    "sex_offense_consent": "성범죄 조회 동의", "sex_offense_signature": "성범죄 조회 서명",
+    "sex_offense_date": "성범죄 조회 동의일", "waived_docs": "서류 해당사항 없음",
+    "bank_name": "은행", "bank_account": "계좌번호", "bank_holder": "예금주",
+    "work_type": "근무 형태", "hourly_wage": "시급",
+}
+# 파일은 경로를 보여 봐야 소용이 없다. 올렸는지 지웠는지만 알면 된다.
+_STAFF_FILE_FIELDS = {"resident_copy", "bankbook_copy", "graduation_cert", "transcript",
+                      "family_relation_cert", "sex_offense_signature"}
+
+
+def staff_field_label(field):
+    return STAFF_FIELD_LABELS.get(field, field)
+
+
+def staff_value_text(field, raw):
+    """이력에 저장된 값을 사람이 읽는 말로. 못 알아보면 원래 값을 그대로 둔다."""
+    import json as _j
+    v = "" if raw is None else str(raw).strip()
+    if v in ("", "-"):
+        return "(없음)"
+    if field in _STAFF_FILE_FIELDS:
+        return "올림"
+    if v in ("True", "False"):
+        return "예" if v == "True" else "아니오"
+    if v.startswith("[") or v.startswith("{"):
+        try:
+            data = _j.loads(v)
+        except (ValueError, TypeError):
+            return v
+        if isinstance(data, list) and not data:
+            return "(없음)"
+        if field == "waived_docs" and isinstance(data, list):
+            return ", ".join(staff_field_label(x) for x in data) + " 해당사항 없음"
+        if isinstance(data, list):
+            out = []
+            for it in data:
+                if not isinstance(it, dict):
+                    out.append(str(it))
+                    continue
+                nm = (it.get("name") or "").strip()
+                rel = (it.get("relation") or "").strip()
+                ph = (it.get("phone") or "").strip()
+                s = nm + ("(%s)" % rel if rel else "")
+                if ph:
+                    s += " " + ph
+                out.append(s.strip() or "-")
+            return ", ".join(out)
+        return v
+    return v
+
+
 class StaffProfileHistory(models.Model):
     """직원 인사 정보 변경 이력(누가·항목·전→후)."""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,

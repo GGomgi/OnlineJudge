@@ -27,7 +27,8 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
                       TimetableChange, StudentStatusChange, StudentCredential, StaffChangeLog, DailyAttendance,
                       AttendanceChange, LessonOccurrence, OccurrenceStatus, LessonProgress,
-                      MsgTemplateGroup, MsgTemplate, FixedTemplate, KioskDevice, KioskDeviceStatus)
+                      MsgTemplateGroup, MsgTemplate, FixedTemplate, KioskDevice, KioskDeviceStatus,
+                      staff_field_label, staff_value_text)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 
 
@@ -5291,8 +5292,12 @@ class ActivityLogAPI(APIView):
         for c in StaffChangeLog.objects.filter(**base).select_related("staff", "staff__userprofile")[:1000]:
             add(c.create_time, "직원관리", _name_of(c.staff), "%s %s" % (c.change_type, c.detail), c.reason)
         for c in StaffProfileHistory.objects.filter(**base).select_related("user", "user__userprofile")[:1000]:
+            ov = staff_value_text(c.field, c.old_value)
+            nv = staff_value_text(c.field, c.new_value)
+            if ov == nv:
+                continue        # 빈 값에서 빈 값으로 — 사람 눈에는 바뀐 게 없다
             add(c.create_time, "인사정보", _name_of(c.user),
-                "%s: %s → %s" % (c.field, c.old_value or "-", c.new_value or "-"))
+                "%s: %s → %s" % (staff_field_label(c.field), ov, nv), c.reason)
         for c in CounselingLogEdit.objects.filter(**base).select_related("log")[:1000]:
             add(c.create_time, "상담기록", "", "상담 기록 수정(이전 내용: %s)" % (c.old_summary or "")[:80])
 
