@@ -9832,6 +9832,9 @@ const app = createApp({
         this.menuRows = d.rows || []; this.menuStaff = d.staff || []; this.menuRoles = d.roles || [];
         this.menuScope = d.scope || '';
       } catch(e){ this.notify(e.message,false); }
+      // 이 화면을 보는 사람은 메뉴가 왜 그런지 확인하러 온 것이다.
+      // 내 메뉴는 로그인할 때 한 번만 받으므로, 여기서 다시 맞춰 준다.
+      this.loadMyMenus();
     },
     async saveMenu(m, patch){
       try {
