@@ -633,6 +633,14 @@ class StaffDetailAdminAPI(APIView):
         for f in ("zipcode", "address", "address_detail", "phone"):
             if f in d:
                 setattr(sp, f, d.get(f) or "")
+        # 직원이 잘못 넣은 것을 고쳐 달라고 기다리면 며칠씩 밀린다. 원장이 바로 고치고 이력에 남긴다.
+        # 다만 서명·동의는 본인만 한다 — 대신 해 줄 수 있는 것이 아니다.
+        for f in ("dependents", "emergency_contacts"):
+            if f in d:
+                v = d.get(f)
+                setattr(sp, f, v if isinstance(v, str) else _json.dumps(v or [], ensure_ascii=False))
+        if "dependents_decided" in d:
+            sp.dependents_decided = bool(d.get("dependents_decided"))
         # 서류 '해당사항 없음' — 조교·아르바이트는 성적증명서 같은 것이 필요 없을 수 있다.
         # 면제는 원장 이상만 정한다(직원 본인이 스스로 빼면 뜻이 없다).
         if "waived_docs" in d:

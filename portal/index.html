@@ -1723,6 +1723,24 @@
     </div>
   </div>
 
+  <!-- 서류 미리보기. 사진은 그림으로, PDF 는 브라우저가 그대로 그려 준다.
+       새 창으로 나갔다 돌아오면 보던 자리를 잃어 화면 안에서 본다. -->
+  <div v-if="filePrev" class="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4" @click.self="filePrev=null">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between px-4 py-2 border-b shrink-0">
+        <div class="font-bold text-sm">{{ filePrev.title }}</div>
+        <div class="flex items-center gap-3">
+          <a :href="filePrev.url" target="_blank" class="text-xs text-indigo-600 hover:underline">새 창에서 열기</a>
+          <button @click="filePrev=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-auto bg-slate-100 flex items-center justify-center">
+        <img v-if="filePrev.kind==='img'" :src="filePrev.url" class="max-w-full max-h-full object-contain" />
+        <iframe v-else :src="filePrev.url" class="w-full h-full border-0"></iframe>
+      </div>
+    </div>
+  </div>
+
   <!-- 이름 위에 올렸을 때 누구인지 — 동명이인 구분 -->
   <div v-if="stuPop.show" class="fixed z-[90] px-2.5 py-1.5 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none"
        :style="{ left: stuPop.x+'px', top: stuPop.y+'px' }">
@@ -5550,6 +5568,7 @@
             <div class="flex items-center gap-2 text-xs">
               <b class="text-indigo-700">번호로 나갈 학생 {{ phonePicked.length }}명</b>
               <span class="text-slate-400">(겹치는 사람 뺀 수)</span>
+              <span v-if="phoneSiblingCount" class="text-amber-600">👥 형제 {{ phoneSiblingCount }}집 — 보호자 번호가 같아 한 번만 나갑니다</span>
               <button @click="phonePick.batches=[]" class="ml-auto text-slate-400 hover:underline">모두 비우기</button>
             </div>
             <div v-for="b in phoneBatchView" :key="b.key" class="rounded-lg border border-indigo-200 bg-indigo-50 p-2">
@@ -5564,6 +5583,8 @@
                                r.dup ? 'bg-slate-100 border-slate-200 text-slate-400 line-through' : 'bg-white border-indigo-200 text-indigo-700']">
                   <!-- 동명이인이면 이름만으로는 누구인지 알 수 없다. 올려다보면 누구인지 나온다 -->
                   <span class="cursor-default" @mouseenter="showStuPop(r.st, $event)" @mouseleave="stuPop.show=false">{{ r.st.real_name || r.st.username }}</span>
+                  <span v-if="phoneSiblings[r.st.id]" class="text-amber-500 cursor-default"
+                        @mouseenter="showTextPop('같은 집', phoneSiblings[r.st.id], $event)" @mouseleave="hideNotePop">👥</span>
                   <button @click="phoneDropOne(b.key, r.st.id)" class="ml-0.5 text-slate-400 hover:text-rose-500 no-underline">✕</button>
                 </span>
               </div>
@@ -5988,58 +6009,106 @@
           <div class="text-sm text-slate-500 mt-1">{{ hrDetail.staff.role_label }} · {{ hrDetail.staff.branch ? hrDetail.staff.branch.name : '전지점' }}</div>
           <!-- 약식으로 보여 주니 정작 확인할 것(피부양자·서류)을 못 봤다. 실제 내용을 다 보인다 -->
           <div v-if="hrDetail.profile" class="mt-3 space-y-3 text-sm">
-            <div v-if="(hrDetail.profile.missing||[]).length" class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-              아직 안 된 것: <b>{{ hrDetail.profile.missing.join(' · ') }}</b>
+            <div class="flex items-center gap-2">
+              <div v-if="(hrDetail.profile.missing||[]).length" class="flex-1 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                아직 안 된 것: <b>{{ hrDetail.profile.missing.join(' · ') }}</b>
+              </div>
+              <div v-else class="flex-1 text-xs text-emerald-600">인사 정보가 모두 채워졌습니다.</div>
+              <!-- 고쳐 달라고 기다리면 며칠씩 밀린다. 원장이 바로 고치고 이력에 남긴다 -->
+              <span v-if="isDirectorUp" class="shrink-0 flex items-center gap-2 text-xs">
+                <template v-if="hrEditMode">
+                  <button @click="cancelHrEdit" class="text-slate-400 hover:underline">취소</button>
+                  <button @click="saveHrEdit" class="btn-primary text-xs">저장</button>
+                </template>
+                <button v-else @click="startHrEdit" class="text-indigo-600 hover:underline">✎ 수정</button>
+              </span>
             </div>
+            <p v-if="hrEditMode" class="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">
+              고친 내용은 <b>누가 언제 고쳤는지</b>와 함께 인사 이력에 남고, 그 직원도 볼 수 있습니다.
+              서명·동의는 본인만 할 수 있어 여기서는 못 고칩니다.
+            </p>
 
-            <div class="space-y-1 text-slate-600">
+            <div v-if="!hrEditMode" class="space-y-1 text-slate-600">
               <div class="flex gap-2"><span class="text-slate-400 w-14 shrink-0">주소</span><span>{{ hrDetail.profile.zipcode }} {{ hrDetail.profile.address }} {{ hrDetail.profile.address_detail }}</span></div>
               <div class="flex gap-2"><span class="text-slate-400 w-14 shrink-0">연락처</span><span>{{ hrDetail.profile.phone || '-' }}</span></div>
+            </div>
+            <div v-else class="space-y-2">
+              <div class="grid grid-cols-[4rem_5rem_1fr] gap-2 items-center">
+                <span class="text-slate-400 text-xs">주소</span>
+                <input v-model="hrDraft.zipcode" placeholder="우편번호" class="input py-1 text-xs" />
+                <input v-model="hrDraft.address" placeholder="주소" class="input py-1 text-xs" />
+              </div>
+              <div class="grid grid-cols-[4rem_1fr] gap-2 items-center">
+                <span class="text-slate-400 text-xs">상세주소</span>
+                <input v-model="hrDraft.address_detail" class="input py-1 text-xs" />
+              </div>
+              <div class="grid grid-cols-[4rem_1fr] gap-2 items-center">
+                <span class="text-slate-400 text-xs">연락처</span>
+                <input v-model="hrDraft.phone" class="input py-1 text-xs" />
+              </div>
             </div>
 
             <div>
               <div class="text-xs font-semibold text-slate-500 border-b pb-1 mb-1">4대보험 피부양자
                 <span v-if="!hrDetail.profile.dependents_decided" class="text-rose-500 font-normal">— 본인 확인 전</span></div>
-              <div v-if="(hrDetail.profile.dependents||[]).length" class="space-y-0.5">
-                <div v-for="(d,i) in hrDetail.profile.dependents" :key="i" class="flex gap-3 text-slate-600">
-                  <span class="w-16">{{ d.name }}</span>
-                  <span class="w-16 text-slate-400">{{ d.relation }}</span>
-                  <span class="font-mono text-slate-500">{{ d.rrn }}</span>
+              <template v-if="hrEditMode">
+                <div v-for="(d,i) in hrDraft.dependents" :key="i" class="grid grid-cols-[1fr_1fr_1.4fr_2rem] gap-1 mb-1">
+                  <input v-model="d.name" placeholder="이름" class="input py-1 text-xs" />
+                  <input v-model="d.relation" placeholder="관계" class="input py-1 text-xs" />
+                  <input v-model="d.rrn" placeholder="주민번호" class="input py-1 text-xs font-mono" />
+                  <button @click="hrDraft.dependents.splice(i,1)" class="text-rose-400 text-xs">✕</button>
                 </div>
-              </div>
-              <div v-else class="text-xs text-slate-400">없음</div>
+                <button @click="hrDraft.dependents.push({name:'',relation:'',rrn:''})" class="text-xs text-indigo-600 hover:underline">+ 피부양자 추가</button>
+                <label class="flex items-center gap-1.5 text-xs mt-1 cursor-pointer select-none">
+                  <input type="checkbox" v-model="hrDraft.dependents_decided" class="w-3.5 h-3.5" />피부양자 등록 여부를 확인했습니다
+                </label>
+              </template>
+              <template v-else>
+                <div v-if="(hrDetail.profile.dependents||[]).length" class="space-y-0.5">
+                  <div v-for="(d,i) in hrDetail.profile.dependents" :key="i" class="flex gap-3 text-slate-600">
+                    <span class="w-16">{{ d.name }}</span>
+                    <span class="w-16 text-slate-400">{{ d.relation }}</span>
+                    <span class="font-mono text-slate-500">{{ d.rrn }}</span>
+                  </div>
+                </div>
+                <div v-else class="text-xs text-slate-400">없음</div>
+              </template>
             </div>
 
             <div>
               <div class="text-xs font-semibold text-slate-500 border-b pb-1 mb-1">비상 연락처</div>
-              <div v-if="(hrDetail.profile.emergency_contacts||[]).length" class="space-y-0.5">
-                <div v-for="(c,i) in hrDetail.profile.emergency_contacts" :key="i" class="flex gap-3 text-slate-600">
-                  <span class="w-16">{{ c.name }}</span>
-                  <span class="w-16 text-slate-400">{{ c.relation }}</span>
-                  <span class="font-mono">{{ c.phone }}</span>
+              <template v-if="hrEditMode">
+                <div v-for="(c,i) in hrDraft.emergency_contacts" :key="i" class="grid grid-cols-[1fr_1fr_1.4fr_2rem] gap-1 mb-1">
+                  <input v-model="c.name" placeholder="이름" class="input py-1 text-xs" />
+                  <input v-model="c.relation" placeholder="관계" class="input py-1 text-xs" />
+                  <input v-model="c.phone" placeholder="연락처" class="input py-1 text-xs font-mono" />
+                  <button @click="hrDraft.emergency_contacts.splice(i,1)" class="text-rose-400 text-xs">✕</button>
                 </div>
-              </div>
-              <div v-else class="text-xs text-rose-500">없음</div>
+                <button @click="hrDraft.emergency_contacts.push({name:'',relation:'',phone:''})" class="text-xs text-indigo-600 hover:underline">+ 비상 연락처 추가</button>
+              </template>
+              <template v-else>
+                <div v-if="(hrDetail.profile.emergency_contacts||[]).length" class="space-y-0.5">
+                  <div v-for="(c,i) in hrDetail.profile.emergency_contacts" :key="i" class="flex gap-3 text-slate-600">
+                    <span class="w-16">{{ c.name }}</span>
+                    <span class="w-16 text-slate-400">{{ c.relation }}</span>
+                    <span class="font-mono">{{ c.phone }}</span>
+                  </div>
+                </div>
+                <div v-else class="text-xs text-rose-500">없음</div>
+              </template>
             </div>
 
             <!-- 조교·아르바이트는 안 내도 되는 서류가 있다. 면제는 원장 이상만 정한다 -->
             <div>
-              <div class="text-xs font-semibold text-slate-500 border-b pb-1 mb-1 flex items-center gap-2">
-                <span>필수 서류</span>
-                <span class="font-normal text-slate-400">— 해당사항 없음은 원장 이상만 정합니다</span>
-                <!-- 체크하는 순간 바로 바뀌면 잘못 눌러도 되돌릴 새가 없다. 고치고 저장하는 방식으로. -->
-                <span v-if="isDirectorUp" class="ml-auto flex items-center gap-2">
-                  <template v-if="hrEditMode">
-                    <button @click="cancelHrWaive" class="text-slate-400 hover:underline font-normal">취소</button>
-                    <button @click="saveHrWaive" class="text-indigo-600 hover:underline">저장</button>
-                  </template>
-                  <button v-else @click="startHrWaive" class="text-indigo-600 hover:underline font-normal">✎ 수정</button>
-                </span>
-              </div>
+              <div class="text-xs font-semibold text-slate-500 border-b pb-1 mb-1">필수 서류
+                <span class="font-normal text-slate-400">— 해당사항 없음은 원장 이상만 정합니다</span></div>
               <div class="space-y-1">
                 <div v-for="d in hrReqDocs" :key="d.f" class="flex items-center gap-2 text-slate-600">
                   <span class="w-28 shrink-0">{{ d.l }}</span>
-                  <a v-if="hrDetail.profile[d.f] && d.file" :href="hrDetail.profile[d.f]" target="_blank" class="text-indigo-600 hover:underline text-xs">보기</a>
+                  <template v-if="hrDetail.profile[d.f] && d.file">
+                    <button @click="openFilePrev(hrDetail.profile[d.f], d.l)" class="text-indigo-600 hover:underline text-xs">미리보기</button>
+                    <a :href="hrDetail.profile[d.f]" target="_blank" class="text-slate-400 hover:underline text-xs">새 창</a>
+                  </template>
                   <span v-else-if="hrDetail.profile[d.f]" class="text-emerald-600 text-xs">있음</span>
                   <span v-else-if="hrWaived(d.f)" class="text-slate-400 text-xs">해당사항 없음</span>
                   <span v-else class="text-rose-500 text-xs">없음</span>
@@ -6177,9 +6246,9 @@
                  @drop.prevent="onHrFixedDrop(doc.f, $event)" @dragover.prevent
                  class="flex items-center gap-2 text-sm rounded hover:bg-slate-50 px-1 py-0.5">
               <span class="w-44 shrink-0">{{ doc.l }}</span>
-              <span v-if="hrFile(doc.f)" class="text-emerald-600 text-xs">업로드됨 · <a :href="hrFile(doc.f)" target="_blank"
-                  @mouseenter="isImg(hrFile(doc.f)) && showDocPreview(hrFile(doc.f), $event)" @mousemove="moveDocPreview($event)" @mouseleave="hideDocPreview"
-                  class="underline">{{ isImg(hrFile(doc.f)) ? '🖼 보기' : '📄 보기' }}</a>
+              <span v-if="hrFile(doc.f)" class="text-emerald-600 text-xs">업로드됨 ·
+                <button @click="openFilePrev(hrFile(doc.f), doc.l)" class="underline text-indigo-600">{{ isImg(hrFile(doc.f)) ? '🖼 미리보기' : '📄 미리보기' }}</button>
+                <a :href="hrFile(doc.f)" target="_blank" class="underline text-slate-400 ml-1">새 창</a>
                 <span v-if="staffProfile && staffProfile.file_uploaded_at && staffProfile.file_uploaded_at[doc.f]" class="text-slate-400">({{ staffProfile.file_uploaded_at[doc.f] }})</span></span>
               <span v-else class="text-rose-400 text-xs">미등록</span>
               <label class="btn-secondary text-xs cursor-pointer ml-auto">파일 선택<input type="file" class="hidden" accept="image/*,.pdf" @change="uploadStaffFile(doc.f, $event)"></label>
@@ -6830,7 +6899,7 @@ const app = createApp({
       dragIndex: null, dragOverIndex: null,
       staffProfile: null, onboardingDismissed: false, hrNotices: [],
       showPwChange: false, pwForm: { old:'', new1:'', new2:'' },
-      hrDepWarn: false, hrEditMode: false, hrWaiveDraft: [],
+      hrDepWarn: false, hrEditMode: false, hrWaiveDraft: [], hrDraft: {}, filePrev: null,
       hrForm: { zipcode:'', address:'', address_detail:'', phone:'', dependents_decided:false, dependents:[], emergency_contacts:[], sex_offense_consent:false },
       hrSig: { drawing:false, ctx:null, hasInk:false },
       staffFilter: '', staffFilterRaw: '', staffShowInactive: false, staffSort: { key:'', dir:1 },
@@ -7439,6 +7508,26 @@ const app = createApp({
     },
     // 보호자 번호와 학생 번호가 같으면 두 목록에 모두 들어가 같은 사람에게 두 번 간다.
     // 부모 폰을 쓰는 것일 수도 있어 빼지 않고 알려만 준다.
+    // 형제는 보호자 번호가 같아 사람 수와 번호 수가 어긋난다. 어느 집이 형제인지 보인다.
+    phoneSiblings(){
+      const by = {};
+      this.phonePicked.forEach(st => {
+        const k = String(st.parent_phone || '').replace(/[^0-9]/g, '');
+        if (!k) return;
+        (by[k] = by[k] || []).push(st);
+      });
+      const out = {};   // student_id → 같은 집 아이들 이름
+      Object.values(by).forEach(list => {
+        if (list.length < 2) return;
+        const names = list.map(x => x.real_name || x.username).join(', ');
+        list.forEach(x => { out[x.id] = names; });
+      });
+      return out;
+    },
+    phoneSiblingCount(){
+      const seen = new Set(Object.values(this.phoneSiblings));
+      return seen.size;
+    },
     phoneMissing(){
       return (field) => this.phonePicked.filter(st => !String(st[field] || '').replace(/[^0-9]/g, ''));
     },
@@ -8443,21 +8532,33 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     hrWaived(f){ return ((this.hrDetail && this.hrDetail.profile && this.hrDetail.profile.waived_docs) || []).includes(f); },
-    startHrWaive(){
-      this.hrWaiveDraft = ((this.hrDetail.profile && this.hrDetail.profile.waived_docs) || []).slice();
+    startHrEdit(){
+      const p = this.hrDetail.profile || {};
+      this.hrWaiveDraft = (p.waived_docs || []).slice();
+      this.hrDraft = {
+        zipcode: p.zipcode || '', address: p.address || '', address_detail: p.address_detail || '',
+        phone: p.phone || '', dependents_decided: !!p.dependents_decided,
+        dependents: JSON.parse(JSON.stringify(p.dependents || [])),
+        emergency_contacts: JSON.parse(JSON.stringify(p.emergency_contacts || [])),
+      };
       this.hrEditMode = true;
     },
     toggleWaiveDraft(f){
       this.hrWaiveDraft = this.hrWaiveDraft.includes(f)
         ? this.hrWaiveDraft.filter(x=>x!==f) : [...this.hrWaiveDraft, f];
     },
-    cancelHrWaive(){ this.hrEditMode = false; this.hrWaiveDraft = []; },
-    async saveHrWaive(){
+    cancelHrEdit(){ this.hrEditMode = false; this.hrWaiveDraft = []; this.hrDraft = {}; },
+    async saveHrEdit(){
       try {
-        await api('POST','/api/admin/academy/staff_detail',
-                  { user_id:this.hrDetail.staff.user_id, waived_docs: this.hrWaiveDraft });
+        await api('POST','/api/admin/academy/staff_detail', {
+          user_id: this.hrDetail.staff.user_id,
+          ...this.hrDraft,
+          dependents: JSON.stringify((this.hrDraft.dependents||[]).filter(x=>x.name)),
+          emergency_contacts: JSON.stringify((this.hrDraft.emergency_contacts||[]).filter(x=>x.name)),
+          waived_docs: this.hrWaiveDraft,
+        });
         this.hrEditMode = false;
-        this.notify('저장했습니다. 누가 언제 정했는지 인사 이력에 남습니다.');
+        this.notify('저장했습니다. 누가 언제 고쳤는지 인사 이력에 남습니다.');
         this.loadStaffDetail(this.hrDetail.staff.user_id);
       } catch(e){ this.notify(e.message, false); }
     },
@@ -8750,6 +8851,13 @@ const app = createApp({
         for (const s of affected){ try { await api('POST','/api/admin/academy/student_weekly', { student_id:s.id, weekly_sessions:s.slot_count }); n++; } catch(e){} }
         this.notify(n+'명의 주 횟수를 시간표 수에 맞게 수정했습니다.');
       }
+    },
+    // 사진이냐 PDF 냐에 따라 그리는 방법이 다르다
+    openFilePrev(url, title){
+      if (!url) return;
+      const ext = String(url).split('?')[0].split('.').pop().toLowerCase();
+      const kind = ['jpg','jpeg','png','gif','webp','bmp'].includes(ext) ? 'img' : 'pdf';
+      this.filePrev = { url, title: title || '서류', kind };
     },
     hrLabel(f){ return this.hrFieldLabels[f] || f; },
     // 피부양자·비상연락처는 JSON 으로 저장돼 이력에 그대로 나오면 읽을 수가 없다
