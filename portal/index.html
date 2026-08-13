@@ -760,11 +760,6 @@
             <div class="mt-2"><label class="lbl">요청사항 · 알릴사항 <span v-if="stuFieldDirty('memo')" class="text-amber-600">✏️</span></label>
               <textarea v-model="stuForm.memo" rows="2" :readonly="!stuEditMode" :class="stuCls('memo')" placeholder="요청사항·알릴사항 없음"></textarea>
             </div>
-            <!-- 포털을 쓰기 전에 쓰던 자료(구글 시트 등). 옛 진도를 찾아볼 일이 있다 -->
-            <div class="mt-2"><label class="lbl">이전 자료 링크 <span v-if="stuFieldDirty('prev_link')" class="text-amber-600">✏️</span>
-              <a v-if="stuForm.prev_link && !stuEditMode" :href="stuForm.prev_link" target="_blank" class="ml-1 text-xs text-indigo-600 hover:underline">열기 ↗</a></label>
-              <input v-model="stuForm.prev_link" :readonly="!stuEditMode" :class="stuCls('prev_link')" placeholder="구글 시트 등 이전에 쓰던 자료 주소" />
-            </div>
             <div v-if="stuEditMode" class="flex justify-end gap-2 mt-2">
               <button @click="cancelStuEdit" class="btn-secondary text-sm">취소</button>
               <button @click="finishStuEdit" class="btn-primary text-sm">수정완료</button>
@@ -10077,11 +10072,11 @@ const app = createApp({
     bulkColumns(){
       const cols = ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','보호자관계','등하원알림','기타보호자연락처','기타보호자관계','학생연락처','우편번호','주소','상세주소','등록과정','주횟수'];
       for (let i=1; i<=this.bulkTtSlots(); i++) cols.push(i+'회차 요일', i+'회차 시각', i+'회차 과정', i+'회차 수업시간', i+'회차 선생님');
-      cols.push('등록일','수업시작일','기타(요청사항)','이전자료 링크');
+      cols.push('등록일','수업시작일','기타(요청사항)','이전기록 링크');
       return cols;
     },
     bulkFieldMap(){
-      const M = { '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','보호자관계':'parent_relation','등하원알림':'notify_optin','기타보호자연락처':'guardian2_phone','기타보호자관계':'guardian2_relation','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','등록일':'enrollment_date','수업시작일':'lesson_start_date','기타(요청사항)':'memo','이전자료 링크':'prev_link' };
+      const M = { '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','보호자관계':'parent_relation','등하원알림':'notify_optin','기타보호자연락처':'guardian2_phone','기타보호자관계':'guardian2_relation','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','등록일':'enrollment_date','수업시작일':'lesson_start_date','기타(요청사항)':'memo','이전기록 링크':'legacy_url' };
       for (let i=1; i<=this.bulkTtSlots(); i++){
         M[i+'회차 요일']='tt'+i+'_weekday'; M[i+'회차 시각']='tt'+i+'_time'; M[i+'회차 과정']='tt'+i+'_program';
         M[i+'회차 수업시간']='tt'+i+'_duration'; M[i+'회차 선생님']='tt'+i+'_instructor';
@@ -10109,7 +10104,7 @@ const app = createApp({
       if (['parent_relation','guardian2_relation','notify_optin'].includes(field)) return 'w-24';
       if (['guardian2_phone'].includes(field)) return 'w-40';
       if (['parent_phone','student_phone'].includes(field)) return 'w-32';
-      if (['address','memo','prev_link'].includes(field)) return 'w-56';
+      if (['address','memo','legacy_url'].includes(field)) return 'w-56';
       if (['branch'].includes(field)) return 'w-20';
       if (['address_detail'].includes(field)) return 'w-28';
       if (['student_name','parent_name','school_name','school_type'].includes(field)) return 'w-24';

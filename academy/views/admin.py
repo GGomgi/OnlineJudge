@@ -2252,7 +2252,7 @@ def _bulk_resolve_row(actor, row, branches, seen_ids):
         "lesson_start_date": _bulk_parse_date(r.get("lesson_start_date")),
         "timetable": tt_items,
         "memo": r.get("memo", ""),
-        "prev_link": (r.get("prev_link", "") or "").strip()[:500],
+        "legacy_url": (r.get("legacy_url", "") or "").strip()[:500],
     }
     res["ok"] = True
     return res, resolved
@@ -2313,7 +2313,7 @@ class BulkRegisterAPI(APIView):
                 program=(d["programs"][0]["value"] if d["programs"] else ""),
                 programs=_json.dumps(d["programs"], ensure_ascii=False),
                 weekly_sessions=d["weekly_sessions"], lesson_start_date=d["lesson_start_date"],
-                prev_link=d.get("prev_link", "") or "",
+                legacy_url=d.get("legacy_url", "") or "",
                 memo=d.get("memo", "") or "")
             default_dur = lesson_duration(d["school_type"], d["weekly_sessions"])
             for it in d["timetable"]:
@@ -2810,7 +2810,6 @@ def _student_profile_dict(sp):
         "weekly_sessions": sp.weekly_sessions,
         "program": sp.program or "",
         "programs": sp.programs or "",
-        "prev_link": sp.prev_link or "",
         "memo": sp.memo or "",
     }
 
@@ -2915,7 +2914,6 @@ class StudentDetailAdminAPI(APIView):
             ("grade", "학년", None), ("program", "등록 과정(단일)", None),
             ("guardian2_phone", "기타 보호자 휴대폰", None), ("guardian2_relation", "기타 보호자 관계", None),
             ("memo", "요청사항·알릴사항", None),
-            ("prev_link", "이전 자료 링크", None),
         ]
 
         def _disp(f, cat, v):

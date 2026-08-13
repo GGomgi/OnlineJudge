@@ -412,8 +412,6 @@ class StudentProfile(models.Model):
     enrollment_date = models.DateField(null=True, blank=True)
     enrollment_status = models.CharField(max_length=16, default=EnrollmentStatus.ENROLLED)
     lesson_start_date = models.DateField(null=True, blank=True)  # 수업 시작일(시간표 표시 기준)
-    # 포털을 쓰기 전에 쓰던 자료(구글 시트 등). 옛 진도·과제를 찾아볼 일이 있어 남긴다.
-    prev_link = models.CharField(max_length=500, blank=True, default="")
     # 등록 과정·교육 일정(입회원 신청서). 단일 과정(legacy) + 다중 과정(programs JSON).
     program = models.CharField(max_length=16, blank=True, default="")
     program_language = models.CharField(max_length=16, blank=True, default="")
