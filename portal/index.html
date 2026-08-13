@@ -6837,9 +6837,9 @@ const app = createApp({
       actLoading: false,
       actPresets: [ {d:7,l:'최근 7일'}, {d:30,l:'1개월'}, {d:90,l:'3개월'}, {d:365,l:'1년'} ],
       stuCreds: [], stuCredNew: { site:'', login_id:'', password:'' },
-      stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', hour:'', min:'00' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
+      stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', hour:'', min:'' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
       stuTtShowHistory: false, stuTtEditMode: false,
-      stuResvForm: { date:'', hour:'', min:'00', note:'' },
+      stuResvForm: { date:'', hour:'', min:'', note:'' },
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
@@ -6878,11 +6878,11 @@ const app = createApp({
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadStatusSel: [], leadSearch: '', leadSearch2: '', leadSearchRaw: '', leadSearch2Raw: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
-      noteChannel: 'VISIT', noteTime: { date:'', hour:'', min:'00' }, showDeletedLeads: null, editLogId: null, editLogText: '',
-      resvForm: { date:'', hour:'', min:'00', note:'', channel:'VISIT' },
+      noteChannel: 'VISIT', noteTime: { date:'', hour:'', min:'' }, showDeletedLeads: null, editLogId: null, editLogText: '',
+      resvForm: { date:'', hour:'', min:'', note:'', channel:'VISIT' },
       resvActionId: null, resvActionMode: '',
       resvLogForm: { channel:'VISIT', summary:'' },
-      resvRescheduleForm: { date:'', hour:'', min:'00', note:'', reason:'' },
+      resvRescheduleForm: { date:'', hour:'', min:'', note:'', reason:'' },
       resvCancelForm: { reason:'' },
       resvPop: { show:false, x:0, y:0, at:'', note:'', by:'' },
       resvEditPop: { show:false, x:0, y:0, list:[] },
@@ -8640,7 +8640,9 @@ const app = createApp({
     // 치는 도중(14:3)에도 그대로 보여야 하므로 자릿수로만 다룬다
     hmOfParts(p){
       if (!p) return '';
-      const h = (p.hour === '' || p.hour == null) ? '' : String(p.hour);
+      // 시가 없으면 분만 있어도 시각이 아니다. 00 이 미리 박혀 있으면 지우고 쓰게 된다.
+      if (p.hour === '' || p.hour == null) return '';
+      const h = String(p.hour);
       const m = (p.min === '' || p.min == null) ? '' : String(p.min);
       const d = (h.padStart(h && m ? 2 : h.length, '0') + m).replace(/[^0-9]/g, '').slice(0, 4);
       return hmTyped(d);
@@ -11839,7 +11841,7 @@ const app = createApp({
     async saveStuCred(c){ try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, id:c.id, site:c.site, login_id:c.login_id, password:c.password }); c._orig={ site:c.site, login_id:c.login_id, password:c.password }; this.notify('수정되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async addStuCred(){ const n=this.stuCredNew; if(!((n.site||'').trim()||(n.login_id||'').trim()||(n.password||'').trim())) return this.notify('내용을 입력하세요.', false); try { await api('POST','/api/admin/academy/student_credential', { student_id:this.stuDetail.id, site:n.site, login_id:n.login_id, password:n.password }); this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds(); this.notify('추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async deleteStuCred(c){ if (!await this.askConfirm('이 사이트 계정을 삭제할까요?')) return; try { await api('DELETE','/api/admin/academy/student_credential?id='+c.id); this.loadStuCreds(); this.notify('삭제되었습니다.'); } catch(e){ this.notify(e.message,false); } },
-    async addStuReservation(){ const f=this.stuResvForm; const at=this.composeAt(f); if(!at) return this.notify('예약 날짜와 시(시각)를 선택하세요.', false); try { const lead=await api('POST','/api/admin/academy/lead/reservation', { student_id:this.stuDetail.id, at, note:f.note }); this.stuDetail.lead=lead; this.stuDetail.lead_id=lead.id; this.stuResvForm={ date:'', hour:'', min:'00', note:'' }; this.notify('상담 예약이 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
+    async addStuReservation(){ const f=this.stuResvForm; const at=this.composeAt(f); if(!at) return this.notify('예약 날짜와 시(시각)를 선택하세요.', false); try { const lead=await api('POST','/api/admin/academy/lead/reservation', { student_id:this.stuDetail.id, at, note:f.note }); this.stuDetail.lead=lead; this.stuDetail.lead_id=lead.id; this.stuResvForm={ date:'', hour:'', min:'', note:'' }; this.notify('상담 예약이 추가되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     async cancelStuReservation(rv){ const reason=(prompt('취소 사유를 입력하세요.')||'').trim(); if(!reason) return; try { const lead=await api('DELETE','/api/admin/academy/lead/reservation?reservation_id='+rv.id+'&reason='+encodeURIComponent(reason)); this.stuDetail.lead=lead; this.notify('예약이 취소되었습니다.'); } catch(e){ this.notify(e.message,false); } },
     siblingCount(s){ const k=(s.parent_phone||'').replace(/\D/g,''); return k ? (this.siblingGroups[k]||[]).length : 1; },
     showSiblings(s, e){
@@ -11879,7 +11881,7 @@ const app = createApp({
         this.stuAttHist={ rows:[], from:'', to:'', fwdDays:0 }; this.stuMkAll=[];
         this.stuVerify=null; this._stuVerifyRows=[]; this.loadStuVerify();
         this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'', no_makeup:false, start_time:'' }; this.stuAttBulkMode=false;
-        this.stuResvForm={ date:'', hour:'', min:'00', note:'' };
+        this.stuResvForm={ date:'', hour:'', min:'', note:'' };
       } catch(e){ this.notify(e.message,false); }
     },
     buildStuTimetables(d){
@@ -12095,7 +12097,7 @@ const app = createApp({
     toggleLead(r){
       const opening = this.openLeadId!==r.id;
       this.openLeadId = opening ? r.id : null; this.noteText=''; this.editLogId=null;
-      if (opening) { this.noteChannel='VISIT'; this.noteTime = this.nowParts(); this.resvForm = { date:'', hour:'', min:'00', note:'', channel:'VISIT' }; }
+      if (opening) { this.noteChannel='VISIT'; this.noteTime = this.nowParts(); this.resvForm = { date:'', hour:'', min:'', note:'', channel:'VISIT' }; }
     },
     replaceLead(updated){ const i=this.leads.findIndex(x=>x.id===updated.id); if(i>=0) this.leads.splice(i,1,updated); },
     openLeadEdit(r){ this.openLeadId=r.id; if(this.editLeadId===r.id){ this.editLeadId=null; return; } this.startLeadEdit(r); },
@@ -12125,7 +12127,7 @@ const app = createApp({
       if (!at) return this.notify('예약 날짜와 시(시각)를 선택하세요.', false);
       try {
         const d = await api('POST','/api/admin/academy/lead/reservation', { lead_id:r.id, at, note:f.note, channel:f.channel });
-        this.replaceLead(d); this.resvForm={ date:'', hour:'', min:'00', note:'', channel:'VISIT' }; this.notify('상담 예약이 추가되었습니다.');
+        this.replaceLead(d); this.resvForm={ date:'', hour:'', min:'', note:'', channel:'VISIT' }; this.notify('상담 예약이 추가되었습니다.');
       } catch(e){ this.notify(e.message,false); }
     },
     _resvParts(iso){ const d=new Date(iso); const p=x=>String(x).padStart(2,'0'); return { date:this.localDate(d), hour:d.getHours(), min:p(Math.floor(d.getMinutes()/5)*5) }; },
