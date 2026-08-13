@@ -470,6 +470,33 @@ class StaffProfile(models.Model):
     class Meta:
         db_table = "academy_staff_profile"
 
+    def missing_items(self):
+        """무엇이 안 됐는지 목록. 미완료라고만 하면 어디를 봐야 할지 알 수 없다."""
+        import json as _j
+        try:
+            deps = _j.loads(self.dependents) if self.dependents else []
+        except (ValueError, TypeError):
+            deps = []
+        try:
+            emer = _j.loads(self.emergency_contacts) if self.emergency_contacts else []
+        except (ValueError, TypeError):
+            emer = []
+        out = []
+        for ok, label in (
+            (self.address, "주소"), (self.phone, "연락처"),
+            (self.resident_copy, "주민등록등본"), (self.bankbook_copy, "통장 사본"),
+            (self.graduation_cert, "졸업증명서"), (self.transcript, "성적증명서"),
+            (self.sex_offense_consent, "성범죄 조회 동의"),
+            (self.sex_offense_signature, "성범죄 조회 서명"),
+            (self.dependents_decided, "피부양자 확인"),
+            (all(d.get("name") for d in deps), "피부양자 이름"),
+            ((not deps) or self.family_relation_cert, "가족관계증명서"),
+            (len(emer) >= 1, "비상 연락처"),
+        ):
+            if not ok:
+                out.append(label)
+        return out
+
     def is_complete(self):
         import json as _j
         try:

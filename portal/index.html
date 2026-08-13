@@ -5945,7 +5945,12 @@
       <div v-if="hrTab==='hrinfo'" class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
           <div class="font-bold">인사 정보</div>
-          <span v-if="staffProfile" :class="['text-xs px-2 py-0.5 rounded', staffProfile.completed ? 'bg-emerald-500' : 'bg-amber-500']">{{ staffProfile.completed ? '등록 완료' : '미완료' }}</span>
+          <!-- 미완료라고만 하면 어디를 봐야 할지 알 수 없다. 올려다보면 무엇이 남았는지 나온다 -->
+          <span v-if="staffProfile" :class="['text-xs px-2 py-0.5 rounded cursor-default', staffProfile.completed ? 'bg-emerald-500' : 'bg-amber-500']"
+                @mouseenter="!staffProfile.completed && showTextPop('아직 안 된 것', (staffProfile.missing||[]).join(', '), $event)"
+                @mouseleave="hideNotePop">{{ staffProfile.completed ? '등록 완료' : '미완료' }}</span>
+          <span v-if="staffProfile && !staffProfile.completed && (staffProfile.missing||[]).length"
+                class="text-xs text-amber-700">— {{ staffProfile.missing.join(' · ') }}</span>
         </div>
         <div class="p-5 space-y-5">
           <p class="text-xs text-slate-400">주소·연락처는 필수입니다. 서류는 사진 또는 PDF로 업로드하세요. 모두 등록될 때까지 로그인 시 안내가 표시됩니다.</p>
@@ -5986,6 +5991,10 @@
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">4대보험 피부양자 <span class="text-[11px] font-normal text-rose-500">(주민번호 모두 표시 필수)</span></div>
             <p class="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">⚠ 피부양자 정보를 변경·저장하면 <b>관리자에게 자동 통보</b>됩니다. (4대보험 신고 반영을 위해 관리자에게 보고 필요)</p>
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" v-model="hrForm.dependents_decided" class="w-4 h-4"> 피부양자 등록 여부를 확인했습니다 (없으면 체크만)</label>
+            <p v-if="!hrForm.dependents_decided" class="text-[11px] text-rose-500">
+              이 체크가 없으면 다른 것을 다 채워도 <b>인사정보가 미완료</b>로 남습니다.
+              <span v-if="(hrForm.dependents||[]).length">피부양자를 적으셨으니 체크해 주세요.</span>
+            </p>
             <!-- 가족관계증명서: 피부양자 공통 1장 -->
             <div class="flex items-center gap-2 text-sm bg-slate-50 rounded-lg px-2 py-1.5">
               <span class="shrink-0">가족관계증명서 <span class="text-[11px] text-slate-400">(피부양자 공통 1장)</span></span>
@@ -7661,7 +7670,18 @@ const app = createApp({
         this.notify('업로드되었습니다.');
       } catch(e){ this.notify(e.message, false); } finally { ev.target.value=''; }
     },
-    hrSigInit(){ const c=this.$refs.hrSig; if(!c) return; const ctx=c.getContext('2d'); ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.strokeStyle='#1e293b'; ctx.clearRect(0,0,c.width,c.height); this.hrSig.ctx=ctx; this.hrSig.hasInk=false; },
+    hrSigInit(){
+      const c=this.$refs.hrSig; if(!c) return;
+      const ctx=c.getContext('2d'); ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.strokeStyle='#1e293b';
+      ctx.clearRect(0,0,c.width,c.height); this.hrSig.ctx=ctx; this.hrSig.hasInk=false;
+      // 저장해 둔 서명을 다시 그려 준다. 빈 칸으로 두면 저장이 안 된 줄 알고 또 그리게 된다.
+      const url = this.staffProfile && this.staffProfile.sex_offense_signature;
+      if (url){
+        const img = new Image();
+        img.onload = ()=>{ try { ctx.drawImage(img, 0, 0, c.width, c.height); } catch(e){} };
+        img.src = url;
+      }
+    },
     hrSigStart(e){ if(!this.hrSig.ctx) this.hrSigInit(); this.hrSig.drawing=true; const p=this.sigPos(e); this.hrSig.ctx.beginPath(); this.hrSig.ctx.moveTo(p.x,p.y); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); },
     hrSigMove(e){ if(!this.hrSig.drawing) return; const p=this.sigPos(e); this.hrSig.ctx.lineTo(p.x,p.y); this.hrSig.ctx.stroke(); this.hrSig.hasInk=true; },
     hrSigEnd(){ this.hrSig.drawing=false; },

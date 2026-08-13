@@ -103,6 +103,7 @@ def _staff_profile_data(p):
         "sex_offense_date": str(p.sex_offense_date) if p.sex_offense_date else None,
         "file_uploaded_at": _parse_json_obj(p.file_uploaded_at),
         "completed": p.is_complete(),
+        "missing": p.missing_items(),
     }
 
 
