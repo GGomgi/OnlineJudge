@@ -757,6 +757,18 @@
                 <input v-model="stuForm.guardian2_relation" list="guardianRelationList" :readonly="!stuEditMode" :class="stuCls('guardian2_relation')" placeholder="예: 아버지, 삼촌" />
               </div>
             </div>
+            <!-- 포털 전에 종이로 받아 둔 동의. 학부모 화면에는 없는, 학원에서만 쓰는 표시다 -->
+            <div class="mt-2">
+              <label class="flex items-center gap-1.5 text-sm cursor-pointer select-none"
+                     :class="stuEditMode ? '' : 'pointer-events-none'">
+                <input type="checkbox" v-model="stuForm.consent_paper" :disabled="!stuEditMode" class="w-4 h-4" />
+                <span>개인정보 동의를 <b>종이로 받아 보관</b> 중
+                  <span v-if="stuFieldDirty('consent_paper')" class="text-amber-600">✏️</span></span>
+              </label>
+              <p class="text-[11px] text-slate-400 mt-0.5">
+                포털을 쓰기 전에 종이로 받은 경우 켜 두세요. 켜면 <b>정보 미완료에서 빠집니다</b>(동의는 실제로 받았으므로).
+              </p>
+            </div>
             <div class="mt-2"><label class="lbl">요청사항 · 알릴사항 <span v-if="stuFieldDirty('memo')" class="text-amber-600">✏️</span></label>
               <textarea v-model="stuForm.memo" rows="2" :readonly="!stuEditMode" :class="stuCls('memo')" placeholder="요청사항·알릴사항 없음"></textarea>
             </div>
@@ -10072,11 +10084,11 @@ const app = createApp({
     bulkColumns(){
       const cols = ['지점','학생이름','생년월일','성별','학교구분','학교이름','학년','보호자이름','보호자연락처','보호자관계','등하원알림','기타보호자연락처','기타보호자관계','학생연락처','우편번호','주소','상세주소','등록과정','주횟수'];
       for (let i=1; i<=this.bulkTtSlots(); i++) cols.push(i+'회차 요일', i+'회차 시각', i+'회차 과정', i+'회차 수업시간', i+'회차 선생님');
-      cols.push('등록일','수업시작일','기타(요청사항)','이전기록 링크');
+      cols.push('등록일','수업시작일','기타(요청사항)','이전기록 링크','개인정보 동의');
       return cols;
     },
     bulkFieldMap(){
-      const M = { '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','보호자관계':'parent_relation','등하원알림':'notify_optin','기타보호자연락처':'guardian2_phone','기타보호자관계':'guardian2_relation','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','등록일':'enrollment_date','수업시작일':'lesson_start_date','기타(요청사항)':'memo','이전기록 링크':'legacy_url' };
+      const M = { '지점':'branch','학생이름':'student_name','생년월일':'birth_date','성별':'gender','학교구분':'school_type','학교이름':'school_name','학년':'grade','보호자이름':'parent_name','보호자연락처':'parent_phone','보호자관계':'parent_relation','등하원알림':'notify_optin','기타보호자연락처':'guardian2_phone','기타보호자관계':'guardian2_relation','학생연락처':'student_phone','우편번호':'zipcode','주소':'address','상세주소':'address_detail','아이디':'login_id','비밀번호':'password','등록과정':'programs','주횟수':'weekly_sessions','등록일':'enrollment_date','수업시작일':'lesson_start_date','기타(요청사항)':'memo','이전기록 링크':'legacy_url','개인정보 동의':'consent_paper' };
       for (let i=1; i<=this.bulkTtSlots(); i++){
         M[i+'회차 요일']='tt'+i+'_weekday'; M[i+'회차 시각']='tt'+i+'_time'; M[i+'회차 과정']='tt'+i+'_program';
         M[i+'회차 수업시간']='tt'+i+'_duration'; M[i+'회차 선생님']='tt'+i+'_instructor';
@@ -10105,6 +10117,7 @@ const app = createApp({
       if (['guardian2_phone'].includes(field)) return 'w-40';
       if (['parent_phone','student_phone'].includes(field)) return 'w-32';
       if (['address','memo','legacy_url'].includes(field)) return 'w-56';
+      if (field==='consent_paper') return 'w-28';
       if (['branch'].includes(field)) return 'w-20';
       if (['address_detail'].includes(field)) return 'w-28';
       if (['student_name','parent_name','school_name','school_type'].includes(field)) return 'w-24';
@@ -10250,6 +10263,8 @@ const app = createApp({
         ['· 등하원알림: 수신 또는 미수신'],
         ['· 기타보호자연락처·기타보호자관계: 보호자가 두 명 이상일 때만 작성(선택)'],
         ['· 기타(요청사항): 학원에 알릴 요청사항·특이사항 자유 기재(선택)'],
+        ['· 이전기록 링크: 포털 전에 쓰던 자료 주소(구글 시트 등). 학생 이름 옆 (이전기록)으로 열립니다(선택)'],
+        ['· 개인정보 동의: 종이로 이미 받아 보관 중이면 "종이로 받음". 비우면 미동의로 봅니다(정보 미완료에 남음)'],
         [''],
         ['[등록 과정] — 여러 개면 콤마(,)로 구분'],
         ['· 사용 가능 과정 → '+progNames],
@@ -10282,8 +10297,8 @@ const app = createApp({
       };
       const tt=(i,day,time,prog,dur,instr)=>{ const o={}; o[i+'회차 요일']=day||''; o[i+'회차 시각']=time||''; o[i+'회차 과정']=prog||''; if(dur) o[i+'회차 수업시간']=dur; if(instr) o[i+'회차 선생님']=instr; return o; };
       const samples=[
-        row(Object.assign({'학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':sc(0,'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','보호자관계':'어머니','등하원알림':'수신','등록과정':P0,'주횟수':'2','수업시작일':this.todayStr}, tt(1,'월','16:00',P0), tt(2,'수','16:00',P0,'90',I0))),
-        row(Object.assign({'학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':sc(1,'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','보호자관계':'아버지','등하원알림':'수신','기타보호자연락처':'010-4444-5555','기타보호자관계':'어머니','학생연락처':'010-9999-8888','등록과정':LP+'('+L1+')','주횟수':'1','수업시작일':this.todayStr}, tt(1,'화','17:00',LP+'('+L1+')','',I0))),
+        row(Object.assign({'학생이름':'김민준','생년월일':'2014-03-09','성별':'남','학교구분':sc(0,'초'),'학교이름':'청라초','학년':'4','보호자이름':'김보호','보호자연락처':'010-1234-5678','보호자관계':'어머니','등하원알림':'수신','등록과정':P0,'주횟수':'2','수업시작일':this.todayStr,'개인정보 동의':'종이로 받음','이전기록 링크':'https://docs.google.com/spreadsheets/d/예시'}, tt(1,'월','16:00',P0), tt(2,'수','16:00',P0,'90',I0))),
+        row(Object.assign({'학생이름':'이서연','생년월일':'2012-11-20','성별':'여','학교구분':sc(1,'중'),'학교이름':'청라중','학년':'2','보호자이름':'이부모','보호자연락처':'010-2222-3333','보호자관계':'아버지','등하원알림':'수신','기타보호자연락처':'010-4444-5555','기타보호자관계':'어머니','학생연락처':'010-9999-8888','등록과정':LP+'('+L1+')','주횟수':'1','수업시작일':this.todayStr,'개인정보 동의':'종이로 받음'}, tt(1,'화','17:00',LP+'('+L1+')','',I0))),
         row(Object.assign({'학생이름':'박도윤','생년월일':'2015-06-01','성별':'남','학교구분':sc(0,'초'),'학교이름':'가현초','학년':'3','보호자이름':'박맘','보호자연락처':'010-5555-6666','보호자관계':'어머니','등하원알림':'미수신','등록과정':P0+', '+P1}, tt(1,'월','16:00',P0), tt(2,'목','17:00',P1))),
         row(Object.assign({'학생이름':'최하은','생년월일':'2010-09-15','성별':'여','학교구분':sc(2,'고'),'학교이름':'청라고','학년':'1','보호자이름':'최부','보호자연락처':'010-7777-8888','보호자관계':'아버지','등하원알림':'수신','등록과정':LP+'('+L2+')','주횟수':'1','수업시작일':this.todayStr}, tt(1,'금','19:00',LP+'('+L2+')'))),
         row(Object.assign({'학생이름':'정우재','생년월일':'2013-01-22','성별':'남','학교구분':sc(0,'초'),'학교이름':'초은초','학년':'5','보호자이름':'정모','보호자연락처':'010-3333-4444','보호자관계':'할머니','등하원알림':'미수신','등록과정':'로봇코딩','주횟수':'1','기타(요청사항)':'알레르기 있음(땅콩)'}, tt(1,'수','15:00','로봇코딩'))),

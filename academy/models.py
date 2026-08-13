@@ -429,6 +429,9 @@ class StudentProfile(models.Model):
     consent_guardian_name = models.CharField(max_length=64, blank=True, default="")
     consent_signature = models.TextField(blank=True, default="")  # data URL(PNG base64)
     consent_date = models.DateField(null=True, blank=True)
+    # 포털 전에 종이로 받아 둔 동의. 서명 그림은 없지만 동의는 실제로 존재한다.
+    # (온라인 서명이 없다고 '안 받음'으로 두면 정보 미완료가 영영 안 지워진다)
+    consent_paper = models.BooleanField(default=False)
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 

@@ -1854,7 +1854,8 @@ def _missing_info(sp):
     for f, lb in _REQUIRED_INFO:
         v = getattr(sp, f, None)
         if f == "consent_privacy":
-            if not v:
+            # 종이로 받아 둔 것도 동의다. 형태가 다를 뿐 없는 게 아니다.
+            if not v and not getattr(sp, "consent_paper", False):
                 out.append(lb)
         elif v in (None, ""):
             out.append(lb)
@@ -2253,6 +2254,7 @@ def _bulk_resolve_row(actor, row, branches, seen_ids):
         "timetable": tt_items,
         "memo": r.get("memo", ""),
         "legacy_url": (r.get("legacy_url", "") or "").strip()[:500],
+        "consent_paper": (r.get("consent_paper", "") or "").strip() in ("종이로 받음", "종이", "Y", "y", "1", "O", "o"),
     }
     res["ok"] = True
     return res, resolved
@@ -2314,6 +2316,7 @@ class BulkRegisterAPI(APIView):
                 programs=_json.dumps(d["programs"], ensure_ascii=False),
                 weekly_sessions=d["weekly_sessions"], lesson_start_date=d["lesson_start_date"],
                 legacy_url=d.get("legacy_url", "") or "",
+                consent_paper=bool(d.get("consent_paper")),
                 memo=d.get("memo", "") or "")
             default_dur = lesson_duration(d["school_type"], d["weekly_sessions"])
             for it in d["timetable"]:
@@ -2801,6 +2804,7 @@ def _student_profile_dict(sp):
         "zipcode": sp.zipcode or "", "address": sp.address or "", "address_detail": sp.address_detail or "",
         "student_phone": sp.student_phone or "",
         "legacy_url": sp.legacy_url or "",
+        "consent_paper": bool(sp.consent_paper),
         "parent_name": sp.parent_name or "", "parent_phone": sp.parent_phone or "",
         "parent_relation": sp.parent_relation or "", "notify_optin": sp.notify_optin,
         "guardian2_phone": sp.guardian2_phone or "", "guardian2_relation": sp.guardian2_relation or "",
@@ -2940,6 +2944,13 @@ class StudentDetailAdminAPI(APIView):
                 if oldv_s != newv_s:
                     changed.append({"label": label, "old": oldv_s, "new": newv_s})
                 setattr(sp, df, newv)
+        if "consent_paper" in data:
+            newv = bool(data.get("consent_paper"))
+            if bool(sp.consent_paper) != newv:
+                changed.append({"label": "개인정보 동의(종이 보관)",
+                                "old": "예" if sp.consent_paper else "아니오",
+                                "new": "예" if newv else "아니오"})
+            sp.consent_paper = newv
         if "weekly_sessions" in data:
             newv = data.get("weekly_sessions") or None
             oldv = sp.weekly_sessions
