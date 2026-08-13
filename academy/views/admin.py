@@ -1437,10 +1437,12 @@ def _create_student_from_lead(request, lead, data):
             lesson_start_date=data.get("lesson_start_date"),
             schedule_pending=bool(data.get("schedule_pending")),
             consent_privacy=bool(data.get("consent_privacy")),
+            consent_paper=bool(data.get("consent_paper")),
             consent_guardian_name=data.get("consent_guardian_name", "") or "",
             consent_signature=data.get("consent_signature", "") or "",
             # 동의를 받지 않았으면 동의일도 비워 둔다(등록일이 동의일로 둔갑하면 안 됨)
-            consent_date=(data.get("consent_date") or (now().date() if data.get("consent_privacy") else None)),
+            consent_date=(data.get("consent_date")
+                          or (now().date() if (data.get("consent_privacy") or data.get("consent_paper")) else None)),
             memo=data.get("memo", "") or "",
         )
         # 입회원 신청서의 요일/시간(class_schedule)으로 개별 시간표 자동 생성(12).

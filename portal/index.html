@@ -3407,6 +3407,12 @@
               <input type="checkbox" v-model="convertForm.consent_privacy" class="w-4 h-4" />
               <span>위 개인정보 수집·이용·제공에 동의합니다.</span>
             </label>
+            <!-- 아직 종이로 받는 경우가 함께 간다. 종이로 받았으면 여기서 끝내고 서명 칸은 비워 둔다 -->
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" v-model="convertForm.consent_paper" class="w-4 h-4" />
+              <span><b>종이로 받음</b> — 동의서를 종이로 받아 보관합니다
+                <span class="text-slate-400">(아래 성명·서명은 비워두셔도 됩니다)</span></span>
+            </label>
             <div class="flex items-end justify-between gap-3 flex-wrap">
               <div class="text-sm text-slate-600">작성일: <b>{{ today.y }}년 {{ today.m }}월 {{ today.d }}일</b></div>
               <div>
@@ -11283,7 +11289,7 @@ const app = createApp({
         program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date: this.todayStr, weekly_sessions:0, schedule:[], schedule_pending:false,
         login_id:'', password:'',
         parent_login_id: phoneDigits, parent_password:'',
-        consent_privacy:false, consent_guardian_name:'',
+        consent_privacy:false, consent_paper:false, consent_guardian_name:'',
       };
       // 학부모가 링크로 작성 제출한 인적사항이 있으면 프리필
       const ed = r.enroll && r.enroll.data;
@@ -11329,7 +11335,7 @@ const app = createApp({
           student_phone:'', zipcode:'', address:'', address_detail:'',
           program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date: this.todayStr, weekly_sessions:0, schedule:[], schedule_pending:false,
           login_id:'', password:'', parent_login_id:'', parent_password:'',
-          consent_privacy:false, consent_guardian_name:'',
+          consent_privacy:false, consent_paper:false, consent_guardian_name:'',
         };
         if (!(this.options.school_type||[]).length) this.loadOptions();
       });
@@ -11604,6 +11610,7 @@ const app = createApp({
           schedule_pending: skipSchedule,
           parent_login_id: f.parent_login_id || '', parent_password: f.parent_password || '',
           memo: f.memo || '',
+          consent_paper: !!f.consent_paper,
           consent_privacy: wantConsent, consent_guardian_name: wantConsent ? f.consent_guardian_name : '',
           consent_signature: wantConsent ? this.$refs.sig.toDataURL('image/png') : '',
           consent_date: wantConsent ? this.todayStr : null,
