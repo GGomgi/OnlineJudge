@@ -6258,7 +6258,9 @@
                  class="flex items-center gap-2 text-sm rounded hover:bg-slate-50 px-1 py-0.5">
               <span class="w-44 shrink-0">{{ doc.l }}</span>
               <span v-if="hrFile(doc.f)" class="text-emerald-600 text-xs">업로드됨 ·
-                <button @click="openFilePrev(hrFile(doc.f), doc.l)" class="underline text-indigo-600">{{ isImg(hrFile(doc.f)) ? '🖼 미리보기' : '📄 미리보기' }}</button>
+                <button @click="openFilePrev(hrFile(doc.f), doc.l)"
+                        @mouseenter="showDocPreview(hrFile(doc.f), $event)" @mousemove="moveDocPreview($event)" @mouseleave="hideDocPreview"
+                        class="underline text-indigo-600">{{ isImg(hrFile(doc.f)) ? '🖼 미리보기' : '📄 미리보기' }}</button>
                 <a :href="hrFile(doc.f)" target="_blank" class="underline text-slate-400 ml-1">새 창</a>
                 <span v-if="staffProfile && staffProfile.file_uploaded_at && staffProfile.file_uploaded_at[doc.f]" class="text-slate-400">({{ staffProfile.file_uploaded_at[doc.f] }})</span></span>
               <span v-else class="text-rose-400 text-xs">미등록</span>
@@ -6282,9 +6284,11 @@
             <!-- 가족관계증명서: 피부양자 공통 1장 -->
             <div class="flex items-center gap-2 text-sm bg-slate-50 rounded-lg px-2 py-1.5">
               <span class="shrink-0">가족관계증명서 <span class="text-[11px] text-slate-400">(피부양자 공통 1장)</span></span>
-              <span v-if="hrFile('family_relation_cert')" class="text-emerald-600 text-xs">업로드됨 · <a :href="hrFile('family_relation_cert')" target="_blank"
-                  @mouseenter="showDocPreview(hrFile('family_relation_cert'), $event)" @mousemove="moveDocPreview($event)" @mouseleave="hideDocPreview"
-                  class="underline">{{ isImg(hrFile('family_relation_cert')) ? '🖼 보기' : '📄 보기' }}</a></span>
+              <span v-if="hrFile('family_relation_cert')" class="text-emerald-600 text-xs">업로드됨 ·
+                <button @click="openFilePrev(hrFile('family_relation_cert'), '가족관계증명서')"
+                        @mouseenter="showDocPreview(hrFile('family_relation_cert'), $event)" @mousemove="moveDocPreview($event)" @mouseleave="hideDocPreview"
+                        class="underline text-indigo-600">{{ isImg(hrFile('family_relation_cert')) ? '🖼 미리보기' : '📄 미리보기' }}</button>
+                <a :href="hrFile('family_relation_cert')" target="_blank" class="underline text-slate-400 ml-1">새 창</a></span>
               <span v-else class="text-rose-400 text-xs">미등록</span>
               <label class="btn-secondary text-xs cursor-pointer ml-auto">파일 선택<input type="file" class="hidden" accept="image/*,.pdf" @change="uploadStaffFile('family_relation_cert', $event)"></label>
             </div>
