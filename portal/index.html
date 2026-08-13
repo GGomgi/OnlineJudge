@@ -8048,6 +8048,8 @@ const app = createApp({
     },
     selectHrTab(k){
       this.hrTab = k;
+      // 서명 칸은 이 탭 안에만 있다. 탭을 열 때 캔버스가 생기므로 그때 다시 그린다.
+      if (k==='hrinfo') this.redrawHrSig();
       if (k==='activity' && !this.actLog.rows.length){
         if (!this.actFilter.from) this.applyActPreset(30); else this.loadActivity();
       }
