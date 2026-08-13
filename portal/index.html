@@ -10442,6 +10442,15 @@ const app = createApp({
           if (want) return subj.some(x => want.includes(x));
           return hay.includes(term);           // 'c' 한 글자는 그냥 글자로 찾는다
         }
+        // '5학년' 은 학년으로 본다 — 그냥 '5' 로 찾으면 전화번호·학교이름(ICS5)에도 걸린다
+        let m = term.match(/^(\d{1,2})학년$/);
+        if (m) return String(st.grade || '') === m[1];
+        // '초5·중2·고1' 처럼 학교급과 학년을 붙여 쓰는 경우
+        m = term.match(/^(초|중|고|대)(?:등|등학교|학교|학년)?(\d{1,2})$/);
+        if (m){
+          const lv = { '초':'초등학교', '중':'중학교', '고':'고등학교', '대':'대학교' }[m[1]];
+          return (this.schoolLabel(st.school_type) || '') === lv && String(st.grade || '') === m[2];
+        }
         if (hay.includes(SCHOOL_ALIAS[term] || term)) return true;
         // '청람초등학교' → 앞부분 '청람' 이 학교 이름에 있고 학교급이 초등학교인가
         const sp = splitSchoolTerm(term);
