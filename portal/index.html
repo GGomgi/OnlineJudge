@@ -4301,8 +4301,9 @@
                 </td>
                 <!-- 점 하나로는 몇 시에 왔는지 알 수 없어 매번 올려다봐야 했다. 시각을 바로 보인다 -->
                 <td v-for="d in p.days" :key="d.date" class="p-0 text-center"
-                    @mouseenter="hrCellEnter(p,d,$event)" @mouseleave="hrCellLeave">
-                  <div :class="['px-1 py-0.5 leading-tight cursor-default font-mono text-[10px] whitespace-nowrap', hrCellCls(d)]">
+                    @mouseenter="hrCellEnter(p,d,$event)" @mouseleave="hrCellLeave"
+                    @click="canManageHr && openStaffAttEdit(p, d)">
+                  <div :class="['px-1 py-0.5 leading-tight font-mono text-[10px] whitespace-nowrap', canManageHr ? 'cursor-pointer' : 'cursor-default', hrCellCls(d)]">
                     <template v-if="d.leave_kind"><div class="py-1">{{ d.leave_kind_label || '휴' }}</div></template>
                     <template v-else-if="d.in || d.out">
                       <div :class="d.late ? 'font-bold' : ''">{{ d.in || '--:--' }}</div>
@@ -4520,6 +4521,53 @@
             </div>
           </div>
           <div v-if="!examChanges.length" class="text-center text-xs text-slate-400 py-8">아직 이력이 없습니다.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 원장이 직원 근태를 고침 =====
+         퇴근을 안 찍고 가거나, 복날처럼 사정이 있어 늦게 온 날이 있다. 원장이 대신
+         고치되 사유를 반드시 남긴다 — 남의 기록을 고치는 것이라 근거가 있어야 한다. -->
+    <div v-if="saEdit" class="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" @click.self="askClose('saEdit')">
+      <div v-if="guardAsk==='saEdit'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs">계속 쓰기</button>
+        <button @click="closeGuard('saEdit')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs">버리고 닫기</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <div>
+            <div class="font-bold">{{ saEdit.name }} · {{ saEdit.date }}({{ saEdit.wd }})</div>
+            <div class="text-[11px] text-slate-400">고친 내용과 사유는 그 직원의 근태 이력에 남습니다.</div>
+          </div>
+          <button @click="saEdit=null" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div class="p-5 space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="lbl">출근</label>
+              <input v-model="saEdit.in" placeholder="HH:MM" maxlength="5"
+                     :class="['input py-1 text-center font-mono', saEdit.in!==saEdit.in0 ? 'ring-2 ring-amber-400 border-amber-400' : '']" />
+              <div class="text-[11px] text-slate-400 mt-0.5">원래 {{ saEdit.in0 || '없음' }}</div>
+            </div>
+            <div><label class="lbl">퇴근</label>
+              <input v-model="saEdit.out" placeholder="HH:MM" maxlength="5"
+                     :class="['input py-1 text-center font-mono', saEdit.out!==saEdit.out0 ? 'ring-2 ring-amber-400 border-amber-400' : '']" />
+              <div class="text-[11px] text-slate-400 mt-0.5">원래 {{ saEdit.out0 || '없음' }}</div>
+            </div>
+          </div>
+          <div>
+            <label class="lbl">사유 <span class="text-rose-500">*</span></label>
+            <input v-model="saEdit.reason" placeholder="예: 퇴근 미체크(본인 확인) / 복날 식사 후 출근" class="input py-1" />
+            <div class="text-[11px] text-slate-400 mt-0.5">남의 기록을 고치는 것이라 사유가 있어야 합니다.</div>
+          </div>
+          <div>
+            <label class="lbl">비고 <span class="text-slate-400">(그날 기록에 남는 메모)</span></label>
+            <input v-model="saEdit.note" placeholder="예: 내일 복날이라 12시 식당 집합 후 출근" class="input py-1" />
+          </div>
+          <div class="flex justify-end gap-2">
+            <button @click="saEdit=null" class="btn-secondary text-sm">취소</button>
+            <button @click="saveStaffAttEdit" class="btn-primary text-sm">저장</button>
+          </div>
         </div>
       </div>
     </div>
@@ -6430,6 +6478,7 @@ const GUARD_FORMS = {
                    close: vm => { vm.phonePick = null; } },
   promoOpen:     { get: vm => ({ sel: vm.promoSel, sc: vm.promoSchool, sr: vm.promoSenior }),
                    close: vm => { vm.promoOpen = false; } },
+  saEdit:        { get: vm => vm.saEdit, close: vm => { vm.saEdit = null; } },
 };
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
 // 옛 비고 태그 코드(선택목록 개편 전 데이터) 폴백 라벨·색
@@ -6645,7 +6694,7 @@ const app = createApp({
       staffTabs: [ {k:'list',l:'직원 명단'}, {k:'attend',l:'근태'} ],
       hrToday: { today:'', mine:null, summary:null, people:[] },
       hrAtt: { people:[], show_total:false }, hrMonth: '',
-      hrPending: [], leaveKinds: [], leaveForm: null, attEditForm: null,
+      hrPending: [], leaveKinds: [], leaveForm: null, attEditForm: null, saEdit: null,
       hrReqDocs: [ {f:'resident_copy',l:'주민등록등본',file:true}, {f:'bankbook_copy',l:'통장 사본',file:true},
                    {f:'graduation_cert',l:'졸업증명서',file:true}, {f:'transcript',l:'성적증명서',file:true},
                    {f:'family_relation_cert',l:'가족관계증명서',file:true} ],
@@ -8341,6 +8390,12 @@ const app = createApp({
         this.loadHrPending(); this.loadHrAtt();
       } catch(e){ this.notify(e.message,false); }
     },
+    // 근태를 고칠 수 있는 사람인가(원장·인사 관리자)
+    canManageHr(){
+      if (this.me && this.me.user.admin_type === 'Super Admin') return true;
+      const r = this.myProfile && this.myProfile.role;
+      return ['HQ_ADMIN','HR_ADMIN','REGIONAL_MANAGER','BRANCH_MANAGER'].includes(r);
+    },
     hrWaived(f){ return ((this.hrDetail && this.hrDetail.profile && this.hrDetail.profile.waived_docs) || []).includes(f); },
     async toggleWaive(f){
       const cur = ((this.hrDetail.profile.waived_docs)||[]).slice();
@@ -8349,6 +8404,29 @@ const app = createApp({
         await api('POST','/api/admin/academy/staff_detail',
                   { user_id:this.hrDetail.staff.user_id, waived_docs: next });
         this.loadStaffDetail(this.hrDetail.staff.user_id);
+      } catch(e){ this.notify(e.message, false); }
+    },
+    // 퇴근을 안 찍고 가거나 사정이 있어 늦게 온 날을 원장이 대신 고친다
+    openStaffAttEdit(p, d){
+      this.saEdit = { staff_id:p.staff_id, name:p.name, date:d.date, wd:d.wd || '',
+                      in:(d.in||''), out:(d.out||''), in0:(d.in||''), out0:(d.out||''),
+                      note:(d.note||''), reason:'' };
+      this.$nextTick(()=> this.openGuard('saEdit'));
+    },
+    async saveStaffAttEdit(){
+      const f = this.saEdit;
+      const inCh = f.in !== f.in0, outCh = f.out !== f.out0;
+      if (!inCh && !outCh && !(f.note||'').trim()) return this.notify('바꾼 것이 없습니다.', false);
+      if ((inCh || outCh) && !(f.reason||'').trim())
+        return this.notify('남의 기록을 고치는 것이라 사유가 필요합니다.', false);
+      try {
+        const base = { staff_id:f.staff_id, date:f.date, reason:f.reason };
+        if (inCh)  await api('POST','/api/admin/academy/staff_attendance/edit', { ...base, field:'IN',  value:f.in });
+        if (outCh) await api('POST','/api/admin/academy/staff_attendance/edit', { ...base, field:'OUT', value:f.out });
+        if ((f.note||'') !== '') await api('POST','/api/admin/academy/staff_attendance/edit', { ...base, field:'NOTE', value:f.note });
+        this.guardSnap.saEdit = undefined; this.saEdit = null;
+        this.notify('고쳤습니다. 그 직원의 근태 이력에 남습니다.');
+        this.loadHrAtt();
       } catch(e){ this.notify(e.message, false); }
     },
     hrCellCls(d){
