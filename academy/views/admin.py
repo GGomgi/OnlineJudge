@@ -748,6 +748,8 @@ class HRNoticeAdminAPI(APIView):
         out = []
         for n in qs[:100]:
             out.append({"id": n.id, "message": n.message, "kind": n.kind,
+                        # 누가 바꿨는지 알아야 그 직원 인사정보로 바로 갈 수 있다
+                        "staff_id": n.staff_id, "staff": _name_of(n.staff) if n.staff_id else "",
                         "branch": n.branch.name if n.branch_id else None,
                         "create_time": _kst_dt_str(n.create_time)})
         return self.success(out)

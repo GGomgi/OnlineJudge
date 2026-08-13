@@ -1918,6 +1918,9 @@
         :class="['px-4 py-3 text-sm whitespace-nowrap border-b-2 -mb-px',
                  tab===t.key ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700']">
         {{ t.label }}
+        <!-- 인사 변경 통보가 알림에만 뜨고 티가 안 나 놓쳤다. 모두 읽어야 사라진다 -->
+        <span v-if="t.key==='staff' && staffBadge"
+              class="ml-1 align-middle inline-flex items-center justify-center min-w-[1.05rem] h-[1.05rem] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold">{{ staffBadge }}</span>
       </button>
     </div>
   </nav>
@@ -4386,7 +4389,11 @@
             <ul class="space-y-1">
               <li v-for="n in hrNotices" :key="n.id" class="text-xs text-amber-800 flex items-center justify-between gap-2">
                 <span>{{ n.message }} <span class="text-amber-500">· {{ n.create_time }}</span></span>
-                <button @click="markHrNotice(n.id)" class="text-amber-500 hover:text-amber-700 shrink-0">읽음</button>
+                <span class="flex items-center gap-2 shrink-0">
+                  <!-- 무엇이 바뀌었는지는 그 직원 인사정보에서 본다 -->
+                  <button v-if="n.staff_id" @click="openStaffDetail({ user_id:n.staff_id })" class="text-amber-700 hover:underline">보기</button>
+                  <button @click="markHrNotice(n.id)" class="text-amber-500 hover:text-amber-700">읽음</button>
+                </span>
               </li>
             </ul>
           </div>
@@ -8391,6 +8398,11 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     // 근태를 고칠 수 있는 사람인가(원장·인사 관리자)
+    // 직원 관리에서 처리할 것 — 인사 변경 통보 + 근태 수정 요청
+    staffBadge(){
+      const n = (this.hrNotices||[]).length + (this.hrPending||[]).length;
+      return n > 99 ? '99+' : (n || 0);
+    },
     canManageHr(){
       if (this.me && this.me.user.admin_type === 'Super Admin') return true;
       const r = this.myProfile && this.myProfile.role;
@@ -9080,6 +9092,8 @@ const app = createApp({
       if (this.me) this._syncTabUrl(initial, true);
       window.addEventListener('popstate', ()=> this.onPopTab());
       if (this.me && this.isStaff) this.startNotiPoll();
+      // 직원 관리 옆 느낌표는 그 화면에 들어가야 알 수 있으면 소용이 없다. 접속할 때 미리 받아 둔다.
+      if (this.me && this.canManageStaff){ this.loadHrNotices(); this.loadHrPending(); }
     },
     async login(){
       try {
