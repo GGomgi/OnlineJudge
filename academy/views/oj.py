@@ -67,13 +67,13 @@ def _doc_data(d):
             "visible_to_staff": d.visible_to_staff}
 
 
-def record_hr_history(staff_user, actor, before, after):
+def record_hr_history(staff_user, actor, before, after, reason=""):
     rows = []
     for f in TRACKED_HR_FIELDS:
         o = str(before.get(f, "")); n = str(after.get(f, ""))
         if o != n:
             rows.append(StaffProfileHistory(user=staff_user, actor=actor, field=f,
-                                            old_value=o, new_value=n))
+                                            old_value=o, new_value=n, reason=reason))
     if rows:
         StaffProfileHistory.objects.bulk_create(rows)
 from ..serializers import (AcademySignupSerializer, BranchSerializer,
@@ -485,7 +485,7 @@ class StaffProfileAPI(APIView):
                 return h.actor.username
         result["history"] = [{"field": h.field, "old": h.old_value, "new": h.new_value,
                               "actor": ("" if h.actor_id == request.user.id else _actor(h)),
-                              "time": _kst_dt_str(h.create_time)}
+                              "reason": h.reason, "time": _kst_dt_str(h.create_time)}
                              for h in StaffProfileHistory.objects.filter(user=request.user)
                                                                  .select_related("actor")[:100]]
         return self.success(result)

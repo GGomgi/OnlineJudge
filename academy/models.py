@@ -568,6 +568,8 @@ class StaffProfileHistory(models.Model):
     field = models.CharField(max_length=64)
     old_value = models.TextField(blank=True, default="")
     new_value = models.TextField(blank=True, default="")
+    # 남의 정보를 고칠 때 왜 고쳤는지. 직원이 이력에서 이 문장을 보고 납득한다.
+    reason = models.TextField(blank=True, default="")
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:

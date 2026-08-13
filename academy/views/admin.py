@@ -612,7 +612,7 @@ class StaffDetailAdminAPI(APIView):
                 except Exception:
                     an = h.actor.username
             hist.append({"field": h.field, "old": h.old_value, "new": h.new_value,
-                         "actor": an, "time": _kst_dt_str(h.create_time)})
+                         "actor": an, "reason": h.reason, "time": _kst_dt_str(h.create_time)})
         return self.success({"staff": _staff_brief(prof),
                              "profile": (_staff_profile_data(sp) if sp else None),
                              "documents": docs, "history": hist})
@@ -657,7 +657,8 @@ class StaffDetailAdminAPI(APIView):
             sp.waived_docs = _json.dumps([str(x) for x in raw][:20], ensure_ascii=False)
         sp.save()
         after = {f: getattr(sp, f) for f in TRACKED_HR_FIELDS}
-        record_hr_history(sp.user, request.user, before, after)
+        record_hr_history(sp.user, request.user, before, after,
+                          (request.data.get("reason") or "").strip()[:500])
         return self.success("저장되었습니다.")
 
 
