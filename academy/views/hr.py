@@ -14,7 +14,7 @@ from account.decorators import admin_role_required
 from account.models import User
 
 from ..models import (AcademyProfile, AcademyRole, Branch, Holiday, HolidayOptOut, HolidayKind,
-                      StaffWorkPlan, WorkType,
+                      StaffWorkPlan, WorkType, WorkPlanChange,
                       HOLIDAY_KIND_CHOICES, WorkSchedule, StaffAttendance,
                       StaffAttendanceChange, StaffLeave, LeaveKind, LEAVE_KIND_CHOICES,
                       LessonOccurrence, OccurrenceStatus, STAFF_ROLES)
@@ -55,7 +55,11 @@ def kst_dt(dt):
 def hm(v):
     """'HH:MM' 을 time 으로. 못 읽으면 None."""
     t = (v or "").strip()
-    m = __import__("re").match(r"^(\d{1,2}):(\d{2})$", t)
+    re_ = __import__("re")
+    m = re_.match(r"^(\d{1,2}):(\d{2})$", t)
+    if not m:
+        # 콜론 없이 네 자리로 붙여 넣는 사람이 있다. 조용히 지워 버리면 안 된다.
+        m = re_.match(r"^(\d{1,2})(\d{2})$", t)
     if not m:
         return None
     h, mi = int(m.group(1)), int(m.group(2))
@@ -970,8 +974,15 @@ class WorkPlanAPI(APIView):
                 })
             d += timedelta(days=1)
 
+        hist = [{"date": str(c.date), "old": (c.old_start + "~" + c.old_end) if c.old_start else "(없음)",
+                 "new": (c.new_start + "~" + c.new_end) if c.new_start else "(지움)",
+                 "note": c.note, "actor": name_of(c.actor) if c.actor_id else "",
+                 "time": kst_dt(c.create_time)}
+                for c in WorkPlanChange.objects.filter(staff_id=sid, date__gte=d0, date__lte=d1)
+                                               .select_related("actor")[:200]]
         wage = prof.hourly_wage or 0
         return self.success({
+            "history": hist,
             "staff_id": int(sid), "name": name_of(prof.user),
             "work_type": prof.work_type, "hourly_wage": wage,
             "month": ym, "rows": rows,
@@ -982,7 +993,10 @@ class WorkPlanAPI(APIView):
 
     @admin_role_required
     def post(self, request):
-        """하루 저장. {staff_id, date, start, end, note} — start 가 비면 그날을 지운다."""
+        """바뀐 날들을 한 번에 저장. {staff_id, days:[{date,start,end,note}]}
+
+        칸을 빠져나갈 때마다 저장하면 급여가 걸린 표가 소리 없이 바뀐다.
+        고치고 [저장]을 눌러야 반영되고, 바뀐 것만 이력에 남는다."""
         d = request.data
         sid = d.get("staff_id")
         prof = AcademyProfile.objects.filter(user_id=sid, is_deleted=False).first()
@@ -990,18 +1004,40 @@ class WorkPlanAPI(APIView):
             return self.error("직원이 없습니다.")
         if not can_manage_branch(request.user, prof.branch_id):
             return self.error("이 지점을 관리할 권한이 없습니다.")
-        day = parse_date(d.get("date"))
-        if not day:
-            return self.error("날짜를 정하세요.")
-        st, en = hm(d.get("start")), hm(d.get("end"))
-        if not st or not en:
-            StaffWorkPlan.objects.filter(staff_id=sid, date=day).delete()
-            return self.success({"deleted": True})
-        StaffWorkPlan.objects.update_or_create(
-            staff_id=sid, date=day,
-            defaults={"start_time": st, "end_time": en,
-                      "note": (d.get("note") or "").strip(), "created_by": request.user})
-        return self.success({"ok": True})
+        days = d.get("days")
+        if days is None:                       # 옛 방식(하루) 도 받아 준다
+            days = [{"date": d.get("date"), "start": d.get("start"),
+                     "end": d.get("end"), "note": d.get("note")}]
+        saved = removed = 0
+        for it in days:
+            day = parse_date(it.get("date"))
+            if not day:
+                continue
+            cur = StaffWorkPlan.objects.filter(staff_id=sid, date=day).first()
+            old_s = str(cur.start_time)[:5] if cur else ""
+            old_e = str(cur.end_time)[:5] if cur else ""
+            st, en = hm(it.get("start")), hm(it.get("end"))
+            note = (it.get("note") or "").strip()
+            if not st or not en:
+                if cur:
+                    cur.delete()
+                    WorkPlanChange.objects.create(staff_id=sid, date=day, actor=request.user,
+                                                  old_start=old_s, old_end=old_e,
+                                                  new_start="", new_end="", note=note)
+                    removed += 1
+                continue
+            new_s, new_e = str(st)[:5], str(en)[:5]
+            same = cur and old_s == new_s and old_e == new_e and (cur.note or "") == note
+            StaffWorkPlan.objects.update_or_create(
+                staff_id=sid, date=day,
+                defaults={"start_time": st, "end_time": en,
+                          "note": note, "created_by": request.user})
+            if not same:
+                WorkPlanChange.objects.create(staff_id=sid, date=day, actor=request.user,
+                                              old_start=old_s, old_end=old_e,
+                                              new_start=new_s, new_end=new_e, note=note)
+                saved += 1
+        return self.success({"saved": saved, "removed": removed})
 
     @admin_role_required
     def put(self, request):

@@ -3925,10 +3925,12 @@ def _dash_student_extra(d, lessons, late_min=5):
         return {}
     out = {sid: {} for sid in sids}
 
-    # 학교·학년
-    for sp in StudentProfile.objects.filter(user_id__in=sids).only(
-            "user_id", "school_type", "school_name", "grade"):
+    # 학교·학년 + 빠진 정보(학생을 앞에 두고 그 자리에서 채우려고 본다)
+    for sp in StudentProfile.objects.filter(user_id__in=sids):
         out[sp.user_id]["school"] = _school_short(sp)
+        out[sp.user_id]["missing"] = _missing_info(sp)
+    for sid in sids:
+        out[sid].setdefault("missing", [lb for _, lb in _REQUIRED_INFO])
 
     # 주간 요일 패턴(그날 유효한 정규 시간표만)
     for slot in StudentTimetable.objects.filter(student_id__in=sids).exclude(status="ENDED"):

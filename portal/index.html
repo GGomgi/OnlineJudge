@@ -2441,6 +2441,12 @@
                     <span v-else class="text-slate-200">-</span>
                 
                   </template>
+                  <template v-else-if="c.k==='missing'">
+                    <span v-if="dashMissing(l).length" @click="openStudent({ id:l.student_id })"
+                          @mouseenter="showTextPop('아직 없는 것', dashMissing(l).join(', '), $event)" @mouseleave="hideNotePop"
+                          class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-amber-100 text-amber-700 hover:bg-amber-200">{{ dashMissing(l).length }}개</span>
+                    <span v-else class="text-[11px] text-emerald-500">완료</span>
+                  </template>
                   <template v-else-if="c.k==='note'">
                     <button v-if="l.adhoc" @click="openAdhocLink(l)" class="px-1.5 py-0.5 rounded text-[11px] bg-amber-100 text-amber-700 hover:bg-amber-200">보강 연결</button>
                     <template v-else>
@@ -4609,46 +4615,103 @@
          아르바이트는 요일도 시각도 매번 달라 '근무 기준' 틀에 넣을 수 없다.
          미리 정해 두되 갑자기 바뀌므로 그날만 고치고 사유를 남긴다.
          급여는 여기 적힌 시간으로 계산한다 — 몇 분 일찍·늦게 왔다고 깎지 않는다. -->
-    <div v-if="wpOpen" class="fixed inset-0 bg-black/40 z-[65] flex items-start justify-center p-4 overflow-auto" @click.self="wpOpen=false">
+    <div v-if="wpOpen" class="fixed inset-0 bg-black/40 z-[65] flex items-start justify-center p-4 overflow-auto" @click.self="askClose('wpOpen')">
+      <div v-if="guardAsk==='wpOpen'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">고친 날이 <b>{{ wpDirtyCount }}일</b> 있습니다. 닫으면 <b>저장되지 않습니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs">계속 하기</button>
+        <button @click="closeGuard('wpOpen')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs">버리고 닫기</button>
+      </div>
       <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl my-4">
         <div class="flex items-center justify-between px-5 py-3 border-b">
           <div>
             <div class="font-bold">{{ wp.name }} — 근무표</div>
             <div class="text-[11px] text-slate-400">급여는 <b>여기 적힌 시간</b>으로 계산합니다. 실제로 찍은 시각은 견주어 보시라고 함께 보여줍니다.</div>
           </div>
-          <button @click="wpOpen=false" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+          <button @click="wpEdit=false; wpOpen=false" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
         </div>
         <div class="p-4 space-y-3">
           <div class="flex items-center gap-2 flex-wrap text-sm">
-            <input v-model="wpMonth" type="month" @change="loadWorkPlan" class="input py-1 w-36" />
-            <button @click="copyLastMonth" class="px-2.5 py-1 rounded border border-slate-300 text-slate-600 text-xs">지난달 그대로 가져오기</button>
-            <label class="flex items-center gap-1 text-xs ml-2">근무 형태
+            <input v-model="wpMonth" type="month" @change="loadWorkPlan" :disabled="wpEdit" class="input py-1 w-36" />
+            <label class="flex items-center gap-1 text-xs whitespace-nowrap">근무 형태
               <select v-model="wp.work_type" @change="saveWorkMeta" class="input py-0.5 text-xs w-28">
                 <option value="FIXED">고정 근무</option>
                 <option value="IRREGULAR">불규칙 근무</option>
               </select>
             </label>
-            <label class="flex items-center gap-1 text-xs">시급
+            <label class="flex items-center gap-1 text-xs whitespace-nowrap">시급
               <input v-model="wp.hourly_wage" @change="saveWorkMeta" inputmode="numeric" class="input py-0.5 text-xs w-24 text-right" />원
             </label>
+            <div class="ml-auto flex items-center gap-2">
+              <button v-if="!wpEdit" @click="copyLastMonth" class="px-2.5 py-1 rounded border border-slate-300 text-slate-600 text-xs whitespace-nowrap">지난달 그대로 가져오기</button>
+              <button v-if="!wpEdit" @click="startWpEdit" class="px-3 py-1 rounded bg-indigo-600 text-white text-xs whitespace-nowrap">✎ 수정</button>
+              <template v-else>
+                <button @click="cancelWpEdit" class="px-2.5 py-1 rounded border border-slate-300 text-slate-600 text-xs">취소</button>
+                <button @click="saveWpEdit" class="px-3 py-1 rounded bg-indigo-600 text-white text-xs whitespace-nowrap">저장<span v-if="wpDirtyCount" class="ml-1">({{ wpDirtyCount }})</span></button>
+              </template>
+            </div>
           </div>
           <p v-if="wp.work_type!=='IRREGULAR'" class="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">
             이 직원은 <b>고정 근무</b>입니다. 근무표는 불규칙 근무자에게 쓰는 것이라, 형태를 바꿔야 지각·결근 판정이 멈춥니다.
           </p>
 
-          <div class="grid grid-cols-[5.5rem_4.5rem_4.5rem_1fr_4rem_4rem] gap-2 items-center text-xs text-slate-400 px-1">
+          <!-- 여러 날 한꺼번에 — 불규칙 근무자만. 한 달치를 한 칸씩 치는 건 사람 할 짓이 아니다. -->
+          <div v-if="wpEdit && wp.work_type==='IRREGULAR'" class="flex items-center gap-2 flex-wrap rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs">
+            <b class="text-indigo-800">여러 날 한꺼번에</b>
+            <input :value="wpBulk.start" @input="wpBulk.start = hmTyped($event.target.value)" placeholder="시작" maxlength="5" class="input py-0.5 px-1 w-16 text-center font-mono" />
+            <span class="text-indigo-400">~</span>
+            <input :value="wpBulk.end" @input="wpBulk.end = hmTyped($event.target.value)" placeholder="끝" maxlength="5" class="input py-0.5 px-1 w-16 text-center font-mono" />
+            <button @click="applyWpBulk" :disabled="!wpSelCount || !wpBulk.start || !wpBulk.end"
+                    class="px-2.5 py-1 rounded bg-indigo-600 text-white disabled:bg-slate-300">고른 {{ wpSelCount }}일에 넣기</button>
+            <button v-if="wpSelCount" @click="clearWpBulk" class="px-2 py-1 rounded border border-indigo-300 bg-white text-indigo-700">비우기</button>
+            <button v-if="wpSelCount" @click="wpSel={}" class="px-2 py-1 rounded border border-slate-300 bg-white text-slate-600">고른 날 해제</button>
+            <span class="text-indigo-700/70">아래 <b>날짜를 눌러</b> 고르세요.</span>
+          </div>
+
+          <div class="flex items-center gap-3 flex-wrap text-xs">
+            <label class="flex items-center gap-1 cursor-pointer">
+              <input type="checkbox" v-model="wpRealOnly" class="w-3.5 h-3.5" />
+              <span class="text-slate-600">실제 출근한 기록만 보기</span>
+            </label>
+            <button v-if="(wp.history||[]).length" @click="wpHist=!wpHist" class="text-indigo-500 hover:underline">
+              바꾼 이력 {{ (wp.history||[]).length }}건 {{ wpHist ? '접기' : '보기' }}
+            </button>
+          </div>
+
+          <div v-if="wpHist" class="border rounded-lg divide-y max-h-40 overflow-y-auto text-[11px]">
+            <div v-for="(h,i) in (wp.history||[])" :key="i" class="px-2 py-1 flex items-center gap-2">
+              <span class="font-mono text-slate-500 w-20">{{ h.date.slice(5) }}</span>
+              <span class="font-mono text-slate-400">{{ h.old }}</span>
+              <span class="text-slate-300">→</span>
+              <span class="font-mono text-slate-700">{{ h.new }}</span>
+              <span v-if="h.note" class="text-slate-500 truncate">{{ h.note }}</span>
+              <span class="ml-auto text-slate-400 whitespace-nowrap">{{ h.actor }} · {{ h.time }}</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-[5.5rem_4.5rem_4.5rem_1fr_5rem_5rem] gap-x-3 gap-y-1 items-center text-xs text-slate-400 px-2">
             <span>날짜</span><span>시작</span><span>끝</span><span>비고(그날만 바꾼 사유)</span><span class="text-right">정한 시간</span><span class="text-right">실제</span>
           </div>
           <div class="border rounded-lg divide-y max-h-[45vh] overflow-y-auto">
-            <div v-for="d in wpDays" :key="d.date"
-                 :class="['grid grid-cols-[5.5rem_4.5rem_4.5rem_1fr_4rem_4rem] gap-2 items-center px-2 py-1 text-sm',
-                          d.wd==='토'||d.wd==='일' ? 'bg-slate-50' : '']">
-              <span class="font-mono text-xs">{{ d.date.slice(5) }}({{ d.wd }})</span>
-              <input :value="d.start" @input="d.start = hmTyped($event.target.value)" @change="saveWpDay(d)" placeholder="HH:MM" maxlength="5" class="input py-0.5 px-1 text-xs text-center font-mono" />
-              <input :value="d.end" @input="d.end = hmTyped($event.target.value)" @change="saveWpDay(d)" placeholder="HH:MM" maxlength="5" class="input py-0.5 px-1 text-xs text-center font-mono" />
-              <input v-model="d.note" @change="saveWpDay(d)" placeholder="" class="input py-0.5 px-1 text-xs" />
+            <div v-for="d in wpShown" :key="d.date"
+                 :class="['grid grid-cols-[5.5rem_4.5rem_4.5rem_1fr_5rem_5rem] gap-x-3 gap-y-1 items-center px-2 py-1 text-sm',
+                          wpSel[d.date] ? 'bg-indigo-50' : (d.wd==='토'||d.wd==='일' ? 'bg-slate-50' : '')]">
+              <button v-if="wpEdit && wp.work_type==='IRREGULAR'" @click="wpSel[d.date] = !wpSel[d.date]"
+                      :class="['font-mono text-xs text-left rounded px-1 -mx-1',
+                               wpSel[d.date] ? 'bg-indigo-600 text-white' : 'hover:bg-slate-200']">
+                {{ d.date.slice(5) }}({{ d.wd }})
+              </button>
+              <span v-else class="font-mono text-xs">{{ d.date.slice(5) }}({{ d.wd }})</span>
+              <input :value="d.start" @input="d.start = hmTyped($event.target.value)" :readonly="!wpEdit" placeholder="HH:MM" maxlength="5"
+                     :class="['input py-0.5 px-1 text-xs text-center font-mono', wpChanged(d) ? 'border-orange-400 bg-orange-50' : '', !wpEdit ? 'bg-slate-50 text-slate-600' : '']" />
+              <input :value="d.end" @input="d.end = hmTyped($event.target.value)" :readonly="!wpEdit" placeholder="HH:MM" maxlength="5"
+                     :class="['input py-0.5 px-1 text-xs text-center font-mono', wpChanged(d) ? 'border-orange-400 bg-orange-50' : '', !wpEdit ? 'bg-slate-50 text-slate-600' : '']" />
+              <input v-model="d.note" :readonly="!wpEdit" placeholder=""
+                     :class="['input py-0.5 px-1 text-xs', wpChanged(d) ? 'border-orange-400 bg-orange-50' : '', !wpEdit ? 'bg-slate-50 text-slate-600' : '']" />
               <span class="text-right font-mono text-xs" :class="d.plan_min ? 'text-slate-700' : 'text-slate-300'">{{ d.plan_min ? hmOf(d.plan_min) : '-' }}</span>
-              <span class="text-right font-mono text-xs" :class="d.real_min ? 'text-slate-500' : 'text-slate-300'">{{ d.real_min ? hmOf(d.real_min) : (d.in ? d.in : '-') }}</span>
+              <span class="text-right font-mono text-xs pr-1" :class="d.real_min ? 'text-slate-500' : 'text-slate-300'">{{ d.real_min ? hmOf(d.real_min) : (d.in ? d.in : '-') }}</span>
+            </div>
+            <div v-if="!wpShown.length" class="px-3 py-6 text-center text-xs text-slate-400">
+              {{ wpRealOnly ? '이 달에 실제로 찍은 기록이 없습니다.' : '이 달은 비어 있습니다.' }}
             </div>
           </div>
 
@@ -6606,6 +6669,8 @@ const GUARD_FORMS = {
   promoOpen:     { get: vm => ({ sel: vm.promoSel, sc: vm.promoSchool, sr: vm.promoSenior }),
                    close: vm => { vm.promoOpen = false; } },
   saEdit:        { get: vm => vm.saEdit, close: vm => { vm.saEdit = null; } },
+  wpOpen:        { get: vm => (vm.wpEdit && vm.wpDirtyCount ? { n: vm.wpDirtyCount } : null),
+                   close: vm => { vm.wpEdit = false; vm.wpOpen = false; } },
   // 학생 상세는 인적사항·상담·시간표를 한 화면에서 고친다. 어느 것이든 쓰던 게 있으면 묻는다.
   stuDetail:     { get: vm => (vm.stuDetail ? { f: vm.stuForm, n: vm.stuNoteText,
                                                 e: vm.stuEditLogText, p: vm.stuProgramsEdit,
@@ -6663,6 +6728,7 @@ const COLDEFS = {
     { k:'mk',         l:'미처리 보강', d:'보강일이 아직 없는 결석 수' },
     { k:'month',      l:'이번 달 결석·지각', d:'올리면 날짜와 지각 분수' },
     { k:'next',       l:'다음 수업', d:'앞으로 한 달' },
+    { k:'missing',    l:'정보 미완료', d:'빠진 항목 수 — 올리면 무엇이 없는지, 누르면 학생 정보' },
     { k:'note',       l:'비고', always:true },
   ],
   stu: [
@@ -6695,7 +6761,7 @@ const COLDEFS = {
 };
 // 처음엔 지금까지 보이던 열만 켠다(다 켜져 있으면 첫인상이 복잡하다)
 const COL_DEFAULT_OFF = {
-  dash: ['school','weekdays','mk','month','next'],
+  dash: ['school','weekdays','mk','month','next','missing'],
   stu: ['age','schoolshort','programs','weekly','weekdays','instructor','parent_phone',
         'student_phone','sibling','month','mk','last_attend','verify','missing',
         'enrolled_at','tenure','branch'],
@@ -6773,7 +6839,9 @@ const app = createApp({
       examChgOpen: false, examChanges: [], stuExamShowCancelled: false,
       guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
       phonePick: null, phoneSaved: [], stuOnTop: false, phoneMissOpen: '',
-      wpOpen: false, wpMonth: '', wpDays: [], wp: { name:'', rows:[], plan_min:0, real_min:0, pay:0, hourly_wage:'', work_type:'FIXED' },
+      wpOpen: false, wpMonth: '', wpDays: [], wpOrig: {}, wpEdit: false, wpSel: {},
+      wpBulk: { start:'', end:'' }, wpRealOnly: false, wpHist: false,
+      wp: { name:'', rows:[], history:[], plan_min:0, real_min:0, pay:0, hourly_wage:'', work_type:'FIXED' },
       promoOpen: false, promo: { school_year:'', groups:[], seniors:[], count:0 },
       promoSel: {}, promoSchool: {}, promoSenior: {}, promoSeason: 'SPRING',
       promoHist: null, promoLastFall: [], promoSkipMonth: (localStorage.getItem('portal_promo_skip') || ''),
@@ -6961,6 +7029,21 @@ const app = createApp({
     };
   },
   computed: {
+    // 근무표 — 화면에 값으로 쓰이므로 methods 가 아니라 computed 여야 한다
+    wpShown(){
+      if (!this.wpRealOnly) return this.wpDays;
+      return this.wpDays.filter(d => d.in || d.real_min);
+    },
+    wpSelCount(){ return Object.keys(this.wpSel).filter(k => this.wpSel[k]).length; },
+    wpDirtyCount(){
+      let n = 0;
+      for (const d of this.wpDays){
+        const o = this.wpOrig[d.date];
+        if (!o) continue;
+        if (o.start !== d.start || o.end !== d.end || o.note !== d.note) n++;
+      }
+      return n;
+    },
     isStaff(){ return this.me && (this.me.user.admin_type === 'Admin' || this.me.user.admin_type === 'Super Admin'); },
     // 시간표 캘린더: 상태 범례 체크박스(결석/보강/임시휴원 표시 여부)로 걸러낸 결과
     ttCalDays(){
@@ -10225,10 +10308,10 @@ const app = createApp({
     dashColHead(k){
       return ({ time:'시각', student:'학생', school:'학교', weekdays:'요일', subject:'과목',
                 instructor:'강사', branch:'지점', att:'등원 / 하원', elapsed:'경과',
-                mk:'보강', month:'이번달', next:'다음 수업', note:'비고' })[k] || k;
+                mk:'보강', month:'이번달', next:'다음 수업', missing:'정보', note:'비고' })[k] || k;
     },
     dashColAlign(k){
-      if (k==='att' || k==='mk' || k==='month') return 'text-center';
+      if (k==='att' || k==='mk' || k==='month' || k==='missing') return 'text-center';
       if (k==='elapsed') return 'text-right';
       return 'text-left';
     },
@@ -10241,10 +10324,12 @@ const app = createApp({
       return ({ time:'min-w-[3.5rem]', student:'min-w-[7rem]', school:'min-w-[5rem]',
                 weekdays:'min-w-[6rem]', subject:'min-w-[4rem]', instructor:'min-w-[4rem]',
                 att:'min-w-[13rem]', elapsed:'min-w-[6rem]', mk:'min-w-[4rem]',
-                month:'min-w-[5rem]', next:'min-w-[10rem]', note:'min-w-[6rem]' })[k] || '';
+                month:'min-w-[5rem]', next:'min-w-[10rem]', missing:'min-w-[4.5rem]',
+                note:'min-w-[6rem]' })[k] || '';
     },
     // ── 오늘 운영 부가 열 ──
     dashEx(l){ return ((this.dashData.student_extra||{})[l.student_id]) || {}; },
+    dashMissing(l){ return this.dashEx(l).missing || []; },
     dashHasDay(l, wi){ const w = this.dashEx(l).weekdays; return !!(w && w[wi]); },
     // 다음 수업 = 이번 주 남은 일정 + 다음 주. 첫 건만 칸에 쓰고 나머지는 호버로 본다.
     dashNext(l){
@@ -11242,14 +11327,16 @@ const app = createApp({
     },
     // ── 불규칙 근무자 근무표 ──
     openWorkPlan(p){
-      this.wpOpen = true;
+      this.wpOpen = true; this.wpEdit = false; this.wpSel = {}; this.wpHist = false;
+      this.wpRealOnly = false; this.wpBulk = { start:'', end:'' }; this.wpOrig = {};
       this.wpMonth = (this.hrAtt && this.hrAtt.month) || this.todayStr.slice(0,7);
-      this.wp = { staff_id:p.staff_id, name:p.name, rows:[], plan_min:0, real_min:0, pay:0,
+      this.wp = { staff_id:p.staff_id, name:p.name, rows:[], history:[], plan_min:0, real_min:0, pay:0,
                   hourly_wage:'', work_type:'FIXED' };
       this.loadWorkPlan();
     },
     async loadWorkPlan(){
       if (!this.wp.staff_id) return;
+      if (this.wpEdit) return;          // 고치는 중에 덮어쓰면 적던 값이 사라진다
       try {
         const d = await api('GET','/api/admin/academy/work_plan?staff_id='+this.wp.staff_id+'&month='+this.wpMonth);
         this.wp = { ...this.wp, ...d, hourly_wage:(d.hourly_wage || '') };
@@ -11272,12 +11359,44 @@ const app = createApp({
                                   start:'', end:'', note:'', plan_min:0, in:'', out:'', real_min:0 });
       }
       this.wpDays = out;
+      const orig = {};
+      out.forEach(d => { orig[d.date] = { start:d.start, end:d.end, note:d.note }; });
+      this.wpOrig = orig;
     },
-    async saveWpDay(d){
-      // 시작·끝이 둘 다 비면 그날을 지운다(잘못 넣었을 때 되돌리는 길)
+    startWpEdit(){ this.wpEdit = true; this.wpSel = {}; this.wpBulk = { start:'', end:'' }; },
+    cancelWpEdit(){
+      // 고친 것을 버리고 불러온 그대로 되돌린다
+      this.wpDays.forEach(d => {
+        const o = this.wpOrig[d.date];
+        if (o){ d.start = o.start; d.end = o.end; d.note = o.note; }
+      });
+      this.wpEdit = false; this.wpSel = {}; this.guardAsk = '';
+    },
+    wpChanged(d){
+      const o = this.wpOrig[d.date];
+      return !!o && (o.start !== d.start || o.end !== d.end || o.note !== d.note);
+    },
+    // 고른 날에 위에 적은 시각을 한꺼번에 넣는다
+    applyWpBulk(){
+      const st = this.wpBulk.start, en = this.wpBulk.end;
+      if (!st || !en) return;
+      this.wpDays.forEach(d => { if (this.wpSel[d.date]){ d.start = st; d.end = en; } });
+      this.notify(this.wpSelCount + '일에 넣었습니다. [저장]을 눌러야 반영됩니다.');
+    },
+    clearWpBulk(){
+      this.wpDays.forEach(d => { if (this.wpSel[d.date]){ d.start = ''; d.end = ''; } });
+      this.notify('고른 날을 비웠습니다. [저장]을 눌러야 반영됩니다.');
+    },
+    // 시작·끝이 둘 다 비면 그날을 지운다(잘못 넣었을 때 되돌리는 길)
+    async saveWpEdit(){
+      const days = this.wpDays.filter(d => this.wpChanged(d))
+                              .map(d => ({ date:d.date, start:d.start, end:d.end, note:d.note }));
+      if (!days.length){ this.wpEdit = false; this.wpSel = {}; return; }
       try {
-        await api('POST','/api/admin/academy/work_plan',
-                  { staff_id:this.wp.staff_id, date:d.date, start:d.start, end:d.end, note:d.note });
+        const r = await api('POST','/api/admin/academy/work_plan',
+                            { staff_id:this.wp.staff_id, days });
+        this.wpEdit = false; this.wpSel = {}; this.guardAsk = '';
+        this.notify((r.saved||0) + '일 저장, ' + (r.removed||0) + '일 지웠습니다.');
         this.loadWorkPlan();
       } catch(e){ this.notify(e.message, false); }
     },

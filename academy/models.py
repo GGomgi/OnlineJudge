@@ -1133,6 +1133,25 @@ class StaffWorkPlan(models.Model):
         ordering = ["date"]
 
 
+class WorkPlanChange(models.Model):
+    """근무표 변경 이력. 급여가 이 표에서 나오므로 누가 언제 무엇을 바꿨는지 남아야 한다."""
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                              related_name="work_plan_changes")
+    date = models.DateField()
+    old_start = models.CharField(max_length=5, blank=True, default="")
+    old_end = models.CharField(max_length=5, blank=True, default="")
+    new_start = models.CharField(max_length=5, blank=True, default="")
+    new_end = models.CharField(max_length=5, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_work_plan_change"
+        ordering = ["-id"]
+
+
 class WorkSchedule(models.Model):
     """정규 근무 기준. 학생 시간표와 같은 '적용 시작일' 방식 — 바꾸면 이전 것은 전날로
     끝나고 새 줄이 생겨 과거 기록이 그대로 남는다.
