@@ -55,7 +55,9 @@ def _name_of(u):
 
 TRACKED_HR_FIELDS = ["zipcode", "address", "address_detail", "phone",
                      "dependents_decided", "dependents", "emergency_contacts",
-                     "sex_offense_consent"]
+                     "sex_offense_consent",
+                     # 누가 언제 서류를 면제했는지는 나중에 근거가 필요하다
+                     "waived_docs"]
 
 
 def _doc_data(d):
@@ -104,6 +106,7 @@ def _staff_profile_data(p):
         "file_uploaded_at": _parse_json_obj(p.file_uploaded_at),
         "completed": p.is_complete(),
         "missing": p.missing_items(),
+        "waived_docs": sorted(p.waived_set()),
     }
 
 

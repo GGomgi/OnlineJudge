@@ -4279,11 +4279,11 @@
             <button @click="shiftHrMonth(1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">▶</button>
             <button @click="openLeaveForm" class="ml-auto btn-secondary text-sm">+ 연차·휴가 등록</button>
           </div>
-          <table class="text-xs border-collapse">
+          <table class="text-xs border-collapse min-w-max">
             <thead>
               <tr>
                 <th class="sticky left-0 bg-white px-2 py-1 text-left border-b w-24">직원</th>
-                <th v-for="d in hrGridDays" :key="d.date" class="px-0 py-1 border-b text-center w-6"
+                <th v-for="d in hrGridDays" :key="d.date" class="px-0 py-1 border-b text-center w-14 min-w-[3.5rem]"
                     :class="d.wd==='일' ? 'text-rose-400' : (d.wd==='토' ? 'text-blue-400' : 'text-slate-400')">
                   <div>{{ Number(d.date.slice(8)) }}</div><div class="text-[9px]">{{ d.wd }}</div>
                 </th>
@@ -4299,9 +4299,18 @@
                   <!-- 아르바이트는 요일·시각이 매번 달라 그달 근무표를 따로 짠다 -->
                   <button @click="openWorkPlan(p)" class="ml-1 text-[10px] text-indigo-500 hover:underline">근무표</button>
                 </td>
+                <!-- 점 하나로는 몇 시에 왔는지 알 수 없어 매번 올려다봐야 했다. 시각을 바로 보인다 -->
                 <td v-for="d in p.days" :key="d.date" class="p-0 text-center"
                     @mouseenter="hrCellEnter(p,d,$event)" @mouseleave="hrCellLeave">
-                  <div :class="['h-6 w-6 mx-auto flex items-center justify-center cursor-default', hrCellCls(d)]">{{ hrCellMark(d) }}</div>
+                  <div :class="['px-1 py-0.5 leading-tight cursor-default font-mono text-[10px] whitespace-nowrap', hrCellCls(d)]">
+                    <template v-if="d.leave_kind"><div class="py-1">{{ d.leave_kind_label || '휴' }}</div></template>
+                    <template v-else-if="d.in || d.out">
+                      <div :class="d.late ? 'font-bold' : ''">{{ d.in || '--:--' }}</div>
+                      <div class="text-slate-500">{{ d.out || '--:--' }}</div>
+                    </template>
+                    <template v-else-if="d.scheduled && d.state==='MISSING'"><div class="py-1">✕</div></template>
+                    <template v-else><div class="py-1 text-slate-200">·</div></template>
+                  </div>
                 </td>
                 <td class="px-2 py-1 text-center">{{ p.work_days }}</td>
                 <td class="px-2 py-1 text-center" :class="p.late_days ? 'text-amber-600 font-semibold' : 'text-slate-300'">{{ p.late_days }}</td>

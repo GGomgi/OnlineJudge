@@ -464,6 +464,9 @@ class StaffProfile(models.Model):
     # 성범죄조회 동의서(추후 양식·출력). 우선 동의/서명만 수집.
     sex_offense_consent = models.BooleanField(default=False)
     sex_offense_signature = models.TextField(blank=True, default="")
+    # 원장이 '해당사항 없음'으로 표시한 서류 목록(JSON). 조교·아르바이트는 성적증명서
+    # 같은 것이 필요 없을 수 있다. 면제한 사람과 때는 인사 이력에 남는다.
+    waived_docs = models.TextField(blank=True, default="")
     sex_offense_date = models.DateField(null=True, blank=True)
     # 고정 서류 필드별 업로드 시각 {field: "YYYY-MM-DD HH:MM"}
     file_uploaded_at = models.TextField(blank=True, default="")
@@ -472,6 +475,16 @@ class StaffProfile(models.Model):
 
     class Meta:
         db_table = "academy_staff_profile"
+
+    def waived_set(self):
+        """원장이 '해당사항 없음'으로 표시한 서류. 조교·아르바이트는 성적증명서 같은 것이
+        필요 없을 수 있어 서류마다 면제할 수 있게 한다."""
+        import json as _j
+        try:
+            v = _j.loads(self.waived_docs) if self.waived_docs else []
+        except (ValueError, TypeError):
+            v = []
+        return set(v if isinstance(v, list) else [])
 
     def missing_items(self):
         """무엇이 안 됐는지 목록. 미완료라고만 하면 어디를 봐야 할지 알 수 없다."""
@@ -484,23 +497,31 @@ class StaffProfile(models.Model):
             emer = _j.loads(self.emergency_contacts) if self.emergency_contacts else []
         except (ValueError, TypeError):
             emer = []
+        w = self.waived_set()
         out = []
-        for ok, label in (
-            (self.address, "주소"), (self.phone, "연락처"),
-            (self.resident_copy, "주민등록등본"), (self.bankbook_copy, "통장 사본"),
-            (self.graduation_cert, "졸업증명서"), (self.transcript, "성적증명서"),
-            (self.sex_offense_consent, "성범죄 조회 동의"),
-            (self.sex_offense_signature, "성범죄 조회 서명"),
-            (self.dependents_decided, "피부양자 확인"),
-            (all(d.get("name") for d in deps), "피부양자 이름"),
-            ((not deps) or self.family_relation_cert, "가족관계증명서"),
-            (len(emer) >= 1, "비상 연락처"),
+        for field, ok, label in (
+            ("address", self.address, "주소"), ("phone", self.phone, "연락처"),
+            ("resident_copy", self.resident_copy, "주민등록등본"),
+            ("bankbook_copy", self.bankbook_copy, "통장 사본"),
+            ("graduation_cert", self.graduation_cert, "졸업증명서"),
+            ("transcript", self.transcript, "성적증명서"),
+            ("sex_offense_consent", self.sex_offense_consent, "성범죄 조회 동의"),
+            ("sex_offense_signature", self.sex_offense_signature, "성범죄 조회 서명"),
+            ("dependents_decided", self.dependents_decided, "피부양자 확인"),
+            ("dependents", all(d.get("name") for d in deps), "피부양자 이름"),
+            ("family_relation_cert", (not deps) or self.family_relation_cert, "가족관계증명서"),
+            ("emergency_contacts", len(emer) >= 1, "비상 연락처"),
         ):
+            if field in w:
+                continue                # 원장이 해당사항 없음으로 둔 것
             if not ok:
                 out.append(label)
         return out
 
     def is_complete(self):
+        return not self.missing_items()
+
+    def _is_complete_old(self):
         import json as _j
         try:
             deps = _j.loads(self.dependents) if self.dependents else []

@@ -633,6 +633,20 @@ class StaffDetailAdminAPI(APIView):
         for f in ("zipcode", "address", "address_detail", "phone"):
             if f in d:
                 setattr(sp, f, d.get(f) or "")
+        # 서류 '해당사항 없음' — 조교·아르바이트는 성적증명서 같은 것이 필요 없을 수 있다.
+        # 면제는 원장 이상만 정한다(직원 본인이 스스로 빼면 뜻이 없다).
+        if "waived_docs" in d:
+            role = getattr(getattr(request.user, "academy_profile", None), "role", "")
+            if not (role in DIRECTOR_UP_ROLES or role == AcademyRole.HR_ADMIN
+                    or request.user.is_super_admin()):
+                return self.error("해당사항 없음은 원장 이상만 정할 수 있습니다.")
+            raw = d.get("waived_docs") or []
+            if isinstance(raw, str):
+                try:
+                    raw = _json.loads(raw)
+                except (ValueError, TypeError):
+                    raw = []
+            sp.waived_docs = _json.dumps([str(x) for x in raw][:20], ensure_ascii=False)
         sp.save()
         after = {f: getattr(sp, f) for f in TRACKED_HR_FIELDS}
         record_hr_history(sp.user, request.user, before, after)
