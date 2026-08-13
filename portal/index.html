@@ -6022,7 +6022,13 @@
           <button v-if="devlogQRaw" @click="devlogClearFind"
                   class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm leading-none">✕</button>
         </div>
+        <select v-model="devlogWho" @change="devlogHitI=null; devlogFindMsg=''" class="input py-1.5 text-sm w-32">
+          <option value="all">모두</option>
+          <option value="me">내가 한 말</option>
+          <option value="ai">AI가 한 말</option>
+        </select>
         <button @click="devlogFind(true)" :disabled="devlogFinding" class="px-3 py-1.5 rounded text-sm bg-indigo-600 text-white disabled:bg-slate-300">찾기</button>
+        <button @click="devlogPrev" :disabled="devlogFinding || devlogPos<=1" class="px-3 py-1.5 rounded text-sm border border-slate-300 text-slate-600 disabled:opacity-40">이전 ↓</button>
         <button @click="devlogFind(false)" :disabled="devlogFinding || !devlogQ" class="px-3 py-1.5 rounded text-sm border border-slate-300 text-slate-600 disabled:opacity-40">다음 ↑</button>
         <!-- 아래에서 몇 번째 / 지금까지 불러온 것 중 몇 개. 이전 기록을 더 불러오면 뒤 숫자가 늘어난다 -->
         <span v-if="devlogQ" class="text-sm font-mono whitespace-nowrap"
@@ -7031,7 +7037,7 @@ const app = createApp({
       staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null, managed_branch_ids:[] },
       branchAdmin: [], branchNewName: '',
       devlogItems: [], devlogMode: 'full', devlogStart: 0, devlogHasMore: false, devlogLoading: false, devlogTotal: 0,
-      devlogQ: '', devlogQRaw: '', devlogHitI: null, devlogFinding: false, devlogFindMsg: '',
+      devlogQ: '', devlogQRaw: '', devlogWho: 'all', devlogHitI: null, devlogFinding: false, devlogFindMsg: '',
       options: {},
       optionCategories: [
         {v:'program', l:'등록 과정 (입회원)'},
@@ -7066,10 +7072,14 @@ const app = createApp({
     devlogHits(){
       const q = (this.devlogQ||'').trim().toLowerCase();
       if (!q) return [];
+      const who = this.devlogWho;
       const out = [];
       for (let j = this.devlogItems.length - 1; j >= 0; j--){
         const it = this.devlogItems[j];
-        const t = (it.role==='user' || it.kind==='msg') ? (it.text||'') : (it.tool||'');
+        const mine = it.role === 'user';
+        if (who === 'me' && !mine) continue;
+        if (who === 'ai' && mine) continue;      // 🔧 도구 동작도 AI 가 한 일로 본다
+        const t = mine || it.kind === 'msg' ? (it.text||'') : (it.tool||'');
         if (String(t).toLowerCase().includes(q)) out.push(it.i);
       }
       return out;
@@ -9365,6 +9375,15 @@ const app = createApp({
         }
         this.devlogFindMsg = '너무 멀리 왔습니다. 다시 눌러 주세요.';
       } finally { this.devlogFinding = false; }
+    },
+    // 다음은 위(더 오래된 쪽), 이전은 아래(더 최근 쪽)
+    devlogPrev(){
+      if (this.devlogFinding) return;
+      const k = this.devlogHits.indexOf(this.devlogHitI);
+      if (k <= 0){ this.devlogFindMsg = '가장 최근 것입니다.'; return; }
+      this.devlogFindMsg = '';
+      this.devlogHitI = this.devlogHits[k - 1];
+      this.$nextTick(()=> this.devlogScrollToHit());
     },
     devlogScrollToHit(){
       const box = this.$refs.devlogScroll;
