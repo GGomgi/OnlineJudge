@@ -14,6 +14,7 @@ from account.decorators import admin_role_required
 from account.models import User
 
 from ..models import (AcademyProfile, AcademyRole, Branch, Holiday, HolidayOptOut, HolidayKind,
+                      StaffWorkPlan, WorkType,
                       HOLIDAY_KIND_CHOICES, WorkSchedule, StaffAttendance,
                       StaffAttendanceChange, StaffLeave, LeaveKind, LEAVE_KIND_CHOICES,
                       LessonOccurrence, OccurrenceStatus, STAFF_ROLES)
@@ -49,6 +50,18 @@ def kst_dt(dt):
     if not dt:
         return ""
     return str(dt + timedelta(hours=9))[:16]
+
+
+def hm(v):
+    """'HH:MM' 을 time 으로. 못 읽으면 None."""
+    t = (v or "").strip()
+    m = __import__("re").match(r"^(\d{1,2}):(\d{2})$", t)
+    if not m:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2))
+    if not (0 <= h <= 23 and 0 <= mi <= 59):
+        return None
+    return time_cls(h, mi)
 
 
 def kst_to_utc(d, hm):
@@ -287,8 +300,28 @@ class HolidayAdminAPI(APIView):
 
 # ─────────────────────────── 근무 기준 ───────────────────────────
 
+def is_irregular(staff_id):
+    p = AcademyProfile.objects.filter(user_id=staff_id).only("work_type").first()
+    return bool(p and p.work_type == WorkType.IRREGULAR)
+
+
+def plan_for(staff_id, d):
+    """불규칙 근무자의 그날 근무 예정. 급여는 이 시간으로 계산한다."""
+    return StaffWorkPlan.objects.filter(staff_id=staff_id, date=d).first()
+
+
 def schedule_for(staff_id, branch_id, d):
-    """그 날짜에 적용되는 근무 기준. 직원 개별 지정이 있으면 그것이 우선."""
+    """그 날짜에 적용되는 근무 기준. 직원 개별 지정이 있으면 그것이 우선.
+
+    불규칙 근무자는 정해진 요일·시각이 없어 근무 기준을 쓰지 않는다(지각·결근을 따지면
+    전부 거짓말이 된다). 그날 근무표가 있으면 그것을 기준처럼 쓴다."""
+    if is_irregular(staff_id):
+        pl = plan_for(staff_id, d)
+        if not pl:
+            return None
+        return WorkSchedule(staff_id=staff_id, active_from=d,
+                            start_time=pl.start_time, end_time=pl.end_time,
+                            workdays="0123456", break_per_hours=0, break_minutes=0)
     base = WorkSchedule.objects.filter(active_from__lte=d).filter(
         Q(active_until=None) | Q(active_until__gte=d))
     s = base.filter(staff_id=staff_id).order_by("-active_from", "-id").first()
@@ -402,7 +435,9 @@ def att_row(a, sch, leave, today):
     in_hm = kst_hm(a.check_in_at) if a else ""
     out_hm = kst_hm(a.check_out_at) if a else ""
     late = 0
-    if in_hm and sch:
+    # 불규칙 근무자는 '몇 시까지 와야 한다'가 없어 지각을 따지지 않는다.
+    # 근무표가 있으면 그 시각을 쓰되, 급여는 근무표대로라 지각으로 깎지 않는다.
+    if in_hm and sch and getattr(sch, "id", None) is not None:
         ref = int(str(sch.start_time)[:2]) * 60 + int(str(sch.start_time)[3:5])
         cur = int(in_hm[:2]) * 60 + int(in_hm[3:])
         if cur - ref > LATE_GRACE_MIN:
@@ -872,3 +907,141 @@ class HRTodayAPI(APIView):
             out["summary"] = {"working": working, "done": done, "absent": absent, "leave": on_leave}
             out["people"] = sorted(people, key=lambda x: x["name"])
         return self.success(out)
+
+
+# ─────────────────────── 불규칙 근무자 근무표 ───────────────────────
+
+class WorkPlanAPI(APIView):
+    """불규칙 근무자(아르바이트)의 날짜별 근무 예정.
+
+    미리 정해 두되 갑자기 바뀌는 일이 잦아 그날만 고치고 사유를 남긴다.
+    급여는 여기 적힌 시간으로 계산한다 — 몇 분 일찍·늦게 왔다고 깎거나 더하지 않는다.
+    실제로 찍은 시각은 따로 보여 주기만 한다(궁금하니까).
+    """
+
+    @admin_role_required
+    def get(self, request):
+        """?staff_id=&month=YYYY-MM — 그 달의 근무표 + 실제 기록 + 합계."""
+        sid = request.GET.get("staff_id")
+        prof = AcademyProfile.objects.filter(user_id=sid, is_deleted=False) \
+                                     .select_related("user", "user__userprofile", "branch").first()
+        if not prof:
+            return self.error("직원이 없습니다.")
+        if not can_view_branch(request.user, prof.branch_id):
+            return self.error("이 지점을 볼 권한이 없습니다.")
+        ym = request.GET.get("month") or str(kst_today())[:7]
+        try:
+            y, m = int(ym[:4]), int(ym[5:7])
+        except (ValueError, IndexError):
+            return self.error("달이 올바르지 않습니다.")
+        d0 = date_cls(y, m, 1)
+        d1 = date_cls(y + (m == 12), (m % 12) + 1, 1) - timedelta(days=1)
+
+        plans = {p.date: p for p in StaffWorkPlan.objects.filter(
+            staff_id=sid, date__gte=d0, date__lte=d1)}
+        atts = {a.date: a for a in StaffAttendance.objects.filter(
+            staff_id=sid, date__gte=d0, date__lte=d1)}
+
+        rows, plan_min, real_min = [], 0, 0
+        d = d0
+        while d <= d1:
+            p, a = plans.get(d), atts.get(d)
+            pm = 0
+            if p:
+                pm = (p.end_time.hour * 60 + p.end_time.minute) - \
+                     (p.start_time.hour * 60 + p.start_time.minute)
+                if pm < 0:
+                    pm += 24 * 60
+                plan_min += pm
+            rm = 0
+            if a and a.check_in_at and a.check_out_at:
+                rm = int((a.check_out_at - a.check_in_at).total_seconds() // 60)
+                real_min += rm
+            if p or a:
+                rows.append({
+                    "date": str(d), "wd": _WD[d.weekday()],
+                    "start": (str(p.start_time)[:5] if p else ""),
+                    "end": (str(p.end_time)[:5] if p else ""),
+                    "note": (p.note if p else ""),
+                    "plan_min": pm,
+                    "in": kst_hm(a.check_in_at) if a else "",
+                    "out": kst_hm(a.check_out_at) if a else "",
+                    "real_min": rm,
+                })
+            d += timedelta(days=1)
+
+        wage = prof.hourly_wage or 0
+        return self.success({
+            "staff_id": int(sid), "name": name_of(prof.user),
+            "work_type": prof.work_type, "hourly_wage": wage,
+            "month": ym, "rows": rows,
+            "plan_min": plan_min, "real_min": real_min,
+            # 급여는 정한 시간으로. 실 근무는 견주어 보라고 함께 준다.
+            "pay": int(round(plan_min / 60.0 * wage)) if wage else 0,
+        })
+
+    @admin_role_required
+    def post(self, request):
+        """하루 저장. {staff_id, date, start, end, note} — start 가 비면 그날을 지운다."""
+        d = request.data
+        sid = d.get("staff_id")
+        prof = AcademyProfile.objects.filter(user_id=sid, is_deleted=False).first()
+        if not prof:
+            return self.error("직원이 없습니다.")
+        if not can_manage_branch(request.user, prof.branch_id):
+            return self.error("이 지점을 관리할 권한이 없습니다.")
+        day = parse_date(d.get("date"))
+        if not day:
+            return self.error("날짜를 정하세요.")
+        st, en = hm(d.get("start")), hm(d.get("end"))
+        if not st or not en:
+            StaffWorkPlan.objects.filter(staff_id=sid, date=day).delete()
+            return self.success({"deleted": True})
+        StaffWorkPlan.objects.update_or_create(
+            staff_id=sid, date=day,
+            defaults={"start_time": st, "end_time": en,
+                      "note": (d.get("note") or "").strip(), "created_by": request.user})
+        return self.success({"ok": True})
+
+    @admin_role_required
+    def put(self, request):
+        """지난달 그대로 가져오기 / 시급 저장."""
+        d = request.data
+        sid = d.get("staff_id")
+        prof = AcademyProfile.objects.filter(user_id=sid, is_deleted=False).first()
+        if not prof:
+            return self.error("직원이 없습니다.")
+        if not can_manage_branch(request.user, prof.branch_id):
+            return self.error("이 지점을 관리할 권한이 없습니다.")
+        if "hourly_wage" in d or "work_type" in d:
+            if "hourly_wage" in d:
+                try:
+                    prof.hourly_wage = int(d.get("hourly_wage") or 0) or None
+                except (TypeError, ValueError):
+                    prof.hourly_wage = None
+            if "work_type" in d:
+                prof.work_type = (d.get("work_type") or WorkType.FIXED)
+            prof.save(update_fields=["hourly_wage", "work_type"])
+            return self.success({"ok": True})
+        # 지난달 복사 — 요일이 같은 날에 같은 시각을 넣는다(날짜가 아니라 요일이 맞아야 한다)
+        ym = d.get("month") or str(kst_today())[:7]
+        y, m = int(ym[:4]), int(ym[5:7])
+        pm_y, pm_m = (y - 1, 12) if m == 1 else (y, m - 1)
+        src0 = date_cls(pm_y, pm_m, 1)
+        src1 = date_cls(pm_y + (pm_m == 12), (pm_m % 12) + 1, 1) - timedelta(days=1)
+        dst0 = date_cls(y, m, 1)
+        dst1 = date_cls(y + (m == 12), (m % 12) + 1, 1) - timedelta(days=1)
+        by_wd = {}
+        for p in StaffWorkPlan.objects.filter(staff_id=sid, date__gte=src0, date__lte=src1):
+            by_wd.setdefault(p.date.weekday(), []).append(p)
+        made = 0
+        d0 = dst0
+        while d0 <= dst1:
+            src = by_wd.get(d0.weekday())
+            if src and not StaffWorkPlan.objects.filter(staff_id=sid, date=d0).exists():
+                p = src[0]
+                StaffWorkPlan.objects.create(staff_id=sid, date=d0, start_time=p.start_time,
+                                             end_time=p.end_time, created_by=request.user)
+                made += 1
+            d0 += timedelta(days=1)
+        return self.success({"made": made})

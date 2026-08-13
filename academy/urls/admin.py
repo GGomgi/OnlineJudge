@@ -5,7 +5,7 @@ from ..views.promotion import PromotionPreviewAPI, PromotionAPI
 from ..views.exam import (SavedSearchAPI, ExamChangeAdminAPI, ExamCatalogAdminAPI, ExamSessionAdminAPI, ExamEntryAdminAPI,
                           ExamContactAdminAPI, ExamStageAdminAPI,
                           MenuSettingAdminAPI, MyMenuAPI)
-from ..views.hr import (HolidayAdminAPI, WorkScheduleAdminAPI, StaffAttendanceAPI,
+from ..views.hr import (WorkPlanAPI, HolidayAdminAPI, WorkScheduleAdminAPI, StaffAttendanceAPI,
                         StaffAttendanceCheckAPI, StaffAttendanceEditAPI,
                         StaffAttendanceApproveAPI, StaffAttendanceHistoryAPI,
                         StaffLeaveAPI, HRTodayAPI)
@@ -109,6 +109,7 @@ urlpatterns = [
     url(r"^academy/msg_template/?$", MsgTemplateAdminAPI.as_view(), name="academy_msg_template"),
     url(r"^academy/fixed_template/?$", FixedTemplateAdminAPI.as_view(), name="academy_fixed_template"),
     # 학원 관리 · 직원 근태
+    url(r"^academy/work_plan/?$", WorkPlanAPI.as_view(), name="academy_work_plan"),
     url(r"^academy/holiday/?$", HolidayAdminAPI.as_view(), name="academy_holiday"),
     url(r"^academy/work_schedule/?$", WorkScheduleAdminAPI.as_view(), name="academy_work_schedule"),
     url(r"^academy/staff_attendance/?$", StaffAttendanceAPI.as_view(), name="academy_staff_attendance"),

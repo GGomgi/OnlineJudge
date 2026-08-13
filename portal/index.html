@@ -4296,6 +4296,8 @@
               <tr v-for="p in (hrAtt.people||[])" :key="p.staff_id" class="border-b">
                 <td class="sticky left-0 bg-white px-2 py-1 whitespace-nowrap">
                   <span class="font-medium">{{ p.name }}</span>
+                  <!-- 아르바이트는 요일·시각이 매번 달라 그달 근무표를 따로 짠다 -->
+                  <button @click="openWorkPlan(p)" class="ml-1 text-[10px] text-indigo-500 hover:underline">근무표</button>
                 </td>
                 <td v-for="d in p.days" :key="d.date" class="p-0 text-center"
                     @mouseenter="hrCellEnter(p,d,$event)" @mouseleave="hrCellLeave">
@@ -4509,6 +4511,64 @@
             </div>
           </div>
           <div v-if="!examChanges.length" class="text-center text-xs text-slate-400 py-8">아직 이력이 없습니다.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 불규칙 근무자 근무표 =====
+         아르바이트는 요일도 시각도 매번 달라 '근무 기준' 틀에 넣을 수 없다.
+         미리 정해 두되 갑자기 바뀌므로 그날만 고치고 사유를 남긴다.
+         급여는 여기 적힌 시간으로 계산한다 — 몇 분 일찍·늦게 왔다고 깎지 않는다. -->
+    <div v-if="wpOpen" class="fixed inset-0 bg-black/40 z-[65] flex items-start justify-center p-4 overflow-auto" @click.self="wpOpen=false">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl my-4">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <div>
+            <div class="font-bold">{{ wp.name }} — 근무표</div>
+            <div class="text-[11px] text-slate-400">급여는 <b>여기 적힌 시간</b>으로 계산합니다. 실제로 찍은 시각은 견주어 보시라고 함께 보여줍니다.</div>
+          </div>
+          <button @click="wpOpen=false" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+        </div>
+        <div class="p-4 space-y-3">
+          <div class="flex items-center gap-2 flex-wrap text-sm">
+            <input v-model="wpMonth" type="month" @change="loadWorkPlan" class="input py-1 w-36" />
+            <button @click="copyLastMonth" class="px-2.5 py-1 rounded border border-slate-300 text-slate-600 text-xs">지난달 그대로 가져오기</button>
+            <label class="flex items-center gap-1 text-xs ml-2">근무 형태
+              <select v-model="wp.work_type" @change="saveWorkMeta" class="input py-0.5 text-xs w-28">
+                <option value="FIXED">고정 근무</option>
+                <option value="IRREGULAR">불규칙 근무</option>
+              </select>
+            </label>
+            <label class="flex items-center gap-1 text-xs">시급
+              <input v-model="wp.hourly_wage" @change="saveWorkMeta" inputmode="numeric" class="input py-0.5 text-xs w-24 text-right" />원
+            </label>
+          </div>
+          <p v-if="wp.work_type!=='IRREGULAR'" class="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">
+            이 직원은 <b>고정 근무</b>입니다. 근무표는 불규칙 근무자에게 쓰는 것이라, 형태를 바꿔야 지각·결근 판정이 멈춥니다.
+          </p>
+
+          <div class="grid grid-cols-[7rem_5rem_5rem_1fr_5rem_5rem] gap-2 items-center text-xs text-slate-400 px-1">
+            <span>날짜</span><span>시작</span><span>끝</span><span>비고(그날만 바꾼 사유)</span><span class="text-right">정한 시간</span><span class="text-right">실제</span>
+          </div>
+          <div class="border rounded-lg divide-y max-h-[45vh] overflow-y-auto">
+            <div v-for="d in wpDays" :key="d.date"
+                 :class="['grid grid-cols-[7rem_5rem_5rem_1fr_5rem_5rem] gap-2 items-center px-2 py-1 text-sm',
+                          d.wd==='토'||d.wd==='일' ? 'bg-slate-50' : '']">
+              <span class="font-mono text-xs">{{ d.date.slice(5) }}({{ d.wd }})</span>
+              <input v-model="d.start" @change="saveWpDay(d)" placeholder="HH:MM" maxlength="5" class="input py-0.5 px-1 text-xs text-center font-mono" />
+              <input v-model="d.end" @change="saveWpDay(d)" placeholder="HH:MM" maxlength="5" class="input py-0.5 px-1 text-xs text-center font-mono" />
+              <input v-model="d.note" @change="saveWpDay(d)" placeholder="" class="input py-0.5 px-1 text-xs" />
+              <span class="text-right font-mono text-xs" :class="d.plan_min ? 'text-slate-700' : 'text-slate-300'">{{ d.plan_min ? hmOf(d.plan_min) : '-' }}</span>
+              <span class="text-right font-mono text-xs" :class="d.real_min ? 'text-slate-500' : 'text-slate-300'">{{ d.real_min ? hmOf(d.real_min) : (d.in ? d.in : '-') }}</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-4 flex-wrap rounded-lg bg-slate-50 px-3 py-2 text-sm">
+            <span>정한 시간 <b class="font-mono">{{ hmOf(wp.plan_min) }}</b></span>
+            <span class="text-slate-500">실 근무 <b class="font-mono">{{ hmOf(wp.real_min) }}</b></span>
+            <span v-if="wp.hourly_wage" class="ml-auto">급여 <b class="text-indigo-700">{{ Number(wp.pay||0).toLocaleString() }}원</b>
+              <span class="text-[11px] text-slate-400">= 정한 시간 × {{ Number(wp.hourly_wage||0).toLocaleString() }}원</span></span>
+            <span v-else class="ml-auto text-[11px] text-slate-400">시급을 넣으면 급여가 계산됩니다</span>
+          </div>
         </div>
       </div>
     </div>
@@ -6468,6 +6528,7 @@ const app = createApp({
       examChgOpen: false, examChanges: [], stuExamShowCancelled: false,
       guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
       phonePick: null, phoneSaved: [], stuOnTop: false,
+      wpOpen: false, wpMonth: '', wp: { name:'', rows:[], plan_min:0, real_min:0, pay:0, hourly_wage:'', work_type:'FIXED' },
       promoOpen: false, promo: { school_year:'', groups:[], seniors:[], count:0 },
       promoSel: {}, promoSchool: {}, promoSenior: {}, promoSeason: 'SPRING',
       promoHist: null, promoLastFall: [], promoSkipMonth: (localStorage.getItem('portal_promo_skip') || ''),
@@ -7151,6 +7212,22 @@ const app = createApp({
       const p = this.phonePick; if (!p || !(p.q||'').trim()) return [];
       return (p.rows||[]).filter(st => st.enrollment_status==='ENROLLED' && this.stuMatch(st, p.q))
                  .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
+    },
+    // 그 달의 모든 날을 늘어놓는다. 빈 날에 바로 적을 수 있어야 조율이 편하다.
+    wpDays(){
+      const ym = this.wpMonth || ''; if (!/^\d{4}-\d{2}$/.test(ym)) return [];
+      const y = +ym.slice(0,4), m = +ym.slice(5,7);
+      const last = new Date(y, m, 0).getDate();
+      const WD = ['일','월','화','수','목','금','토'];
+      const by = {}; (this.wp.rows||[]).forEach(r => { by[r.date] = r; });
+      const out = [];
+      for (let i=1; i<=last; i++){
+        const ds = ym + '-' + String(i).padStart(2,'0');
+        const r = by[ds];
+        out.push(r ? { ...r } : { date:ds, wd:WD[new Date(y, m-1, i).getDay()],
+                                  start:'', end:'', note:'', plan_min:0, in:'', out:'', real_min:0 });
+      }
+      return out;
     },
     promoSelCount(){ return Object.values(this.promoSel).filter(Boolean).length; },
     promoSeniorCount(){ return Object.values(this.promoSenior).filter(v => v && v !== 'KEEP').length; },
@@ -10760,6 +10837,47 @@ const app = createApp({
     phoneDays(st){
       const w = (st.extra||{}).weekdays || {};
       return ['월','화','수','목','금','토','일'].filter((_,i)=> (w[i]||w[String(i)]||[]).length).join('');
+    },
+    // ── 불규칙 근무자 근무표 ──
+    openWorkPlan(p){
+      this.wpOpen = true;
+      this.wpMonth = (this.hrAtt && this.hrAtt.month) || this.todayStr.slice(0,7);
+      this.wp = { staff_id:p.staff_id, name:p.name, rows:[], plan_min:0, real_min:0, pay:0,
+                  hourly_wage:'', work_type:'FIXED' };
+      this.loadWorkPlan();
+    },
+    async loadWorkPlan(){
+      if (!this.wp.staff_id) return;
+      try {
+        const d = await api('GET','/api/admin/academy/work_plan?staff_id='+this.wp.staff_id+'&month='+this.wpMonth);
+        this.wp = { ...this.wp, ...d, hourly_wage:(d.hourly_wage || '') };
+      } catch(e){ this.notify(e.message, false); }
+    },
+    async saveWpDay(d){
+      // 시작·끝이 둘 다 비면 그날을 지운다(잘못 넣었을 때 되돌리는 길)
+      try {
+        await api('POST','/api/admin/academy/work_plan',
+                  { staff_id:this.wp.staff_id, date:d.date, start:d.start, end:d.end, note:d.note });
+        this.loadWorkPlan();
+      } catch(e){ this.notify(e.message, false); }
+    },
+    async saveWorkMeta(){
+      try {
+        await api('PUT','/api/admin/academy/work_plan',
+                  { staff_id:this.wp.staff_id, work_type:this.wp.work_type,
+                    hourly_wage:String(this.wp.hourly_wage||'').replace(/[^0-9]/g,'') });
+        this.loadWorkPlan();
+        this.notify('저장했습니다.');
+      } catch(e){ this.notify(e.message, false); }
+    },
+    async copyLastMonth(){
+      if (!await this.askConfirm('지난달 근무표를 이 달에 가져옵니다.\n같은 요일에 같은 시각으로 넣고, 이미 적어 둔 날은 그대로 둡니다.')) return;
+      try {
+        const d = await api('PUT','/api/admin/academy/work_plan',
+                            { staff_id:this.wp.staff_id, month:this.wpMonth });
+        this.notify(d.made + '일 가져왔습니다.');
+        this.loadWorkPlan();
+      } catch(e){ this.notify(e.message, false); }
     },
     // ── 학년 올리기 ──
     async openPromotion(){

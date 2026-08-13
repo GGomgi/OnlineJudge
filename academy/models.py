@@ -106,6 +106,9 @@ class AcademyProfile(models.Model):
     # 연락처(학부모 계정 매칭용: 동일 전화번호=동일 학부모, 11 §9 다자녀). 숫자만 정규화 저장.
     phone = models.CharField(max_length=32, blank=True, default="")
     prefs = models.TextField(blank=True, default="")  # 사용자 UI 설정(JSON): 삭제표시 토글 등
+    # 근무 형태. 불규칙(아르바이트)은 정해진 요일·시각이 없어 지각·결근을 따지지 않는다.
+    work_type = models.CharField(max_length=16, default="FIXED")
+    hourly_wage = models.PositiveIntegerField(null=True, blank=True)   # 시급(원) — 불규칙 근무자
     is_deleted = models.BooleanField(default=False)  # 직원 소프트삭제(숨김). 데이터는 보존.
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
@@ -1072,6 +1075,39 @@ class HolidayOptOut(models.Model):
     class Meta:
         db_table = "academy_holiday_optout"
         unique_together = ("holiday", "branch")
+
+
+class WorkType(object):
+    FIXED = "FIXED"            # 매주 같은 요일·시각
+    IRREGULAR = "IRREGULAR"    # 아르바이트·외부 강사 — 그때그때 조율
+
+
+WORK_TYPE_CHOICES = ((WorkType.FIXED, "고정 근무"), (WorkType.IRREGULAR, "불규칙 근무"))
+
+
+class StaffWorkPlan(models.Model):
+    """불규칙 근무자의 날짜별 근무 예정.
+
+    아르바이트는 요일도 시각도 매번 달라 '근무 기준' 틀에 넣을 수 없다. 미리 정해 두되
+    갑자기 바뀌는 일이 잦아 그날만 고치고 사유를 남긴다.
+
+    급여는 여기 적힌 시간으로 계산한다 — 몇 분 일찍 오고 늦게 왔다고 급여를 깎거나
+    더하지 않는다. 실제로 찍은 시각은 따로 보여 주기만 한다."""
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                              related_name="work_plans")
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    note = models.TextField(blank=True, default="")     # 그날만 바꾼 사유
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_staff_work_plan"
+        unique_together = ("staff", "date")
+        ordering = ["date"]
 
 
 class WorkSchedule(models.Model):
