@@ -969,6 +969,48 @@ class Holiday(models.Model):
         ordering = ["date", "id"]
 
 
+class PromotionBatch(models.Model):
+    """학년 올리기 묶음. 한 번의 진급을 통째로 기록해 되돌릴 수 있게 한다.
+
+    같은 해에 두 번 하는 것이 정상일 수 있다(봄에 못 한 학생을 늦게, 국제학교는 가을).
+    그래서 막지 않고, 겹치는 학생을 알려주고 사람이 고르게 한다."""
+    SPRING = "SPRING"
+    FALL = "FALL"
+    season = models.CharField(max_length=8, default=SPRING)     # 봄 / 가을
+    school_year = models.PositiveSmallIntegerField()            # 학년도(2027)
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="promotions")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    note = models.TextField(blank=True, default="")
+    undone_at = models.DateTimeField(null=True, blank=True)     # 되돌린 때
+    undone_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_promotion_batch"
+        ordering = ["-id"]
+
+
+class PromotionItem(models.Model):
+    """진급으로 바뀐 학생 하나. 되돌리려면 이전 값이 있어야 한다."""
+    batch = models.ForeignKey(PromotionBatch, on_delete=models.CASCADE, related_name="items")
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="promotions")
+    old_school_type = models.CharField(max_length=16, blank=True, default="")
+    old_school_name = models.CharField(max_length=64, blank=True, default="")
+    old_grade = models.CharField(max_length=8, blank=True, default="")
+    new_school_type = models.CharField(max_length=16, blank=True, default="")
+    new_school_name = models.CharField(max_length=64, blank=True, default="")
+    new_grade = models.CharField(max_length=8, blank=True, default="")
+    # 고3처럼 학년이 아니라 진로를 정한 경우(대학 진학·수료)
+    action = models.CharField(max_length=16, blank=True, default="")   # GRADE / UNIV / DONE
+
+    class Meta:
+        db_table = "academy_promotion_item"
+
+
 class SavedSearch(models.Model):
     """자주 쓰는 검색어. 사람에게 딸린 것이라 브라우저가 아니라 서버에 둔다
     (집 컴퓨터에서 만든 검색어를 학원 컴퓨터에서도 그대로 써야 한다)."""

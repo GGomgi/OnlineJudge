@@ -3860,6 +3860,12 @@
 
     <!-- ============ 관리자: 학생 관리 ============ -->
     <section v-if="tab==='students'">
+      <!-- 연 1~2회짜리라 늘 띄우면 눈에 거슬리고, 설정에만 두면 잊는다. 때가 되면 여기에 뜬다 -->
+      <div v-if="promoBannerOn" class="flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 mb-3 text-sm">
+        <span class="text-indigo-800">🎓 <b>{{ today.y }}학년도 학년 올리기</b>를 아직 안 했습니다.</span>
+        <button @click="openPromotion" class="ml-auto px-2.5 py-1 rounded bg-indigo-600 text-white text-xs whitespace-nowrap">학년 올리기</button>
+        <button @click="promoSkipThisMonth" class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 text-xs whitespace-nowrap">이번 달은 안 함</button>
+      </div>
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 class="text-lg font-bold">학생 관리 <span class="text-sm font-normal text-slate-400">(인적사항·상담·상태·보호자 통합)</span></h2>
         <div v-if="hasAnyEdit" class="flex items-center gap-3">
@@ -4507,6 +4513,118 @@
       </div>
     </div>
 
+    <!-- ===== 학년 올리기 =====
+         연 1~2회 하는 일이다. 같은 해에 두 번이 정상일 수 있어(봄에 못 한 학생을 늦게,
+         국제학교는 가을) 막지 않고, 이미 올린 학생을 알려주고 사람이 고르게 한다. -->
+    <div v-if="promoOpen" class="fixed inset-0 bg-black/40 z-[65] flex items-start justify-center p-4 overflow-auto" @click.self="askClose('promoOpen')">
+      <div v-if="guardAsk==='promoOpen'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+        <div class="text-sm text-amber-800">고르던 것이 있습니다. 닫으면 <b>고른 내용이 사라집니다.</b></div>
+        <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs">계속 하기</button>
+        <button @click="closeGuard('promoOpen')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs">버리고 닫기</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-5xl my-4">
+        <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl z-10">
+          <div>
+            <div class="font-bold">학년 올리기 <span class="text-sm font-normal text-slate-400">— {{ promo.school_year }}학년도</span></div>
+            <div class="text-[11px] text-slate-400">고른 학생만 올라갑니다. 올린 뒤에도 [이력 보기]에서 통째로 되돌릴 수 있습니다.</div>
+          </div>
+          <button @click="promoOpen=false" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+        </div>
+        <div class="p-4 space-y-3">
+          <div class="flex items-center gap-2 flex-wrap text-sm">
+            <span class="text-slate-500">이번 진급은</span>
+            <button v-for="o in [{v:'SPRING',l:'봄(3월)'},{v:'FALL',l:'가을(9월)'}]" :key="o.v" @click="promoSeason=o.v"
+                    :class="['px-2.5 py-1 rounded text-xs border', promoSeason===o.v ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600']">{{ o.l }}</button>
+            <button v-if="promoLastFall.length" @click="promoPickLastFall" class="text-xs text-indigo-600 hover:underline">지난 가을 대상 그대로 불러오기 ({{ promoLastFall.length }}명)</button>
+            <span class="ml-auto text-indigo-600 font-semibold">{{ promoSelCount }}명 선택</span>
+            <button @click="promoSelectAll(true)" class="text-xs text-slate-500 hover:underline">모두 선택</button>
+            <button @click="promoSelectAll(false)" class="text-xs text-slate-500 hover:underline">모두 해제</button>
+            <button v-if="promoDoneCount" @click="promoUncheckDone" class="text-xs text-amber-600 hover:underline">이미 올린 {{ promoDoneCount }}명 해제</button>
+          </div>
+          <div v-for="g in promo.groups" :key="g.key" class="border rounded-lg">
+            <div class="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b text-sm">
+              <b>{{ g.from_label }} → {{ g.to_label }}</b>
+              <span class="text-slate-400">{{ g.rows.length }}명</span>
+              <span v-if="g.school_changes" class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[11px]">학교가 바뀝니다 — 아는 학교는 지금 넣으세요</span>
+              <label class="ml-auto flex items-center gap-1 text-xs cursor-pointer select-none">
+                <input type="checkbox" :checked="promoGroupAll(g)" @change="promoToggleGroup(g)" class="w-3.5 h-3.5" />이 묶음 전체
+              </label>
+            </div>
+            <div class="divide-y">
+              <label v-for="r in g.rows" :key="r.student_id"
+                     :class="['grid items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-slate-50',
+                              g.school_changes ? 'grid-cols-[1.25rem_5rem_6.5rem_5rem_1fr_12rem]' : 'grid-cols-[1.25rem_5rem_6.5rem_5rem_1fr]']">
+                <input type="checkbox" v-model="promoSel[r.student_id]" class="w-3.5 h-3.5" />
+                <span class="font-medium truncate">{{ r.name }}</span>
+                <span class="text-xs text-slate-400 font-mono">{{ r.birth_date || '생일 없음' }}</span>
+                <span class="text-xs text-slate-500 truncate">{{ r.school_name || '학교 없음' }}</span>
+                <span class="text-xs truncate">
+                  <span :class="r.peer_off ? 'text-amber-600 font-semibold' : 'text-slate-400'">{{ r.peer }}</span>
+                  <span v-if="r.done_note" class="ml-1 text-rose-500">⚠ {{ r.done_note }}</span>
+                </span>
+                <input v-if="g.school_changes" v-model="promoSchool[r.student_id]" @click.stop
+                       placeholder="새 학교 이름(알면)" class="input py-0.5 px-1 text-xs" />
+              </label>
+            </div>
+          </div>
+          <div v-if="promo.seniors.length" class="border border-rose-200 rounded-lg">
+            <div class="px-3 py-2 bg-rose-50 border-b text-sm">
+              <b class="text-rose-700">고3 {{ promo.seniors.length }}명</b>
+              <span class="text-rose-600">— 진급이 아니라 진로가 필요합니다. 정하지 않으면 아무 일도 일어나지 않습니다.</span>
+            </div>
+            <div class="divide-y">
+              <div v-for="r in promo.seniors" :key="r.student_id" class="flex items-center gap-2 px-3 py-1.5 text-sm flex-wrap">
+                <span class="font-medium w-20 truncate">{{ r.name }}</span>
+                <span class="text-xs text-slate-400 font-mono w-24">{{ r.birth_date || '생일 없음' }}</span>
+                <span class="text-xs text-slate-500 w-24 truncate">{{ r.school_name }}</span>
+                <span class="ml-auto flex gap-1">
+                  <button v-for="o in [{v:'',l:'나중에'},{v:'UNIV',l:'대학 진학'},{v:'DONE',l:'수료(퇴원)'},{v:'KEEP',l:'계속 다님'}]" :key="o.v"
+                          @click="promoSenior[r.student_id] = o.v"
+                          :class="['px-2 py-0.5 rounded text-xs border', (promoSenior[r.student_id]||'')===o.v ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600']">{{ o.l }}</button>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <button @click="openPromoHistory" class="text-xs text-slate-500 hover:underline mr-auto">이력 보기</button>
+            <button @click="promoOpen=false" class="btn-secondary text-sm">취소</button>
+            <button @click="runPromotion" :disabled="!promoSelCount && !promoSeniorCount" class="btn-primary text-sm disabled:opacity-30">
+              {{ promoSelCount }}명 올리기<span v-if="promoSeniorCount"> · 고3 {{ promoSeniorCount }}명 처리</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 진급 이력 — 되돌리기는 그 묶음의 학생만 되돌린다 -->
+    <div v-if="promoHist" class="fixed inset-0 bg-black/40 z-[70] flex items-start justify-center p-4 overflow-auto" @click.self="promoHist=null">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl my-4">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <div class="font-bold">학년 올리기 이력</div>
+          <button @click="promoHist=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+        </div>
+        <div class="p-4 space-y-2 max-h-[70vh] overflow-y-auto">
+          <div v-for="b in promoHist" :key="b.id" :class="['border rounded-lg p-3', b.undone ? 'opacity-50 bg-slate-50' : '']">
+            <div class="flex items-center gap-2 text-sm flex-wrap">
+              <b>{{ b.school_year }}학년도 {{ b.season==='FALL' ? '가을' : '봄' }} 진급</b>
+              <span class="text-slate-400 font-mono text-xs">{{ b.time }}</span>
+              <span class="text-slate-500 text-xs">{{ b.actor }}<span v-if="b.branch"> · {{ b.branch }}</span></span>
+              <span class="text-indigo-600 text-xs">{{ b.count }}명</span>
+              <span v-if="b.undone" class="text-xs text-slate-400">되돌림 {{ b.undone_at }}</span>
+              <button v-else @click="undoPromotion(b)" class="ml-auto text-xs text-rose-500 hover:underline">되돌리기</button>
+            </div>
+            <div class="mt-1 text-[11px] text-slate-500 space-y-0.5 max-h-40 overflow-y-auto">
+              <div v-for="(i,ix) in b.items" :key="ix">
+                {{ i.name }} <span class="text-slate-400">{{ i.old }} → {{ i.new }}</span>
+                <span v-if="i.action==='DONE'" class="text-rose-500">· 수료(퇴원)</span>
+              </div>
+            </div>
+          </div>
+          <div v-if="!promoHist.length" class="text-center text-xs text-slate-400 py-8">아직 진급 기록이 없습니다.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== 자격증·대회 종류 관리 =====
          시험을 실제로 굴리는 건 선생님이라 종류 등록도 이 화면에서 바로 하게 한다.
          한 곳에서만 고치도록 학원 관리 탭에서 떼어 여기로 모았다. -->
@@ -5109,6 +5227,27 @@
 
       <!-- ===== 자격증·대회 종류 ===== -->
       <!-- ===== 메뉴 관리 ===== -->
+      <!-- 평소 자리. 때가 되면 학생 관리 위에도 띠로 뜬다 -->
+      <div v-if="acadTab==='promo'" class="bg-white rounded-xl shadow-sm p-4">
+        <h2 class="text-lg font-bold mb-1">학년 올리기</h2>
+        <p class="text-xs text-slate-400 mb-3">연 1~2회 하는 일입니다. 봄(3월)에 대부분 올리고, 국제학교는 가을(9월)에 올립니다.
+          고른 학생만 올라가고, 올린 뒤에도 통째로 되돌릴 수 있습니다.</p>
+        <div class="flex items-center gap-2 mb-4">
+          <button @click="openPromotion" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">학년 올리기</button>
+          <button @click="openPromoHistory" class="px-3 py-1.5 rounded border border-slate-300 text-slate-600 text-sm">이력 보기</button>
+        </div>
+        <div class="border-t pt-3">
+          <div class="text-xs text-slate-500 mb-1">학생 관리 위에 알림 띠를 띄울 달</div>
+          <div class="flex flex-wrap gap-1">
+            <button v-for="m in 12" :key="m" @click="togglePromoMonth(m)"
+                    :class="['w-10 py-1 rounded text-xs border', promoMonths.includes(m) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500']">{{ m }}월</button>
+          </div>
+          <div class="text-[11px] text-slate-400 mt-1">
+            기본은 1·2·3월(배정 발표~새 학년)과 8·9월(국제학교 가을학기)입니다. 한 달은 반드시 켜 두세요 — 다 끄면 잊어버립니다.
+          </div>
+        </div>
+      </div>
+
       <div v-if="acadTab==='menu'">
         <!-- 로고는 전 지점이 함께 쓰는 얼굴이라 지점마다 달라지면 안 된다. 본부에서만 올린다 -->
         <div v-if="isHqAdmin" class="bg-white rounded-xl shadow-sm p-4 mb-4">
@@ -6152,6 +6291,8 @@ const GUARD_FORMS = {
                    close: vm => { vm.vrModal = null; } },
   phonePick:     { get: vm => (vm.phonePick ? { q: vm.phonePick.q, b: vm.phonePick.batches } : null),
                    close: vm => { vm.phonePick = null; } },
+  promoOpen:     { get: vm => ({ sel: vm.promoSel, sc: vm.promoSchool, sr: vm.promoSenior }),
+                   close: vm => { vm.promoOpen = false; } },
 };
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
 // 옛 비고 태그 코드(선택목록 개편 전 데이터) 폴백 라벨·색
@@ -6314,6 +6455,9 @@ const app = createApp({
       examChgOpen: false, examChanges: [], stuExamShowCancelled: false,
       guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
       phonePick: null, phoneSaved: [], stuOnTop: false,
+      promoOpen: false, promo: { school_year:'', groups:[], seniors:[], count:0 },
+      promoSel: {}, promoSchool: {}, promoSenior: {}, promoSeason: 'SPRING',
+      promoHist: null, promoLastFall: [], promoSkipMonth: (localStorage.getItem('portal_promo_skip') || ''),
       stuPop: { show:false, x:0, y:0, name:'', school:'', days:'', subjects:'', phone:'' },
       leaveCols: (localStorage.getItem('portal_leave_cols') || 'auto'), examFormBase: '', examSnForm: null, examSnError: '',
       examTab: 'ALL', examContestId: null, examSel: [], examShowJoinNo: false,
@@ -6723,7 +6867,7 @@ const app = createApp({
       const t = [];
       if (this.canManageOptions) t.push({k:'options',l:'선택 목록'}, {k:'branch',l:'지점'});
       if (this.isDirectorUp) t.push({k:'notice',l:'공지'}, {k:'work',l:'근무 기준'},
-                                    {k:'holiday',l:'휴무일'}, {k:'menu',l:'메뉴'});
+                                    {k:'holiday',l:'휴무일'}, {k:'promo',l:'학년 올리기'}, {k:'menu',l:'메뉴'});
       return t;
     },
     hrGridDays(){ const p=(this.hrAtt.people||[])[0]; return p ? p.days : []; },
@@ -6993,6 +7137,23 @@ const app = createApp({
       const p = this.phonePick; if (!p || !(p.q||'').trim()) return [];
       return (p.rows||[]).filter(st => st.enrollment_status==='ENROLLED' && this.stuMatch(st, p.q))
                  .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
+    },
+    promoSelCount(){ return Object.values(this.promoSel).filter(Boolean).length; },
+    promoSeniorCount(){ return Object.values(this.promoSenior).filter(v => v && v !== 'KEEP').length; },
+    promoDoneCount(){
+      let n = 0;
+      (this.promo.groups||[]).forEach(g => g.rows.forEach(r => { if (r.done_note) n++; }));
+      return n;
+    },
+    promoMonths(){
+      try { return JSON.parse(localStorage.getItem('portal_promo_months') || '[1,2,3,8,9]'); }
+      catch(e){ return [1,2,3,8,9]; }
+    },
+    // 켜 둔 달이면 학생 관리 위에 띠를 띄운다. '올해는 안 함' 은 그 달만 넘긴다.
+    promoBannerOn(){
+      if (!this.isDirectorUp) return false;
+      if (!this.promoMonths.includes(this.today.m)) return false;
+      return this.promoSkipMonth !== (this.today.y + '-' + this.today.m);
     },
     phoneAllSel(){
       const f = this.phoneFound; if (!f.length) return false;
@@ -10547,6 +10708,103 @@ const app = createApp({
     phoneDays(st){
       const w = (st.extra||{}).weekdays || {};
       return ['월','화','수','목','금','토','일'].filter((_,i)=> (w[i]||w[String(i)]||[]).length).join('');
+    },
+    // ── 학년 올리기 ──
+    async openPromotion(){
+      this.promoSel = {}; this.promoSchool = {}; this.promoSenior = {};
+      this.promoSeason = (this.today.m >= 7) ? 'FALL' : 'SPRING';
+      this.promoOpen = true;
+      try {
+        this.promo = await api('GET','/api/admin/academy/promotion/preview') || { groups:[], seniors:[] };
+      } catch(e){ this.notify(e.message, false); this.promo = { groups:[], seniors:[], count:0 }; }
+      // 기본은 전체 선택. 이미 올린 학생만 해제해 둔다(켜면 또 올라간다).
+      (this.promo.groups||[]).forEach(g => g.rows.forEach(r => {
+        this.promoSel[r.student_id] = !r.done_note;
+        this.promoSchool[r.student_id] = '';
+      }));
+      this.loadPromoLastFall();
+      this.$nextTick(()=> this.openGuard('promoOpen'));
+    },
+    promoGroupAll(g){ return g.rows.length > 0 && g.rows.every(r => this.promoSel[r.student_id]); },
+    promoToggleGroup(g){
+      const on = !this.promoGroupAll(g);
+      g.rows.forEach(r => { this.promoSel[r.student_id] = on; });
+    },
+    promoSelectAll(on){
+      (this.promo.groups||[]).forEach(g => g.rows.forEach(r => { this.promoSel[r.student_id] = on; }));
+    },
+    promoUncheckDone(){
+      (this.promo.groups||[]).forEach(g => g.rows.forEach(r => { if (r.done_note) this.promoSel[r.student_id] = false; }));
+    },
+    // 가을은 매년 같은 학생이라 지난 기록에서 그대로 불러온다(학생에 표시를 두지 않는다)
+    async loadPromoLastFall(){
+      try {
+        const rows = await api('GET','/api/admin/academy/promotion') || [];
+        const fall = rows.find(b => b.season === 'FALL' && !b.undone);
+        this.promoLastFall = fall ? fall.items.map(i => i.name) : [];
+      } catch(e){ this.promoLastFall = []; }
+    },
+    promoPickLastFall(){
+      const names = new Set(this.promoLastFall);
+      this.promoSelectAll(false);
+      (this.promo.groups||[]).forEach(g => g.rows.forEach(r => {
+        if (names.has(r.name)) this.promoSel[r.student_id] = true;
+      }));
+      this.promoSeason = 'FALL';
+      this.notify('지난 가을 대상 ' + this.promoSelCount + '명을 골랐습니다. 새 학생은 직접 더하세요.');
+    },
+    async runPromotion(){
+      const items = [];
+      (this.promo.groups||[]).forEach(g => g.rows.forEach(r => {
+        if (this.promoSel[r.student_id])
+          items.push({ student_id:r.student_id, action:'GRADE',
+                       school_name:(this.promoSchool[r.student_id]||'').trim() });
+      }));
+      (this.promo.seniors||[]).forEach(r => {
+        const a = this.promoSenior[r.student_id];
+        if (a === 'UNIV' || a === 'DONE') items.push({ student_id:r.student_id, action:a });
+      });
+      if (!items.length) return this.notify('올릴 학생을 고르세요.', false);
+      let dupN = 0;
+      (this.promo.groups||[]).forEach(g => g.rows.forEach(r => {
+        if (r.done_note && this.promoSel[r.student_id]) dupN++;
+      }));
+      const dup = dupN ? ('\n이미 올린 학생 ' + dupN + '명이 포함돼 있습니다.') : '';
+      if (!await this.askConfirm(items.length + '명을 올립니다.' + dup +
+          '\n올린 뒤에도 [이력 보기]에서 되돌릴 수 있습니다.')) return;
+      try {
+        const d = await api('POST','/api/admin/academy/promotion', { season:this.promoSeason, items });
+        this.guardSnap.promoOpen = undefined; this.promoOpen = false;
+        this.notify(d.made + '명 올렸습니다.');
+        this.loadStudents();
+      } catch(e){ this.notify(e.message, false); }
+    },
+    async openPromoHistory(){
+      try { this.promoHist = await api('GET','/api/admin/academy/promotion') || []; }
+      catch(e){ this.notify(e.message, false); }
+    },
+    async undoPromotion(b){
+      if (!await this.askConfirm(b.school_year + '학년도 ' + (b.season==='FALL'?'가을':'봄') +
+          ' 진급을 되돌립니다.\n' + b.count + '명이 이전 학년으로 돌아갑니다.\n' +
+          '그 뒤에 사람이 직접 고친 학생은 건드리지 않습니다.')) return;
+      try {
+        const d = await api('DELETE','/api/admin/academy/promotion?id='+b.id);
+        this.notify(d.reverted + '명 되돌렸습니다.' +
+          (d.reverted < d.total ? ' (그 뒤에 고쳐진 ' + (d.total-d.reverted) + '명은 그대로 둠)' : ''));
+        this.openPromoHistory(); this.loadStudents();
+      } catch(e){ this.notify(e.message, false); }
+    },
+    togglePromoMonth(m){
+      let list = this.promoMonths.slice();
+      list = list.includes(m) ? list.filter(x => x !== m) : [...list, m].sort((a,b)=>a-b);
+      if (!list.length) return this.notify('한 달은 켜 두세요. 다 끄면 잊어버립니다.', false);
+      try { localStorage.setItem('portal_promo_months', JSON.stringify(list)); } catch(e){}
+      this.promoSkipMonth = this.promoSkipMonth;   // 다시 그리게
+      this.$forceUpdate();
+    },
+    promoSkipThisMonth(){
+      this.promoSkipMonth = this.today.y + '-' + this.today.m;
+      try { localStorage.setItem('portal_promo_skip', this.promoSkipMonth); } catch(e){}
     },
     async openPhonePick(){
       // 요일은 열 설정과 무관하게 늘 필요하므로 여기서 따로 받아 둔다
