@@ -7618,7 +7618,7 @@ const app = createApp({
       else if (key==='exam'){ this.loadExamAll(); }
       else if (key==='students'){ this.loadStudents(); this.loadOptions(); this.$nextTick(()=> this.$refs.stuSearchInput && this.$refs.stuSearchInput.focus()); }
       else if (key==='children') this.loadChildren();
-      else if (key==='hr'){ this.loadStaffProfile().then(()=> this.$nextTick(()=> this.hrSigInit())); }
+      else if (key==='hr'){ this.loadStaffProfile(); }
       else if (key==='lead'){ this.loadOptions(); if (this.isParent) this.prefillLeadFromGuardian(); }
     },
     async apiUpload(path, formData){
@@ -7627,11 +7627,20 @@ const app = createApp({
       if (json.error){ const d=json.data; throw new Error(typeof d==='string'?d:(Object.values(d||{})[0]||json.error)); }
       return json.data;
     },
+    // 인사정보를 받아 오면 저장된 서명을 캔버스에 다시 그린다.
+    // 화면이 아직 안 그려졌을 수 있어 한 번 더 시도한다.
+    redrawHrSig(){
+      this.$nextTick(()=> {
+        if (this.$refs.hrSig) this.hrSigInit();
+        else setTimeout(()=> { if (this.$refs.hrSig) this.hrSigInit(); }, 200);
+      });
+    },
     async loadStaffProfile(){
       try {
         const d = await api('GET','/api/academy/staff_profile');
         this.staffProfile = d;
         if (d) this.hrForm = { zipcode:d.zipcode||'', address:d.address||'', address_detail:d.address_detail||'', phone:d.phone||'', dependents_decided:!!d.dependents_decided, dependents:(d.dependents||[]).map(x=>({...x})), emergency_contacts:(d.emergency_contacts||[]).map(x=>({...x})), sex_offense_consent:!!d.sex_offense_consent };
+        this.redrawHrSig();
       } catch(e){ this.staffProfile = null; }
     },
     hrFile(field){ return this.staffProfile ? this.staffProfile[field] : ''; },
@@ -7667,6 +7676,7 @@ const app = createApp({
         };
         if (this.hrSig.hasInk) { body.sex_offense_signature = this.$refs.hrSig.toDataURL('image/png'); body.sex_offense_date = this.todayStr; }
         this.staffProfile = await api('POST','/api/academy/staff_profile', body);
+        this.redrawHrSig();
         if (this.staffProfile.dependents_changed) this.notify('저장되었습니다. 4대보험 피부양자 변경 사항은 관리자에게 통보되었습니다.');
         else this.notify('인사 정보가 저장되었습니다.' + (this.staffProfile.completed ? ' (등록 완료)' : ''));
       } catch(e){ this.notify(e.message, false); }
@@ -7688,11 +7698,13 @@ const app = createApp({
         this.notify('업로드되었습니다.');
       } catch(e){ this.notify(e.message, false); } finally { ev.target.value=''; }
     },
-    hrSigInit(){
+    // keepSaved=true 면 저장해 둔 서명을 다시 그린다. [지우기] 는 빈 칸으로 둬야 하므로 false.
+    hrSigInit(keepSaved){
       const c=this.$refs.hrSig; if(!c) return;
       const ctx=c.getContext('2d'); ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.strokeStyle='#1e293b';
       ctx.clearRect(0,0,c.width,c.height); this.hrSig.ctx=ctx; this.hrSig.hasInk=false;
-      // 저장해 둔 서명을 다시 그려 준다. 빈 칸으로 두면 저장이 안 된 줄 알고 또 그리게 된다.
+      if (keepSaved === false) return;
+      // 빈 칸으로 두면 저장이 안 된 줄 알고 또 그리게 된다
       const url = this.staffProfile && this.staffProfile.sex_offense_signature;
       if (url){
         const img = new Image();
@@ -7700,10 +7712,10 @@ const app = createApp({
         img.src = url;
       }
     },
-    hrSigStart(e){ if(!this.hrSig.ctx) this.hrSigInit(); this.hrSig.drawing=true; const p=this.sigPos(e); this.hrSig.ctx.beginPath(); this.hrSig.ctx.moveTo(p.x,p.y); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); },
+    hrSigStart(e){ if(!this.hrSig.ctx) this.hrSigInit(false); this.hrSig.drawing=true; const p=this.sigPos(e); this.hrSig.ctx.beginPath(); this.hrSig.ctx.moveTo(p.x,p.y); if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); },
     hrSigMove(e){ if(!this.hrSig.drawing) return; const p=this.sigPos(e); this.hrSig.ctx.lineTo(p.x,p.y); this.hrSig.ctx.stroke(); this.hrSig.hasInk=true; },
     hrSigEnd(){ this.hrSig.drawing=false; },
-    hrSigClear(){ this.hrSigInit(); },
+    hrSigClear(){ this.hrSigInit(false); },
     gotoOnboarding(){ this.onboardingDismissed=true; this.go('hr'); },
     async loadChildren(){
       try { this.children = await api('GET','/api/academy/my_children'); if (this.children.length && !this.childSel) this.selectChild(this.children[0]); }
