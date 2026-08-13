@@ -6015,29 +6015,31 @@
         </div>
       </div>
       <!-- 찾기 — 최근 것부터 위로 거슬러 올라가며 찾고, 다 보면 이전 기록을 더 불러와 이어서 찾는다 -->
-      <div class="flex items-center gap-2 flex-wrap mb-2">
-        <div class="relative flex-1 min-w-[14rem] max-w-md">
+      <div class="flex items-center gap-2 mb-2">
+        <select v-model="devlogWho" @change="devlogHitI=null; devlogFindMsg=''" class="input py-1.5 text-sm w-24 shrink-0">
+          <option value="all">모두</option>
+          <option value="ai">AI</option>
+          <option value="me">개발자</option>
+        </select>
+        <div class="relative flex-1 min-w-[10rem] max-w-md">
           <input v-model="devlogQRaw" @keydown.enter.prevent="devlogFind(false)" @input="onDevlogQ"
                  placeholder="대화 안에서 찾기 (엔터로 다음)" class="input py-1.5 pr-8 w-full text-sm" />
           <button v-if="devlogQRaw" @click="devlogClearFind"
                   class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm leading-none">✕</button>
         </div>
-        <select v-model="devlogWho" @change="devlogHitI=null; devlogFindMsg=''" class="input py-1.5 text-sm w-32">
-          <option value="all">모두</option>
-          <option value="me">내가 한 말</option>
-          <option value="ai">AI가 한 말</option>
-        </select>
-        <button @click="devlogFind(true)" :disabled="devlogFinding" class="px-3 py-1.5 rounded text-sm bg-indigo-600 text-white disabled:bg-slate-300">찾기</button>
-        <button @click="devlogPrev" :disabled="devlogFinding || devlogPos<=1" class="px-3 py-1.5 rounded text-sm border border-slate-300 text-slate-600 disabled:opacity-40">이전 ↓</button>
-        <button @click="devlogFind(false)" :disabled="devlogFinding || !devlogQ" class="px-3 py-1.5 rounded text-sm border border-slate-300 text-slate-600 disabled:opacity-40">다음 ↑</button>
+        <button @click="devlogFind(true)" :disabled="devlogFinding" class="shrink-0 px-3 py-1.5 rounded text-sm bg-indigo-600 text-white disabled:bg-slate-300">찾기</button>
+        <button @click="devlogPrev" :disabled="devlogFinding || devlogPos<=1" class="shrink-0 px-3 py-1.5 rounded text-sm border border-slate-300 text-slate-600 disabled:opacity-40">이전 ↓</button>
+        <button @click="devlogFind(false)" :disabled="devlogFinding || !devlogQ" class="shrink-0 px-3 py-1.5 rounded text-sm border border-slate-300 text-slate-600 disabled:opacity-40">다음 ↑</button>
         <!-- 아래에서 몇 번째 / 지금까지 불러온 것 중 몇 개. 이전 기록을 더 불러오면 뒤 숫자가 늘어난다 -->
-        <span v-if="devlogQ" class="text-sm font-mono whitespace-nowrap"
+        <span v-if="devlogQ" class="shrink-0 text-sm font-mono whitespace-nowrap"
               :class="devlogHits.length ? 'text-slate-600' : 'text-slate-300'">
           {{ String(devlogPos).padStart(2,'0') }} / {{ String(devlogHits.length).padStart(2,'0') }}
         </span>
-        <span v-if="devlogFinding" class="text-xs text-indigo-500">이전 기록을 불러오며 찾는 중…</span>
-        <span v-else-if="devlogFindMsg" class="text-xs text-slate-400">{{ devlogFindMsg }}</span>
-        <button @click="devlogToBottom" class="ml-auto px-3 py-1.5 rounded text-sm border border-slate-200 text-slate-500 whitespace-nowrap">↓ 맨 아래로</button>
+        <!-- 지금 화면에 깔린 대화가 어디서부터인지. 이전 기록을 더 불러오면 앞당겨진다 -->
+        <span class="shrink-0 text-xs font-mono text-slate-400 whitespace-nowrap">{{ devlogFromTs }} ~</span>
+        <span v-if="devlogFinding" class="shrink-0 text-xs text-indigo-500 whitespace-nowrap">불러오며 찾는 중…</span>
+        <span v-else-if="devlogFindMsg" class="shrink-0 text-xs text-slate-400 whitespace-nowrap">{{ devlogFindMsg }}</span>
+        <button @click="devlogToBottom" class="ml-auto shrink-0 px-3 py-1.5 rounded text-sm border border-slate-200 text-slate-500 whitespace-nowrap">↓ 맨 아래로</button>
       </div>
       <p class="text-xs text-slate-400 mb-2">위로 스크롤하면 이전 대화를 더 불러옵니다. <b>약식</b>은 지시·설명만, <b>전체</b>는 파일·명령 동작까지 표시합니다.</p>
       <div ref="devlogScroll" @scroll="onDevlogScroll" class="relative bg-white rounded-xl shadow-sm p-4 space-y-3 overflow-y-auto" style="height:70vh">
@@ -7089,6 +7091,11 @@ const app = createApp({
       const m = {};
       this.devlogHits.forEach(i => { m[i] = true; });
       return m;
+    },
+    // 지금 깔려 있는 대화의 맨 앞(가장 오래된) 시각
+    devlogFromTs(){
+      const it = this.devlogItems[0];
+      return (it && it.ts) ? String(it.ts) : '—';
     },
     devlogPos(){
       if (this.devlogHitI === null) return 0;
