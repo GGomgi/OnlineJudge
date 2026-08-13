@@ -6014,28 +6014,42 @@
           <button @click="loadDevlog(true)" class="px-3 py-1.5 rounded text-sm border border-slate-200 text-slate-500">↻ 새로고침</button>
         </div>
       </div>
+      <!-- 찾기 — 최근 것부터 위로 거슬러 올라가며 찾고, 다 보면 이전 기록을 더 불러와 이어서 찾는다 -->
+      <div class="flex items-center gap-2 flex-wrap mb-2">
+        <div class="relative flex-1 min-w-[14rem] max-w-md">
+          <input v-model="devlogQ" @keydown.enter.prevent="devlogFind(false)" @input="devlogHitI=null"
+                 placeholder="대화 안에서 찾기 (엔터로 다음)" class="input py-1.5 pr-8 w-full text-sm" />
+          <button v-if="devlogQ" @click="devlogClearFind"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm leading-none">✕</button>
+        </div>
+        <button @click="devlogFind(true)" :disabled="devlogFinding" class="px-3 py-1.5 rounded text-sm bg-indigo-600 text-white disabled:bg-slate-300">찾기</button>
+        <button @click="devlogFind(false)" :disabled="devlogFinding || !devlogQ" class="px-3 py-1.5 rounded text-sm border border-slate-300 text-slate-600 disabled:opacity-40">다음 ↑</button>
+        <span v-if="devlogFinding" class="text-xs text-indigo-500">이전 기록을 불러오며 찾는 중…</span>
+        <span v-else-if="devlogFindMsg" class="text-xs text-slate-400">{{ devlogFindMsg }}</span>
+        <button @click="devlogToBottom" class="ml-auto px-3 py-1.5 rounded text-sm border border-slate-200 text-slate-500 whitespace-nowrap">↓ 맨 아래로</button>
+      </div>
       <p class="text-xs text-slate-400 mb-2">위로 스크롤하면 이전 대화를 더 불러옵니다. <b>약식</b>은 지시·설명만, <b>전체</b>는 파일·명령 동작까지 표시합니다.</p>
-      <div ref="devlogScroll" @scroll="onDevlogScroll" class="bg-white rounded-xl shadow-sm p-4 space-y-3 overflow-y-auto" style="height:70vh">
+      <div ref="devlogScroll" @scroll="onDevlogScroll" class="relative bg-white rounded-xl shadow-sm p-4 space-y-3 overflow-y-auto" style="height:70vh">
         <div v-if="devlogLoading" class="text-center text-xs text-slate-400 py-2">불러오는 중…</div>
         <div v-else-if="!devlogHasMore && devlogItems.length" class="text-center text-xs text-slate-300 py-2">— 대화 시작 —</div>
         <template v-for="it in devlogItems" :key="it.i">
           <!-- 사용자 -->
-          <div v-if="it.role==='user'" class="flex justify-end">
-            <div class="max-w-[80%] bg-indigo-600 text-white rounded-2xl rounded-br-sm px-4 py-2">
+          <div v-if="it.role==='user'" :id="'dl'+it.i" class="flex justify-end">
+            <div :class="['max-w-[80%] bg-indigo-600 text-white rounded-2xl rounded-br-sm px-4 py-2', it.i===devlogHitI ? 'ring-2 ring-amber-400' : '']">
               <div class="text-[10px] text-indigo-200 mb-0.5">나 · {{ it.ts }}</div>
               <div class="whitespace-pre-wrap text-sm leading-relaxed">{{ it.text }}</div>
             </div>
           </div>
           <!-- AI 설명/질문 -->
-          <div v-else-if="it.kind==='msg'" class="flex justify-start">
-            <div class="max-w-[80%] bg-slate-100 text-slate-800 rounded-2xl rounded-bl-sm px-4 py-2">
+          <div v-else-if="it.kind==='msg'" :id="'dl'+it.i" class="flex justify-start">
+            <div :class="['max-w-[80%] bg-slate-100 text-slate-800 rounded-2xl rounded-bl-sm px-4 py-2', it.i===devlogHitI ? 'ring-2 ring-amber-400' : '']">
               <div class="text-[10px] text-slate-400 mb-0.5">AI · {{ it.ts }}</div>
               <div class="whitespace-pre-wrap text-sm leading-relaxed">{{ it.text }}</div>
             </div>
           </div>
           <!-- 도구 동작(전체 보기) -->
-          <div v-else class="flex justify-start">
-            <div class="text-[11px] text-slate-400 pl-2 border-l-2 border-slate-200">🔧 {{ it.tool }}</div>
+          <div v-else :id="'dl'+it.i" class="flex justify-start">
+            <div :class="['text-[11px] text-slate-400 pl-2 border-l-2', it.i===devlogHitI ? 'border-amber-400 bg-amber-50' : 'border-slate-200']">🔧 {{ it.tool }}</div>
           </div>
         </template>
         <div v-if="!devlogItems.length && !devlogLoading" class="text-center text-sm text-slate-400 py-10">
@@ -7010,6 +7024,7 @@ const app = createApp({
       staff: [], staffForm: { real_name:'', password:'', role:'', branch_id:null, managed_branch_ids:[] },
       branchAdmin: [], branchNewName: '',
       devlogItems: [], devlogMode: 'full', devlogStart: 0, devlogHasMore: false, devlogLoading: false, devlogTotal: 0,
+      devlogQ: '', devlogHitI: null, devlogFinding: false, devlogFindMsg: '',
       options: {},
       optionCategories: [
         {v:'program', l:'등록 과정 (입회원)'},
@@ -9237,7 +9252,7 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     // ── 개발일지 ──
-    setDevlogMode(m){ if (this.devlogMode===m) return; this.devlogMode=m; this.loadDevlog(true); },
+    setDevlogMode(m){ if (this.devlogMode===m) return; this.devlogMode=m; this.devlogHitI=null; this.devlogFindMsg=''; this.loadDevlog(true); },
     async loadDevlog(initial){
       if (this.devlogLoading) return;
       this.devlogLoading = true;
@@ -9258,6 +9273,53 @@ const app = createApp({
     },
     onDevlogScroll(e){
       if (e.target.scrollTop < 40 && this.devlogHasMore && !this.devlogLoading) this.loadDevlog(false);
+    },
+    devlogText(it){ return String((it.role==='user' || it.kind==='msg') ? (it.text||'') : (it.tool||'')); },
+    devlogToBottom(){
+      const el = this.$refs.devlogScroll;
+      if (el) el.scrollTop = el.scrollHeight;
+    },
+    devlogClearFind(){ this.devlogQ=''; this.devlogHitI=null; this.devlogFindMsg=''; },
+    // 최근 것이 아래에 있으므로 아래에서 위로 거슬러 올라가며 찾는다. 불러온 것을 다 보면
+    // 이전 기록을 더 받아 이어서 찾는다 — 카카오톡 대화 찾기와 같은 방식.
+    async devlogFind(reset){
+      const q = (this.devlogQ||'').trim().toLowerCase();
+      if (!q || this.devlogFinding) return;
+      if (reset) this.devlogHitI = null;
+      this.devlogFinding = true; this.devlogFindMsg = '';
+      try {
+        let from = this.devlogItems.length - 1;
+        if (this.devlogHitI !== null){
+          const k = this.devlogItems.findIndex(x => x.i === this.devlogHitI);
+          if (k >= 0) from = k - 1;
+        }
+        for (let guard = 0; guard < 400; guard++){
+          for (let j = from; j >= 0; j--){
+            if (this.devlogText(this.devlogItems[j]).toLowerCase().includes(q)){
+              this.devlogHitI = this.devlogItems[j].i;
+              this.$nextTick(()=> this.devlogScrollToHit());
+              return;
+            }
+          }
+          if (!this.devlogHasMore){
+            this.devlogFindMsg = this.devlogHitI === null ? '찾는 말이 없습니다.' : '더 없습니다. [찾기]를 누르면 최근 것부터 다시 봅니다.';
+            this.devlogHitI = null;
+            return;
+          }
+          const before = this.devlogItems.length;
+          await this.loadDevlog(false);
+          const added = this.devlogItems.length - before;
+          if (added <= 0){ this.devlogFindMsg = '더 없습니다.'; return; }
+          from = added - 1;                 // 새로 붙은 부분만 이어서 본다
+        }
+        this.devlogFindMsg = '너무 멀리 왔습니다. 다시 눌러 주세요.';
+      } finally { this.devlogFinding = false; }
+    },
+    devlogScrollToHit(){
+      const box = this.$refs.devlogScroll;
+      const el = document.getElementById('dl' + this.devlogHitI);
+      if (!box || !el) return;
+      box.scrollTop = Math.max(0, el.offsetTop - box.clientHeight / 2);
     },
     async loadBranches(){ try { this.branches = await api('GET','/api/academy/branches'); } catch(e){} },
     async loadBranchAdmin(){ try { this.branchAdmin = await api('GET','/api/admin/academy/branches'); } catch(e){} },
