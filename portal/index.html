@@ -3896,7 +3896,8 @@
                   <tr v-for="(row,idx) in bulkRows" :key="idx" :id="'bulk-row-'+idx" :class="bulkRowError(idx) ? 'bg-rose-50' : ''">
                     <td class="px-1 py-1 text-slate-400 align-top">
                       {{ idx+1 }}
-                      <div v-if="bulkRowError(idx)" class="text-rose-500 text-[10px] leading-tight" style="max-width:90px">⚠ {{ bulkRowError(idx).error }}</div>
+                      <!-- 사유를 좁은 칸에 가두면 한 글자씩 세로로 흐른다. 어차피 표가 가로로 넘치므로 한 줄로 둔다 -->
+                      <div v-if="bulkRowError(idx)" class="text-rose-500 text-[10px] leading-tight whitespace-nowrap">⚠ {{ bulkRowError(idx).error }}</div>
                     </td>
                     <td v-for="c in bulkColumnDefs()" :key="c.field" class="px-1 py-1 align-top">
                       <input v-model="row[c.field]"
