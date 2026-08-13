@@ -3880,6 +3880,10 @@
               <button @click="downloadBulkTemplate" class="text-xs text-indigo-600 hover:underline">⬇ 양식 다운로드</button>
               <button v-if="bulkRows.length" @click="convertBulkRows()" class="btn-secondary text-sm">🔄 변환</button>
               <button v-if="bulkRows.length" @click="downloadBulkReview" class="btn-secondary text-sm">⬇ 검토 데이터 다운로드</button>
+              <!-- 등록 후 실패한 행만 따로 받아 고쳐서 다시 올릴 수 있게 -->
+              <button v-if="bulkFailedRows.length" @click="downloadBulkFailed" class="px-3 py-1.5 rounded border border-rose-300 text-rose-600 text-sm hover:bg-rose-50">
+                ⬇ 등록 안 된 {{ bulkFailedRows.length }}명 받기
+              </button>
               <span v-if="bulkConverted" class="text-xs text-emerald-600">✓ 변환됨 — 노란 칸이 바뀐 값입니다.</span>
             </div>
 
@@ -10079,20 +10083,34 @@ const app = createApp({
       }
       return M;
     },
+    // 등록을 눌렀으면 그 결과 기준, 아직이면 검증 결과 기준으로 '못 들어간 행'을 모은다
+    bulkFailedRows(){
+      const src = this.bulkResults || this.bulkValidated;
+      if (!src || !src.results) return [];
+      return src.results.filter(x => !x.ok)
+        .map(x => ({ row: this.bulkRows[x.row - 1] || {}, error: x.error || '' }))
+        .filter(x => Object.keys(x.row).length);
+    },
     bulkColumnDefs(){
       const M = this.bulkFieldMap(); const autoSet = new Set(this.bulkAutoFields());
       return this.bulkColumns().map(label => ({ label, field: M[label], auto: autoSet.has(M[label]) }));
     },
+    // 머리글 글자가 잘리지 않을 만큼은 준다. 표가 가로로 넘치는 건 상관없다고 했다.
     bulkColWidth(field){
-      if (/^tt\d+_(weekday|time|duration)$/.test(field)) return 'w-14';
-      if (['gender','grade','weekly_sessions','zipcode'].includes(field)) return 'w-14';
-      if (['parent_relation','guardian2_relation','notify_optin'].includes(field)) return 'w-16';
-      if (['parent_phone','guardian2_phone','student_phone'].includes(field)) return 'w-32';
+      if (/^tt\d+_(weekday|duration)$/.test(field)) return 'w-20';
+      if (/^tt\d+_time$/.test(field)) return 'w-24';
+      if (['gender','grade','weekly_sessions'].includes(field)) return 'w-16';
+      if (field==='zipcode') return 'w-20';
+      if (['parent_relation','guardian2_relation','notify_optin'].includes(field)) return 'w-24';
+      if (['guardian2_phone'].includes(field)) return 'w-40';
+      if (['parent_phone','student_phone'].includes(field)) return 'w-32';
       if (['address','memo'].includes(field)) return 'w-56';
-      if (['branch','address_detail'].includes(field)) return 'w-24';
-      if (['student_name','parent_name','school_name'].includes(field)) return 'w-24';
-      if (/^tt\d+_(program|instructor)$/.test(field) || field==='programs') return 'w-24';
-      return 'w-20';
+      if (['branch'].includes(field)) return 'w-20';
+      if (['address_detail'].includes(field)) return 'w-28';
+      if (['student_name','parent_name','school_name','school_type'].includes(field)) return 'w-24';
+      if (['birth_date','enrollment_date','lesson_start_date'].includes(field)) return 'w-28';
+      if (/^tt\d+_(program|instructor)$/.test(field) || field==='programs') return 'w-28';
+      return 'w-24';
     },
     // ── 일괄등록 자동 변환(날짜·학교구분·학교이름·학년·전화번호 표기 통일) ──
     bulkAutoFields(){ return ['birth_date','school_type','school_name','grade','parent_phone','guardian2_phone','student_phone','lesson_start_date']; },
@@ -10172,6 +10190,19 @@ const app = createApp({
         el.classList.add('ring-2','ring-rose-400');
         setTimeout(()=>el.classList.remove('ring-2','ring-rose-400'), 2000);
       });
+    },
+    downloadBulkFailed(){
+      if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
+      const M = this.bulkFieldMap(); const inv = {}; for (const k in M) inv[M[k]] = k;
+      const rows = this.bulkFailedRows.map(x => {
+        const o = {}; for (const f in inv) o[inv[f]] = x.row[f] || '';
+        o['등록 안 된 이유'] = x.error || '';
+        return o;
+      });
+      const header = [...this.bulkColumns(), '등록 안 된 이유'];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows, { header }), '등록안됨');
+      XLSX.writeFile(wb, '학생_일괄등록_등록안됨_'+this.todayStr+'.xlsx');
     },
     downloadBulkReview(){
       if (typeof XLSX==='undefined') return this.notify('엑셀 모듈 로드 실패(인터넷 확인).', false);
