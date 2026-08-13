@@ -24,7 +24,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       TimetableSlot, ClassSession, SessionStatus, AttendanceRecord,
                       Lead, LeadStatus, CounselingLog, CounselingLogEdit, CounselReservation, StudentProfile, EnrollmentStatus,
                       OptionItem, StudentTimetable, LessonType, GuardianStudent,
-                      StaffProfile, HRNotice, StaffDocument, StaffProfileHistory,
+                      StaffProfile, HRNotice, StaffDocument, StaffProfileHistory, StudentRegisterLog,
                       TimetableChange, StudentStatusChange, StudentCredential, StaffChangeLog, DailyAttendance,
                       AttendanceChange, LessonOccurrence, OccurrenceStatus, LessonProgress,
                       MsgTemplateGroup, MsgTemplate, FixedTemplate, KioskDevice, KioskDeviceStatus,
@@ -1415,7 +1415,7 @@ class PrefsAdminAPI(APIView):
         return self.success(cur)
 
 
-def _create_student_from_lead(request, lead, data):
+def _create_student_from_lead(request, lead, data, source="LEAD"):
     """리드를 활성 학생 계정으로 전환(계정+학생등록+시간표+보호자). (result, error) 반환.
     상담 전환·직접 등록 공용."""
     username = data["login_id"].lower()
@@ -1538,6 +1538,10 @@ def _create_student_from_lead(request, lead, data):
         lead.converted_user = user
         lead.is_hidden = True  # 등록 전환 완료 시 상담 목록에서 자동 숨김
         lead.save()
+        # 누가 언제 누구를 등록했는지. 상세는 남기지 않는다 — 뒤에 고친 것은 각자의 이력에 남는다
+        StudentRegisterLog.objects.create(
+            student=user, actor=(request.user if request else None),
+            source=source, branch=lead.branch)
     result = LeadSerializer(lead).data
     if parent_user is not None:
         result["parent_account"] = {"username": parent_user.username,
@@ -1592,7 +1596,7 @@ class StudentRegisterAdminAPI(APIView):
             school_name=data.get("school_name") or "",
             grade=data.get("grade") or "",
             status=LeadStatus.NEW, is_hidden=True)
-        result, err = _create_student_from_lead(request, lead, data)
+        result, err = _create_student_from_lead(request, lead, data, source="DIRECT")
         if err:
             lead.delete()
             return self.error(err)
@@ -2304,6 +2308,9 @@ class BulkRegisterAPI(APIView):
             branches[b.name] = b
             if b.code:
                 branches[b.code] = b
+        # 한 번의 일괄 등록을 하나로 묶는 값. 사용 이력에서 이름을 한 줄로 모아 보여 준다.
+        self._actor = request.user
+        self._batch = str(now().timestamp())[:14] + "-" + str(request.user.id)
         results, seen_ids = [], set()
         for i, row in enumerate(rows):
             res, resolved = _bulk_resolve_row(request.user, row, branches, seen_ids)
@@ -2330,6 +2337,9 @@ class BulkRegisterAPI(APIView):
             user.save()
             UserProfile.objects.create(user=user, real_name=d["name"])
             apply_role(user, AcademyRole.STUDENT, d["branch"])
+            StudentRegisterLog.objects.create(
+                student=user, actor=self._actor, source="BULK",
+                branch=d["branch"], batch=self._batch)
             StudentProfile.objects.create(
                 user=user, enroll_no=gen_enroll_no(d["branch"]),
                 birth_date=d["birth_date"], gender=d["gender"],
@@ -5298,6 +5308,24 @@ class ActivityLogAPI(APIView):
                 continue        # 빈 값에서 빈 값으로 — 사람 눈에는 바뀐 게 없다
             add(c.create_time, "인사정보", _name_of(c.user),
                 "%s: %s → %s" % (staff_field_label(c.field), ov, nv), c.reason)
+        # 학생 등록 — 일괄은 한 번을 한 줄로 묶고 이름만 늘어놓는다.
+        # 상세를 적어 봐야 뒤에 고치면 그건 각자의 이력에 남으므로 두 번 적는 셈이다.
+        regs = list(StudentRegisterLog.objects.filter(**base)
+                    .select_related("student", "student__userprofile", "branch")[:1000])
+        batches = {}
+        for c in regs:
+            if c.source == "BULK" and c.batch:
+                batches.setdefault(c.batch, []).append(c)
+                continue
+            label = "상담 전환" if c.source == "LEAD" else "직접 등록"
+            add(c.create_time, "학생등록", _name_of(c.student),
+                "%s%s" % (label, (" · %s" % c.branch.name) if c.branch_id else ""))
+        for items in batches.values():
+            names = [_name_of(x.student) for x in items]
+            bn = items[0].branch.name if items[0].branch_id else ""
+            add(max(x.create_time for x in items), "학생등록", "%d명" % len(names),
+                "일괄 등록%s — %s" % ((" · %s" % bn) if bn else "", ", ".join(names)))
+
         for c in CounselingLogEdit.objects.filter(**base).select_related("log")[:1000]:
             add(c.create_time, "상담기록", "", "상담 기록 수정(이전 내용: %s)" % (c.old_summary or "")[:80])
 

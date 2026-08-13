@@ -802,6 +802,26 @@ class StudentCredential(models.Model):
         ordering = ["order", "id"]
 
 
+class StudentRegisterLog(models.Model):
+    """학생을 새로 등록한 기록. 상세 내용은 남기지 않는다 — 그 뒤에 고친 것은
+    각자의 이력에 남으므로, 여기서는 '누가 언제 누구를 등록했는가'만 있으면 된다.
+    일괄 등록은 batch 로 묶어 한 줄로 보여 준다."""
+    SOURCE_CHOICES = (("DIRECT", "직접 등록"), ("LEAD", "상담 전환"), ("BULK", "일괄 등록"))
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="register_logs")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    source = models.CharField(max_length=16, default="DIRECT")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="+")
+    batch = models.CharField(max_length=40, blank=True, default="")   # 일괄 등록 한 번을 묶는 값
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_student_register_log"
+        ordering = ["-id"]
+
+
 class StudentStatusChange(models.Model):
     """학생 등록상태 변경 이력(재원↔휴원↔퇴원↔재등록). 휴원/퇴원 모아보기·재등록 관리·
     안내문자 연계의 근거 자료로 영구 보존한다."""

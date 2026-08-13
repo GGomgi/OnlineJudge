@@ -6466,7 +6466,7 @@
             </div>
           </div>
         </div>
-        <p class="text-[11px] text-slate-400">시간표·보강, 출결, 등록상태, 직원관리, 인사정보, 상담기록 변경 이력을 모아서 보여줍니다.</p>
+        <p class="text-[11px] text-slate-400">학생등록, 시간표·보강, 출결, 등록상태, 직원관리, 인사정보, 상담기록 변경 이력을 모아서 보여줍니다.</p>
       </div>
 
       <!-- 아직 준비 중인 메뉴 -->
@@ -8860,7 +8860,8 @@ const app = createApp({
     actKindCls(k){
       return ({'시간표·보강':'bg-blue-50 text-blue-700','출결':'bg-emerald-50 text-emerald-700',
                '등록상태':'bg-amber-50 text-amber-700','직원관리':'bg-violet-50 text-violet-700',
-               '인사정보':'bg-slate-100 text-slate-600','상담기록':'bg-rose-50 text-rose-600'})[k] || 'bg-slate-100 text-slate-600';
+               '인사정보':'bg-slate-100 text-slate-600','상담기록':'bg-rose-50 text-rose-600',
+               '학생등록':'bg-indigo-50 text-indigo-700'})[k] || 'bg-slate-100 text-slate-600';
     },
     showNavTip(text, e){ this.navTip = { show:true, text, x:Math.min(e.clientX+10, window.innerWidth-220), y:e.clientY+18 }; },
     hideNavTip(){ this.navTip.show = false; },
