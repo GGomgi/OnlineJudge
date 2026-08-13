@@ -3849,10 +3849,17 @@ def ensure_occurrences(d, branch_ids=None):
         slots = slots.filter(branch_id__in=branch_ids)
     existing = set(LessonOccurrence.objects.filter(date=d, source_timetable__isnull=False)
                    .values_list("source_timetable_id", flat=True))
+    # 시간표를 바꾸면 옛 줄이 만들어 둔 수업이 그날 남아 있을 수 있다. 그때 새 줄로 또 만들면
+    # 같은 학생이 같은 시각에 두 번 뜬다(한쪽은 결석, 한쪽은 등원 전처럼). 학생·시각으로도 본다.
+    taken = set(LessonOccurrence.objects.filter(date=d, is_makeup=False)
+                .exclude(status=OccurrenceStatus.CANCELLED)
+                .values_list("student_id", "start_time"))
     for s in slots:
         if not _slot_active_on(s, d):
             continue
         if s.id in existing:
+            continue
+        if (s.student_id, s.start_time) in taken:
             continue
         LessonOccurrence.objects.get_or_create(
             source_timetable=s, date=d,

@@ -474,8 +474,20 @@ class StaffProfileAPI(APIView):
         # 본인 노출 문서(서류함) + 본인 수정 이력(항목·시각만)
         docs = StaffDocument.objects.filter(user=request.user, visible_to_staff=True)
         result["documents"] = [_doc_data(d) for d in docs]
-        result["history"] = [{"field": h.field, "time": _kst_dt_str(h.create_time)}
-                             for h in StaffProfileHistory.objects.filter(user=request.user)[:100]]
+        # 무엇이 어떻게 바뀌었고 누가 고쳤는지까지 본인도 본다.
+        # 원장이 대신 고친 것도 여기 남아야 나중에 되짚을 수 있다.
+        def _actor(h):
+            if not h.actor_id:
+                return ""
+            try:
+                return h.actor.userprofile.real_name or h.actor.username
+            except Exception:
+                return h.actor.username
+        result["history"] = [{"field": h.field, "old": h.old_value, "new": h.new_value,
+                              "actor": ("" if h.actor_id == request.user.id else _actor(h)),
+                              "time": _kst_dt_str(h.create_time)}
+                             for h in StaffProfileHistory.objects.filter(user=request.user)
+                                                                 .select_related("actor")[:100]]
         return self.success(result)
 
     @validate_serializer(SaveStaffProfileSerializer)

@@ -6024,8 +6024,18 @@
 
             <!-- 조교·아르바이트는 안 내도 되는 서류가 있다. 면제는 원장 이상만 정한다 -->
             <div>
-              <div class="text-xs font-semibold text-slate-500 border-b pb-1 mb-1">필수 서류
-                <span class="font-normal text-slate-400">— 해당사항 없음은 원장 이상만 정합니다</span></div>
+              <div class="text-xs font-semibold text-slate-500 border-b pb-1 mb-1 flex items-center gap-2">
+                <span>필수 서류</span>
+                <span class="font-normal text-slate-400">— 해당사항 없음은 원장 이상만 정합니다</span>
+                <!-- 체크하는 순간 바로 바뀌면 잘못 눌러도 되돌릴 새가 없다. 고치고 저장하는 방식으로. -->
+                <span v-if="isDirectorUp" class="ml-auto flex items-center gap-2">
+                  <template v-if="hrEditMode">
+                    <button @click="cancelHrWaive" class="text-slate-400 hover:underline font-normal">취소</button>
+                    <button @click="saveHrWaive" class="text-indigo-600 hover:underline">저장</button>
+                  </template>
+                  <button v-else @click="startHrWaive" class="text-indigo-600 hover:underline font-normal">✎ 수정</button>
+                </span>
+              </div>
               <div class="space-y-1">
                 <div v-for="d in hrReqDocs" :key="d.f" class="flex items-center gap-2 text-slate-600">
                   <span class="w-28 shrink-0">{{ d.l }}</span>
@@ -6033,9 +6043,10 @@
                   <span v-else-if="hrDetail.profile[d.f]" class="text-emerald-600 text-xs">있음</span>
                   <span v-else-if="hrWaived(d.f)" class="text-slate-400 text-xs">해당사항 없음</span>
                   <span v-else class="text-rose-500 text-xs">없음</span>
-                  <label v-if="isDirectorUp" class="ml-auto flex items-center gap-1 text-xs text-slate-500 cursor-pointer select-none">
-                    <input type="checkbox" :checked="hrWaived(d.f)" @change="toggleWaive(d.f)" class="w-3.5 h-3.5" />해당사항 없음
+                  <label v-if="isDirectorUp && hrEditMode" class="ml-auto flex items-center gap-1 text-xs text-slate-500 cursor-pointer select-none">
+                    <input type="checkbox" :checked="hrWaiveDraft.includes(d.f)" @change="toggleWaiveDraft(d.f)" class="w-3.5 h-3.5" />해당사항 없음
                   </label>
+                  <span v-else-if="hrWaived(d.f)" class="ml-auto text-[11px] text-slate-400">해당사항 없음</span>
                 </div>
               </div>
             </div>
@@ -6255,7 +6266,12 @@
           <div v-if="staffProfile && staffProfile.history && staffProfile.history.length" class="space-y-1">
             <div class="text-sm font-semibold text-slate-700 border-b pb-1">내 수정 이력</div>
             <ul class="text-xs text-slate-500 space-y-0.5">
-              <li v-for="(h,i) in staffProfile.history" :key="i">{{ h.time }} · {{ hrLabel(h.field) }} 수정</li>
+              <li v-for="(h,i) in staffProfile.history" :key="i" class="flex flex-wrap gap-2">
+                <span class="text-slate-400">{{ h.time }}</span>
+                <span class="font-medium">{{ hrLabel(h.field) }}</span>
+                <span class="text-slate-500">{{ hrValue(h.field, h.old) }} → {{ hrValue(h.field, h.new) }}</span>
+                <span v-if="h.actor" class="text-indigo-500 ml-auto">{{ h.actor }}</span>
+              </li>
             </ul>
           </div>
         </div>
@@ -6814,7 +6830,7 @@ const app = createApp({
       dragIndex: null, dragOverIndex: null,
       staffProfile: null, onboardingDismissed: false, hrNotices: [],
       showPwChange: false, pwForm: { old:'', new1:'', new2:'' },
-      hrDepWarn: false,
+      hrDepWarn: false, hrEditMode: false, hrWaiveDraft: [],
       hrForm: { zipcode:'', address:'', address_detail:'', phone:'', dependents_decided:false, dependents:[], emergency_contacts:[], sex_offense_consent:false },
       hrSig: { drawing:false, ctx:null, hasInk:false },
       staffFilter: '', staffFilterRaw: '', staffShowInactive: false, staffSort: { key:'', dir:1 },
@@ -6822,7 +6838,7 @@ const app = createApp({
       hrDetail: null, hrDocNewGroup: '', docDragGroup: null, docDragIndex: null,
       ttHistory: [], showTtHistory: false, ttHistoryName: '', ttHistoryStudentId: null,
       ttPopX: 0, ttPopY: 0, ttPopHover: false, ttPopTimer: null,
-      hrFieldLabels: { zipcode:'우편번호', address:'주소', address_detail:'상세주소', phone:'연락처', dependents_decided:'피부양자 확인', dependents:'피부양자', emergency_contacts:'비상연락망', sex_offense_consent:'성범죄 조회 동의' },
+      hrFieldLabels: { zipcode:'우편번호', address:'주소', address_detail:'상세주소', phone:'연락처', dependents_decided:'피부양자 확인', dependents:'피부양자', emergency_contacts:'비상연락망', waived_docs:'서류 해당사항 없음', sex_offense_consent:'성범죄 조회 동의' },
       ttStudents: [], ttAddRows: [], showStudentModal: false, studentModalList: [], studentModalFilter: '', studentModalFilterRaw: '', studentModalSel: [], modalUnassignedOnly: false,
       _debounceTimers: {},
       sig: { drawing:false, ctx:null, hasInk:false },
@@ -7930,7 +7946,14 @@ const app = createApp({
       const url = this.staffProfile && this.staffProfile.sex_offense_signature;
       if (url){
         const img = new Image();
-        img.onload = ()=>{ try { ctx.drawImage(img, 0, 0, c.width, c.height); } catch(e){} };
+        img.onload = ()=>{
+          try {
+            // 원래 비율을 지키며 가운데에 놓는다(칸에 꽉 채우면 서명이 늘어난다)
+            const r = Math.min(c.width / img.width, c.height / img.height, 1);
+            const w = img.width * r, h = img.height * r;
+            ctx.drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h);
+          } catch(e){}
+        };
         img.src = url;
       }
     },
@@ -8420,12 +8443,21 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     hrWaived(f){ return ((this.hrDetail && this.hrDetail.profile && this.hrDetail.profile.waived_docs) || []).includes(f); },
-    async toggleWaive(f){
-      const cur = ((this.hrDetail.profile.waived_docs)||[]).slice();
-      const next = cur.includes(f) ? cur.filter(x=>x!==f) : [...cur, f];
+    startHrWaive(){
+      this.hrWaiveDraft = ((this.hrDetail.profile && this.hrDetail.profile.waived_docs) || []).slice();
+      this.hrEditMode = true;
+    },
+    toggleWaiveDraft(f){
+      this.hrWaiveDraft = this.hrWaiveDraft.includes(f)
+        ? this.hrWaiveDraft.filter(x=>x!==f) : [...this.hrWaiveDraft, f];
+    },
+    cancelHrWaive(){ this.hrEditMode = false; this.hrWaiveDraft = []; },
+    async saveHrWaive(){
       try {
         await api('POST','/api/admin/academy/staff_detail',
-                  { user_id:this.hrDetail.staff.user_id, waived_docs: next });
+                  { user_id:this.hrDetail.staff.user_id, waived_docs: this.hrWaiveDraft });
+        this.hrEditMode = false;
+        this.notify('저장했습니다. 누가 언제 정했는지 인사 이력에 남습니다.');
         this.loadStaffDetail(this.hrDetail.staff.user_id);
       } catch(e){ this.notify(e.message, false); }
     },
