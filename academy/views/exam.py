@@ -510,7 +510,8 @@ class ExamEntryAdminAPI(APIView):
             qs = qs.filter(student_id=request.GET["student_id"])
         rows = [entry_row(e) for e in qs[:1000]]
         # 시험일이 가까운 순. 날짜 미정(대회 미확정)은 뒤로.
-        rows.sort(key=lambda r: (r["exam_date"] or "9999-99-99", r["student"]))
+        # 시험일이 먼저, 같은 날이면 명칭(무엇을 보는지), 그 다음 학생 이름
+        rows.sort(key=lambda r: (r["exam_date"] or "9999-99-99", r.get("what") or "", r["student"]))
         return self.success(rows)
 
     @admin_role_required

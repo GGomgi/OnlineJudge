@@ -495,7 +495,7 @@
       <div class="flex items-center justify-center gap-1.5 mb-3">
         <button @click="attStepTime(-5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-5</button>
         <button @click="attStepTime(-1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">-1</button>
-        <input v-model="attEditPop.time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['font-mono text-2xl font-bold w-24 text-center border-0 focus:ring-2 focus:ring-indigo-300 rounded', guardCls('attEditPop','time')]" />
+        <input :value="attEditPop.time" @input="attEditPop.time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['font-mono text-2xl font-bold w-24 text-center border-0 focus:ring-2 focus:ring-indigo-300 rounded', guardCls('attEditPop','time')]" />
         <button @click="attStepTime(1)" class="w-9 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+1</button>
         <button @click="attStepTime(5)" class="w-11 h-9 rounded border border-slate-200 text-xs hover:bg-slate-50">+5</button>
       </div>
@@ -527,7 +527,7 @@
 
   <!-- 학생 상세 — 오늘 운영·시간표 등 어느 화면에서든 그 자리에서 열 수 있도록 전역에 둔다
        (예전에는 학생 관리 섹션 안에 있어서 탭을 옮겨야만 보였고, 돌아오기가 번거로웠음) -->
-  <div v-if="stuDetail" :class="['fixed inset-0 bg-black/40 flex items-start justify-center overflow-y-auto py-8', stuOnTop ? 'z-[70]' : 'z-40']" @click.self="closeStudent">
+  <div v-if="stuDetail" :class="['fixed inset-0 bg-black/40 flex items-start justify-center overflow-y-auto py-8', stuOnTop ? 'z-[70]' : 'z-40']" @click.self="askClose('stuDetail')">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4">
       <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
         <button @click="goStudentNav(-1)" :disabled="!stuNavHas(-1)"
@@ -670,7 +670,7 @@
                 </div>
                 <div class="flex items-center gap-1 text-xs whitespace-nowrap">
                   <div class="w-12 shrink-0"><select v-model.number="s.weekday" :disabled="!stuTtEditMode" :class="ttCls(s,'weekday','py-1 !pl-1 !pr-0')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
-                  <div class="w-20 shrink-0"><input v-model="s.start_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :readonly="!stuTtEditMode" :class="ttCls(s,'start_time','py-1 !pl-1 !pr-0 text-center font-mono')" /></div>
+                  <div class="w-20 shrink-0"><input :value="s.start_time" @input="s.start_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :readonly="!stuTtEditMode" :class="ttCls(s,'start_time','py-1 !pl-1 !pr-0 text-center font-mono')" /></div>
                   <div class="w-16 shrink-0"><select v-model.number="s.duration_minutes" :disabled="!stuTtEditMode" :class="ttCls(s,'duration_minutes','py-1 !pl-1 !pr-0')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></div>
                   <div class="w-36 shrink-0"><select v-model="s.program" :disabled="!stuTtEditMode" :class="ttCls(s,'program','py-1 !pl-1 !pr-0')"><option value="">미지정</option><option v-for="o in stuTtProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
                   <div v-if="s.program==='LANG'" class="w-12 shrink-0"><select v-model="s.language" :disabled="!stuTtEditMode" :class="ttCls(s,'language','py-1 !pl-1 !pr-0')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select></div>
@@ -1090,7 +1090,7 @@
             </div>
             <div v-if="stuExamAddKind==='CERT'" class="grid grid-cols-3 gap-2">
               <div><label class="lbl">시험일 <span class="text-rose-500">*</span></label><input v-model="stuExamAdd.exam_date" type="date" :class="['input py-1', guardCls('stuExamAdd','exam_date')]" /></div>
-              <div><label class="lbl">시각</label><input v-model="stuExamAdd.exam_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 text-center font-mono', guardCls('stuExamAdd','exam_time')]" /></div>
+              <div><label class="lbl">시각</label><input :value="stuExamAdd.exam_time" @input="stuExamAdd.exam_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 text-center font-mono', guardCls('stuExamAdd','exam_time')]" /></div>
               <div><label class="lbl">접수 마감</label><input v-model="stuExamAdd.apply_until" type="date" :class="['input py-1', guardCls('stuExamAdd','apply_until')]" /></div>
             </div>
             <div class="grid grid-cols-2 gap-2">
@@ -1399,7 +1399,7 @@
           <div><label class="lbl">시험일 <span class="text-rose-500">*</span> <span class="text-slate-400">· 시각</span></label>
             <div class="flex items-center gap-1.5">
               <input v-model="examAdd.exam_date" type="date" :class="['input py-1 flex-1 min-w-0', guardCls('examAdd','exam_date')]" />
-              <input v-model="examAdd.exam_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5"
+              <input :value="examAdd.exam_time" @input="examAdd.exam_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5"
                      style="width:5.5rem" :class="['input py-1 text-center font-mono shrink-0', guardCls('examAdd','exam_time')]" />
             </div>
           </div>
@@ -1410,7 +1410,7 @@
         </div>
         <div v-if="examAdd.sn.kind==='CONTEST'">
           <label class="lbl">시각 <span class="text-slate-400">(비우면 대회 시각)</span></label>
-          <input v-model="examAdd.exam_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5"
+          <input :value="examAdd.exam_time" @input="examAdd.exam_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5"
                  style="width:5.5rem" :class="['input py-1 text-center font-mono', guardCls('examAdd','exam_time')]" />
         </div>
         <!-- 대회도 종류·부문·진행을 여기서 고른다. 아래 장소와 성격이 같아 같은 높이에 둔다
@@ -1533,7 +1533,7 @@
         <!-- 자격증은 학생마다 날짜·시각·장소가 다르다. 붙인 뒤 바꿀 곳이 여기다 -->
         <div class="grid grid-cols-3 gap-2">
           <div><label class="lbl">시험일</label><input v-model="examEntryForm.exam_date" type="date" :class="['input py-1', guardCls('examEntryForm','exam_date')]" /></div>
-          <div><label class="lbl">시각</label><input v-model="examEntryForm.exam_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 text-center font-mono', guardCls('examEntryForm','exam_time')]" /></div>
+          <div><label class="lbl">시각</label><input :value="examEntryForm.exam_time" @input="examEntryForm.exam_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 text-center font-mono', guardCls('examEntryForm','exam_time')]" /></div>
           <div><label class="lbl">접수 마감</label><input v-model="examEntryForm.apply_until" type="date" :class="['input py-1', guardCls('examEntryForm','apply_until')]" /></div>
         </div>
         <div v-if="examEntryVenues.length">
@@ -1842,7 +1842,7 @@
       <div class="p-5 space-y-3">
         <div class="text-sm text-slate-500">{{ attEditForm.date }} · 현재 <b class="font-mono">{{ attEditForm.old || '(없음)' }}</b></div>
         <div><label class="lbl">바꿀 시각 <span class="text-slate-400">(24시간제 · 비우면 기록 삭제)</span></label>
-          <input v-model="attEditForm.value" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 w-28 text-center font-mono', guardCls('attEditForm','value')]" /></div>
+          <input :value="attEditForm.value" @input="attEditForm.value = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 w-28 text-center font-mono', guardCls('attEditForm','value')]" /></div>
         <div><label class="lbl">사유 <span class="text-rose-500">*</span></label><input v-model="attEditForm.reason" placeholder="예: 키오스크를 못 찍었습니다" :class="['input py-1', guardCls('attEditForm','reason')]" /></div>
         <p v-if="!attEditForm.canDirect" class="text-[11px] text-slate-400">요청은 원장 승인 후 반영됩니다.</p>
         <div class="flex justify-end gap-2">
@@ -2662,7 +2662,7 @@
             <div class="flex items-center gap-1">
               <button @click="attShiftLesson(-5)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs shrink-0">-5분</button>
               <button @click="attShiftLesson(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs shrink-0">-1분</button>
-              <input v-model="attForm.lessonTime" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" style="width:5.5rem" :class="['input py-1 text-center font-mono shrink-0', guardCls('attModal','lessonTime')]" />
+              <input :value="attForm.lessonTime" @input="attForm.lessonTime = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" style="width:5.5rem" :class="['input py-1 text-center font-mono shrink-0', guardCls('attModal','lessonTime')]" />
               <button @click="attShiftLesson(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs shrink-0">+1분</button>
               <button @click="attShiftLesson(5)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs shrink-0">+5분</button>
               <!-- 빈 자리에 끝나는 시각을 계산해 보여줌(시각만 있으면 언제 끝나는지 바로 안 보임) -->
@@ -2820,7 +2820,7 @@
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div><label class="lbl">보강 할 날짜</label><input v-model="mkForm.date" type="date" :class="['input py-1', guardCls('makeupOpen','date')]" @click="$event.target.showPicker && $event.target.showPicker()" /></div>
-              <div><label class="lbl">보강 할 시간</label><input v-model="mkForm.time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 w-24 text-center font-mono', guardCls('makeupOpen','time')]" /></div>
+              <div><label class="lbl">보강 할 시간</label><input :value="mkForm.time" @input="mkForm.time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 w-24 text-center font-mono', guardCls('makeupOpen','time')]" /></div>
             </div>
             <div v-if="mkForm.pair" class="text-xs px-3 py-2 rounded bg-blue-50 text-blue-700">연속 2타임 결석 보강 — 두번째 타임은 {{ mkPairSecondTime() }}부터 이어서 자동으로 함께 잡힙니다.</div>
             <div><label class="lbl">사유</label><input v-model="mkForm.note" placeholder="예: 6/22 결석 보강" :class="['input py-1', guardCls('makeupOpen','note')]" /></div>
@@ -2892,7 +2892,7 @@
           <div v-for="it in bulkMakeupItems" :key="it.occ_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-2">
             <span class="text-xs text-slate-400 w-32 shrink-0">{{ it.date }}({{ wdOf(it.date) }}) 결석</span>
             <input v-model="it.mk_date" type="date" class="input py-1" />
-            <input v-model="it.mk_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" />
+            <input :value="it.mk_time" @input="it.mk_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" />
           </div>
         </div>
         <div class="px-5 py-3 border-t flex justify-end">
@@ -3757,7 +3757,7 @@
             <tr v-for="(r,i) in ttAddRows" :key="r.student.id" class="border-t align-middle">
               <td class="px-2 py-2 whitespace-nowrap">{{ r.student.real_name || r.student.username }}</td>
               <td class="px-2 py-2"><select v-model.number="r.weekday" class="input py-1 w-16 px-2"><option v-for="(d,di) in days" :key="di" :value="di">{{ d }}</option></select></td>
-              <td class="px-2 py-2"><input v-model="r.start_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></td>
+              <td class="px-2 py-2"><input :value="r.start_time" @input="r.start_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></td>
               <td class="px-2 py-2"><select v-model.number="r.duration_minutes" class="input py-1 w-24 px-2"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
               <td class="px-2 py-2"><div class="flex items-center gap-1">
                 <select v-model="r.program" class="input py-1 w-24 px-2"><option value="">미지정</option><option v-for="o in (options.program||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select>
@@ -3782,8 +3782,8 @@
         <div class="flex flex-wrap items-end gap-2">
         <div><label class="lbl">학생</label><search-box v-model="ttFilter.name" placeholder="이름/아이디" class="w-28"></search-box></div>
         <div><label class="lbl">요일</label><select v-model="ttFilter.weekday" class="input w-20"><option value="">전체</option><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
-        <div><label class="lbl">시작 이상</label><input v-model="ttFilter.from" @change="onFilterFrom" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" /></div>
-        <div><label class="lbl">종료 이하</label><input v-model="ttFilter.to" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" /></div>
+        <div><label class="lbl">시작 이상</label><input :value="ttFilter.from" @input="ttFilter.from = hmTyped($event.target.value)" @change="onFilterFrom" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" /></div>
+        <div><label class="lbl">종료 이하</label><input :value="ttFilter.to" @input="ttFilter.to = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" /></div>
         <div class="relative">
           <label class="lbl">강사</label>
           <button type="button" @click="ttInstrDropdown=!ttInstrDropdown" class="input w-32 text-left flex items-center justify-between">
@@ -3830,7 +3830,7 @@
             <tr v-for="s in filteredTt" :key="s.id" :class="['border-t align-middle', s.status==='ENDED' ? 'bg-rose-50 opacity-70' : (ttSlotEnded(s) ? 'bg-slate-50 opacity-60' : (ttRowDirty(s) ? 'bg-amber-50 ring-1 ring-amber-200' : ''))]">
               <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> <span :class="s.status==='ENDED' ? 'line-through text-rose-400' : ''">{{ s.student.real_name || s.student.username }}</span> <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">휴원중지</span><span v-if="ttSlotEnded(s)" class="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-600">종료 {{ (s.active_until||'').slice(5) }}</span><span v-if="s.status==='ENDED'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600">삭제(종료)</span></td>
               <td class="px-3 py-2"><select v-model.number="s.weekday" :disabled="s.status==='ENDED'" :class="ttCls(s,'weekday','py-1 w-16 px-2')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
-              <td class="px-3 py-2"><input v-model="s.start_time" :disabled="s.status==='ENDED'" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="ttCls(s,'start_time','py-1 w-24 text-center font-mono')" /></td>
+              <td class="px-3 py-2"><input :value="s.start_time" @input="s.start_time = hmTyped($event.target.value)" :disabled="s.status==='ENDED'" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="ttCls(s,'start_time','py-1 w-24 text-center font-mono')" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" :disabled="s.status==='ENDED'" :class="ttCls(s,'duration_minutes','py-1 w-24 px-2')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
               <td class="px-3 py-2"><div class="flex items-center gap-1">
                 <select v-model="s.program" :disabled="s.status==='ENDED'" :class="ttCls(s,'program','py-1 w-36 px-2')"><option value="">미지정</option><option v-for="o in ttUsedProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select>
@@ -4147,8 +4147,8 @@
               </ul>
               <div class="flex flex-wrap gap-2 items-end">
                 <select v-model.number="slotForm.day_of_week" class="input w-20"><option v-for="(d,i) in days" :value="i">{{ d }}</option></select>
-                <input v-model="slotForm.start_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" />
-                <input v-model="slotForm.end_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" />
+                <input :value="slotForm.start_time" @input="slotForm.start_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" />
+                <input :value="slotForm.end_time" @input="slotForm.end_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" />
                 <input v-model="slotForm.room" placeholder="강의실" class="input w-24" />
                 <button @click="addSlot" class="btn-primary text-sm">추가</button>
               </div>
@@ -4552,12 +4552,12 @@
         <div class="p-5 space-y-3">
           <div class="grid grid-cols-2 gap-3">
             <div><label class="lbl">출근</label>
-              <input v-model="saEdit.in" placeholder="HH:MM" maxlength="5"
+              <input :value="saEdit.in" @input="saEdit.in = hmTyped($event.target.value)" placeholder="HH:MM" maxlength="5"
                      :class="['input py-1 text-center font-mono', saEdit.in!==saEdit.in0 ? 'ring-2 ring-amber-400 border-amber-400' : '']" />
               <div class="text-[11px] text-slate-400 mt-0.5">원래 {{ saEdit.in0 || '없음' }}</div>
             </div>
             <div><label class="lbl">퇴근</label>
-              <input v-model="saEdit.out" placeholder="HH:MM" maxlength="5"
+              <input :value="saEdit.out" @input="saEdit.out = hmTyped($event.target.value)" placeholder="HH:MM" maxlength="5"
                      :class="['input py-1 text-center font-mono', saEdit.out!==saEdit.out0 ? 'ring-2 ring-amber-400 border-amber-400' : '']" />
               <div class="text-[11px] text-slate-400 mt-0.5">원래 {{ saEdit.out0 || '없음' }}</div>
             </div>
@@ -4610,16 +4610,16 @@
             이 직원은 <b>고정 근무</b>입니다. 근무표는 불규칙 근무자에게 쓰는 것이라, 형태를 바꿔야 지각·결근 판정이 멈춥니다.
           </p>
 
-          <div class="grid grid-cols-[7rem_5rem_5rem_1fr_5rem_5rem] gap-2 items-center text-xs text-slate-400 px-1">
+          <div class="grid grid-cols-[5.5rem_4.5rem_4.5rem_1fr_4rem_4rem] gap-2 items-center text-xs text-slate-400 px-1">
             <span>날짜</span><span>시작</span><span>끝</span><span>비고(그날만 바꾼 사유)</span><span class="text-right">정한 시간</span><span class="text-right">실제</span>
           </div>
           <div class="border rounded-lg divide-y max-h-[45vh] overflow-y-auto">
             <div v-for="d in wpDays" :key="d.date"
-                 :class="['grid grid-cols-[7rem_5rem_5rem_1fr_5rem_5rem] gap-2 items-center px-2 py-1 text-sm',
+                 :class="['grid grid-cols-[5.5rem_4.5rem_4.5rem_1fr_4rem_4rem] gap-2 items-center px-2 py-1 text-sm',
                           d.wd==='토'||d.wd==='일' ? 'bg-slate-50' : '']">
               <span class="font-mono text-xs">{{ d.date.slice(5) }}({{ d.wd }})</span>
-              <input v-model="d.start" @change="saveWpDay(d)" placeholder="HH:MM" maxlength="5" class="input py-0.5 px-1 text-xs text-center font-mono" />
-              <input v-model="d.end" @change="saveWpDay(d)" placeholder="HH:MM" maxlength="5" class="input py-0.5 px-1 text-xs text-center font-mono" />
+              <input :value="d.start" @input="d.start = hmTyped($event.target.value)" @change="saveWpDay(d)" placeholder="HH:MM" maxlength="5" class="input py-0.5 px-1 text-xs text-center font-mono" />
+              <input :value="d.end" @input="d.end = hmTyped($event.target.value)" @change="saveWpDay(d)" placeholder="HH:MM" maxlength="5" class="input py-0.5 px-1 text-xs text-center font-mono" />
               <input v-model="d.note" @change="saveWpDay(d)" placeholder="" class="input py-0.5 px-1 text-xs" />
               <span class="text-right font-mono text-xs" :class="d.plan_min ? 'text-slate-700' : 'text-slate-300'">{{ d.plan_min ? hmOf(d.plan_min) : '-' }}</span>
               <span class="text-right font-mono text-xs" :class="d.real_min ? 'text-slate-500' : 'text-slate-300'">{{ d.real_min ? hmOf(d.real_min) : (d.in ? d.in : '-') }}</span>
@@ -4854,8 +4854,6 @@
                 </td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
                   <button @click="editExamCatalog(c)" class="text-xs text-indigo-600 hover:underline">수정</button>
-                  <!-- 비슷한 것을 또 만들 때가 많다(COS ↔ COS Pro). 채워진 칸을 그대로 가져와 이름만 바꾸면 된다 -->
-                  <button @click="copyExamCatalog(c)" class="ml-2 text-xs text-slate-500 hover:underline">복사</button>
                   <button v-if="isDirectorUp" @click="deleteExamCatalog(c)" class="ml-2 text-xs text-rose-500 hover:underline">숨김</button>
                 </td>
               </tr>
@@ -4933,12 +4931,10 @@
             <span v-if="!sn.confirmed" class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">일정 미확정</span>
             <!-- 온라인은 그 날 모이는 게 아니라 기간 안에 올린다. 마감 앞에 시작을 함께 보인다 -->
             <span v-else class="text-slate-500 font-mono">
-              <span v-if="sn.online && sn.submit_from" class="text-slate-400">{{ sn.submit_from.slice(5) }} ~ </span>{{ sn.exam_date }}<span v-if="sn.exam_time"> {{ sn.exam_time }}</span>
+              {{ dateRange(sn.online ? sn.submit_from : '', sn.exam_date) }}<span v-if="sn.exam_time"> {{ sn.exam_time }}</span>
             </span>
             <span v-if="sn.online" class="px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 text-[10px]">온라인 제출</span>
             <span v-if="sn.d_exam!==null && sn.d_exam>=0" class="text-slate-400">D-{{ sn.d_exam }}</span>
-            <!-- 다음 급수·다음 예선처럼 거의 같은 회차를 또 만드는 일이 잦다 -->
-            <button @click="copyExamSession(sn)" class="ml-auto text-[11px] text-slate-400 hover:text-slate-600 hover:underline whitespace-nowrap">복사</button>
           </div>
           <div class="mt-1 flex items-center gap-2">
             <span v-if="sn.apply_until" :class="sn.d_apply!==null && sn.d_apply<=3 && sn.pending ? 'text-rose-600 font-semibold' : 'text-slate-500'">
@@ -4962,7 +4958,7 @@
             <tr>
               <th class="text-left px-3 py-2">학생</th>
               <th class="text-left px-3 py-2">구분</th>
-              <th class="text-left px-3 py-2">무엇</th>
+              <th class="text-left px-3 py-2">명칭</th>
               <th class="text-left px-3 py-2">시험일</th>
               <th class="text-left px-3 py-2">접수 마감</th>
               <th class="text-center px-3 py-2">접수</th>
@@ -5284,8 +5280,8 @@
           <p class="text-xs text-slate-400 mb-3">학생 시간표와 같은 <b>적용 시작일</b> 방식입니다. 바꾸면 이전 기준은 전날로 끝나고 새 줄이 생겨 과거 기록이 그대로 남습니다. 직원별로 지정하면 지점 기본값보다 우선합니다.</p>
           <div class="flex flex-wrap items-end gap-2">
             <div><label class="lbl">적용 시작일</label><input v-model="wsForm.active_from" type="date" class="input py-1 w-40" /></div>
-            <div><label class="lbl">출근</label><input v-model="wsForm.start_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
-            <div><label class="lbl">퇴근</label><input v-model="wsForm.end_time" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
+            <div><label class="lbl">출근</label><input :value="wsForm.start_time" @input="wsForm.start_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
+            <div><label class="lbl">퇴근</label><input :value="wsForm.end_time" @input="wsForm.end_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
             <div>
               <label class="lbl">근무 요일</label>
               <div class="flex gap-1">
@@ -5590,11 +5586,19 @@
               <div class="flex items-center gap-2 px-3 py-2 border-b bg-slate-50">
                 <b class="text-sm">{{ g.label }}</b>
                 <span class="text-xs text-slate-400">{{ g.list.length }}개</span>
-                <span v-if="g.missing" class="text-xs text-rose-500 cursor-default"
-                      @mouseenter="showTextPop('번호 없음 '+g.missing+'명', g.missingNames, $event)"
-                      @mouseleave="hideNotePop">번호 없음 {{ g.missing }}명</span>
+                <button v-if="g.missing" @click="phoneMissOpen = (phoneMissOpen===g.k ? '' : g.k)"
+                        @mouseenter="showTextPop('번호 없음 '+g.missing+'명', g.missingNames, $event)"
+                        @mouseleave="hideNotePop"
+                        class="text-xs text-rose-500 hover:underline">번호 없음 {{ g.missing }}명 {{ phoneMissOpen===g.k ? '▲' : '▾' }}</button>
                 <button @click="copyText(g.text)" :disabled="!g.list.length"
                         class="ml-auto px-2 py-1 rounded bg-indigo-600 text-white text-xs disabled:opacity-30">복사</button>
+              </div>
+              <!-- 번호가 없는 사람을 그 자리에서 채울 수 있게 — 이름을 누르면 학생 정보가 열린다 -->
+              <div v-if="phoneMissOpen===g.k" class="px-3 py-2 border-b bg-rose-50 flex flex-wrap gap-1">
+                <button v-for="st in phoneMissing(g.k)" :key="st.id" @click="openStudentFromPhone(st)"
+                        class="px-1.5 py-0.5 rounded bg-white border border-rose-200 text-rose-700 text-xs hover:bg-rose-100 whitespace-nowrap">
+                  {{ st.real_name || st.username }} <span class="text-slate-400">등록</span>
+                </button>
               </div>
               <textarea :value="g.text" readonly rows="7" class="input text-xs font-mono border-0 rounded-none rounded-b-lg"></textarea>
             </div>
@@ -5982,9 +5986,9 @@
               아직 안 된 것: <b>{{ hrDetail.profile.missing.join(' · ') }}</b>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-slate-600">
-              <div><span class="text-slate-400 w-16 inline-block">주소</span>{{ hrDetail.profile.zipcode }} {{ hrDetail.profile.address }} {{ hrDetail.profile.address_detail }}</div>
-              <div><span class="text-slate-400 w-16 inline-block">연락처</span>{{ hrDetail.profile.phone || '-' }}</div>
+            <div class="space-y-1 text-slate-600">
+              <div class="flex gap-2"><span class="text-slate-400 w-14 shrink-0">주소</span><span>{{ hrDetail.profile.zipcode }} {{ hrDetail.profile.address }} {{ hrDetail.profile.address_detail }}</span></div>
+              <div class="flex gap-2"><span class="text-slate-400 w-14 shrink-0">연락처</span><span>{{ hrDetail.profile.phone || '-' }}</span></div>
             </div>
 
             <div>
@@ -6082,7 +6086,7 @@
             <li v-for="(h,i) in hrDetail.history" :key="i" class="flex flex-wrap gap-2 border-b py-1">
               <span class="text-xs text-slate-400 w-28 shrink-0">{{ h.time }}</span>
               <span class="font-medium">{{ hrLabel(h.field) }}</span>
-              <span class="text-slate-500 truncate">{{ (h.old||'(없음)') }} → {{ (h.new||'(없음)') }}</span>
+              <span class="text-slate-500">{{ hrValue(h.field, h.old) }} → {{ hrValue(h.field, h.new) }}</span>
               <span class="text-xs text-indigo-500 ml-auto">{{ h.actor }}</span>
             </li>
           </ul>
@@ -6409,6 +6413,15 @@ function qGroups(q){
     .map(g => g.replace(/&/g, ' ').trim().toLowerCase().split(/\s+/).filter(Boolean))
     .filter(g => g.length);
 }
+// 시각 칸은 숫자만 치게 두고 : 을 저절로 넣는다. 지울 때는 거꾸로 빠진다.
+//   1  →  1        13   →  13
+//   134 → 13:4     1345 → 13:45
+function hmTyped(v){
+  const d = String(v == null ? '' : v).replace(/[^0-9]/g, '').slice(0, 4);
+  if (d.length <= 2) return d;
+  return d.slice(0, 2) + ':' + d.slice(2);
+}
+
 const WD_FULL = ['월요일','화요일','수요일','목요일','금요일','토요일','일요일'];
 // 생년으로 본 또래 학년. 3월에 새 학년이 시작하므로 1~2월은 지난 학년도로 친다.
 // 빠른 생일 제도는 2009년 입학생부터 없어져 태어난 해만 보면 된다.
@@ -6486,6 +6499,11 @@ const GUARD_FORMS = {
   promoOpen:     { get: vm => ({ sel: vm.promoSel, sc: vm.promoSchool, sr: vm.promoSenior }),
                    close: vm => { vm.promoOpen = false; } },
   saEdit:        { get: vm => vm.saEdit, close: vm => { vm.saEdit = null; } },
+  // 학생 상세는 인적사항·상담·시간표를 한 화면에서 고친다. 어느 것이든 쓰던 게 있으면 묻는다.
+  stuDetail:     { get: vm => (vm.stuDetail ? { f: vm.stuForm, n: vm.stuNoteText,
+                                                e: vm.stuEditLogText, p: vm.stuProgramsEdit,
+                                                t: vm.stuTimetables } : null),
+                   close: vm => { vm.closeStudent(); } },
 };
 const ATT_LABELS = {PRESENT:'출석',LATE:'지각',ABSENT:'결석',EARLY_LEAVE:'조퇴',EXCUSED:'사유결석'};
 // 옛 비고 태그 코드(선택목록 개편 전 데이터) 폴백 라벨·색
@@ -6647,8 +6665,8 @@ const app = createApp({
       examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
       examChgOpen: false, examChanges: [], stuExamShowCancelled: false,
       guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
-      phonePick: null, phoneSaved: [], stuOnTop: false,
-      wpOpen: false, wpMonth: '', wp: { name:'', rows:[], plan_min:0, real_min:0, pay:0, hourly_wage:'', work_type:'FIXED' },
+      phonePick: null, phoneSaved: [], stuOnTop: false, phoneMissOpen: '',
+      wpOpen: false, wpMonth: '', wpDays: [], wp: { name:'', rows:[], plan_min:0, real_min:0, pay:0, hourly_wage:'', work_type:'FIXED' },
       promoOpen: false, promo: { school_year:'', groups:[], seniors:[], count:0 },
       promoSel: {}, promoSchool: {}, promoSenior: {}, promoSeason: 'SPRING',
       promoHist: null, promoLastFall: [], promoSkipMonth: (localStorage.getItem('portal_promo_skip') || ''),
@@ -7336,22 +7354,6 @@ const app = createApp({
       return (p.rows||[]).filter(st => st.enrollment_status==='ENROLLED' && this.stuMatch(st, p.q))
                  .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
     },
-    // 그 달의 모든 날을 늘어놓는다. 빈 날에 바로 적을 수 있어야 조율이 편하다.
-    wpDays(){
-      const ym = this.wpMonth || ''; if (!/^\d{4}-\d{2}$/.test(ym)) return [];
-      const y = +ym.slice(0,4), m = +ym.slice(5,7);
-      const last = new Date(y, m, 0).getDate();
-      const WD = ['일','월','화','수','목','금','토'];
-      const by = {}; (this.wp.rows||[]).forEach(r => { by[r.date] = r; });
-      const out = [];
-      for (let i=1; i<=last; i++){
-        const ds = ym + '-' + String(i).padStart(2,'0');
-        const r = by[ds];
-        out.push(r ? { ...r } : { date:ds, wd:WD[new Date(y, m-1, i).getDay()],
-                                  start:'', end:'', note:'', plan_min:0, in:'', out:'', real_min:0 });
-      }
-      return out;
-    },
     promoSelCount(){ return Object.values(this.promoSel).filter(Boolean).length; },
     promoSeniorCount(){ return Object.values(this.promoSenior).filter(v => v && v !== 'KEEP').length; },
     promoDoneCount(){
@@ -7368,6 +7370,17 @@ const app = createApp({
       if (!this.isDirectorUp) return false;
       if (!this.promoMonths.includes(this.today.m)) return false;
       return this.promoSkipMonth !== (this.today.y + '-' + this.today.m);
+    },
+    // 직원 관리에서 처리할 것 — 인사 변경 통보 + 근태 수정 요청
+    staffBadge(){
+      const n = (this.hrNotices||[]).length + (this.hrPending||[]).length;
+      return n > 99 ? '99+' : (n || 0);
+    },
+    // 근태를 고칠 수 있는 사람인가(원장·인사 관리자)
+    canManageHr(){
+      if (this.me && this.me.user.admin_type === 'Super Admin') return true;
+      const r = this.myProfile && this.myProfile.role;
+      return ['HQ_ADMIN','HR_ADMIN','REGIONAL_MANAGER','BRANCH_MANAGER'].includes(r);
     },
     phoneAllSel(){
       const f = this.phoneFound; if (!f.length) return false;
@@ -7404,6 +7417,9 @@ const app = createApp({
     },
     // 보호자 번호와 학생 번호가 같으면 두 목록에 모두 들어가 같은 사람에게 두 번 간다.
     // 부모 폰을 쓰는 것일 수도 있어 빼지 않고 알려만 준다.
+    phoneMissing(){
+      return (field) => this.phonePicked.filter(st => !String(st[field] || '').replace(/[^0-9]/g, ''));
+    },
     phoneSameNum(){
       const dig = v => String(v || '').replace(/[^0-9]/g, '');
       return this.phonePicked.filter(st => {
@@ -8397,17 +8413,6 @@ const app = createApp({
         this.loadHrPending(); this.loadHrAtt();
       } catch(e){ this.notify(e.message,false); }
     },
-    // 근태를 고칠 수 있는 사람인가(원장·인사 관리자)
-    // 직원 관리에서 처리할 것 — 인사 변경 통보 + 근태 수정 요청
-    staffBadge(){
-      const n = (this.hrNotices||[]).length + (this.hrPending||[]).length;
-      return n > 99 ? '99+' : (n || 0);
-    },
-    canManageHr(){
-      if (this.me && this.me.user.admin_type === 'Super Admin') return true;
-      const r = this.myProfile && this.myProfile.role;
-      return ['HQ_ADMIN','HR_ADMIN','REGIONAL_MANAGER','BRANCH_MANAGER'].includes(r);
-    },
     hrWaived(f){ return ((this.hrDetail && this.hrDetail.profile && this.hrDetail.profile.waived_docs) || []).includes(f); },
     async toggleWaive(f){
       const cur = ((this.hrDetail.profile.waived_docs)||[]).slice();
@@ -8455,6 +8460,13 @@ const app = createApp({
       if (d.in) return '◐';
       if (d.scheduled && d.state==='MISSING') return '✕';
       return '';
+    },
+    // 07-15 ~ 08-31 (해가 같으면 생략) / 2026-12-20 ~ 2027-01-10 (다르면 둘 다)
+    dateRange(from, to){
+      const f = String(from||''), t = String(to||'');
+      if (!f) return t;
+      if (!t) return f;
+      return (f.slice(0,4) === t.slice(0,4)) ? (f.slice(5) + ' ~ ' + t.slice(5)) : (f + ' ~ ' + t);
     },
     hmOf(min){
       if (!min) return '0:00';
@@ -8700,6 +8712,25 @@ const app = createApp({
       }
     },
     hrLabel(f){ return this.hrFieldLabels[f] || f; },
+    // 피부양자·비상연락처는 JSON 으로 저장돼 이력에 그대로 나오면 읽을 수가 없다
+    hrValue(f, v){
+      const t = String(v ?? '').trim();
+      if (!t) return '(없음)';
+      if (f === 'dependents' || f === 'emergency_contacts'){
+        let arr; try { arr = JSON.parse(t); } catch(e){ return t; }
+        if (!Array.isArray(arr) || !arr.length) return '(없음)';
+        return arr.map(x => [x.name, x.relation].filter(Boolean).join('(') + (x.relation ? ')' : '')).join(', ');
+      }
+      if (f === 'waived_docs'){
+        let arr; try { arr = JSON.parse(t); } catch(e){ return t; }
+        if (!Array.isArray(arr) || !arr.length) return '(없음)';
+        const L = { resident_copy:'주민등록등본', bankbook_copy:'통장 사본', graduation_cert:'졸업증명서',
+                    transcript:'성적증명서', family_relation_cert:'가족관계증명서' };
+        return arr.map(x => L[x] || x).join(', ') + ' 해당사항 없음';
+      }
+      if (f === 'dependents_decided' || f === 'sex_offense_consent') return (t === 'True' || t === 'true') ? '예' : '아니오';
+      return t;
+    },
     async changePassword(){
       const f = this.pwForm;
       if (!f.old || !f.new1) return this.notify('현재/새 비밀번호를 입력하세요.', false);
@@ -11020,7 +11051,25 @@ const app = createApp({
       try {
         const d = await api('GET','/api/admin/academy/work_plan?staff_id='+this.wp.staff_id+'&month='+this.wpMonth);
         this.wp = { ...this.wp, ...d, hourly_wage:(d.hourly_wage || '') };
+        this.buildWpDays();
       } catch(e){ this.notify(e.message, false); }
+    },
+    // 그 달의 모든 날을 늘어놓는다. 빈 날에 바로 적을 수 있어야 조율이 편하다.
+    buildWpDays(){
+      const ym = this.wpMonth || '';
+      if (!/^\d{4}-\d{2}$/.test(ym)){ this.wpDays = []; return; }
+      const y = +ym.slice(0,4), m = +ym.slice(5,7);
+      const last = new Date(y, m, 0).getDate();
+      const WD = ['일','월','화','수','목','금','토'];
+      const by = {}; (this.wp.rows||[]).forEach(r => { by[r.date] = r; });
+      const out = [];
+      for (let i=1; i<=last; i++){
+        const ds = ym + '-' + String(i).padStart(2,'0');
+        const r = by[ds];
+        out.push(r ? { ...r } : { date:ds, wd:WD[new Date(y, m-1, i).getDay()],
+                                  start:'', end:'', note:'', plan_min:0, in:'', out:'', real_min:0 });
+      }
+      this.wpDays = out;
     },
     async saveWpDay(d){
       // 시작·끝이 둘 다 비면 그날을 지운다(잘못 넣었을 때 되돌리는 길)
@@ -11620,6 +11669,8 @@ const app = createApp({
         this.stuEditMode = false;
         this.stuTtShowHistory = false; this.stuTtEditMode = false;
         this.buildStuTimetables(d);
+        this.stuNoteText = ''; this.stuEditLogText = '';
+        this.$nextTick(()=> this.openGuard('stuDetail'));
         if (!this.ttInstructors.length) this.loadTtInstructors();
         if (!(this.options.program||[]).length) this.loadOptions();
         this.stuNoteText=''; this.stuNoteChannel='VISIT'; this.stuNoteTime=this.nowParts(); this.stuEditLogId=null;
@@ -11707,7 +11758,7 @@ const app = createApp({
         await this.refreshStuDetail(); this.buildStuTimetables(this.stuDetail); this.loadStudents();
       } catch(e){ this.notify(e.message,false); }
     },
-    closeStudent(){ this.stuDetail=null; this.stuOnTop=false; },
+    closeStudent(){ this.guardSnap.stuDetail = undefined; this.stuDetail=null; this.stuOnTop=false; },
     stuFieldDirty(k){ return String(this.stuForm[k]??'') !== String(this.stuFormOrig[k]??''); },
     stuCls(k, extra){ return 'input ' + (extra||'') + (this.stuFieldDirty(k) ? ' bg-amber-50 ring-1 ring-amber-300 text-amber-800 font-semibold' : (!this.stuEditMode ? ' bg-slate-50 text-slate-500' : '')); },
     revertStudent(){
