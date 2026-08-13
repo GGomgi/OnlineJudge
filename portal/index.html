@@ -5310,7 +5310,9 @@
               <div class="flex items-center gap-2 px-3 py-2 border-b bg-slate-50">
                 <b class="text-sm">{{ g.label }}</b>
                 <span class="text-xs text-slate-400">{{ g.list.length }}개</span>
-                <span v-if="g.missing" class="text-xs text-rose-500">번호 없음 {{ g.missing }}명</span>
+                <span v-if="g.missing" class="text-xs text-rose-500 cursor-default"
+                      @mouseenter="showTextPop('번호 없음 '+g.missing+'명', g.missingNames, $event)"
+                      @mouseleave="hideNotePop">번호 없음 {{ g.missing }}명</span>
                 <button @click="copyText(g.text)" :disabled="!g.list.length"
                         class="ml-auto px-2 py-1 rounded bg-indigo-600 text-white text-xs disabled:opacity-30">복사</button>
               </div>
@@ -6063,6 +6065,22 @@ const WD_FULL = ['월요일','화요일','수요일','목요일','금요일','�
 // 학교급은 '초등학교' 로 저장돼 있지만 말할 때는 '초등학생' 이라고도 한다. 둘 다 찾히게.
 const SCHOOL_ALIAS = { '초등학생':'초등학교', '중학생':'중학교', '고등학생':'고등학교',
                        '대학생':'대학교', '초딩':'초등학교', '중딩':'중학교', '고딩':'고등학교' };
+// 학교 이름은 '청람초' 로 저장돼 있는데 부를 때는 '청람초등학교·청람초딩' 처럼 뒤를 늘려 부른다.
+// 끝에 붙은 학교급 말을 떼어내고 앞부분 + 학교급으로 나눠 본다.
+const SCHOOL_TAIL = [
+  ['초등학교','초등학교'], ['초등학생','초등학교'], ['초등','초등학교'], ['초딩','초등학교'], ['초','초등학교'],
+  ['중학교','중학교'], ['중학생','중학교'], ['중딩','중학교'], ['중등','중학교'], ['중','중학교'],
+  ['고등학교','고등학교'], ['고등학생','고등학교'], ['고딩','고등학교'], ['고등','고등학교'], ['고','고등학교'],
+  ['대학교','대학교'], ['대학생','대학교'], ['대학','대학교'], ['대','대학교'],
+];
+function splitSchoolTerm(term){
+  for (const [tail, level] of SCHOOL_TAIL){
+    if (term.length > tail.length && term.endsWith(tail)){
+      return { base: term.slice(0, -tail.length), level };
+    }
+  }
+  return null;
+}
 // 과목은 짧게 저장돼 있다(C·Py·Ja). 글자로 찾으면 학교 이름과 겹치므로
 // (C 가 ICS 에 걸린다) 이 말들은 과목값과 통째로 맞춰 본다.
 const LANG_CODES = ['c', 'c++', 'c#', 'py', 'ja'];
@@ -6984,14 +7002,15 @@ const app = createApp({
       const p = this.phonePick; if (!p) return [];
       const tail = p.comma ? ',' : '';
       const build = (field, label) => {
-        const seen = new Set(); const list = []; let missing = 0;
+        const seen = new Set(); const list = []; const missing = [];
         this.phonePicked.forEach(st => {
           const raw = String(st[field] || '').replace(/[^0-9]/g, '');
-          if (!raw){ missing++; return; }
+          if (!raw){ missing.push(st.real_name || st.username); return; }
           if (seen.has(raw)) return;      // 형제자매는 보호자 번호가 같다 — 한 번만
           seen.add(raw); list.push(st[field]);
         });
-        return { k:field, label, list, missing, text: list.map(x => x + tail).join('\n') };
+        return { k:field, label, list, missing: missing.length, missingNames: missing.join(', '),
+                 text: list.map(x => x + tail).join('\n') };
       };
       return [build('parent_phone', '학부모 연락처'), build('student_phone', '학생 연락처')];
     },
@@ -10423,7 +10442,15 @@ const app = createApp({
           if (want) return subj.some(x => want.includes(x));
           return hay.includes(term);           // 'c' 한 글자는 그냥 글자로 찾는다
         }
-        return hay.includes(SCHOOL_ALIAS[term] || term);
+        if (hay.includes(SCHOOL_ALIAS[term] || term)) return true;
+        // '청람초등학교' → 앞부분 '청람' 이 학교 이름에 있고 학교급이 초등학교인가
+        const sp = splitSchoolTerm(term);
+        if (sp && sp.base){
+          const nm = String(st.school_name || '').toLowerCase();
+          const lv = this.schoolLabel(st.school_type) || '';
+          if (nm.includes(sp.base) && lv === sp.level) return true;
+        }
+        return false;
       };
       return groups.some(terms => terms.every(hit));
     },
