@@ -527,7 +527,7 @@
 
   <!-- 학생 상세 — 오늘 운영·시간표 등 어느 화면에서든 그 자리에서 열 수 있도록 전역에 둔다
        (예전에는 학생 관리 섹션 안에 있어서 탭을 옮겨야만 보였고, 돌아오기가 번거로웠음) -->
-  <div v-if="stuDetail" class="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8" @click.self="closeStudent">
+  <div v-if="stuDetail" :class="['fixed inset-0 bg-black/40 flex items-start justify-center overflow-y-auto py-8', stuOnTop ? 'z-[70]' : 'z-40']" @click.self="closeStudent">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4">
       <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
         <button @click="goStudentNav(-1)" :disabled="!stuNavHas(-1)"
@@ -5304,6 +5304,17 @@
             번호 끝에 쉼표 붙이기 <span class="text-slate-400">— 쉼표+줄바꿈으로 구분하는 프로그램용(휴대폰 등)</span>
           </label>
 
+          <div v-if="phoneSameNum.length" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs">
+            <b class="text-amber-800">보호자와 학생 번호가 같은 학생 {{ phoneSameNum.length }}명</b>
+            <span class="text-amber-700">— 두 목록에 모두 들어가 같은 번호로 두 번 갑니다. 이름을 누르면 고칠 수 있습니다.</span>
+            <div class="flex flex-wrap gap-1 mt-1">
+              <button v-for="st in phoneSameNum" :key="st.id" @click="openStudentFromPhone(st)"
+                      class="px-1.5 py-0.5 rounded bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 whitespace-nowrap">
+                {{ st.real_name || st.username }} <span class="font-mono text-slate-500">{{ st.parent_phone }}</span>
+              </button>
+            </div>
+          </div>
+
           <!-- 학부모와 학생은 보내는 내용이 달라 따로 뽑는다 -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div v-for="g in phoneGroups" :key="g.k" class="border rounded-lg">
@@ -6284,7 +6295,7 @@ const app = createApp({
       examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
       examChgOpen: false, examChanges: [], stuExamShowCancelled: false,
       guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
-      phonePick: null, phoneSaved: [],
+      phonePick: null, phoneSaved: [], stuOnTop: false,
       stuPop: { show:false, x:0, y:0, name:'', school:'', days:'', subjects:'', phone:'' },
       leaveCols: (localStorage.getItem('portal_leave_cols') || 'auto'), examFormBase: '', examSnForm: null, examSnError: '',
       examTab: 'ALL', examContestId: null, examSel: [], examShowJoinNo: false,
@@ -6998,6 +7009,15 @@ const app = createApp({
       }));
       return out.sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
     },
+    // 보호자 번호와 학생 번호가 같으면 두 목록에 모두 들어가 같은 사람에게 두 번 간다.
+    // 부모 폰을 쓰는 것일 수도 있어 빼지 않고 알려만 준다.
+    phoneSameNum(){
+      const dig = v => String(v || '').replace(/[^0-9]/g, '');
+      return this.phonePicked.filter(st => {
+        const p = dig(st.parent_phone), c = dig(st.student_phone);
+        return p && c && p === c;
+      });
+    },
     phoneGroups(){
       const p = this.phonePick; if (!p) return [];
       const tail = p.comma ? ',' : '';
@@ -7010,7 +7030,7 @@ const app = createApp({
           seen.add(raw); list.push(st[field]);
         });
         return { k:field, label, list, missing: missing.length, missingNames: missing.join(', '),
-                 text: list.map(x => x + tail).join('\n') };
+                 text: list.map((x, i) => x + (i === list.length - 1 ? '' : tail)).join('\n') };
       };
       return [build('parent_phone', '학부모 연락처'), build('student_phone', '학생 연락처')];
     },
@@ -10544,6 +10564,16 @@ const app = createApp({
       try { await api('DELETE','/api/admin/academy/saved_search?id='+r.id); this.loadPhoneSaved(); }
       catch(e){ this.notify(e.message, false); }
     },
+    // 전화번호 모으기 위에 학생 상세를 띄운다. 고치면 모으기 목록도 다시 받아 바로 반영된다.
+    async openStudentFromPhone(st){
+      this.stuOnTop = true;
+      await this.openStudent({ id: st.id });
+    },
+    async refreshPhoneRows(){
+      if (!this.phonePick) return;
+      try { this.phonePick.rows = await api('GET','/api/admin/academy/students?cols=weekdays') || []; }
+      catch(e){}
+    },
     phoneToggle(st){
       if (this.phoneInAny(st.id)){
         // 빼는 것은 모든 묶음에서 뺀다(어느 묶음에 있었는지 일일이 찾게 하지 않는다)
@@ -11038,7 +11068,7 @@ const app = createApp({
         await this.refreshStuDetail(); this.buildStuTimetables(this.stuDetail); this.loadStudents();
       } catch(e){ this.notify(e.message,false); }
     },
-    closeStudent(){ this.stuDetail=null; },
+    closeStudent(){ this.stuDetail=null; this.stuOnTop=false; },
     stuFieldDirty(k){ return String(this.stuForm[k]??'') !== String(this.stuFormOrig[k]??''); },
     stuCls(k, extra){ return 'input ' + (extra||'') + (this.stuFieldDirty(k) ? ' bg-amber-50 ring-1 ring-amber-300 text-amber-800 font-semibold' : (!this.stuEditMode ? ' bg-slate-50 text-slate-500' : '')); },
     revertStudent(){
@@ -11084,6 +11114,7 @@ const app = createApp({
         await api('PUT','/api/admin/academy/student_detail/info', body);
         this.notify('수정되었습니다.'); this.stuFormOrig = JSON.parse(JSON.stringify(this.stuForm));
         await this.refreshStuDetail();
+        this.refreshPhoneRows();      // 전화번호 모으기가 열려 있으면 고친 번호가 바로 반영되게
         try { this.stuProgramsEdit = JSON.parse((this.stuDetail.profile&&this.stuDetail.profile.programs)||'[]'); } catch(e){ this.stuProgramsEdit=[]; }
         this.stuProgramsEditOrig = JSON.parse(JSON.stringify(this.stuProgramsEdit));
         this.loadStudents();
