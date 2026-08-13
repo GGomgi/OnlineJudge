@@ -5921,10 +5921,65 @@
             <span :class="['ml-2 text-xs px-2 py-0.5 rounded', hrDetail.staff.hr_completed?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700']">{{ hrDetail.staff.hr_completed?'인사등록 완료':'미완료' }}</span>
           </div>
           <div class="text-sm text-slate-500 mt-1">{{ hrDetail.staff.role_label }} · {{ hrDetail.staff.branch ? hrDetail.staff.branch.name : '전지점' }}</div>
-          <div v-if="hrDetail.profile" class="text-sm text-slate-600 mt-2 space-y-0.5">
-            <div>주소: {{ hrDetail.profile.zipcode }} {{ hrDetail.profile.address }} {{ hrDetail.profile.address_detail }}</div>
-            <div>연락처: {{ hrDetail.profile.phone || '-' }}</div>
-            <div>피부양자: {{ (hrDetail.profile.dependents||[]).map(d=>d.name).join(', ') || '없음' }} · 비상연락망 {{ (hrDetail.profile.emergency_contacts||[]).length }}건</div>
+          <!-- 약식으로 보여 주니 정작 확인할 것(피부양자·서류)을 못 봤다. 실제 내용을 다 보인다 -->
+          <div v-if="hrDetail.profile" class="mt-3 space-y-3 text-sm">
+            <div v-if="(hrDetail.profile.missing||[]).length" class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+              아직 안 된 것: <b>{{ hrDetail.profile.missing.join(' · ') }}</b>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-slate-600">
+              <div><span class="text-slate-400 w-16 inline-block">주소</span>{{ hrDetail.profile.zipcode }} {{ hrDetail.profile.address }} {{ hrDetail.profile.address_detail }}</div>
+              <div><span class="text-slate-400 w-16 inline-block">연락처</span>{{ hrDetail.profile.phone || '-' }}</div>
+            </div>
+
+            <div>
+              <div class="text-xs font-semibold text-slate-500 border-b pb-1 mb-1">4대보험 피부양자
+                <span v-if="!hrDetail.profile.dependents_decided" class="text-rose-500 font-normal">— 본인 확인 전</span></div>
+              <div v-if="(hrDetail.profile.dependents||[]).length" class="space-y-0.5">
+                <div v-for="(d,i) in hrDetail.profile.dependents" :key="i" class="flex gap-3 text-slate-600">
+                  <span class="w-16">{{ d.name }}</span>
+                  <span class="w-16 text-slate-400">{{ d.relation }}</span>
+                  <span class="font-mono text-slate-500">{{ d.rrn }}</span>
+                </div>
+              </div>
+              <div v-else class="text-xs text-slate-400">없음</div>
+            </div>
+
+            <div>
+              <div class="text-xs font-semibold text-slate-500 border-b pb-1 mb-1">비상 연락처</div>
+              <div v-if="(hrDetail.profile.emergency_contacts||[]).length" class="space-y-0.5">
+                <div v-for="(c,i) in hrDetail.profile.emergency_contacts" :key="i" class="flex gap-3 text-slate-600">
+                  <span class="w-16">{{ c.name }}</span>
+                  <span class="w-16 text-slate-400">{{ c.relation }}</span>
+                  <span class="font-mono">{{ c.phone }}</span>
+                </div>
+              </div>
+              <div v-else class="text-xs text-rose-500">없음</div>
+            </div>
+
+            <!-- 조교·아르바이트는 안 내도 되는 서류가 있다. 면제는 원장 이상만 정한다 -->
+            <div>
+              <div class="text-xs font-semibold text-slate-500 border-b pb-1 mb-1">필수 서류
+                <span class="font-normal text-slate-400">— 해당사항 없음은 원장 이상만 정합니다</span></div>
+              <div class="space-y-1">
+                <div v-for="d in hrReqDocs" :key="d.f" class="flex items-center gap-2 text-slate-600">
+                  <span class="w-28 shrink-0">{{ d.l }}</span>
+                  <a v-if="hrDetail.profile[d.f] && d.file" :href="hrDetail.profile[d.f]" target="_blank" class="text-indigo-600 hover:underline text-xs">보기</a>
+                  <span v-else-if="hrDetail.profile[d.f]" class="text-emerald-600 text-xs">있음</span>
+                  <span v-else-if="hrWaived(d.f)" class="text-slate-400 text-xs">해당사항 없음</span>
+                  <span v-else class="text-rose-500 text-xs">없음</span>
+                  <label v-if="isDirectorUp" class="ml-auto flex items-center gap-1 text-xs text-slate-500 cursor-pointer select-none">
+                    <input type="checkbox" :checked="hrWaived(d.f)" @change="toggleWaive(d.f)" class="w-3.5 h-3.5" />해당사항 없음
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="text-xs text-slate-400">
+              성범죄 조회 동의 {{ hrDetail.profile.sex_offense_consent ? '함' : '안 함' }}
+              · 서명 {{ hrDetail.profile.sex_offense_signature ? '있음' : '없음' }}
+              <span v-if="hrDetail.profile.sex_offense_date">· {{ hrDetail.profile.sex_offense_date }}</span>
+            </div>
           </div>
         </div>
 
@@ -6591,6 +6646,9 @@ const app = createApp({
       hrToday: { today:'', mine:null, summary:null, people:[] },
       hrAtt: { people:[], show_total:false }, hrMonth: '',
       hrPending: [], leaveKinds: [], leaveForm: null, attEditForm: null,
+      hrReqDocs: [ {f:'resident_copy',l:'주민등록등본',file:true}, {f:'bankbook_copy',l:'통장 사본',file:true},
+                   {f:'graduation_cert',l:'졸업증명서',file:true}, {f:'transcript',l:'성적증명서',file:true},
+                   {f:'family_relation_cert',l:'가족관계증명서',file:true} ],
       myAtt: { days:[], work_days:0, late_days:0, leave_days:0 }, myAttMonth: '',
       hrPop: { show:false, x:0, y:0, name:'', date:'', wd:'', in:'', out:'', late:0,
                sch:'', note:'', leave:'', leaveReason:'', scheduled:false, minutes:0, minutesLabel:'', source:'' },
@@ -8282,6 +8340,16 @@ const app = createApp({
         this.notify(action==='APPROVE' ? '승인되었습니다.' : '반려되었습니다.');
         this.loadHrPending(); this.loadHrAtt();
       } catch(e){ this.notify(e.message,false); }
+    },
+    hrWaived(f){ return ((this.hrDetail && this.hrDetail.profile && this.hrDetail.profile.waived_docs) || []).includes(f); },
+    async toggleWaive(f){
+      const cur = ((this.hrDetail.profile.waived_docs)||[]).slice();
+      const next = cur.includes(f) ? cur.filter(x=>x!==f) : [...cur, f];
+      try {
+        await api('POST','/api/admin/academy/staff_detail',
+                  { user_id:this.hrDetail.staff.user_id, waived_docs: next });
+        this.loadStaffDetail(this.hrDetail.staff.user_id);
+      } catch(e){ this.notify(e.message, false); }
     },
     hrCellCls(d){
       if (d.leave_kind) return 'bg-purple-100 text-purple-700 rounded';
