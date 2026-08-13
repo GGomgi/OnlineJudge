@@ -3903,6 +3903,7 @@
                 ⬇ 등록 안 된 {{ bulkFailedRows.length }}명 받기
               </button>
               <span v-if="bulkConverted" class="text-xs text-emerald-600">✓ 변환됨 — 노란 칸이 바뀐 값입니다.</span>
+              <span v-if="bulkPeerOff" class="text-xs text-amber-600">또래와 다름 {{ bulkPeerOff }}명 — 생년월일·학년을 확인하세요</span>
             </div>
 
             <!-- 전체 데이터 검토·편집 표 -->
@@ -3911,6 +3912,7 @@
                 <thead class="bg-slate-50 text-slate-500 sticky top-0 z-10">
                   <tr>
                     <th class="px-1 py-1 text-left w-8 bg-slate-50">#</th>
+                    <th class="px-1 py-1 text-left whitespace-nowrap bg-slate-50">또래</th>
                     <th v-for="c in bulkColumnDefs()" :key="c.field" class="px-1 py-1 text-left whitespace-nowrap bg-slate-50">{{ c.label }}</th>
                   </tr>
                 </thead>
@@ -3920,6 +3922,10 @@
                       {{ idx+1 }}
                       <!-- 사유를 좁은 칸에 가두면 한 글자씩 세로로 흐른다. 어차피 표가 가로로 넘치므로 한 줄로 둔다 -->
                       <div v-if="bulkRowError(idx)" class="text-rose-500 text-[10px] leading-tight whitespace-nowrap">⚠ {{ bulkRowError(idx).error }}</div>
+                    </td>
+                    <!-- 생년월일과 학년이 어긋난 학생을 등록 전에 잡는다(조기입학·유예·잘못 적음) -->
+                    <td class="px-1 py-1 align-top whitespace-nowrap">
+                      <span :class="['text-[10px]', bulkPeer(row).cls]">{{ bulkPeer(row).text }}</span>
                     </td>
                     <td v-for="c in bulkColumnDefs()" :key="c.field" class="px-1 py-1 align-top">
                       <input v-model="row[c.field]"
@@ -6073,6 +6079,18 @@ function qGroups(q){
     .filter(g => g.length);
 }
 const WD_FULL = ['월요일','화요일','수요일','목요일','금요일','토요일','일요일'];
+// 생년으로 본 또래 학년. 3월에 새 학년이 시작하므로 1~2월은 지난 학년도로 친다.
+// 빠른 생일 제도는 2009년 입학생부터 없어져 태어난 해만 보면 된다.
+function peerGrade(birthYear, today){
+  const y = today.getFullYear(), m = today.getMonth() + 1;
+  const schoolYear = (m >= 3) ? y : y - 1;
+  const n = schoolYear - birthYear - 6;          // 1 = 초1
+  if (n < 1) return null;
+  if (n <= 6)  return { level:'초등학교', grade:n };
+  if (n <= 9)  return { level:'중학교',   grade:n - 6 };
+  if (n <= 12) return { level:'고등학교', grade:n - 9 };
+  return { level:'대학교', grade:n - 12 };
+}
 // 학교급은 '초등학교' 로 저장돼 있지만 말할 때는 '초등학생' 이라고도 한다. 둘 다 찾히게.
 const SCHOOL_ALIAS = { '초등학생':'초등학교', '중학생':'중학교', '고등학생':'고등학교',
                        '대학생':'대학교', '초딩':'초등학교', '중딩':'중학교', '고딩':'고등학교' };
@@ -10148,11 +10166,35 @@ const app = createApp({
         .map(x => ({ row: this.bulkRows[x.row - 1] || {}, error: x.error || '' }))
         .filter(x => Object.keys(x.row).length);
     },
+    bulkPeerOff(){
+      return this.bulkRows.filter(r => this.bulkPeer(r).off).length;
+    },
     bulkColumnDefs(){
       const M = this.bulkFieldMap(); const autoSet = new Set(this.bulkAutoFields());
       return this.bulkColumns().map(label => ({ label, field: M[label], auto: autoSet.has(M[label]) }));
     },
     // 머리글 글자가 잘리지 않을 만큼은 준다. 표가 가로로 넘치는 건 상관없다고 했다.
+    // 생년월일로 본 또래 학년과 적어 준 학년을 견준다
+    bulkPeer(row){
+      const bd = String(row.birth_date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const gr = parseInt(row.grade, 10);
+      const lvRaw = String(row.school_type || '').trim();
+      if (!bd || !gr || !lvRaw) return { text:'', cls:'text-slate-300', off:false };
+      const lv = (this.options.school_type || []).find(o => o.value === lvRaw || o.label === lvRaw);
+      const level = lv ? lv.label : lvRaw;
+      const p = peerGrade(parseInt(bd[1], 10), new Date());
+      if (!p) return { text:'', cls:'text-slate-300', off:false };
+      const ORDER = ['초등학교','중학교','고등학교','대학교'];
+      const toN = (l, g) => {
+        const i = ORDER.indexOf(l);
+        return i < 0 ? null : [0,6,9,12][i] + g;
+      };
+      const a = toN(level, gr), b = toN(p.level, p.grade);
+      if (a === null || b === null) return { text:'', cls:'text-slate-300', off:false };
+      const d = a - b;
+      if (d === 0) return { text:'같음', cls:'text-slate-400', off:false };
+      return { text:(d > 0 ? d + '년 빠름' : (-d) + '년 늦음'), cls:'text-amber-600 font-semibold', off:true };
+    },
     bulkColWidth(field){
       if (/^tt\d+_(weekday|duration)$/.test(field)) return 'w-20';
       if (/^tt\d+_time$/.test(field)) return 'w-24';
