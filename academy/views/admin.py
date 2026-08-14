@@ -4272,10 +4272,25 @@ class DashboardAdminAPI(APIView):
         except (TypeError, ValueError):
             late_min = 5
         extra = _dash_student_extra(d, lessons, late_min)
+        # 내일 보강 — 오늘 준비할 것이라 오늘 화면에 있어야 한다. 이름과 시각만 있으면 된다.
+        mq = LessonOccurrence.objects.filter(
+            date=d + timedelta(days=1), is_makeup=True).exclude(
+            status=OccurrenceStatus.CANCELLED).select_related(
+            "student", "student__userprofile", "branch").order_by("start_time")
+        if view is not None:
+            mq = mq.filter(branch_id__in=view)
+        if bid:
+            mq = mq.filter(branch_id=bid)
+        tomorrow_makeups = [{"id": o.id, "student_id": o.student_id,
+                             "name": _name_of(o.student), "time": str(o.start_time)[:5],
+                             "subject": o.subject or "",
+                             "branch": (o.branch.name if o.branch_id else "")}
+                            for o in mq[:100]]
         return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
                              "student_extra": extra,
                              "total": len(lessons), "present": len(att), "reservations": reservations,
                              "enrolled_leads": enrolled, "temp_leaves": temp_leaves,
+                             "tomorrow_makeups": tomorrow_makeups,
                              "holidays": holiday_names})
 
 
