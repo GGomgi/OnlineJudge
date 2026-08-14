@@ -1995,6 +1995,9 @@
         <label class="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" v-model="modalUnassignedOnly" class="w-4 h-4"> 시간표 미등록 학생만 보기</label>
       </div>
       <div class="flex-1 overflow-y-auto px-3 py-1">
+        <div v-if="!filteredStudentModal.length" class="py-6 text-center text-xs text-slate-400">
+          해당하는 학생이 없습니다.<span v-if="modalUnassignedOnly" class="block mt-1">‘시간표 미등록 학생만 보기’를 꺼 보세요.</span>
+        </div>
         <label v-for="u in filteredStudentModal" :key="u.id" class="flex items-center gap-2 py-1.5 text-sm border-b cursor-pointer">
           <input type="checkbox" :checked="studentModalSel.includes(u.id)" @change="toggleModalStudent(u)" class="w-4 h-4" />
           <span>{{ u.real_name || '-' }} <span class="text-xs text-slate-400">@{{ u.username }}</span></span>
@@ -3784,7 +3787,7 @@
       </div>
 
       <!-- 수업 추가 -->
-      <div v-if="showTtAdd && ttView==='list'" class="bg-white rounded-xl shadow-sm p-4 mb-4 overflow-x-auto">
+      <div v-if="showTtAdd && ttView==='list'" ref="ttAddBox" class="bg-white rounded-xl shadow-sm p-4 mb-4 overflow-x-auto">
         <h3 class="font-semibold text-sm mb-2">수업 추가 <span class="text-xs font-normal text-slate-400">(학생별 개별 입력 · 동시 추가)</span></h3>
         <div class="mb-2">
           <input @click="openStudentModal" readonly placeholder="여기를 눌러 학생 선택 (전체 목록·필터)" class="input w-72 bg-slate-50 cursor-pointer" />
@@ -9013,7 +9016,17 @@ const app = createApp({
     },
     showCalPop(it,date,e){ this.calPop={ show:true, it, date, x:Math.min(e.clientX+12,window.innerWidth-260), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
     hideCalPop(){ this.calPop.show=false; },
-    openTtAdd(){ this.ttView='list'; this.showTtAdd=true; },
+    // [미등록 N명!] 을 눌렀는데 이미 목록 화면이면 아무 일도 안 일어나 보였다.
+    // 미등록이 있으면 그 사람들만 걸러 고르는 창까지 열어 준다 — 그게 이 버튼을 누른 까닭이다.
+    async openTtAdd(){
+      this.ttView='list'; this.showTtAdd=true;
+      if (this.ttUnassignedCount > 0){
+        this.modalUnassignedOnly = true;
+        await this.openStudentModal();
+      } else {
+        this.$nextTick(()=>{ const el=this.$refs.ttAddBox; if (el) el.scrollIntoView({behavior:'smooth', block:'center'}); });
+      }
+    },
     onFilterFrom(){ const f=this.ttFilter; if (f.from && (!f.to || f.to < f.from)) f.to = f.from; },
     toggleTtAdd(){ this.showTtAdd = !this.showTtAdd; if (!this.showTtAdd){ this.ttStudents=[]; this.ttAddRows=[]; } },
     async loadAllStudents(){
