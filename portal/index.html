@@ -447,7 +447,7 @@
     <div class="font-semibold mb-1">{{ statusPop.name }} · 상태 이력</div>
     <ul class="space-y-1">
       <li v-for="(h,i) in statusPop.list" :key="i" class="flex gap-2">
-        <span class="text-slate-400 shrink-0 w-20">{{ h.date }}</span>
+        <span class="text-slate-400 shrink-0 w-24">{{ dd(h.date) }}</span>
         <span class="flex-1"><b>{{ stuStatusBadge(h.from).label }}</b> → <b>{{ stuStatusBadge(h.to).label }}</b><span v-if="h.reason" class="text-slate-500"> · {{ h.reason }}</span><span v-if="h.actor" class="text-slate-400"> ({{ h.actor }})</span></span>
       </li>
     </ul>
@@ -484,7 +484,7 @@
     <div class="bg-white rounded-xl shadow-lg p-4 w-72">
       <div class="text-sm font-semibold mb-1">{{ attEditPop.l.student_name }} · {{ attEditPop.kind==='in'?'등원':'하원' }} {{ attEditPop.cur }}</div>
       <div class="text-xs text-slate-400 mb-3">
-        <span v-if="attEditPop.from==='stu'" class="text-slate-500 font-medium">{{ attEditPop.date }}</span>
+        <span v-if="attEditPop.from==='stu'" class="text-slate-500 font-medium">{{ dd(attEditPop.date) }}</span>
         <span v-if="attEditPop.cur">{{ attEditPop.from==='stu' ? ' · ' : '' }}이미 체크된 기록입니다. 무엇을 하시겠어요?</span>
         <span v-else>{{ attEditPop.from==='stu' ? ' · ' : '' }}기록이 없습니다. 시각을 정해 기록할 수 있습니다.</span>
       </div>
@@ -896,7 +896,7 @@
             <li v-for="h in stuDetail.status_history" :key="h.id" class="text-sm bg-slate-50 rounded px-3 py-1.5">
               <div class="flex items-center gap-2">
                 <span class="text-xs">{{ stuStatusBadge(h.from).label }} → <b>{{ stuStatusBadge(h.to).label }}</b></span>
-                <span v-if="h.effective_date" class="text-xs text-slate-400">적용 {{ h.effective_date }}</span>
+                <span v-if="h.effective_date" class="text-xs text-slate-400">적용 {{ dd(h.effective_date) }}</span>
                 <span class="text-xs text-slate-400 ml-auto">{{ h.time }} {{ h.actor }}</span>
               </div>
               <div v-if="h.reason" class="text-xs text-slate-600">사유: {{ h.reason }}</div>
@@ -951,7 +951,7 @@
           <ul class="space-y-1">
             <li v-for="p in stuProgress" :key="p.id" class="bg-white border rounded-lg px-3 py-2">
               <div class="flex items-center gap-2 text-xs text-slate-400">
-                <span class="font-medium text-slate-600">{{ p.date }}</span>
+                <span class="font-medium text-slate-600">{{ dd(p.date) }}</span>
                 <span v-if="p.subject" class="text-indigo-500">{{ p.subject }}</span>
                 <span class="ml-auto">{{ p.author }}</span>
                 <button v-if="stuCanEdit" @click="deleteStuProgress(p)" class="text-rose-400 hover:underline">삭제</button>
@@ -1618,7 +1618,7 @@
       <div class="flex items-center justify-between px-5 py-3 border-b shrink-0">
         <div>
           <div class="font-bold">{{ vrModal.student_name }} · 학부모 작성 내용 대조</div>
-          <div class="text-xs text-slate-400">학부모 제출 {{ vrModal.submitted_at }}</div>
+          <div class="text-xs text-slate-400">학부모 제출 {{ dt(vrModal.submitted_at) }}</div>
         </div>
         <button @click="vrModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
       </div>
@@ -1882,7 +1882,7 @@
         <button @click="attEditForm=null" class="text-slate-400 hover:text-slate-600">✕</button>
       </div>
       <div class="p-5 space-y-3">
-        <div class="text-sm text-slate-500">{{ attEditForm.date }} · 현재 <b class="font-mono">{{ attEditForm.old || '(없음)' }}</b></div>
+        <div class="text-sm text-slate-500">{{ dd(attEditForm.date) }} · 현재 <b class="font-mono">{{ attEditForm.old || '(없음)' }}</b></div>
         <div><label class="lbl">바꿀 시각 <span class="text-slate-400">(24시간제 · 비우면 기록 삭제)</span></label>
           <input :value="attEditForm.value" @input="attEditForm.value = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 w-28 text-center font-mono', guardCls('attEditForm','value')]" /></div>
         <div><label class="lbl">사유 <span class="text-rose-500">*</span></label><input v-model="attEditForm.reason" placeholder="예: 키오스크를 못 찍었습니다" :class="['input py-1', guardCls('attEditForm','reason')]" /></div>
@@ -1930,7 +1930,7 @@
   <!-- 시간표 달력 수업 호버: 최근 진도(개별 진도 관리 연결 예정) -->
   <div v-if="calPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-60 pointer-events-none" :style="{ left: calPop.x+'px', top: calPop.y+'px' }">
     <div class="font-bold text-sm">{{ calPop.it.student_name }}</div>
-    <div class="text-slate-500">{{ calPop.date }} {{ calPop.it.start_time }} · {{ calPop.it.subject }}<template v-if="calPop.it.makeup"> (보강)</template></div>
+    <div class="text-slate-500">{{ dd(calPop.date) }} {{ calPop.it.start_time }} · {{ calPop.it.subject }}<template v-if="calPop.it.makeup"> (보강)</template></div>
     <div v-if="calPop.it.status==='ABSENT'" class="mt-1 text-rose-500">결석</div>
     <div v-else-if="calPop.it.status==='LEAVE'" class="mt-1 text-purple-600">임시휴원<span v-if="calPop.it.lesson_note"> · {{ calPop.it.lesson_note }}</span></div>
     <div v-else-if="calPop.it.status==='HOLIDAY'" class="mt-1 text-slate-500">🏖 학원 휴무일</div>
@@ -2180,7 +2180,7 @@
               <thead class="bg-slate-50 text-slate-500 text-xs"><tr><th class="text-left px-4 py-2">날짜</th><th class="text-left px-4 py-2">반</th><th class="text-left px-4 py-2">상태</th></tr></thead>
               <tbody>
                 <tr v-for="(r,i) in childAtt" :key="i" class="border-t">
-                  <td class="px-4 py-2">{{ r.session.date }}</td>
+                  <td class="px-4 py-2">{{ dd(r.session.date) }}</td>
                   <td class="px-4 py-2">{{ r.session.class_name }}</td>
                   <td class="px-4 py-2"><span :class="attClass(r.status)">{{ attLabel(r.status) }}</span></td>
                 </tr>
@@ -2248,7 +2248,7 @@
           </thead>
           <tbody>
             <tr v-for="(r,i) in myAtt" :key="i" class="border-t">
-              <td class="px-4 py-2">{{ r.session.date }}</td>
+              <td class="px-4 py-2">{{ dd(r.session.date) }}</td>
               <td class="px-4 py-2">{{ r.session.class_name }}</td>
               <td class="px-4 py-2"><span :class="attClass(r.status)">{{ attLabel(r.status) }}</span></td>
               <td class="px-4 py-2 text-slate-500">{{ r.memo }}</td>
@@ -2371,7 +2371,7 @@
             <span class="text-xs text-slate-400 whitespace-nowrap">· 학부모 {{ l.parent_name }}</span>
             <span v-if="showBranchCol" class="text-xs text-slate-400 whitespace-nowrap">· {{ l.branch }}</span>
             <span v-if="l.enroll_edited" class="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold shrink-0">🔔 수정됨</span>
-            <span class="text-xs text-slate-400 whitespace-nowrap">{{ l.submitted_at }}</span>
+            <span class="text-xs text-slate-400 whitespace-nowrap">{{ dt(l.submitted_at) }}</span>
             <button @click="goConvertFromDash(l)" class="ml-auto shrink-0 px-2 py-1 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-700">등록 전환</button>
           </li>
         </ul>
@@ -2639,7 +2639,7 @@
               <ul class="space-y-1">
                 <li v-for="d in kioskPendingDevices" :key="d.id" class="bg-amber-50 rounded-lg px-3 py-2 text-sm space-y-1.5">
                   <div class="text-[11px] text-slate-400 truncate">
-                    {{ d.user_agent || '(정보 없음)' }} · 요청 {{ d.requested_at }} · <span class="font-mono">{{ d.device_id }}</span>
+                    {{ d.user_agent || '(정보 없음)' }} · 요청 {{ dt(d.requested_at) }} · <span class="font-mono">{{ d.device_id }}</span>
                     <span v-if="d.label" class="text-amber-600">· 보류(이름 지정됨)</span>
                   </div>
                   <div class="flex items-center gap-2">
@@ -2655,7 +2655,7 @@
               <div class="text-xs font-semibold text-slate-500 mb-1">승인된 기기</div>
               <ul class="space-y-1">
                 <li v-for="d in kioskApprovedDevices" :key="d.id" class="bg-slate-50 rounded-lg px-3 py-2 text-sm space-y-1">
-                  <div class="text-[10px] text-slate-400">요청 {{ d.requested_at }} · 승인 {{ d.approved_at }} ({{ d.approved_by }})</div>
+                  <div class="text-[10px] text-slate-400">요청 {{ dt(d.requested_at) }} · 승인 {{ dt(d.approved_at) }} ({{ d.approved_by }})</div>
                   <div class="flex items-center gap-2">
                     <input v-model="d.label" placeholder="기기 이름(예: 1층 태블릿)" class="input py-1 text-xs flex-1 min-w-0" />
                     <button @click="relabelKioskDevice(d)" class="text-xs text-indigo-600 hover:underline shrink-0">저장</button>
@@ -2670,7 +2670,7 @@
               <ul class="space-y-1">
                 <li v-for="d in kioskRevokedDevices" :key="d.id" class="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 text-sm opacity-60">
                   <span class="text-xs">{{ d.label || d.device_id }}</span>
-                  <span class="text-[10px] text-slate-400">요청 {{ d.requested_at }}</span>
+                  <span class="text-[10px] text-slate-400">요청 {{ dt(d.requested_at) }}</span>
                   <button @click="approveKioskDevice(d)" class="ml-auto text-xs text-indigo-500 hover:underline shrink-0">다시 승인</button>
                 </li>
               </ul>
@@ -3187,7 +3187,7 @@
                 </div>
               </div>
               <div v-if="r.enroll && r.enroll.status==='SUBMITTED' && r.enroll.data" class="mt-2 text-xs bg-emerald-50 rounded-lg p-2 text-slate-600">
-                학부모 작성 완료({{ r.enroll.submitted_at }}) — 생년월일 {{ r.enroll.data.birth_date }} · 주소 {{ r.enroll.data.address || '-' }}. <b>등록 전환</b> 시 자동 채워집니다.
+                학부모 작성 완료({{ dt(r.enroll.submitted_at) }}) — 생년월일 {{ r.enroll.data.birth_date }} · 주소 {{ r.enroll.data.address || '-' }}. <b>등록 전환</b> 시 자동 채워집니다.
               </div>
             </div>
 
@@ -8018,7 +8018,20 @@ const app = createApp({
     attLabel(s){ return ATT_LABELS[s] || s || '-'; },
     attClass(s){ return 'px-2 py-0.5 rounded text-xs font-medium ' + (ATT_CLASS[s] || 'bg-slate-100'); },
     hm(t){ return t ? String(t).slice(0,5) : ''; },
-    dt(s){ return s ? String(s).slice(0,16).replace('T',' ') : ''; },
+    // 날짜만 있으면 무슨 요일인지 세어 봐야 한다. 화면에 적는 날짜에는 늘 요일을 붙인다.
+    // 앱이 이미 08-25(화) 꼴을 쓰고 있어 그 모양으로 맞춘다.
+    dd(s){
+      const t = String(s||'').slice(0,10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return String(s||'');
+      return t + '(' + this.wdOf(t) + ')';
+    },
+    dt(s){
+      if (!s) return '';
+      const t = String(s).slice(0,16).replace('T',' ');
+      const d = t.slice(0,10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return t;
+      return d + '(' + this.wdOf(d) + ')' + t.slice(10);
+    },
     channelLabel(c){ return ({VISIT:'방문',CALL:'전화',MESSAGE:'문자',KAKAO:'카카오',ETC:'기타'})[c] || c || '방문'; },
     go(key){
       if (key!==this.tab && this.isDirty()){ this.askLeave(()=> this._goNow(key)); return; }
