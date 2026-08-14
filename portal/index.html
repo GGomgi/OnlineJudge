@@ -618,7 +618,7 @@
           <div class="grid grid-cols-2 gap-2">
             <div><label class="lbl">원번</label><input :value="stuForm.enroll_no || '-'" class="input bg-slate-50" readonly /></div>
             <div><label class="lbl">이름 <span v-if="stuFieldDirty('real_name')" class="text-amber-600">✏️</span></label><input v-model="stuForm.real_name" :readonly="!stuEditMode" :class="stuCls('real_name')" /></div>
-            <div><label class="lbl">생년월일 <span v-if="stuFieldDirty('birth_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.birth_date" type="date" :readonly="!stuEditMode" :class="stuCls('birth_date')" /></div>
+            <div><label class="lbl">생년월일 <span v-if="stuFieldDirty('birth_date')" class="text-amber-600">✏️</span></label><input v-model="stuForm.birth_date" type="date" min="1900-01-01" :max="todayStr" :readonly="!stuEditMode" :class="stuCls('birth_date')" /></div>
             <div><label class="lbl">성별 <span v-if="stuFieldDirty('gender')" class="text-amber-600">✏️</span></label><select v-model="stuForm.gender" :disabled="!stuEditMode" :class="stuCls('gender')"><option value="">-</option><option value="M">남</option><option value="F">여</option></select></div>
             <div><label class="lbl">학생 연락처 <span v-if="stuFieldDirty('student_phone')" class="text-amber-600">✏️</span></label><input :value="stuForm.student_phone" @input="stuForm.student_phone=formatPhone($event.target.value)" inputmode="numeric" :readonly="!stuEditMode" :class="stuCls('student_phone')" placeholder="010-0000-0000" /></div>
             <div><label class="lbl">학교 구분 <span v-if="stuFieldDirty('school_type')" class="text-amber-600">✏️</span></label><select v-model="stuForm.school_type" :disabled="!stuEditMode" :class="stuCls('school_type','px-2')"><option value="">선택</option><option v-for="o in (options.school_type||[])" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
@@ -2267,7 +2267,7 @@
         <div class="flex items-center gap-2">
           <button @click="dashShift(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 shrink-0">◀</button>
           <div class="w-40 shrink-0 relative">
-            <input v-model="dashDate" @change="loadDashboard" type="date" class="input py-1 pr-8" />
+            <input v-model="dashDate" @change="loadDashboard" type="date" min="1900-01-01" max="2100-12-31" class="input py-1 pr-8" />
             <span v-if="dashDate" class="absolute right-8 top-1/2 -translate-y-1/2 text-xs font-semibold pointer-events-none"
                   :class="wdOf(dashDate)==='일' ? 'text-rose-500' : (wdOf(dashDate)==='토' ? 'text-blue-500' : 'text-slate-500')">({{ wdOf(dashDate) }})</span>
           </div>
@@ -13065,6 +13065,11 @@ app.component('date-box', {
       return ['일','월','화','수','목','금','토'][new Date(y,m-1,d).getDay()];
     },
     wdCls(){ return this.wd==='일' ? 'text-rose-500' : (this.wd==='토' ? 'text-blue-500' : 'text-slate-500'); },
+    // 위아래를 안 정해 주면 브라우저가 연도를 여섯 자리까지 받는다(275760년까지 된다).
+    // 20260802 를 이어 치면 연도가 202608 을 삼켜 202608-02-일 이 된다.
+    // 끝을 정해 두면 네 자리에서 저절로 월 칸으로 넘어간다.
+    minA(){ return this.$attrs.min || '1900-01-01'; },
+    maxA(){ return this.$attrs.max || '2100-12-31'; },
   },
   methods: {
     // 칸 아무 데나 누르면 달력이 열린다. 오른쪽 끝 작은 아이콘을 겨눌 까닭이 없다.
@@ -13075,7 +13080,7 @@ app.component('date-box', {
     },
   },
   template: `<span :class="['relative inline-block align-middle', wrapClass]">
-    <input type="date" v-bind="$attrs" :value="modelValue" @click="pick"
+    <input type="date" v-bind="$attrs" :min="minA" :max="maxA" :value="modelValue" @click="pick"
            @input="$emit('update:modelValue', $event.target.value)"
            @change="$emit('change', $event)"
            :class="[boxClass, 'w-full pr-8']" />
