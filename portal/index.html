@@ -697,7 +697,7 @@
                     <template v-else>
                       <template v-if="stuCanEdit && stuTtEditMode && ttRowDirty(s)">
                         <label class="text-[10px] text-slate-400 inline-flex items-center gap-0.5 mr-1" title="처음부터 잘못 입력된 데이터라 이력을 나누지 않고 이 행 자체를 바로 수정"><input type="checkbox" v-model="s._fullEdit" class="w-3 h-3" />전체수정</label>
-                        <date-box v-model="s.effective_date" box-class="input py-0.5 px-1 text-[11px]" wrap-class="w-40" v-if="!s._fullEdit" title="적용 시작일(기본 오늘)"></date-box>
+                        <date-box v-model="s.effective_date" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm" v-if="!s._fullEdit" title="적용 시작일(기본 오늘)"></date-box>
                       </template>
                       <button v-if="stuCanEdit && stuTtEditMode && ttRowDirty(s)" @click="revertTt(s)" class="text-slate-400 hover:underline">취소</button>
                       <button v-if="stuCanEdit && stuTtEditMode" @click="delStuTt(s)" class="text-rose-500 hover:underline">삭제</button>
@@ -809,7 +809,7 @@
           <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
             <div class="flex gap-2 items-center flex-wrap">
               <div class="w-20 shrink-0"><select v-model="stuNoteChannel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
-              <div class="w-44 shrink-0"><date-box v-model="stuNoteTime.date" box-class="input py-1"></date-box></div>
+              <div class="date-w shrink-0"><date-box v-model="stuNoteTime.date" box-class="input py-1"></date-box></div>
               <!-- 시·분을 따로 고르면 두 번 눌러야 한다. 숫자만 치면 콜론이 저절로 들어간다 -->
               <div class="w-20 shrink-0"><input :value="hmOfParts(stuNoteTime)" @input="setHmParts(stuNoteTime, $event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 text-center font-mono" /></div>
             </div>
@@ -868,7 +868,7 @@
             </ul>
             <div v-if="stuCanEdit" class="mt-2 space-y-2">
               <div class="flex gap-2 items-center flex-wrap">
-                <div class="w-44 shrink-0"><date-box v-model="stuResvForm.date" box-class="input py-1"></date-box></div>
+                <div class="date-w shrink-0"><date-box v-model="stuResvForm.date" box-class="input py-1"></date-box></div>
                 <div class="w-20 shrink-0"><input :value="hmOfParts(stuResvForm)" @input="setHmParts(stuResvForm, $event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 text-center font-mono" /></div>
               </div>
               <textarea v-model="stuResvForm.note" rows="2" placeholder="메모(선택)" class="input py-1"></textarea>
@@ -886,7 +886,7 @@
                 <option value="ON_LEAVE">휴원</option>
                 <option value="WITHDRAWN">퇴원</option>
               </select></div>
-              <div class="shrink-0 w-44"><date-box v-model="stuStatusDate" box-class="input py-1" title="적용일"></date-box></div>
+              <div class="shrink-0 date-w"><date-box v-model="stuStatusDate" box-class="input py-1" title="적용일"></date-box></div>
               <input v-model="stuStatusReason" placeholder="사유 (필수)" class="input flex-1 min-w-0 py-1" />
               <button @click="changeStuStatus" class="btn-secondary text-sm whitespace-nowrap shrink-0">상태 변경</button>
             </div>
@@ -941,7 +941,7 @@
           <template v-else>
           <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
             <div class="text-xs font-semibold text-slate-500">수업일지 추가 <span class="font-normal text-slate-400">(수업과 무관한 자유 기록용 — 실제 수업 일지는 달력에서 해당 수업을 클릭해 작성하세요)</span></div>
-            <date-box v-model="stuProgForm.date" box-class="input py-1" wrap-class="w-44"></date-box>
+            <date-box v-model="stuProgForm.date" box-class="input py-1" wrap-class="date-w"></date-box>
             <textarea v-model="stuProgForm.content" rows="2" placeholder="수업 내용" class="input"></textarea>
             <textarea v-model="stuProgForm.homework" rows="1" placeholder="숙제 (선택)" class="input"></textarea>
             <textarea v-model="stuProgForm.feedback" rows="1" placeholder="피드백 (학부모에게 그대로 전달되는 내용, 선택)" class="input"></textarea>
@@ -2266,11 +2266,7 @@
         </h2>
         <div class="flex items-center gap-2">
           <button @click="dashShift(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 shrink-0">◀</button>
-          <div class="w-40 shrink-0 relative">
-            <input v-model="dashDate" @change="loadDashboard" type="date" min="1900-01-01" max="2100-12-31" class="input py-1 pr-8" />
-            <span v-if="dashDate" class="absolute right-8 top-1/2 -translate-y-1/2 text-xs font-semibold pointer-events-none"
-                  :class="wdOf(dashDate)==='일' ? 'text-rose-500' : (wdOf(dashDate)==='토' ? 'text-blue-500' : 'text-slate-500')">({{ wdOf(dashDate) }})</span>
-          </div>
+          <date-box v-model="dashDate" @change="loadDashboard" box-class="input py-1" wrap-class="date-w shrink-0"></date-box>
           <button @click="dashShift(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 shrink-0">▶</button>
           <button @click="dashToday" class="px-3 py-1 rounded border border-slate-200 text-slate-500 text-sm shrink-0 whitespace-nowrap">오늘</button>
           <button @click="openMakeup" class="px-3 py-1.5 rounded bg-blue-600 text-white text-sm shrink-0 whitespace-nowrap hover:bg-blue-700">+ 보강 추가</button>
@@ -3094,7 +3090,7 @@
               <div v-if="r.status!=='CONVERTED' && r.status!=='CLOSED' && canEditBranch(r.branch && r.branch.id)" class="mt-2 space-y-2">
                 <div class="flex gap-2 items-center flex-wrap">
                   <div class="w-20 shrink-0"><select v-model="noteChannel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
-                  <div class="w-44 shrink-0"><date-box v-model="noteTime.date" box-class="input py-1"></date-box></div>
+                  <div class="date-w shrink-0"><date-box v-model="noteTime.date" box-class="input py-1"></date-box></div>
                   <div class="w-20 shrink-0"><input :value="hmOfParts(noteTime)" @input="setHmParts(noteTime, $event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 text-center font-mono" /></div>
                 </div>
                 <textarea v-model="noteText" rows="3" placeholder="상담 내용 입력 (여러 줄 작성 가능)" class="input"></textarea>
@@ -3134,7 +3130,7 @@
                   <!-- 약속시간 변경 -->
                   <div v-if="resvActionId===rv.id && resvActionMode==='reschedule'" class="mt-2 space-y-2">
                     <div class="flex gap-2 items-center flex-wrap">
-                      <div class="w-44 shrink-0"><date-box v-model="resvRescheduleForm.date" box-class="input py-1"></date-box></div>
+                      <div class="date-w shrink-0"><date-box v-model="resvRescheduleForm.date" box-class="input py-1"></date-box></div>
                       <div class="w-20 shrink-0"><input :value="hmOfParts(resvRescheduleForm)" @input="setHmParts(resvRescheduleForm, $event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 text-center font-mono" /></div>
                     </div>
                     <input v-model="resvRescheduleForm.reason" placeholder="변경 사유 (필수)" class="input py-1" />
@@ -3152,7 +3148,7 @@
               <div v-if="canEditBranch(r.branch && r.branch.id)" class="mt-2 space-y-2">
                 <div class="flex gap-2 items-center flex-wrap">
                   <div class="w-20 shrink-0"><select v-model="resvForm.channel" class="input py-1"><option value="VISIT">방문</option><option value="CALL">전화</option><option value="ETC">기타</option></select></div>
-                  <div class="w-44 shrink-0"><date-box v-model="resvForm.date" box-class="input py-1"></date-box></div>
+                  <div class="date-w shrink-0"><date-box v-model="resvForm.date" box-class="input py-1"></date-box></div>
                   <div class="w-20 shrink-0"><input :value="hmOfParts(resvForm)" @input="setHmParts(resvForm, $event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 text-center font-mono" /></div>
                 </div>
                 <textarea v-model="resvForm.note" rows="2" placeholder="메모(선택)" class="input py-1"></textarea>
@@ -3345,7 +3341,7 @@
             </div>
             <div>
               <label class="lbl">수업 시작일</label>
-              <date-box v-model="convertForm.lesson_start_date" box-class="input" wrap-class="w-44"></date-box>
+              <date-box v-model="convertForm.lesson_start_date" box-class="input" wrap-class="date-w"></date-box>
             </div>
             <label class="flex items-center gap-2 text-sm bg-amber-50 rounded-lg px-3 py-2">
               <input type="checkbox" v-model="convertForm.schedule_pending" class="w-4 h-4" />
@@ -3898,7 +3894,7 @@
                 <template v-if="s.status!=='ENDED' && canEditBranch(s.branch && s.branch.id)">
                   <template v-if="ttRowDirty(s)">
                     <label class="text-[10px] text-slate-400 inline-flex items-center gap-0.5 mr-1" title="처음부터 잘못 입력된 데이터라 이력을 나누지 않고 이 행 자체를 바로 수정"><input type="checkbox" v-model="s._fullEdit" class="w-3 h-3" />전체수정</label>
-                    <date-box v-model="s.effective_date" box-class="input py-0.5 px-1 text-[11px]" wrap-class="w-40" v-if="!s._fullEdit" :title="'적용 시작일(기본 오늘)'"></date-box>
+                    <date-box v-model="s.effective_date" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm" v-if="!s._fullEdit" :title="'적용 시작일(기본 오늘)'"></date-box>
                   </template>
                   <button @click="saveTt(s)" :class="['text-xs hover:underline', ttRowDirty(s) ? 'text-amber-600 font-bold' : 'text-indigo-600']">수정</button>
                   <button v-if="ttRowDirty(s)" @click="revertTt(s)" class="ml-2 text-xs text-slate-400 hover:underline">취소</button>
@@ -4232,8 +4228,8 @@
             <div class="bg-white rounded-xl shadow-sm p-4">
               <h3 class="font-semibold mb-2 text-sm">수업 회차 · 출결</h3>
               <div class="flex flex-wrap gap-2 items-end mb-3">
-                <date-box v-model="genForm.from_date" box-class="input" wrap-class="w-44"></date-box>
-                <date-box v-model="genForm.to_date" box-class="input" wrap-class="w-44"></date-box>
+                <date-box v-model="genForm.from_date" box-class="input" wrap-class="date-w"></date-box>
+                <date-box v-model="genForm.to_date" box-class="input" wrap-class="date-w"></date-box>
                 <button @click="generate" class="btn-secondary text-sm">시간표로 회차 생성</button>
               </div>
               <div class="grid sm:grid-cols-2 gap-3">
@@ -5325,8 +5321,8 @@
           <h2 class="text-lg font-bold mb-1">학원 휴무일</h2>
           <p class="text-xs text-slate-400 mb-3">등록하면 그날 수업이 <b>휴무</b>로 바뀌어 결석률에서 빠지고, 시간표·출결기록에 사유가 함께 보입니다. 이미 등원 기록이 있는 수업은 그대로 둡니다(그날 실제로 수업을 한 것이므로).</p>
           <div class="flex flex-wrap items-end gap-2">
-            <div><label class="lbl">날짜</label><date-box v-model="hdForm.date" box-class="input py-1" wrap-class="w-44"></date-box></div>
-            <div><label class="lbl">종료일 <span class="text-slate-400">(방학처럼 여러 날)</span></label><date-box v-model="hdForm.dateTo" box-class="input py-1" wrap-class="w-44"></date-box></div>
+            <div><label class="lbl">날짜</label><date-box v-model="hdForm.date" box-class="input py-1" wrap-class="date-w"></date-box></div>
+            <div><label class="lbl">종료일 <span class="text-slate-400">(방학처럼 여러 날)</span></label><date-box v-model="hdForm.dateTo" box-class="input py-1" wrap-class="date-w"></date-box></div>
             <div><label class="lbl">이름</label><input v-model="hdForm.name" placeholder="예: 광복절" class="input py-1 w-40" /></div>
             <div><label class="lbl">유형</label>
               <select v-model="hdForm.kind" class="input py-1 w-32">
@@ -5388,7 +5384,7 @@
           <h2 class="text-lg font-bold mb-1">근무 기준</h2>
           <p class="text-xs text-slate-400 mb-3">학생 시간표와 같은 <b>적용 시작일</b> 방식입니다. 바꾸면 이전 기준은 전날로 끝나고 새 줄이 생겨 과거 기록이 그대로 남습니다. 직원별로 지정하면 지점 기본값보다 우선합니다.</p>
           <div class="flex flex-wrap items-end gap-2">
-            <div><label class="lbl">적용 시작일</label><date-box v-model="wsForm.active_from" box-class="input py-1" wrap-class="w-44"></date-box></div>
+            <div><label class="lbl">적용 시작일</label><date-box v-model="wsForm.active_from" box-class="input py-1" wrap-class="date-w"></date-box></div>
             <div><label class="lbl">출근</label><input :value="wsForm.start_time" @input="wsForm.start_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
             <div><label class="lbl">퇴근</label><input :value="wsForm.end_time" @input="wsForm.end_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" /></div>
             <div>
@@ -6277,7 +6273,7 @@
                 <a :href="d.url" target="_blank" class="text-indigo-600 hover:underline shrink-0">보기</a>
                 <input v-model="d.title" @change="saveStaffDoc(d)" placeholder="설명" class="input py-1 w-40" />
                 <label class="text-xs text-slate-400">작성일</label>
-                <date-box v-model="d.doc_date" box-class="input py-1" wrap-class="w-44" @change="saveStaffDoc(d)"></date-box>
+                <date-box v-model="d.doc_date" box-class="input py-1" wrap-class="date-w" @change="saveStaffDoc(d)"></date-box>
                 <span class="text-xs text-slate-400">업로드 {{ d.uploaded_at }}</span>
                 <label class="text-xs flex items-center gap-1"><input type="checkbox" v-model="d.visible_to_staff" @change="saveStaffDoc(d)" class="w-3.5 h-3.5">직원표시</label>
                 <button @click="delStaffDoc(d)" class="text-xs text-rose-400 hover:underline ml-auto">삭제</button>
@@ -6485,8 +6481,8 @@
               <option v-for="p in actLog.people" :key="p.id" :value="p.id">{{ p.name }} · {{ roleLabel(p.role) }}{{ p.branch ? ' · '+p.branch : '' }}</option>
             </select>
           </div>
-          <div><label class="lbl">시작</label><date-box v-model="actFilter.from" box-class="input py-1" wrap-class="w-44" @change="loadActivity"></date-box></div>
-          <div><label class="lbl">종료</label><date-box v-model="actFilter.to" box-class="input py-1" wrap-class="w-44" @change="loadActivity"></date-box></div>
+          <div><label class="lbl">시작</label><date-box v-model="actFilter.from" box-class="input py-1" wrap-class="date-w" @change="loadActivity"></date-box></div>
+          <div><label class="lbl">종료</label><date-box v-model="actFilter.to" box-class="input py-1" wrap-class="date-w" @change="loadActivity"></date-box></div>
           <div class="flex gap-1">
             <button v-for="p in actPresets" :key="p.d" @click="applyActPreset(p.d)" class="px-2 py-1.5 rounded border border-slate-200 text-xs hover:bg-slate-50">{{ p.l }}</button>
           </div>
@@ -13112,6 +13108,10 @@ app.mount('#app');
 </script>
 <style type="text/tailwindcss">
   .input { @apply w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white; }
+  /* 날짜 칸 기준 폭 — 2026-08-14 + (금) + 달력 아이콘이 겨우 들어가는 만큼.
+     여기 한 줄만 고치면 화면의 모든 날짜 칸이 함께 바뀐다. */
+  .date-w { width: 9.5rem; }
+  .date-w-sm { width: 8.5rem; }   /* 시간표 줄처럼 글자가 작은 곳 */
   .lbl { @apply block text-xs text-slate-400 mb-1; }
   .btn-primary { @apply px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50; }
   .btn-secondary { @apply px-3 py-2 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300; }
