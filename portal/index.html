@@ -1349,7 +1349,7 @@
                   class="w-3 h-3 align-middle -mt-0.5 mr-0.5" />미정)</label>
               </div>
               <div class="flex items-center gap-1.5">
-                <date-box v-model="examSnForm[f.k]" box-class="input py-1" wrap-class="flex-1 min-w-0"></date-box>
+                <date-box v-model="examSnForm[f.k]" box-class="input py-1" wrap-class="flex-1 shrink min-w-0"></date-box>
                 <!-- 시험 보는 시각은 대회일에만 붙는다(접수·발표는 날짜만 쓴다) -->
                 <input v-if="f.time" v-model="examSnForm.exam_time" type="text" inputmode="numeric"
                        placeholder="HH:MM" maxlength="5" style="width:5.5rem"
@@ -1422,7 +1422,7 @@
         <div v-if="examAdd.sn.kind==='CERT'" class="grid grid-cols-3 gap-2">
           <div><label class="lbl">시험일 <span class="text-rose-500">*</span> <span class="text-slate-400">· 시각</span></label>
             <div class="flex items-center gap-1.5">
-              <date-box v-model="examAdd.exam_date" :box-class="['input py-1', guardCls('examAdd','exam_date')]" wrap-class="flex-1 min-w-0"></date-box>
+              <date-box v-model="examAdd.exam_date" :box-class="['input py-1', guardCls('examAdd','exam_date')]" wrap-class="flex-1 shrink min-w-0"></date-box>
               <input :value="examAdd.exam_time" @input="examAdd.exam_time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5"
                      style="width:5.5rem" :class="['input py-1 text-center font-mono shrink-0', guardCls('examAdd','exam_time')]" />
             </div>
@@ -13116,7 +13116,7 @@ app.component('date-box', {
       try { el.showPicker(); } catch(_){}
     },
   },
-  template: `<span :class="['relative inline-block align-middle', wrapClass]">
+  template: `<span :class="['relative inline-block align-middle shrink-0', wrapClass]">
     <input type="date" v-bind="$attrs" :min="minA" :max="maxA" :value="modelValue" @click="pick"
            @input="$emit('update:modelValue', $event.target.value)"
            @change="$emit('change', $event)"
@@ -13151,8 +13151,8 @@ app.mount('#app');
   .input { @apply w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white; }
   /* 날짜 칸 기준 폭 — 2026-08-14 + (금) + 달력 아이콘이 겨우 들어가는 만큼.
      여기 한 줄만 고치면 화면의 모든 날짜 칸이 함께 바뀐다. */
-  .date-w { width: 9.5rem; }
-  .date-w-sm { width: 8.5rem; }   /* 시간표 줄처럼 글자가 작은 곳 */
+  .date-w { width: 10rem; }
+  .date-w-sm { width: 9rem; }     /* 시간표 줄처럼 글자가 작은 곳 */
   .lbl { @apply block text-xs text-slate-400 mb-1; }
   .btn-primary { @apply px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50; }
   .btn-secondary { @apply px-3 py-2 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300; }
