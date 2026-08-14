@@ -2874,7 +2874,7 @@
                 <span class="text-xs text-slate-500 ml-1">{{ mkForm.origin }}</span></div>
             </div>
             <div class="grid grid-cols-2 gap-2">
-              <div><label class="lbl">보강 할 날짜</label><date-box v-model="mkForm.date" :box-class="['input py-1', guardCls('makeupOpen','date')]" @click="$event.target.showPicker && $event.target.showPicker()"></date-box></div>
+              <div><label class="lbl">보강 할 날짜</label><date-box v-model="mkForm.date" :box-class="['input py-1', guardCls('makeupOpen','date')]"></date-box></div>
               <div><label class="lbl">보강 할 시간</label><input :value="mkForm.time" @input="mkForm.time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 w-24 text-center font-mono', guardCls('makeupOpen','time')]" /></div>
             </div>
             <div v-if="mkForm.pair" class="text-xs px-3 py-2 rounded bg-blue-50 text-blue-700">연속 2타임 결석 보강 — 두번째 타임은 {{ mkPairSecondTime() }}부터 이어서 자동으로 함께 잡힙니다.</div>
@@ -13066,8 +13066,16 @@ app.component('date-box', {
     },
     wdCls(){ return this.wd==='일' ? 'text-rose-500' : (this.wd==='토' ? 'text-blue-500' : 'text-slate-500'); },
   },
+  methods: {
+    // 칸 아무 데나 누르면 달력이 열린다. 오른쪽 끝 작은 아이콘을 겨눌 까닭이 없다.
+    pick(e){
+      const el = e.target;
+      if (el.readOnly || el.disabled || !el.showPicker) return;
+      try { el.showPicker(); } catch(_){}
+    },
+  },
   template: `<span :class="['relative inline-block align-middle', wrapClass]">
-    <input type="date" v-bind="$attrs" :value="modelValue"
+    <input type="date" v-bind="$attrs" :value="modelValue" @click="pick"
            @input="$emit('update:modelValue', $event.target.value)"
            @change="$emit('change', $event)"
            :class="[boxClass, 'w-full pr-8']" />
