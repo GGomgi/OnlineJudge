@@ -10896,6 +10896,14 @@ const app = createApp({
       if (kind==='out' && !l.att.in) return this.notify('등원 후 하원할 수 있습니다.', false);
       const cur = kind==='in' ? l.att.in : l.att.out;
       if (cur){ this.openAttTimePop(l, kind, cur, this.dashDate, 'dash'); return; }
+      // 지난 날짜에 '지금'을 찍으면 8월 4일 기록에 오늘 시각이 들어간다.
+      // 그날이 아니면 수업 시각을 채운 채로 물어본다 — 고쳐서 저장하면 그 시각으로 남는다.
+      if (this.dashDate !== this.todayStr){
+        this.openAttTimePop(l, kind, '', this.dashDate, 'dash');
+        this.attEditPop.time = (kind==='in') ? (l.start_time||'')
+                             : this.shiftHM(l.att.in || l.start_time, l.duration_minutes||60);
+        return;
+      }
       this._doAttCheck(l, kind, {});
     },
     openAttTimePop(l, kind, cur, date, from){
@@ -10931,7 +10939,8 @@ const app = createApp({
           // 같은 날짜의 모든 행에 반영(연속수업이면 여러 행이 같은 등하원을 공유)
           for (const x of this.stuAttHist.rows){ if (x.date===date) x.att = { ...x.att, in:r.in, out:r.out }; }
         } else {
-          for (const x of this.dashData.lessons){ if (x.student_id===l.student_id) x.att = { in:r.in, out:r.out }; }
+          // att 를 통째로 갈아치우면 비고 태그·사유가 화면에서 사라진다. 바뀐 것만 덮는다.
+          for (const x of this.dashData.lessons){ if (x.student_id===l.student_id) x.att = { ...x.att, in:r.in, out:r.out }; }
         }
       } catch(e){ this.notify(e.message,false); }
     },

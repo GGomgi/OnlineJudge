@@ -4301,6 +4301,10 @@ class DashboardAdminAPI(APIView):
                              "holidays": holiday_names})
 
 
+def kst_today_admin():
+    return (now() + timedelta(hours=9)).date()
+
+
 def _next_open_day(d, branch_ids, limit=21):
     """d 다음으로 문을 여는 날. 휴무일과 '안 여는 요일'을 건너뛴다.
 
@@ -4381,6 +4385,12 @@ class AttendanceCheckAdminAPI(APIView):
         tm = (data.get("time") or "").strip()
         field = "check_in_at" if kind == "in" else "check_out_at"
         label = "등원" if kind == "in" else "하원"
+        if kind == "out" and not clear and not a.check_in_at:
+            return self.error("등원 기록이 없습니다. 등원을 먼저 넣어 주세요.")
+        # 지난 날짜에 '지금'을 찍으면 8월 4일 기록에 8월 14일 시각이 들어간다.
+        # 그날이 아니면 시각을 반드시 받는다(화면이 수업 시각을 채워 준다).
+        if not clear and not tm and d != kst_today_admin():
+            return self.error("지난 날짜는 시각을 함께 넣어 주세요.")
         old = _hm_kst(getattr(a, field))
         if clear:
             setattr(a, field, None)
