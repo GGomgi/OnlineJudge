@@ -5541,6 +5541,12 @@ class StudentAttendanceHistoryAPI(APIView):
             existing = set(LessonOccurrence.objects.filter(
                 student_id=u.id, date__gte=d0, date__lte=d1, source_timetable__isnull=False
             ).values_list("source_timetable_id", "date"))
+            # 시간표를 바꾸면 새 줄에서 같은 날·같은 시각 수업이 하나 더 생긴다(옛 줄로 만든 것이
+            # 이미 있는데도). ensure_occurrences 에는 이 검사가 있었지만 여기엔 없어 백건우
+            # 8/13 17:00 이 두 개가 됐다.
+            taken = set(LessonOccurrence.objects.filter(
+                student_id=u.id, date__gte=d0, date__lte=d1, is_makeup=False
+            ).exclude(status=OccurrenceStatus.CANCELLED).values_list("date", "start_time"))
             creates = []
             cur = d0
             while cur <= d1:
@@ -5552,6 +5558,9 @@ class StudentAttendanceHistoryAPI(APIView):
                         continue
                     if (s.id, cur) in existing:
                         continue
+                    if (cur, s.start_time) in taken:
+                        continue
+                    taken.add((cur, s.start_time))
                     creates.append(LessonOccurrence(
                         student_id=s.student_id, branch_id=s.branch_id, source_timetable_id=s.id,
                         date=cur, start_time=s.start_time, duration_minutes=s.duration_minutes,
