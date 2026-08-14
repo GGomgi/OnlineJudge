@@ -724,6 +724,19 @@
           <!-- 보호자 (구 보호자 탭 통합) -->
           <div class="border-t pt-2">
             <div class="text-xs font-semibold text-slate-500 mb-1">보호자</div>
+            <!-- 아래 목록은 학부모 '계정'이고, 여기 세 칸은 학생 기록의 보호자다.
+                 계정 없이 종이로만 받은 학원이 대부분이라 이 칸이 없으면 정보 미완료가 풀리지 않는다 -->
+            <div class="grid grid-cols-3 gap-2 mb-2">
+              <div><label class="lbl">보호자 이름 <span v-if="stuFieldDirty('parent_name')" class="text-amber-600">✏️</span></label>
+                <input v-model="stuForm.parent_name" :readonly="!stuEditMode" :class="stuCls('parent_name')" placeholder="예: 홍길동" />
+              </div>
+              <div><label class="lbl">보호자 연락처 <span v-if="stuFieldDirty('parent_phone')" class="text-amber-600">✏️</span></label>
+                <input :value="stuForm.parent_phone" @input="stuForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" :readonly="!stuEditMode" :class="stuCls('parent_phone')" placeholder="010-0000-0000" />
+              </div>
+              <div><label class="lbl">관계 <span v-if="stuFieldDirty('parent_relation')" class="text-amber-600">✏️</span></label>
+                <input v-model="stuForm.parent_relation" list="guardianRelationList" :readonly="!stuEditMode" :class="stuCls('parent_relation')" placeholder="예: 어머니" />
+              </div>
+            </div>
             <ul class="space-y-1">
               <li v-for="gd in stuDetail.guardians" :key="gd.link_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-1.5">
                 <span class="font-medium">{{ gd.name }}<span v-if="gd.relation" class="font-normal text-slate-400">({{ gd.relation }})</span></span>
