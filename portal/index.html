@@ -2292,6 +2292,7 @@
       <div class="flex items-center gap-3 mb-2 text-sm flex-wrap">
         <span class="text-slate-500">수업 <b>{{ dashStudentCount }}</b>명 <span class="text-slate-300">({{ dashLessons.length }}건)</span></span>
         <span class="text-rose-500">결석 <b>{{ dashAbsentCount }}</b>명</span>
+        <span v-if="dashLeaveCount" class="text-violet-500">임시휴원 <b>{{ dashLeaveCount }}</b>명</span>
         <span class="text-emerald-600">등원 <b>{{ dashCheckedIn }}</b>명</span>
         <span class="text-indigo-600">하원 <b>{{ dashCheckedOut }}</b>명</span>
         <span class="text-amber-600">수업중 <b>{{ dashInClass }}</b>명</span>
@@ -7426,7 +7427,8 @@ const app = createApp({
     // 수업·결석·등원·하원 모두 '명' 기준(같은 학생이 정규+보강처럼 여러 건이어도 한 명)
     dashStudentCount(){ return new Set(this.dashLessons.filter(l=>!this.isHoliday(l)).map(l=>l.student_id)).size; },
     // 임시휴원도 그날 수업을 안 한 것이므로 결석 수에 함께 센다
-    dashAbsentCount(){ return new Set(this.dashLessons.filter(l=>this.isAbsent(l)||this.isLeave(l)).map(l=>l.student_id)).size; },
+    dashAbsentCount(){ return new Set(this.dashLessons.filter(l=>this.isAbsent(l)).map(l=>l.student_id)).size; },
+    dashLeaveCount(){ return new Set(this.dashLessons.filter(l=>this.isLeave(l)).map(l=>l.student_id)).size; },
     dashCheckedIn(){ const ids=new Set(this.dashLessons.filter(l=>l.att.in).map(l=>l.student_id)); return ids.size; },
     dashCheckedOut(){ const ids=new Set(this.dashLessons.filter(l=>l.att.out).map(l=>l.student_id)); return ids.size; },
     // 수업중 = 등원했고 아직 하원하지 않은 학생(연속수업이어도 하원 전까지 한 명)
