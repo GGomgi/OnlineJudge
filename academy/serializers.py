@@ -263,6 +263,7 @@ class LeadCreateSerializer(serializers.Serializer):
     interest = serializers.CharField(required=False, allow_blank=True)
     purpose = serializers.ChoiceField(choices=COUNSELING_PURPOSES, required=False, allow_blank=True)
     purpose_detail = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    counsel_at = serializers.CharField(max_length=32, required=False, allow_blank=True)   # 직원만
 
 
 class CounselingLogSerializer(serializers.ModelSerializer):
@@ -320,15 +321,20 @@ class LeadSerializer(serializers.ModelSerializer):
     enroll_edits = serializers.SerializerMethodField()
     create_time = serializers.SerializerMethodField()
 
+    counsel_at = serializers.SerializerMethodField()
+
     def get_create_time(self, obj):
         return _kst_str(obj.create_time)
+
+    def get_counsel_at(self, obj):
+        return _kst_str(obj.counsel_at) if obj.counsel_at else ""
 
     class Meta:
         model = Lead
         fields = ["id", "branch", "parent_name", "parent_phone", "student_name",
                   "school_type", "school_name", "grade", "interest", "contact_preference",
                   "purpose", "purpose_detail",
-                  "status", "converted_username", "close_reason", "create_time", "logs",
+                  "status", "converted_username", "close_reason", "create_time", "counsel_at", "logs",
                   "is_hidden", "reservations", "display_status", "enroll", "edits",
                   "enroll_edited", "enroll_edits"]
 

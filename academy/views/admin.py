@@ -1194,6 +1194,12 @@ class LeadEditAdminAPI(APIView):
                 oldb = lead.branch.name if lead.branch else "(없음)"
                 lead.branch = b
                 changed.append("지점(%s▸%s)" % (oldb, b.name))
+        if "counsel_at" in data:
+            newc = _parse_kst_local_dt(data.get("counsel_at"))
+            if newc != lead.counsel_at:
+                changed.append("상담 일시(%s▸%s)" % (_kst_dt_str(lead.counsel_at) or "(없음)",
+                                                 _kst_dt_str(newc) or "(없음)"))
+                lead.counsel_at = newc
         if changed:
             try:
                 log = _json.loads(lead.edit_log) if lead.edit_log else []

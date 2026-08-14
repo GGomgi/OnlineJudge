@@ -2090,6 +2090,19 @@
           </select>
           <div v-else class="input bg-slate-50 text-slate-600 flex items-center cursor-default">{{ leadFixedBranchName || '내 지점' }}</div>
         </div>
+        <!-- 전화·방문을 받고 한참 뒤에 적는 일이 잦다. 적은 때가 아니라 상담한 때를 남길 수 있어야 한다.
+             신청자가 스스로 적는 화면에는 이 칸이 없다(자기가 언제 신청했는지 정할 일이 아니다). -->
+        <div v-if="isStaff" class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+          <label class="lbl">상담한 때 <span class="text-slate-400">(비우면 지금으로)</span></label>
+          <div class="flex items-center gap-2">
+            <date-box v-model="leadForm.at_date"></date-box>
+            <input :value="leadForm.at_time" @input="leadForm.at_time = hmTyped($event.target.value)"
+                   placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" />
+            <button type="button" @click="leadNow" class="px-2.5 py-1 rounded border border-slate-300 text-slate-600 text-xs whitespace-nowrap">지금</button>
+            <button type="button" v-if="leadForm.at_date || leadForm.at_time" @click="leadForm.at_date=''; leadForm.at_time=''"
+                    class="px-2.5 py-1 rounded border border-slate-300 text-slate-500 text-xs whitespace-nowrap">비우기</button>
+          </div>
+        </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="lbl">학부모 이름 <span v-if="leadReq" class="text-rose-500">*</span></label>
@@ -3006,10 +3019,11 @@
                 {{ r.branch?.name }}<span v-if="r.school_name"> · {{ r.school_name }}{{ schoolSuffix(r.school_type) }}</span><span v-if="r.grade"> · {{ r.grade }}학년</span>
               </div>
               <div class="text-sm text-slate-500 flex items-center gap-1">{{ r.parent_phone }} <call-btn :phone="r.parent_phone"></call-btn><sms-btn :phone="r.parent_phone"></sms-btn> <span class="text-xs text-indigo-600">· {{ purposeLabel(r) }}</span></div>
+              <div v-if="r.counsel_at" class="text-xs text-slate-500 mt-1">🗓 상담 {{ dt(r.counsel_at) }}</div>
               <div v-if="r.interest" class="text-xs text-slate-400 mt-1">문의: {{ r.interest }}</div>
             </div>
             <div class="text-right shrink-0">
-              <div class="text-xs text-slate-400">{{ dt(r.create_time) }}</div>
+              <div class="text-xs text-slate-400"><span v-if="r.counsel_at" class="text-slate-300">적음 </span>{{ dt(r.create_time) }}</div>
               <div v-if="r.enroll_edited" class="mt-1 flex items-center justify-end gap-1">
                 <span class="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold cursor-help"
                       @click.stop @mouseenter="r.enroll_edits && r.enroll_edits.length && showEnrollEditPop(r,$event)" @mouseleave="hideMsgEditPop">🔔 학부모 수정됨</span>
@@ -3035,6 +3049,17 @@
             <!-- 기본 정보 수정 폼 (헤더 ✎수정 버튼으로 열림) -->
             <div v-if="editLeadId===r.id">
               <div class="space-y-2 bg-slate-50 rounded-lg p-3">
+                <div>
+                  <label class="lbl">상담한 때 <span class="text-slate-400">(비우면 적은 때로 봅니다)</span></label>
+                  <div class="flex items-center gap-2">
+                    <date-box v-model="leadEditForm.at_date" box-class="input py-1"></date-box>
+                    <input :value="leadEditForm.at_time" @input="leadEditForm.at_time = hmTyped($event.target.value)"
+                           placeholder="HH:MM" maxlength="5" class="input py-1 w-24 text-center font-mono" />
+                    <button type="button" v-if="leadEditForm.at_date || leadEditForm.at_time"
+                            @click="leadEditForm.at_date=''; leadEditForm.at_time=''"
+                            class="px-2 py-1 rounded border border-slate-300 text-slate-500 text-xs whitespace-nowrap">비우기</button>
+                  </div>
+                </div>
                 <div class="grid grid-cols-2 gap-2">
                   <div><label class="lbl">학부모 이름</label><input v-model="leadEditForm.parent_name" class="input py-1" /></div>
                   <div><label class="lbl">학부모 연락처</label><input :value="leadEditForm.parent_phone" @input="leadEditForm.parent_phone=formatPhone($event.target.value)" inputmode="numeric" class="input py-1" /></div>
@@ -6839,7 +6864,7 @@ const app = createApp({
       days: ['월','화','수','목','금','토','일'],
       attStatuses: ['PRESENT','LATE','ABSENT','EARLY_LEAVE','EXCUSED'],
       loginForm: { username:'', password:'' }, showPw: false, sabunHint: '', _sabunTimer: null,
-      leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' },
+      leadForm: { branch_id:null, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'', at_date:'', at_time:'' },
       myClasses: [], myInd: [], myAtt: [],
       docPreview: { show:false, url:'', kind:'img', x:0, y:0 },
       students: [], stuSearch: '', stuSearch2: '', stuSearchRaw: '', stuSearch2Raw: '', stuStatusFilter: 'ENROLLED', stuSortKey: 'enroll_no', stuSortDir: 'desc',
@@ -9638,9 +9663,13 @@ const app = createApp({
           if (!f.purpose) return this.notify('학생의 목표를 선택하세요.', false);
           if (this.optAllowCustom('counseling_purpose', f.purpose) && !(f.purpose_detail||'').trim()) return this.notify('학생의 목표를 직접 입력해주세요.', false);
         }
-        await api('POST','/api/academy/lead', f);
+        const body = { ...f, counsel_at: (f.at_date && f.at_time) ? (f.at_date + 'T' + f.at_time) : '' };
+        delete body.at_date; delete body.at_time;
+        if (f.at_date && !f.at_time) return this.notify('상담한 때의 시각도 적어주세요.', false);
+        if (!f.at_date && f.at_time) return this.notify('상담한 때의 날짜도 골라주세요.', false);
+        await api('POST','/api/academy/lead', body);
         this.notify('상담 신청이 접수되었습니다.');
-        this.leadForm = { branch_id:this.savedLeadBranch(), parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
+        this.leadForm = { branch_id:this.savedLeadBranch(), parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'', at_date:'', at_time:'' };
         if (this.showLeadForm) { this.showLeadForm = false; this.loadLeads(); }
       } catch(e){ this.notify(e.message, false); }
     },
@@ -9648,8 +9677,14 @@ const app = createApp({
       this.showLeadForm = true;
       // 로그인한 직원의 소속 지점을 기본 선택(전지점 역할/미배정은 선택값 없음)
       const defBranch = (this.myProfile && this.myProfile.branch) ? this.myProfile.branch.id : null;
-      this.leadForm = { branch_id:defBranch, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'' };
+      this.leadForm = { branch_id:defBranch, parent_name:'', parent_phone:'', student_name:'', school_type:'', school_name:'', grade:'', purpose:'', purpose_detail:'', interest:'', at_date:'', at_time:'' };
       this.flash.msg = '';
+    },
+    leadNow(){
+      const d = new Date(Date.now() + 9*3600*1000);   // 화면 시각은 늘 KST
+      const p = x => String(x).padStart(2,'0');
+      this.leadForm.at_date = d.toISOString().slice(0,10);
+      this.leadForm.at_time = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
     },
     closeLeadForm(){
       const done = ()=>{ this.showLeadForm = false; this.flash.msg = ''; };
@@ -12423,10 +12458,15 @@ const app = createApp({
     },
     replaceLead(updated){ const i=this.leads.findIndex(x=>x.id===updated.id); if(i>=0) this.leads.splice(i,1,updated); },
     openLeadEdit(r){ this.openLeadId=r.id; if(this.editLeadId===r.id){ this.editLeadId=null; return; } this.startLeadEdit(r); },
-    startLeadEdit(r){ if(!(this.options.school_type||[]).length) this.loadOptions(); this.editLeadId=r.id; this.leadEditForm={ parent_name:r.parent_name||'', parent_phone:r.parent_phone||'', student_name:r.student_name||'', school_type:r.school_type||'', school_name:r.school_name||'', grade:r.grade||'', purpose:r.purpose||'', purpose_detail:r.purpose_detail||'', interest:r.interest||'' }; },
+    startLeadEdit(r){ if(!(this.options.school_type||[]).length) this.loadOptions(); this.editLeadId=r.id; const ca=String(r.counsel_at||''); this.leadEditForm={ parent_name:r.parent_name||'', parent_phone:r.parent_phone||'', student_name:r.student_name||'', school_type:r.school_type||'', school_name:r.school_name||'', grade:r.grade||'', purpose:r.purpose||'', purpose_detail:r.purpose_detail||'', interest:r.interest||'', at_date:ca.slice(0,10), at_time:ca.slice(11,16) }; },
     cancelLeadEdit(){ this.editLeadId=null; },
     async saveLeadEdit(r){
-      try { const d=await api('POST','/api/admin/academy/lead/edit', { lead_id:r.id, ...this.leadEditForm }); this.replaceLead(d); this.editLeadId=null; this.notify('수정되었습니다.'); }
+      const f = this.leadEditForm;
+      if (f.at_date && !f.at_time) return this.notify('상담한 때의 시각도 적어주세요.', false);
+      if (!f.at_date && f.at_time) return this.notify('상담한 때의 날짜도 골라주세요.', false);
+      const body = { lead_id:r.id, ...f, counsel_at: (f.at_date && f.at_time) ? (f.at_date + 'T' + f.at_time) : '' };
+      delete body.at_date; delete body.at_time;
+      try { const d=await api('POST','/api/admin/academy/lead/edit', body); this.replaceLead(d); this.editLeadId=null; this.notify('수정되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
     showEnrollEditPop(r,e){ clearTimeout(this._msgEditTimer); this.msgEditPop={ show:true, list:(r.enroll_edits||[]).slice().reverse().map(x=>({time:x.time, by:'학부모', items:x.changes})), x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-260) }; },

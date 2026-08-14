@@ -202,8 +202,14 @@ class LeadCreateAPI(APIView):
                     return self.error(label + "을(를) 입력해 주세요.")
             if data.get("purpose") == "ETC" and not (data.get("purpose_detail") or "").strip():
                 return self.error("학생의 목표를 직접 입력해 주세요.")
+        # 상담한 때는 직원만 정할 수 있다. 신청자가 스스로 적는 화면에는 이 칸이 없다.
+        counsel_at = None
+        if is_staff:
+            from .admin import _parse_kst_local_dt
+            counsel_at = _parse_kst_local_dt(data.get("counsel_at"))
         Lead.objects.create(
             branch=branch,
+            counsel_at=counsel_at,
             parent_name=(data.get("parent_name") or "").strip(),
             parent_phone=(data.get("parent_phone") or "").strip(),
             student_name=(data.get("student_name") or "").strip(),

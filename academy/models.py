@@ -318,6 +318,9 @@ class Lead(models.Model):
     deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     deleted_at = models.DateTimeField(null=True, blank=True)
+    # 실제로 상담한 때. 전화·방문을 받고 한참 뒤에 적는 일이 잦아, 적은 때(create_time)와
+    # 상담한 때가 다르다. 비어 있으면 적은 때를 상담한 때로 본다.
+    counsel_at = models.DateTimeField(null=True, blank=True)
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 
