@@ -13049,8 +13049,9 @@ app.component('search-box', {
 // 손댈 수 없으므로, 칸 안쪽 오른편에 요일만 겹쳐 올린다(오늘 운영 날짜 칸과 같은 방식).
 // 고르기 전에는 아무것도 안 나온다 — 브라우저가 '연도-월-일'을 쓰는 자리라 겹치면 지저분하다.
 app.component('date-box', {
+  // 날짜 칸은 어디서든 같은 폭이다(.date-w). 줄 안에서 늘어나야 하는 곳만 따로 정한다.
   props: { modelValue: { default: '' }, boxClass: { default: 'input py-1' },
-           wrapClass: { default: 'w-full' } },
+           wrapClass: { default: 'date-w' } },
   emits: ['update:modelValue', 'change'],
   inheritAttrs: false,
   computed: {
