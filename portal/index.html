@@ -2308,6 +2308,7 @@
           <span class="text-purple-400">{{ panelOpen('leave') ? '▾' : '▸' }}</span>
           🏖 임시휴원 ({{ dashData.temp_leaves.length }}명)
           <span class="font-normal text-purple-400">— 시작 10일 전부터 미리 표시</span>
+          <span class="ml-auto font-normal text-slate-400">{{ panelOpen('leave') ? '접기' : '펼치기' }}</span>
         </button>
         <template v-if="panelOpen('leave')">
         <!-- 지금 쉬는 중과 앞으로 쉴 예정을 줄로 나눠 한눈에 구분 -->
@@ -2361,6 +2362,7 @@
           <label v-if="panelOpen('resv')" class="ml-auto flex items-center gap-1 text-[11px] text-slate-500 cursor-pointer">
             <input type="checkbox" v-model="dashShowDone" class="w-3.5 h-3.5"> 상담완료 표시
           </label>
+          <span :class="['text-[11px] text-slate-400 shrink-0', panelOpen('resv') ? '' : 'ml-auto']">{{ panelOpen('resv') ? '접기' : '펼치기' }}</span>
         </div>
         <ul v-if="panelOpen('resv')" class="divide-y mt-2">
           <li v-for="rv in dashReservations" :key="rv.id" class="flex items-center gap-2 py-1.5 text-sm">
@@ -2380,6 +2382,7 @@
         <button @click="togglePanel('enr')" class="w-full text-left text-xs font-semibold text-emerald-600 flex items-center gap-1">
           <span class="text-emerald-400">{{ panelOpen('enr') ? '▾' : '▸' }}</span>
           📝 등록 링크 작성 완료 <span class="text-slate-400 font-normal">{{ dashEnrolled.length }}건 · 등록 전환 전까지 표시</span>
+          <span class="ml-auto font-normal text-slate-400">{{ panelOpen('enr') ? '접기' : '펼치기' }}</span>
         </button>
         <ul v-if="panelOpen('enr')" class="divide-y mt-2">
           <li v-for="l in dashEnrolled" :key="l.id" class="flex items-center gap-2 py-1.5 text-sm">
@@ -2392,18 +2395,31 @@
           </li>
         </ul>
       </div>
-      <!-- 내일 보강 — 오늘 준비할 것이라 오늘 화면에 둔다. 이름과 시각만. -->
-      <div v-if="(dashData.tomorrow_makeups||[]).length" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-blue-300">
-        <button @click="togglePanel('mk')" class="w-full text-left text-xs font-semibold text-blue-600 flex items-center gap-1">
-          <span class="text-blue-400">{{ panelOpen('mk') ? '▾' : '▸' }}</span>
-          🔁 내일 보강 <span class="text-slate-400 font-normal">{{ dashData.tomorrow_makeups.length }}건 · {{ dd(dashNextDay) }}</span>
-        </button>
-        <div v-if="panelOpen('mk')" class="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-sm">
-          <div v-for="m in dashData.tomorrow_makeups" :key="m.id" class="flex items-baseline gap-1.5 whitespace-nowrap">
-            <span class="font-mono text-slate-500">{{ m.time }}</span>
-            <button @click="openStudent({ id:m.student_id })" class="font-medium hover:underline">{{ m.name }}</button>
-            <span v-if="showBranchCol" class="text-xs text-slate-400">{{ m.branch }}</span>
+      <!-- 다음 수업일 보강 — 그날 오는 학생에게 미리 안내하려고 본다.
+           내일이 휴무일이거나 문 안 여는 요일이면 그다음 날로 넘어간다. -->
+      <div v-if="dashData.next_open_day" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-blue-300">
+        <div class="flex items-center gap-2">
+          <button @click="togglePanel('mk')" class="text-left text-xs font-semibold text-blue-600 flex items-center gap-1">
+            <span class="text-blue-400">{{ panelOpen('mk') ? '▾' : '▸' }}</span>
+            🔁 다음 수업일 보강
+            <span class="text-slate-400 font-normal">{{ (dashData.next_makeups||[]).length }}건 · {{ dd(dashData.next_open_day) }}</span>
+          </button>
+          <!-- 기본값이 없으면 요일로 거르지 못한다. 조용히 틀린 날을 짚어 주면 안 된다 -->
+          <span v-if="(dashData.no_work_schedule||[]).length" class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+            ⚠ {{ dashData.no_work_schedule.join('·') }} 지점의 <b>근무 기준(휴무 요일) 기본값</b>이 없어 쉬는 요일을 건너뛰지 못합니다
+            <span class="text-amber-500">— 원장: 학원 관리 › 근무 기준 › 기본값 지정</span>
+          </span>
+          <span class="ml-auto text-[11px] text-slate-400 shrink-0">{{ panelOpen('mk') ? '접기' : '펼치기' }}</span>
+        </div>
+        <div v-if="panelOpen('mk')" class="mt-2 text-sm">
+          <div v-if="(dashData.next_makeups||[]).length" class="flex flex-wrap gap-x-5 gap-y-1">
+            <div v-for="m in dashData.next_makeups" :key="m.id" class="flex items-baseline gap-1.5 whitespace-nowrap">
+              <span class="font-mono text-slate-500">{{ m.time }}</span>
+              <button @click="openStudent({ id:m.student_id })" class="font-medium hover:underline">{{ m.name }}</button>
+              <span v-if="showBranchCol" class="text-xs text-slate-400">{{ m.branch }}</span>
+            </div>
           </div>
+          <div v-else class="text-xs text-slate-400">그날 보강은 없습니다.</div>
         </div>
       </div>
 
@@ -7596,14 +7612,6 @@ const app = createApp({
     dashAllDone(){ const ls=this.dashLessons; return ls.length>0 && ls.every(l=>this.isAbsent(l) || this.isLeave(l) || l.att.out); },
     nowClock(){ const d=new Date(this.clockNow); const p=x=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); },
     dashIsToday(){ return this.dashDate===this.todayStr; },
-    dashNextDay(){
-      const t = String(this.dashDate||'');
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return '';
-      const [y,m,d] = t.split('-').map(Number);
-      const n = new Date(y, m-1, d+1);
-      const p = x => String(x).padStart(2,'0');
-      return n.getFullYear() + '-' + p(n.getMonth()+1) + '-' + p(n.getDate());
-    },
     nowMin(){ const d=new Date(this.clockNow); return d.getHours()*60+d.getMinutes(); },
     nowLineIndex(){
       // 이미 시작된(현재 시각 이하) 마지막 수업 바로 다음 인덱스(없으면 0)

@@ -28,6 +28,7 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       TimetableChange, StudentStatusChange, StudentCredential, StaffChangeLog, DailyAttendance,
                       AttendanceChange, LessonOccurrence, OccurrenceStatus, LessonProgress,
                       MsgTemplateGroup, MsgTemplate, FixedTemplate, KioskDevice, KioskDeviceStatus,
+                      Holiday, WorkSchedule,
                       staff_field_label, staff_value_text)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 
@@ -4272,26 +4273,64 @@ class DashboardAdminAPI(APIView):
         except (TypeError, ValueError):
             late_min = 5
         extra = _dash_student_extra(d, lessons, late_min)
-        # 내일 보강 — 오늘 준비할 것이라 오늘 화면에 있어야 한다. 이름과 시각만 있으면 된다.
-        mq = LessonOccurrence.objects.filter(
-            date=d + timedelta(days=1), is_makeup=True).exclude(
-            status=OccurrenceStatus.CANCELLED).select_related(
-            "student", "student__userprofile", "branch").order_by("start_time")
-        if view is not None:
-            mq = mq.filter(branch_id__in=view)
-        if bid:
-            mq = mq.filter(branch_id=bid)
-        tomorrow_makeups = [{"id": o.id, "student_id": o.student_id,
-                             "name": _name_of(o.student), "time": str(o.start_time)[:5],
-                             "subject": o.subject or "",
-                             "branch": (o.branch.name if o.branch_id else "")}
-                            for o in mq[:100]]
+        # 다음 수업일 보강 — 그날 오는 학생에게 미리 안내하려고 본다. 내일이 휴무일이거나
+        # 문 안 여는 요일이면 그다음 날로 넘어가며 찾는다.
+        bids = [bid] if bid else (list(view) if view is not None
+                                  else list(Branch.objects.values_list("id", flat=True)))
+        nxt, no_ws = _next_open_day(d, bids)
+        makeups = []
+        if nxt:
+            mq = LessonOccurrence.objects.filter(
+                date=nxt, is_makeup=True).exclude(
+                status=OccurrenceStatus.CANCELLED).select_related(
+                "student", "student__userprofile", "branch").order_by("start_time")
+            if bids:
+                mq = mq.filter(branch_id__in=bids)
+            makeups = [{"id": o.id, "student_id": o.student_id,
+                        "name": _name_of(o.student), "time": str(o.start_time)[:5],
+                        "subject": o.subject or "",
+                        "branch": (o.branch.name if o.branch_id else "")}
+                       for o in mq[:100]]
         return self.success({"date": str(d), "weekday": WD[wd], "lessons": lessons,
                              "student_extra": extra,
                              "total": len(lessons), "present": len(att), "reservations": reservations,
                              "enrolled_leads": enrolled, "temp_leaves": temp_leaves,
-                             "tomorrow_makeups": tomorrow_makeups,
+                             "next_open_day": (str(nxt) if nxt else ""),
+                             "next_makeups": makeups,
+                             "no_work_schedule": no_ws,
                              "holidays": holiday_names})
+
+
+def _next_open_day(d, branch_ids, limit=21):
+    """d 다음으로 문을 여는 날. 휴무일과 '안 여는 요일'을 건너뛴다.
+
+    안 여는 요일은 지점 근무 기준(WorkSchedule)의 지점 기본값에서 읽는다. 기본값이 없는
+    지점은 요일로 거르지 못하므로 그 지점 이름을 함께 돌려주어 화면이 알리게 한다.
+    (없는 지점을 조용히 '매일 연다'고 보면 쉬는 날을 짚어 준다.)"""
+    if not branch_ids:
+        return None, []
+    open_wd, no_ws = {}, []
+    for b in Branch.objects.filter(id__in=branch_ids):
+        ws = WorkSchedule.objects.filter(
+            branch_id=b.id, staff__isnull=True, active_from__lte=d).filter(
+            Q(active_until__isnull=True) | Q(active_until__gte=d)).order_by("-active_from", "-id").first()
+        if ws:
+            open_wd[b.id] = {int(c) for c in (ws.workdays or "") if c.isdigit()}
+        else:
+            open_wd[b.id] = None          # 모름 — 요일로 거르지 않는다
+            no_ws.append(b.name)
+    day = d
+    for _ in range(limit):
+        day += timedelta(days=1)
+        hol = set(Holiday.objects.filter(date=day, is_deleted=False).values_list("branch_id", flat=True))
+        for bid_ in branch_ids:
+            if bid_ in hol or None in hol:      # 그 지점 휴무 또는 전 지점 공통 휴무
+                continue
+            wds = open_wd.get(bid_)
+            if wds is not None and day.weekday() not in wds:
+                continue
+            return day, no_ws                   # 한 지점이라도 열면 그날이 다음 수업일
+    return None, no_ws
 
 
 def _kst_to_utc(d, hm):
