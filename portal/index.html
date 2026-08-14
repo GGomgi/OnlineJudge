@@ -2355,14 +2355,15 @@
       <!-- 위: 오늘 상담 예약 -->
       <div v-if="dashReservationsAll.length" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-amber-300">
         <div class="flex items-center gap-2">
-          <button @click="togglePanel('resv')" class="text-xs font-semibold text-amber-600 flex items-center gap-1">
+          <button @click="togglePanel('resv')" class="flex-1 min-w-0 text-left text-xs font-semibold text-amber-600 flex items-center gap-1">
             <span class="text-amber-400">{{ panelOpen('resv') ? '▾' : '▸' }}</span>
             📅 오늘 상담 예약 <span class="text-slate-400 font-normal">{{ dashReservations.length }}건</span>
+            <span v-if="!panelOpen('resv')" class="ml-auto font-normal text-slate-400">펼치기</span>
           </button>
-          <label v-if="panelOpen('resv')" class="ml-auto flex items-center gap-1 text-[11px] text-slate-500 cursor-pointer">
+          <label v-if="panelOpen('resv')" class="flex items-center gap-1 text-[11px] text-slate-500 cursor-pointer shrink-0">
             <input type="checkbox" v-model="dashShowDone" class="w-3.5 h-3.5"> 상담완료 표시
           </label>
-          <span :class="['text-[11px] text-slate-400 shrink-0', panelOpen('resv') ? '' : 'ml-auto']">{{ panelOpen('resv') ? '접기' : '펼치기' }}</span>
+          <button v-if="panelOpen('resv')" @click="togglePanel('resv')" class="text-[11px] text-slate-400 shrink-0">접기</button>
         </div>
         <ul v-if="panelOpen('resv')" class="divide-y mt-2">
           <li v-for="rv in dashReservations" :key="rv.id" class="flex items-center gap-2 py-1.5 text-sm">
@@ -2398,26 +2399,28 @@
       <!-- 다음 수업일 보강 — 그날 오는 학생에게 미리 안내하려고 본다.
            내일이 휴무일이거나 문 안 여는 요일이면 그다음 날로 넘어간다. -->
       <div v-if="dashData.next_open_day" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-blue-300">
-        <div class="flex items-center gap-2">
-          <button @click="togglePanel('mk')" class="text-left text-xs font-semibold text-blue-600 flex items-center gap-1">
-            <span class="text-blue-400">{{ panelOpen('mk') ? '▾' : '▸' }}</span>
-            🔁 다음 수업일 보강
-            <span class="text-slate-400 font-normal">{{ (dashData.next_makeups||[]).length }}건 · {{ dd(dashData.next_open_day) }}</span>
-          </button>
+        <!-- 줄 아무 데나 눌러도 접힌다. 글자만 눌러야 하면 누를 생각을 안 한다 -->
+        <button @click="togglePanel('mk')" class="w-full text-left text-xs font-semibold text-blue-600 flex items-center gap-2">
+          <span class="text-blue-400">{{ panelOpen('mk') ? '▾' : '▸' }}</span>
+          🔁 다음 수업일 보강
+          <span class="text-slate-400 font-normal">{{ (dashData.next_makeups||[]).length }}건 · {{ dd(dashData.next_open_day) }}</span>
           <!-- 기본값이 없으면 요일로 거르지 못한다. 조용히 틀린 날을 짚어 주면 안 된다 -->
-          <span v-if="(dashData.no_work_schedule||[]).length" class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+          <span v-if="(dashData.no_work_schedule||[]).length" class="font-normal text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
             ⚠ {{ dashData.no_work_schedule.join('·') }} 지점의 <b>근무 기준(휴무 요일) 기본값</b>이 없어 쉬는 요일을 건너뛰지 못합니다
             <span class="text-amber-500">— 원장: 학원 관리 › 근무 기준 › 기본값 지정</span>
           </span>
-          <span class="ml-auto text-[11px] text-slate-400 shrink-0">{{ panelOpen('mk') ? '접기' : '펼치기' }}</span>
-        </div>
+          <span class="ml-auto font-normal text-slate-400 shrink-0">{{ panelOpen('mk') ? '접기' : '펼치기' }}</span>
+        </button>
         <div v-if="panelOpen('mk')" class="mt-2 text-sm">
-          <div v-if="(dashData.next_makeups||[]).length" class="flex flex-wrap gap-x-5 gap-y-1">
-            <div v-for="m in dashData.next_makeups" :key="m.id" class="flex items-baseline gap-1.5 whitespace-nowrap">
-              <span class="font-mono text-slate-500">{{ m.time }}</span>
-              <button @click="openStudent({ id:m.student_id })" class="font-medium hover:underline">{{ m.name }}</button>
-              <span v-if="showBranchCol" class="text-xs text-slate-400">{{ m.branch }}</span>
-            </div>
+          <div v-if="(dashData.next_makeups||[]).length" class="flex flex-wrap items-baseline gap-y-1">
+            <template v-for="(m,i) in dashData.next_makeups" :key="m.id">
+              <span v-if="i" class="text-slate-300 px-2">|</span>
+              <span class="whitespace-nowrap">
+                <button @click="openStudent({ id:m.student_id })" class="font-medium hover:underline">{{ m.name }}</button>
+                <span class="ml-1 font-mono text-slate-500">{{ m.time }}</span>
+                <span v-if="showBranchCol" class="ml-1 text-xs text-slate-400">{{ m.branch }}</span>
+              </span>
+            </template>
           </div>
           <div v-else class="text-xs text-slate-400">그날 보강은 없습니다.</div>
         </div>

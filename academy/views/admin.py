@@ -4313,6 +4313,12 @@ def _next_open_day(d, branch_ids, limit=21):
     (없는 지점을 조용히 '매일 연다'고 보면 쉬는 날을 짚어 준다.)"""
     if not branch_ids:
         return None, []
+    # 학생이 없는 지점은 기준이 없어도 알릴 까닭이 없다(고양·파주처럼 아직 안 여는 곳)
+    enrolled = set(StudentProfile.objects.filter(
+        enrollment_status=EnrollmentStatus.ENROLLED).values_list("user_id", flat=True))
+    live = set(AcademyProfile.objects.filter(
+        is_deleted=False, role=AcademyRole.STUDENT,
+        branch_id__in=branch_ids, user_id__in=enrolled).values_list("branch_id", flat=True))
     open_wd, no_ws = {}, []
     for b in Branch.objects.filter(id__in=branch_ids):
         ws = WorkSchedule.objects.filter(
@@ -4322,7 +4328,8 @@ def _next_open_day(d, branch_ids, limit=21):
             open_wd[b.id] = {int(c) for c in (ws.workdays or "") if c.isdigit()}
         else:
             open_wd[b.id] = None          # 모름 — 요일로 거르지 않는다
-            no_ws.append(b.name)
+            if b.id in live:
+                no_ws.append(b.name)
     day = d
     for _ in range(limit):
         day += timedelta(days=1)
