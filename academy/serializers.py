@@ -264,6 +264,7 @@ class LeadCreateSerializer(serializers.Serializer):
     purpose = serializers.ChoiceField(choices=COUNSELING_PURPOSES, required=False, allow_blank=True)
     purpose_detail = serializers.CharField(max_length=255, required=False, allow_blank=True)
     counsel_at = serializers.CharField(max_length=32, required=False, allow_blank=True)   # 직원만
+    channel = serializers.CharField(max_length=16, required=False, allow_blank=True)
 
 
 class CounselingLogSerializer(serializers.ModelSerializer):
@@ -334,7 +335,8 @@ class LeadSerializer(serializers.ModelSerializer):
         fields = ["id", "branch", "parent_name", "parent_phone", "student_name",
                   "school_type", "school_name", "grade", "interest", "contact_preference",
                   "purpose", "purpose_detail",
-                  "status", "converted_username", "close_reason", "create_time", "counsel_at", "logs",
+                  "status", "converted_username", "close_reason", "create_time", "counsel_at",
+                  "channel", "logs",
                   "is_hidden", "reservations", "display_status", "enroll", "edits",
                   "enroll_edited", "enroll_edits"]
 
@@ -434,8 +436,10 @@ class LeadSerializer(serializers.ModelSerializer):
             bits.append("학생의 목표: " + purpose_label)
         if bits:
             out.append({
-                "id": "initial", "author": None, "channel": "",
-                "summary": "\n".join(bits), "counsel_at": None, "next_contact_at": None,
+                "id": "initial", "author": None, "channel": obj.channel or "VISIT",
+                "summary": "\n".join(bits),
+                "counsel_at": (_kst_str(obj.counsel_at) if obj.counsel_at else None),
+                "next_contact_at": None,
                 "create_time": _kst_str(obj.create_time), "is_hidden": False,
                 "edited_by": None, "edited_at": None, "prev_summary": "", "edits": [],
                 "is_initial": True,

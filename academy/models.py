@@ -321,6 +321,8 @@ class Lead(models.Model):
     # 실제로 상담한 때. 전화·방문을 받고 한참 뒤에 적는 일이 잦아, 적은 때(create_time)와
     # 상담한 때가 다르다. 비어 있으면 적은 때를 상담한 때로 본다.
     counsel_at = models.DateTimeField(null=True, blank=True)
+    # 처음 어떻게 닿았는지. VISIT/CALL/MESSAGE/ETC. 전에는 무조건 방문으로 보였다.
+    channel = models.CharField(max_length=16, blank=True, default="VISIT")
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 

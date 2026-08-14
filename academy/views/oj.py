@@ -210,6 +210,7 @@ class LeadCreateAPI(APIView):
         Lead.objects.create(
             branch=branch,
             counsel_at=counsel_at,
+            channel=((data.get("channel") or "VISIT") if is_staff else "VISIT"),
             parent_name=(data.get("parent_name") or "").strip(),
             parent_phone=(data.get("parent_phone") or "").strip(),
             student_name=(data.get("student_name") or "").strip(),

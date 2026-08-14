@@ -1194,6 +1194,11 @@ class LeadEditAdminAPI(APIView):
                 oldb = lead.branch.name if lead.branch else "(없음)"
                 lead.branch = b
                 changed.append("지점(%s▸%s)" % (oldb, b.name))
+        if "channel" in data and (data.get("channel") or "") != lead.channel:
+            _CH = {"VISIT": "방문", "CALL": "전화", "MESSAGE": "문자", "ETC": "기타"}
+            changed.append("상담 방법(%s▸%s)" % (_CH.get(lead.channel, lead.channel or "(없음)"),
+                                            _CH.get(data.get("channel"), data.get("channel") or "(없음)")))
+            lead.channel = data.get("channel") or "VISIT"
         if "counsel_at" in data:
             newc = _parse_kst_local_dt(data.get("counsel_at"))
             if newc != lead.counsel_at:
