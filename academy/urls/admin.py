@@ -4,7 +4,8 @@ from ..views.verify import ProfileVerifyAdminAPI, ProfileVerifyResolveAPI, Stude
 from ..views.promotion import PromotionPreviewAPI, PromotionAPI
 from ..views.exam import (SavedSearchAPI, ExamChangeAdminAPI, ExamCatalogAdminAPI, ExamSessionAdminAPI, ExamEntryAdminAPI,
                           ExamContactAdminAPI, ExamStageAdminAPI,
-                          MenuSettingAdminAPI, MyMenuAPI)
+                          MenuSettingAdminAPI, MyMenuAPI,
+                          TuitionRateAdminAPI, DiscountItemAdminAPI)
 from ..views.hr import (WorkPlanAPI, HolidayAdminAPI, WorkScheduleAdminAPI, StaffAttendanceAPI,
                         StaffAttendanceCheckAPI, StaffAttendanceEditAPI,
                         StaffAttendanceApproveAPI, StaffAttendanceHistoryAPI,
@@ -135,4 +136,6 @@ urlpatterns = [
     url(r"^academy/exam_stage/?$", ExamStageAdminAPI.as_view(), name="academy_exam_stage"),
     url(r"^academy/menu_setting/?$", MenuSettingAdminAPI.as_view(), name="academy_menu_setting"),
     url(r"^academy/my_menus/?$", MyMenuAPI.as_view(), name="academy_my_menus"),
+    url(r"^academy/tuition_rate/?$", TuitionRateAdminAPI.as_view(), name="academy_tuition_rate"),
+    url(r"^academy/discount_item/?$", DiscountItemAdminAPI.as_view(), name="academy_discount_item"),
 ]

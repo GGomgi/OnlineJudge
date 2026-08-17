@@ -22,6 +22,8 @@ from ..models import (ExamCatalog, ExamSession, ExamEntry, ExamTeam, ExamKind, E
 from ..services import viewable_branch_ids, can_manage_branch, can_view_branch
 from .admin import DIRECTOR_UP_ROLES
 from ..models import ExamChange, ExamChangeKind, EXAM_CHANGE_CHOICES, SavedSearch
+from ..models import TuitionRate, TuitionRateChange, DiscountItem, Branch, AcademyRole
+from itertools import product
 from ..services_brand import (KINDS as BRAND_KINDS, MAX_UPLOAD_BYTES as BRAND_MAX_BYTES,
                               ALLOWED_EXT as BRAND_EXT, brand_all, save_brand, delete_brand)
 
@@ -91,6 +93,11 @@ def item_text(items, base_fee=None):
         f = it.get("fee")
         parts.append("%s:%d" % (it["name"], f) if f else it["name"])
     return ", ".join(parts)
+
+
+def kst_dt(dt):
+    """저장된 UTC 를 화면용 KST 문자열로. 화면에 적는 시각은 늘 +9h."""
+    return str(dt + timedelta(hours=9))[:16] if dt else ""
 
 
 def name_of(u):
@@ -805,6 +812,197 @@ class MyMenuAPI(APIView):
         return self.success({"keys": menu_allowed_keys(request.user)})
 
 
+# 실제로 쓰이는 회당 시간. 여기 없는 값도 시간표에는 있을 수 있어 화면에서 함께 보여 준다.
+TUITION_DURATIONS = [50, 60, 90, 120, 180]
+TUITION_WEEKS = [1, 2]
+
+
+class TuitionRateAdminAPI(APIView):
+    """원비 기준표 — 지점 × 주횟수 × 회당 시간 → 한 달 금액."""
+
+    @admin_role_required
+    def get(self, request):
+        me = request.user
+        view = viewable_branch_ids(me)
+        bq = Branch.objects.filter(is_active=True)
+        if view is not None:
+            bq = bq.filter(id__in=view)
+        branches = list(bq.order_by("id"))
+        have = {(r.branch_id, r.sessions_per_week, r.duration_minutes): r
+                for r in TuitionRate.objects.filter(branch_id__in=[b.id for b in branches])}
+        # 시간표에 실제로 있는 조합(표에 없더라도 알려 줘야 한다)
+        used = _tuition_used_combos([b.id for b in branches])
+        rows = []
+        for b in branches:
+            combos = sorted(set(list(product(TUITION_WEEKS, TUITION_DURATIONS)) + used.get(b.id, [])))
+            for wk, du in combos:
+                r = have.get((b.id, wk, du))
+                rows.append({
+                    "branch_id": b.id, "branch": b.name,
+                    "sessions_per_week": wk, "duration_minutes": du,
+                    "amount": (r.amount if r else 0),
+                    "note": (r.note if r else ""),
+                    "people": used.get(b.id, {}).count((wk, du)) if isinstance(used.get(b.id), list) else 0,
+                })
+        counts = _tuition_people_counts([b.id for b in branches])
+        for r in rows:
+            r["people"] = counts.get((r["branch_id"], r["sessions_per_week"], r["duration_minutes"]), 0)
+        hist = [{"branch": (c.branch.name if c.branch_id else "전 지점"), "detail": c.detail,
+                 "reason": c.reason, "actor": name_of(c.actor) if c.actor_id else "",
+                 "time": kst_dt(c.create_time)}
+                for c in TuitionRateChange.objects.select_related("branch", "actor")[:100]]
+        return self.success({"rows": rows,
+                             "branches": [{"id": b.id, "name": b.name} for b in branches],
+                             "history": hist})
+
+    @admin_role_required
+    def post(self, request):
+        """{branch_id, sessions_per_week, duration_minutes, amount, note?, reason?}"""
+        d = request.data
+        b = Branch.objects.filter(id=d.get("branch_id")).first()
+        if not b:
+            return self.error("지점이 없습니다.")
+        if not can_manage_branch(request.user, b.id):
+            return self.error("이 지점을 관리할 권한이 없습니다.")
+        try:
+            wk = int(d.get("sessions_per_week"))
+            du = int(d.get("duration_minutes"))
+            amount = int(str(d.get("amount") or 0).replace(",", "") or 0)
+        except (TypeError, ValueError):
+            return self.error("값이 올바르지 않습니다.")
+        if wk < 1 or du < 1 or amount < 0:
+            return self.error("값이 올바르지 않습니다.")
+        r = TuitionRate.objects.filter(branch=b, sessions_per_week=wk, duration_minutes=du).first()
+        old_amt = r.amount if r else 0
+        if r:
+            r.amount = amount
+            r.note = (d.get("note") or "").strip()
+            r.updated_by = request.user
+            r.save(update_fields=["amount", "note", "updated_by", "update_time"])
+        else:
+            r = TuitionRate.objects.create(branch=b, sessions_per_week=wk, duration_minutes=du,
+                                           amount=amount, note=(d.get("note") or "").strip(),
+                                           updated_by=request.user)
+        if old_amt != amount:
+            TuitionRateChange.objects.create(
+                branch=b, actor=request.user, reason=(d.get("reason") or "").strip(),
+                detail="주%d회 %d분: %s → %s원" % (wk, du, format(old_amt, ","), format(amount, ",")))
+        return self.success({"ok": True})
+
+
+class DiscountItemAdminAPI(APIView):
+    """할인 항목 — 여러 개를 겹쳐 붙일 수 있다. 정액 먼저 빼고 비율을 적용한다."""
+
+    @admin_role_required
+    def get(self, request):
+        view = viewable_branch_ids(request.user)
+        qs = DiscountItem.objects.select_related("branch")
+        if view is not None:
+            qs = qs.filter(Q(branch__isnull=True) | Q(branch_id__in=view))
+        rows = [{"id": x.id, "name": x.name, "kind": x.kind, "value": x.value,
+                 "recurring": x.recurring, "branch_id": x.branch_id,
+                 "branch": (x.branch.name if x.branch_id else ""), "is_active": x.is_active,
+                 "note": x.note} for x in qs]
+        return self.success({"rows": rows})
+
+    @admin_role_required
+    def post(self, request):
+        d = request.data
+        if not _is_director_up_exam(request.user):
+            return self.error("원장 이상만 고칠 수 있습니다.")
+        x = DiscountItem.objects.filter(id=d.get("id")).first() if d.get("id") else None
+        name = (d.get("name") or "").strip()
+        if not x and not name:
+            return self.error("할인 이름을 적어 주세요.")
+        try:
+            value = int(str(d.get("value") or 0).replace(",", "") or 0)
+        except (TypeError, ValueError):
+            return self.error("값이 올바르지 않습니다.")
+        kind = d.get("kind") if d.get("kind") in ("AMOUNT", "PERCENT") else "AMOUNT"
+        if kind == "PERCENT" and not (0 <= value <= 100):
+            return self.error("비율은 0~100 사이여야 합니다.")
+        bid = d.get("branch_id") or None
+        if x:
+            if name:
+                x.name = name
+            x.kind = kind
+            x.value = value
+            x.recurring = bool(d.get("recurring", x.recurring))
+            x.branch_id = bid
+            x.note = (d.get("note") or "").strip()
+            if "is_active" in d:
+                x.is_active = bool(d.get("is_active"))
+            x.save()
+        else:
+            x = DiscountItem.objects.create(
+                name=name, kind=kind, value=value, branch_id=bid,
+                recurring=bool(d.get("recurring", True)), note=(d.get("note") or "").strip())
+        return self.success({"id": x.id})
+
+    @admin_role_required
+    def delete(self, request):
+        if not _is_director_up_exam(request.user):
+            return self.error("원장 이상만 지울 수 있습니다.")
+        x = DiscountItem.objects.filter(id=request.GET.get("id")).first()
+        if not x:
+            return self.error("항목이 없습니다.")
+        x.is_active = False          # 지우지 않고 끈다 — 이미 붙은 것은 그대로 둔다
+        x.save(update_fields=["is_active"])
+        return self.success({"ok": True})
+
+
+def _tuition_used_combos(branch_ids):
+    """지점마다 시간표에 실제로 있는 (주횟수, 회당시간) 조합."""
+    out = {}
+    for bid, combos in _tuition_student_combos(branch_ids).items():
+        out[bid] = sorted({c for c, _n in combos.items()})
+    return out
+
+
+def _tuition_people_counts(branch_ids):
+    cnt = {}
+    for bid, combos in _tuition_student_combos(branch_ids).items():
+        for c, n in combos.items():
+            cnt[(bid, c[0], c[1])] = n
+    return cnt
+
+
+def _tuition_student_combos(branch_ids):
+    """지점 → {(주횟수, 회당시간): 인원}. 회당 시간이 섞인 학생은 여기서 빠진다
+    (그 학생은 회차별로 나눠 더하므로 표의 한 칸에 담기지 않는다).
+
+    요일을 옮기면 옛 줄은 기간만 끊기고 status 는 ACTIVE 로 남는다. status 만 보면
+    끝난 줄까지 세어 주1회가 주2회로 둔갑한다(고은결·심규민이 그랬다).
+    반드시 '오늘 적용중인지'로 걸러야 한다."""
+    from ..models import StudentTimetable, StudentProfile, AcademyProfile, EnrollmentStatus
+    from .admin import _slot_active_on
+    today = (now() + timedelta(hours=9)).date()
+    enrolled = set(StudentProfile.objects.filter(
+        enrollment_status=EnrollmentStatus.ENROLLED).values_list("user_id", flat=True))
+    branch_of = {a.user_id: a.branch_id for a in AcademyProfile.objects.filter(
+        is_deleted=False, branch_id__in=branch_ids, user_id__in=enrolled)}
+    per = {}
+    for t in StudentTimetable.objects.exclude(status="ENDED"):
+        if t.student_id in branch_of and _slot_active_on(t, today):
+            per.setdefault(t.student_id, []).append(t.duration_minutes)
+    out = {}
+    for sid, ds in per.items():
+        if len(set(ds)) != 1:
+            continue
+        key = (len(ds), ds[0])
+        out.setdefault(branch_of[sid], {})
+        out[branch_of[sid]][key] = out[branch_of[sid]].get(key, 0) + 1
+    return out
+
+
+def _is_director_up_exam(user):
+    if user.is_super_admin():
+        return True
+    prof = getattr(user, "academy_profile", None)
+    return bool(prof and prof.role in (AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN,
+                                       AcademyRole.REGIONAL_MANAGER, AcademyRole.BRANCH_MANAGER))
+
+
 class MenuSettingAdminAPI(APIView):
     """메뉴 관리 — 전체 on/off, 역할 제한, 직원 예외."""
 
@@ -847,7 +1045,7 @@ class MenuSettingAdminAPI(APIView):
         staff.sort(key=lambda x: x["name"])
         b = None
         if bid:
-            from ..models import Branch as _B
+            _B = Branch
             b = _B.objects.filter(id=bid).first()
         return self.success({
             "rows": rows, "staff": staff,

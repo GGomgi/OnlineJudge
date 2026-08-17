@@ -633,8 +633,13 @@ class MyTimetableAPI(APIView):
         if user is None:
             return self.error("권한이 없습니다.")
         # 개별 수업 시간표(학생 본인 또는 담당 강사). 종료/휴원중지(ENDED/PAUSED)는 제외.
+        # 요일을 옮기면 옛 줄은 기간만 끊기고 상태는 ACTIVE 로 남는다(과거 기록 보존).
+        # 기간을 안 보면 옮기기 전 요일이 '내 시간표'에 그대로 남아 두 번 오라는 말이 된다.
+        _today = (now() + timedelta(hours=9)).date()
         individual = StudentTimetable.objects.select_related(
             "student", "branch", "instructor").exclude(status__in=["ENDED", "PAUSED"]).filter(
+            Q(active_from__isnull=True) | Q(active_from__lte=_today)).filter(
+            Q(active_until__isnull=True) | Q(active_until__gte=_today)).filter(
             Q(student=user) | Q(instructor=user))
         # 그룹/특강 반: 담당 강사 + 수강 중(중복 제거)
         teaching = CourseClass.objects.filter(instructor=user, is_active=True)

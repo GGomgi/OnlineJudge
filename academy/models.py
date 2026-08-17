@@ -418,6 +418,10 @@ class StudentProfile(models.Model):
     grade = models.CharField(max_length=16, blank=True, default="")
     legacy_url = models.CharField(max_length=500, blank=True, default="")  # 기존 관리 시트 등 이전 기록 링크
     enrollment_date = models.DateField(null=True, blank=True)
+    # 언제까지만 다니기로 한 학생. 상태는 재원 그대로 두고 이 날까지만 수업을 만든다.
+    # 날이 지나도 저절로 퇴원시키지 않는다 — 연장할지 그만둘지는 사람이 정한다.
+    enrollment_until = models.DateField(null=True, blank=True)
+    enrollment_until_note = models.CharField(max_length=255, blank=True, default="")
     enrollment_status = models.CharField(max_length=16, default=EnrollmentStatus.ENROLLED)
     lesson_start_date = models.DateField(null=True, blank=True)  # 수업 시작일(시간표 표시 기준)
     # 등록 과정·교육 일정(입회원 신청서). 단일 과정(legacy) + 다중 과정(programs JSON).
@@ -825,6 +829,66 @@ class StudentRegisterLog(models.Model):
     class Meta:
         db_table = "academy_student_register_log"
         ordering = ["-id"]
+
+
+class TuitionRate(models.Model):
+    """원비 기준표 — 지점 × 주횟수 × 회당 시간 → 한 달 금액.
+
+    학교급으로 나누지 않는다(국제학교·대학생이 표에 안 걸린다). 실제로 값을 가르는 건
+    '주 몇 번 오고 한 번에 몇 분 하느냐' 뿐이다.
+    금액이 비어 있는 조합은 청구서에서 '금액 미정'으로 두고 넘어간다 — 임의로 계산해
+    틀린 금액을 청구하느니 사람이 채우는 게 낫다."""
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="tuition_rates")
+    sessions_per_week = models.PositiveSmallIntegerField()      # 1, 2 …
+    duration_minutes = models.PositiveSmallIntegerField()       # 50, 60, 90, 120 …
+    amount = models.PositiveIntegerField(default=0)             # 한 달 금액(원)
+    is_active = models.BooleanField(default=True)
+    note = models.CharField(max_length=255, blank=True, default="")
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_tuition_rate"
+        unique_together = ("branch", "sessions_per_week", "duration_minutes")
+        ordering = ["branch_id", "sessions_per_week", "duration_minutes"]
+
+
+class TuitionRateChange(models.Model):
+    """원비 금액을 바꾼 이력. 돈이라 누가 언제 얼마에서 얼마로 바꿨는지 남아야 한다."""
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="+")
+    detail = models.CharField(max_length=255)
+    reason = models.TextField(blank=True, default="")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_tuition_rate_change"
+        ordering = ["-id"]
+
+
+class DiscountItem(models.Model):
+    """할인 항목. 여러 개를 겹쳐 붙일 수 있고, 비율과 정액 두 가지가 있다.
+
+    계산 순서: 정액을 먼저 빼고, 남은 금액에 비율을 적용한다(순서에 따라 금액이 달라져
+    못박아 둔다). 청구서에는 어떤 할인이 얼마씩 붙었는지 줄로 남긴다."""
+    KIND_CHOICES = (("AMOUNT", "정액"), ("PERCENT", "비율"))
+    name = models.CharField(max_length=64)                       # 형제 할인, 소개 할인 …
+    kind = models.CharField(max_length=16, default="AMOUNT")
+    value = models.PositiveIntegerField(default=0)               # 원 또는 %
+    recurring = models.BooleanField(default=True)                # 계속 / 한 번만
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="discount_items")    # 비면 전 지점
+    is_active = models.BooleanField(default=True)                # 끄면 새로 못 붙임
+    note = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_discount_item"
+        ordering = ["branch_id", "id"]
 
 
 class StudentStatusChange(models.Model):
