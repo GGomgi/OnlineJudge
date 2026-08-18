@@ -113,15 +113,34 @@ class InvoiceAPI(APIView):
         have = set(Invoice.objects.filter(ym=ym, student_id__in=[p.user_id for p in profs])
                                   .values_list("student_id", flat=True))
 
+        # 금액만 봐서는 맞는지 알 수 없다. 학교·요일·시간·과목·담당까지 옆에 놓아
+        # 한 줄로 확인할 수 있게 한다.
+        from .admin import _school_short
+        from ..services_tuition import active_slots
+        sprof = {x.user_id: x for x in StudentProfile.objects.filter(
+            user_id__in=[p.user_id for p in profs])}
+        WD = ["월", "화", "수", "목", "금", "토", "일"]
+
         made, skipped, undecided, rows = 0, 0, 0, []
         for p in sorted(profs, key=lambda x: _name_of(x.user)):
             if p.user_id in have:
                 skipped += 1
                 continue
             t = compute(p.user_id)
+            slots = sorted(active_slots(p.user_id), key=lambda x: (x.weekday, x.start_time))
+            sp = sprof.get(p.user_id)
             row = {"student_id": p.user_id, "name": _name_of(p.user),
                    "amount": t["amount"], "base": t["base"], "source": t["source"],
-                   "discounts": t["discounts"], "warnings": t["warnings"]}
+                   "discounts": t["discounts"], "warnings": t["warnings"],
+                   "school": (_school_short(sp) if sp else ""),
+                   "sessions": len(slots),
+                   "weekdays": ",".join(WD[x.weekday] for x in slots),
+                   "times": "+".join(str(x.duration_minutes) for x in slots),
+                   "dur_max": max([x.duration_minutes for x in slots] or [0]),
+                   "subjects": " · ".join(sorted({(x.subject or "") for x in slots if x.subject})),
+                   "instructors": " · ".join(sorted({_name_of(x.instructor)
+                                                     for x in slots if x.instructor_id})) or "미배정",
+                   "mode": t["mode"]}
             rows.append(row)
             if t["amount"] is None:
                 undecided += 1
