@@ -584,9 +584,12 @@ class StudentTimetableSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StudentTimetable
+        # 적용 기간이 빠져 있어 화면의 '적용 기간' 칸이 늘 비어 있었다.
+        # 지난 시간표와 지금 것을 가르는 값이라 반드시 있어야 한다.
         fields = ["id", "student", "branch", "class_type", "weekday", "day_name",
                   "start_time", "duration_minutes", "end_time", "instructor",
-                  "program", "subject", "frequency", "room", "status", "create_time"]
+                  "program", "subject", "frequency", "room", "status", "create_time",
+                  "active_from", "active_until"]
 
     def get_student(self, obj):
         return _student_brief(obj.student)

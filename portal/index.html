@@ -4154,14 +4154,17 @@
               <td class="px-3 py-2"><input :value="s.start_time" @input="s.start_time = hmTyped($event.target.value)" :disabled="s.status==='ENDED'" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" style="width:5rem" :class="ttCls(s,'start_time','py-1 px-1 text-center font-mono')" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" :disabled="s.status==='ENDED'" style="width:5.5rem" :class="ttCls(s,'duration_minutes','py-1 px-1')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
               <td class="px-3 py-2"><div class="flex items-center gap-1">
-                <select v-model="s.program" :disabled="s.status==='ENDED'" :style="{ width: s.program==='LANG' ? '8rem' : '11.5rem' }" :class="ttCls(s,'program','py-1 px-1')"><option value="">미지정</option><option v-for="o in ttUsedProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select>
-                <select v-if="s.program==='LANG'" v-model="s.language" :disabled="s.status==='ENDED'" style="width:4rem" :class="ttCls(s,'language','py-1 px-1')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select>
+                <select v-model="s.program" :disabled="s.status==='ENDED'" :style="{ width: s.program==='LANG' ? '10rem' : '16rem' }" :class="ttCls(s,'program','py-1 px-1')"><option value="">미지정</option><option v-for="o in ttUsedProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select>
+                <select v-if="s.program==='LANG'" v-model="s.language" :disabled="s.status==='ENDED'" style="width:6rem" :class="ttCls(s,'language','py-1 px-1')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select>
               </div></td>
               <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" :disabled="s.status==='ENDED'" style="width:6.5rem" :class="[ttCls(s,'instr','py-1 px-1'), (!s._instructor_id && s.status!=='ENDED') ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id && s.status!=='ENDED'" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
               <td class="px-3 py-2"><select v-model="s.frequency" :disabled="s.status==='ENDED'" style="width:5rem" :class="ttCls(s,'frequency','py-1 px-1')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
               <!-- 목록에는 날짜 개념이 없어 지난 시간표가 살아있는 것처럼 보였음. 기간을 함께 보여준다 -->
               <td class="px-3 py-2 text-[11px] font-mono whitespace-nowrap" :class="ttSlotEnded(s) ? 'text-slate-400' : 'text-slate-500'">
-                {{ s.active_from || '' }} ~ {{ s.active_until || '' }}
+                <template v-if="s.active_from || s.active_until">
+                  {{ s.active_from || '처음' }} ~ {{ s.active_until || '계속' }}
+                </template>
+                <span v-else class="text-slate-300">기간 지정 없음</span>
               </td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
                 <template v-if="s.status!=='ENDED' && canEditBranch(s.branch && s.branch.id)">
