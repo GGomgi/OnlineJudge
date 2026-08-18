@@ -5526,19 +5526,33 @@
           </div>
 
           <!-- 달력 — 휴무일은 날짜 감각이 있어야 읽힌다. 빈 날을 누르면 그 날짜로 등록 칸이 채워진다 -->
-          <div v-if="hdView==='cal'" class="grid grid-cols-2 xl:grid-cols-3 gap-3">
-            <div v-for="mo in 12" :key="mo">
-              <div class="text-xs font-semibold text-slate-500 mb-1">{{ mo }}월</div>
-              <div class="grid grid-cols-7 gap-px text-[10px]">
-                <div v-for="(w,wi) in ['일','월','화','수','목','금','토']" :key="w"
-                     :class="['text-center py-0.5', wi===0 ? 'text-rose-300' : (wi===6 ? 'text-blue-300' : 'text-slate-300')]">{{ w }}</div>
-                <div v-for="(c,i) in hdCells(mo)" :key="i"
-                     @click="c.date && hdPick(c.date)"
-                     :class="['h-7 rounded flex flex-col items-center justify-center leading-none',
-                              !c.date ? '' : 'cursor-pointer hover:ring-1 hover:ring-indigo-300 ' + hdCellCls(c.date)]"
-                     :title="c.date ? (hdNamesOf(c.date).join(' · ') || c.date) : ''">
-                  <span v-if="c.date">{{ c.day }}</span>
-                  <span v-if="c.date && hdNamesOf(c.date).length" class="w-1 h-1 rounded-full bg-current opacity-60 mt-0.5"></span>
+          <div v-if="hdView==='cal'">
+            <div class="flex items-center gap-3 mb-2 text-[11px] text-slate-500">
+              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-rose-400"></span>공휴일·대체</span>
+              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-blue-500"></span>학원 방학</span>
+              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-amber-500"></span>학원이 정한 휴무</span>
+              <span class="text-slate-400">빈 날을 누르면 위 등록 칸에 날짜가 들어갑니다.</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+              <div v-for="mo in 12" :key="mo" class="border border-slate-200 rounded-lg overflow-hidden">
+                <div class="text-xs font-semibold text-slate-600 bg-slate-50 border-b border-slate-200 px-2 py-1">{{ mo }}월</div>
+                <div class="grid grid-cols-7 text-[10px]">
+                  <div v-for="(w,wi) in ['일','월','화','수','목','금','토']" :key="w"
+                       :class="['text-center py-1 border-b border-slate-200 bg-slate-50/60',
+                                wi<6 ? 'border-r border-slate-200' : '',
+                                wi===0 ? 'text-rose-400' : (wi===6 ? 'text-blue-400' : 'text-slate-400')]">{{ w }}</div>
+                  <div v-for="(c,i) in hdCells(mo)" :key="i"
+                       @click="c.date && hdPick(c.date)"
+                       :class="['min-h-[2.6rem] p-0.5 border-b border-slate-100 leading-tight',
+                                (i%7)<6 ? 'border-r border-slate-100' : '',
+                                !c.date ? 'bg-slate-50/40' : 'cursor-pointer hover:bg-indigo-50']">
+                    <template v-if="c.date">
+                      <div :class="['text-center rounded-sm', hdCellCls(c.date)]">{{ c.day }}</div>
+                      <!-- 이름을 날짜 밑에 적는다. 색만으로는 무슨 날인지 알 수 없다 -->
+                      <div v-for="(nm,k) in hdNamesOf(c.date)" :key="k"
+                           class="mt-0.5 px-0.5 text-[9px] text-slate-600 leading-tight break-keep">{{ nm }}</div>
+                    </template>
+                  </div>
                 </div>
               </div>
             </div>
@@ -9301,12 +9315,12 @@ const app = createApp({
       const hs = this.holidays.filter(h => h.date === ds);
       if (!hs.length){
         const wd = new Date(ds.replace(/-/g,'/')).getDay();
-        return wd===0 ? 'text-rose-300' : (wd===6 ? 'text-blue-300' : 'text-slate-500');
+        return wd===0 ? 'text-rose-400' : (wd===6 ? 'text-blue-400' : 'text-slate-600');
       }
       // 학원이 정한 날과 공휴일을 색으로 가른다 — 견주어 볼 때 눈에 바로 들어와야 한다
       if (hs.some(h => h.kind === 'VACATION')) return 'bg-blue-500 text-white font-bold';
       if (hs.some(h => h.kind !== 'PUBLIC' && h.kind !== 'SUBSTITUTE')) return 'bg-amber-500 text-white font-bold';
-      return 'bg-rose-400 text-white';
+      return 'bg-rose-400 text-white font-bold';
     },
     hdPick(ds){
       this.hdForm.date = ds;
