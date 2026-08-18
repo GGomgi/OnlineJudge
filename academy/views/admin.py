@@ -2819,6 +2819,7 @@ class TimetableChangeAdminAPI(APIView):
                 except Exception:
                     an = c.actor.username
             out.append({"id": c.id, "action": ACT.get(c.action, c.action), "reason": c.reason,
+                        "kind": _tt_change_kind(c.detail),
                         "detail": c.detail, "actor": an, "time": _kst_dt_str(c.create_time),
                         "can_edit": (c.action != "EDIT") and (manager or c.actor_id == request.user.id)})
         return self.success(out)
@@ -4464,6 +4465,30 @@ def apply_due_status(branch_ids=None):
                 reason=(rsn + " (예약 적용)").strip(), effective_date=eff, actor=None)
             done += 1
     return done
+
+
+_TT_ONEDAY = __import__("re").compile(r"^\d{4}-\d{2}-\d{2}(?!부터)")
+
+
+def _tt_change_kind(detail):
+    """이력 한 줄이 무엇을 바꾼 것인지. 정규 시간표와 그날만 바꾼 것이 섞여 있어
+    무엇을 보고 있는지 알 수 없었다.
+
+    regular  정규 시간표(신규·적용일부터 변경·삭제)  — 앞으로 계속 그렇게 온다
+    oneday   그날만                                — 그 날짜 하루만
+    makeup   보강 만들기·취소
+    absent   결석 처리
+    """
+    d = detail or ""
+    if "보강 생성" in d or "보강 취소" in d or "보강 날짜" in d:
+        return "makeup"
+    if "결석 처리" in d or "예정으로 복원" in d:
+        return "absent"
+    if "부터 시간표 변경" in d or d.endswith("신규 등록") or "삭제" in d or "복원" in d:
+        return "regular"
+    if _TT_ONEDAY.match(d):
+        return "oneday"
+    return "regular"
 
 
 def _next_open_day(d, branch_ids, limit=21):
