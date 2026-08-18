@@ -4096,8 +4096,8 @@
         <div class="flex flex-wrap items-end gap-2">
         <div><label class="lbl">학생</label><search-box v-model="ttFilter.name" placeholder="이름/아이디" class="w-28"></search-box></div>
         <div><label class="lbl">요일</label><select v-model="ttFilter.weekday" class="input w-20"><option value="">전체</option><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></div>
-        <div><label class="lbl">시작 이상</label><input :value="ttFilter.from" @input="ttFilter.from = hmTyped($event.target.value)" @change="onFilterFrom" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" /></div>
-        <div><label class="lbl">종료 이하</label><input :value="ttFilter.to" @input="ttFilter.to = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-24 text-center font-mono" /></div>
+        <div><label class="lbl">시작 이상</label><input :value="ttFilter.from" @input="ttFilter.from = hmTyped($event.target.value)" @change="onFilterFrom" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-16 px-1 text-center font-mono" /></div>
+        <div><label class="lbl">종료 이하</label><input :value="ttFilter.to" @input="ttFilter.to = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="input w-16 px-1 text-center font-mono" /></div>
         <div class="relative">
           <label class="lbl">강사</label>
           <button type="button" @click="ttInstrDropdown=!ttInstrDropdown" class="input w-32 text-left flex items-center justify-between">
@@ -4149,13 +4149,13 @@
           </thead>
           <tbody>
             <tr v-for="s in filteredTt" :key="s.id" :class="['border-t align-middle', s.status==='ENDED' ? 'bg-rose-50 opacity-70' : (ttSlotEnded(s) ? 'bg-slate-50 opacity-60' : (ttRowDirty(s) ? 'bg-amber-50 ring-1 ring-amber-200' : ''))]">
-              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> <span :class="s.status==='ENDED' ? 'line-through text-rose-400' : ''">{{ s.student.real_name || s.student.username }}</span> <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700" title="휴원 처리로 멈춘 시간표 — 재등록하면 되살아납니다">휴원 중지</span><span v-if="ttSlotEnded(s)" class="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-600" title="적용 기간이 지난 줄(요일·시각을 바꾸면 옛 줄이 이렇게 남습니다)">기간 지남 {{ (s.active_until||'').slice(5) }}</span><span v-if="s.status==='ENDED'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600" title="퇴원 처리로 끝났거나 시간표를 지운 것">종료</span></td>
+              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> <span :class="s.status==='ENDED' ? 'line-through text-rose-400' : ''">{{ s.student.real_name || s.student.username }}</span> <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700" title="휴원 처리로 멈춘 시간표 — 재등록하면 되살아납니다">휴원 중지</span><span v-if="ttSlotEnded(s)" class="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-600" title="적용 기간이 지난 줄(요일·시각을 바꾸면 옛 줄이 이렇게 남습니다)">기간 지남 {{ (s.active_until||'').slice(5) }}</span><span v-if="s.status==='ENDED'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600">종료({{ ttEndKind(s) }})</span></td>
               <td class="px-3 py-2"><select v-model.number="s.weekday" :disabled="s.status==='ENDED'" :class="ttCls(s,'weekday','py-1 w-16 px-2')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
-              <td class="px-3 py-2"><input :value="s.start_time" @input="s.start_time = hmTyped($event.target.value)" :disabled="s.status==='ENDED'" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="ttCls(s,'start_time','py-1 w-24 text-center font-mono')" /></td>
+              <td class="px-3 py-2"><input :value="s.start_time" @input="s.start_time = hmTyped($event.target.value)" :disabled="s.status==='ENDED'" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="ttCls(s,'start_time','py-1 w-16 px-1 text-center font-mono')" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" :disabled="s.status==='ENDED'" :class="ttCls(s,'duration_minutes','py-1 w-24 px-2')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
-              <td class="px-3 py-2"><div class="flex items-center gap-1">
-                <select v-model="s.program" :disabled="s.status==='ENDED'" :class="ttCls(s,'program','py-1 w-36 px-2')"><option value="">미지정</option><option v-for="o in ttUsedProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select>
-                <select v-if="s.program==='LANG'" v-model="s.language" :disabled="s.status==='ENDED'" :class="ttCls(s,'language','py-1 w-12 px-1')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select>
+              <td class="px-3 py-2"><div class="flex items-center gap-1 w-44">
+                <select v-model="s.program" :disabled="s.status==='ENDED'" :class="ttCls(s,'program','py-1 px-2 flex-[2] min-w-0')"><option value="">미지정</option><option v-for="o in ttUsedProgramOptions(s)" :key="o.value" :value="o.value">{{ o.label }}</option></select>
+                <select v-if="s.program==='LANG'" v-model="s.language" :disabled="s.status==='ENDED'" :class="ttCls(s,'language','py-1 px-1 flex-1 min-w-0')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select>
               </div></td>
               <td class="px-3 py-2"><div class="flex items-center gap-1"><select v-model.number="s._instructor_id" :disabled="s.status==='ENDED'" :class="[ttCls(s,'instr','py-1 w-28 px-2'), (!s._instructor_id && s.status!=='ENDED') ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select><span v-if="!s._instructor_id && s.status!=='ENDED'" class="text-rose-500 font-bold" title="강사 배정 필요">!</span></div></td>
               <td class="px-3 py-2"><select v-model="s.frequency" :disabled="s.status==='ENDED'" :class="ttCls(s,'frequency','py-1 w-20 px-2')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></td>
@@ -9371,6 +9371,8 @@ const app = createApp({
     },
     stuTtIsCurrent(s){ return this.stuTtPhase(s) === 'current'; },
     // 유효기간이 이미 지난 시간표(시간표 변경으로 끊긴 이전 행, 휴원으로 끊긴 행)
+    // 종료가 왜 됐는지. 학생이 퇴원이면 퇴원 처리로 끝난 것, 아니면 시간표를 지운 것.
+    ttEndKind(s){ return (s.student && s.student.enrollment_status === 'WITHDRAWN') ? '퇴원' : '삭제'; },
     ttSlotEnded(s){ return !!(s.active_until && s.active_until < this.todayStr); },
     // 주 교육 회수 기준: 오늘 날짜에 적용중인 시간표 행 수.
     // 지난 이력·종료 행은 빼고, 전부 미래 적용 예정이면(내일부터 변경 등) 그 예정 행 수를 쓴다.

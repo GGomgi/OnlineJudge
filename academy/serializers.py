@@ -193,7 +193,14 @@ def _student_brief(user):
         real_name = user.userprofile.real_name or ""
     except Exception:
         real_name = ""
-    return {"id": user.id, "username": user.username, "real_name": real_name}
+    # 시간표가 왜 끝났는지 가르려면 학생이 퇴원인지 알아야 한다(퇴원 vs 시간표 삭제)
+    est = ""
+    try:
+        est = user.student_profile.enrollment_status or ""
+    except Exception:
+        est = ""
+    return {"id": user.id, "username": user.username, "real_name": real_name,
+            "enrollment_status": est}
 
 
 class ClassSessionSerializer(serializers.ModelSerializer):
