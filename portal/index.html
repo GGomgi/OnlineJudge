@@ -993,7 +993,8 @@
               <span class="text-[11px] text-slate-400 ml-2">📝=일지 작성됨 · 수업 클릭 시 작성/수정</span>
             </div>
             <div class="grid grid-cols-7 gap-1 text-xs">
-              <div v-for="w in ['월','화','수','목','금','토','일']" :key="w" class="text-center text-slate-400 font-medium py-1">{{ w }}</div>
+              <div v-for="(w,wi) in ['일','월','화','수','목','금','토']" :key="w"
+                   :class="['text-center font-medium py-1', wi===0 ? 'text-rose-400' : (wi===6 ? 'text-blue-400' : 'text-slate-400')]">{{ w }}</div>
               <div v-for="(c,i) in stuProgCells" :key="i" class="border border-slate-100 rounded min-h-[64px] p-1" :class="!c.date ? 'bg-slate-50/50' : (c.isToday ? 'bg-indigo-50/40' : '')">
                 <template v-if="c.date">
                   <div class="text-[11px] mb-0.5" :class="c.isToday ? 'text-indigo-600 font-bold' : 'text-slate-400'">{{ c.day }}</div>
@@ -3806,6 +3807,11 @@
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowAbsent" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>결석</label>
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowLeave" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-purple-400 shrink-0"></span>임시휴원</label>
           <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="ttShowMakeup" class="w-3 h-3" /><span class="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0"></span>보강</label>
+          <!-- 여섯 개를 하나씩 끄고 켜기 번거롭다 -->
+          <span class="ml-1 flex items-center gap-1">
+            <button @click="ttStatusAll(true)" :disabled="ttStatusAllOn" class="px-1.5 py-0.5 rounded border border-slate-300 text-slate-600 disabled:opacity-40">전체</button>
+            <button @click="ttStatusAll(false)" :disabled="ttStatusNoneOn" class="px-1.5 py-0.5 rounded border border-slate-300 text-slate-600 disabled:opacity-40">해제</button>
+          </span>
         </div>
         <!-- 휴무일 수업은 성격이 달라(학원이 쉬는 날) 상태 줄과 분리해 아래에 따로 둔다.
              기본은 꺼둠 — 휴무일 표시 자체는 체크와 무관하게 항상 나온다. -->
@@ -3926,7 +3932,8 @@
 
         <!-- 월간: 날짜칸 카드 -->
         <div v-else class="grid grid-cols-7 gap-1 text-xs">
-          <div v-for="w in ['월','화','수','목','금','토','일']" :key="w" class="text-center text-slate-400 font-medium py-1">{{ w }}</div>
+          <div v-for="(w,wi) in ['일','월','화','수','목','금','토']" :key="w"
+                   :class="['text-center font-medium py-1', wi===0 ? 'text-rose-400' : (wi===6 ? 'text-blue-400' : 'text-slate-400')]">{{ w }}</div>
           <div v-for="(c,i) in ttMonthCells" :key="i" class="border border-slate-100 rounded min-h-[80px] p-1"
                :class="!c.date ? 'bg-slate-50/50' : (isTtHoliday(c.date) ? 'bg-rose-50' : (c.isToday ? 'bg-indigo-50/40' : ''))">
             <template v-if="c.date">
@@ -5507,12 +5514,59 @@
           <div class="flex items-center gap-2 mb-2 text-sm flex-wrap">
             <span class="font-semibold">{{ hdYear }}년 휴무일</span>
             <span class="text-xs text-slate-400">{{ holidays.length }}일</span>
+            <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs ml-1">
+              <button @click="hdView='list'" :class="['px-2.5 py-1', hdView==='list' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500']">목록</button>
+              <button @click="hdView='cal'" :class="['px-2.5 py-1 border-l border-slate-200', hdView==='cal' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500']">달력</button>
+              <button @click="hdView='cmp'; loadHdCompare()" :class="['px-2.5 py-1 border-l border-slate-200', hdView==='cmp' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500']">해마다 견주기</button>
+            </div>
             <span class="ml-auto flex items-center gap-1">
               <button @click="shiftHdYear(-1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">◀ {{ hdYear-1 }}</button>
               <button @click="shiftHdYear(1)" class="px-2 py-1 rounded border border-slate-200 text-xs hover:bg-slate-50">{{ hdYear+1 }} ▶</button>
             </span>
           </div>
-          <table class="w-full text-sm">
+
+          <!-- 달력 — 휴무일은 날짜 감각이 있어야 읽힌다. 빈 날을 누르면 그 날짜로 등록 칸이 채워진다 -->
+          <div v-if="hdView==='cal'" class="grid grid-cols-2 xl:grid-cols-3 gap-3">
+            <div v-for="mo in 12" :key="mo">
+              <div class="text-xs font-semibold text-slate-500 mb-1">{{ mo }}월</div>
+              <div class="grid grid-cols-7 gap-px text-[10px]">
+                <div v-for="(w,wi) in ['일','월','화','수','목','금','토']" :key="w"
+                     :class="['text-center py-0.5', wi===0 ? 'text-rose-300' : (wi===6 ? 'text-blue-300' : 'text-slate-300')]">{{ w }}</div>
+                <div v-for="(c,i) in hdCells(mo)" :key="i"
+                     @click="c.date && hdPick(c.date)"
+                     :class="['h-7 rounded flex flex-col items-center justify-center leading-none',
+                              !c.date ? '' : 'cursor-pointer hover:ring-1 hover:ring-indigo-300 ' + hdCellCls(c.date)]"
+                     :title="c.date ? (hdNamesOf(c.date).join(' · ') || c.date) : ''">
+                  <span v-if="c.date">{{ c.day }}</span>
+                  <span v-if="c.date && hdNamesOf(c.date).length" class="w-1 h-1 rounded-full bg-current opacity-60 mt-0.5"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 해마다 견주기 — 공휴일 말고 학원이 정한 날만. "작년엔 언제 했지?" 를 위해서다 -->
+          <div v-else-if="hdView==='cmp'">
+            <p class="text-xs text-slate-400 mb-2">
+              학원이 정한 휴무만 모읍니다(공휴일·대체공휴일 제외). <b>작년엔 언제 했더라</b>를 견주어 보는 자리입니다.
+              해가 비어 있으면 그해엔 없었다는 뜻입니다.
+            </p>
+            <div v-if="hdCmpLoading" class="text-xs text-slate-400 py-4 text-center">불러오는 중…</div>
+            <div v-else class="grid grid-cols-3 gap-3">
+              <div v-for="y in hdCmpYears" :key="y">
+                <div class="text-sm font-semibold text-slate-600 mb-1">{{ y }}년 <span class="font-normal text-slate-400 text-xs">{{ (hdCmp[y]||[]).length }}일</span></div>
+                <div class="border rounded-lg divide-y text-xs">
+                  <div v-for="h in (hdCmp[y]||[])" :key="h.id" class="px-2 py-1.5 flex items-center gap-2">
+                    <span class="font-mono text-slate-500 w-16 shrink-0">{{ h.date.slice(5) }}({{ h.wd }})</span>
+                    <span class="truncate">{{ h.name }}</span>
+                    <span class="ml-auto text-[10px] px-1 rounded shrink-0" :class="h.kind==='VACATION' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-700'">{{ h.kind_label }}</span>
+                  </div>
+                  <div v-if="!(hdCmp[y]||[]).length" class="px-2 py-4 text-center text-slate-300">없음</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <table v-else class="w-full text-sm">
             <thead class="bg-slate-50 text-slate-500 text-xs">
               <tr><th class="px-3 py-2 text-left w-36">날짜</th><th class="px-3 py-2 text-left">이름</th><th class="px-3 py-2 text-left w-28">유형</th><th class="px-3 py-2 text-left w-32">지점</th><th class="px-3 py-2 text-left w-36">등록</th><th class="px-3 py-2 w-16"></th></tr>
             </thead>
@@ -7408,6 +7462,7 @@ const app = createApp({
       // 켜져 있으면 복잡해 보이고 대부분 다시 끄게 된다.
       COLDEFS: COLDEFS,
       menuRows: [], menuStaff: [], menuRoles: [], menuScope: '', myMenus: null,
+      hdView: 'list', hdCmp: {}, hdCmpLoading: false,
       tuRows: [], tuOrig: {}, tuBranches: [], tuHistory: [], tuShowHist: false, tuEdit: false, tuByUnit: [],
       tuAddFor: null, tuAdd: { wk:'', du:'' },
       cvFee: { amount:null, source:'', warning:'' },
@@ -8524,15 +8579,19 @@ const app = createApp({
       if (!this.stuProgCalMonth) return [];
       const [y,m]=this.stuProgCalMonth.split('-').map(Number);
       const first=new Date(y,m-1,1), last=new Date(y,m,0); const p=x=>String(x).padStart(2,'0');
-      const cells=[]; const lead=(first.getDay()+6)%7; for(let i=0;i<lead;i++) cells.push({});
+      const cells=[]; const lead=first.getDay(); for(let i=0;i<lead;i++) cells.push({});   // 일요일 시작
       for(let dd=1;dd<=last.getDate();dd++){ const ds=y+'-'+p(m)+'-'+p(dd); cells.push({ day:dd, date:ds, isToday:ds===this.todayStr }); }
       return cells;
     },
+    hdCmpYears(){ return [this.hdYear-2, this.hdYear-1, this.hdYear]; },
+    ttStatusKeys(){ return ['ttShowPre','ttShowInProgress','ttShowDone','ttShowAbsent','ttShowLeave','ttShowMakeup']; },
+    ttStatusAllOn(){ return this.ttStatusKeys.every(k => this[k]); },
+    ttStatusNoneOn(){ return this.ttStatusKeys.every(k => !this[k]); },
     ttMonthCells(){
       if (!this.ttCalMonth) return [];
       const [y,m]=this.ttCalMonth.split('-').map(Number);
       const first=new Date(y,m-1,1), last=new Date(y,m,0); const p=x=>String(x).padStart(2,'0');
-      const cells=[]; const lead=(first.getDay()+6)%7; for(let i=0;i<lead;i++) cells.push({});
+      const cells=[]; const lead=first.getDay(); for(let i=0;i<lead;i++) cells.push({});   // 일요일 시작
       for(let dd=1;dd<=last.getDate();dd++){ const ds=y+'-'+p(m)+'-'+p(dd); cells.push({ day:dd, date:ds, isToday:ds===this.todayStr }); }
       return cells;
     },
@@ -8941,6 +9000,7 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     resetTtFilter(){ this.ttFilter = { name:'', weekday:'', from:'', to:'', instructor_ids:[], program:'' }; },
+    ttStatusAll(on){ this.ttStatusKeys.forEach(k => { this[k] = on; }); },
     switchTtView(v){
       this.ttView=v;
       if (v!=='list'){
@@ -9211,6 +9271,7 @@ const app = createApp({
         this.loadHolidays();
       }
       if (k==='menu') this.loadMenuSettings();
+      if (k==='holiday' && this.hdView==='cmp') this.loadHdCompare();
       if (k==='tuition'){ this.loadTuition(); this.loadDiscounts(); }
       if (k==='work'){
         if (!this.wsForm.branch_id) this.wsForm.branch_id = (this.myProfile && this.myProfile.branch_id) || '';
@@ -9226,7 +9287,46 @@ const app = createApp({
         this.holidays = d.rows || []; this.hdKinds = d.kinds || [];
       } catch(e){ this.holidays=[]; this.notify(e.message,false); }
     },
-    shiftHdYear(n){ this.hdYear += n; this.loadHolidays(); },
+    shiftHdYear(n){ this.hdYear += n; this.loadHolidays(); if (this.hdView==='cmp') this.loadHdCompare(); },
+    // ── 휴무일 달력 ──
+    hdCells(mo){
+      const y = this.hdYear, first = new Date(y, mo-1, 1), last = new Date(y, mo, 0);
+      const p = x => String(x).padStart(2,'0'), out = [];
+      for (let i=0; i<first.getDay(); i++) out.push({});          // 일요일 시작
+      for (let d=1; d<=last.getDate(); d++) out.push({ day:d, date:y+'-'+p(mo)+'-'+p(d) });
+      return out;
+    },
+    hdNamesOf(ds){ return this.holidays.filter(h => h.date === ds).map(h => h.name); },
+    hdCellCls(ds){
+      const hs = this.holidays.filter(h => h.date === ds);
+      if (!hs.length){
+        const wd = new Date(ds.replace(/-/g,'/')).getDay();
+        return wd===0 ? 'text-rose-300' : (wd===6 ? 'text-blue-300' : 'text-slate-500');
+      }
+      // 학원이 정한 날과 공휴일을 색으로 가른다 — 견주어 볼 때 눈에 바로 들어와야 한다
+      if (hs.some(h => h.kind === 'VACATION')) return 'bg-blue-500 text-white font-bold';
+      if (hs.some(h => h.kind !== 'PUBLIC' && h.kind !== 'SUBSTITUTE')) return 'bg-amber-500 text-white font-bold';
+      return 'bg-rose-400 text-white';
+    },
+    hdPick(ds){
+      this.hdForm.date = ds;
+      const names = this.hdNamesOf(ds);
+      this.notify(names.length ? (ds + ' — ' + names.join(' · ')) : (ds + ' 를 등록 칸에 넣었습니다.'));
+    },
+    // ── 해마다 견주기 ──
+    async loadHdCompare(){
+      this.hdCmpLoading = true;
+      const out = {};
+      try {
+        for (const y of this.hdCmpYears){
+          const d = await api('GET','/api/admin/academy/holiday?from='+y+'-01-01&to='+y+'-12-31');
+          // 공휴일·대체공휴일은 해마다 같아 견줄 것이 없다. 학원이 정한 것만 남긴다.
+          out[y] = (d.rows||[]).filter(h => h.kind !== 'PUBLIC' && h.kind !== 'SUBSTITUTE');
+        }
+        this.hdCmp = out;
+      } catch(e){ this.notify(e.message,false); }
+      finally { this.hdCmpLoading = false; }
+    },
     async addHoliday(){
       const f = this.hdForm;
       if (!f.date) return this.notify('날짜를 선택하세요.', false);
