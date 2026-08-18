@@ -2540,6 +2540,11 @@ class StudentTimetableAdminAPI(APIView):
         if not want:
             want = ["ACTIVE"] if request.GET.get("show_ended") != "1" else ["ACTIVE", "PAUSED", "ENDED"]
         qs = qs.filter(status__in=want)
+        # '사용중'은 오늘 적용중인 것만이어야 한다. 기간이 지난 줄은 상태가 ACTIVE 로 남아
+        # 있어 함께 섞여 나왔다. 지난 것은 include_past=1 일 때만 더한다.
+        _today_tt = (now() + timedelta(hours=9)).date()
+        if request.GET.get("include_past") != "1":
+            qs = qs.filter(Q(active_until__isnull=True) | Q(active_until__gte=_today_tt))
         student_id = request.GET.get("student_id")
         if student_id:
             qs = qs.filter(student_id=student_id)
@@ -5525,7 +5530,19 @@ class ActivityLogAPI(APIView):
     def get(self, request):
         target_id = request.GET.get("user_id")
         me = request.user
-        if target_id and str(target_id) != str(me.id):
+        # 지점 직원 전체를 한 번에 보는 길. 한 명씩 골라 보려면 누가 언제 뭘 했는지
+        # 찾을 때마다 사람을 바꿔 가며 훑어야 한다.
+        actors = None           # None 이면 한 사람, 목록이면 여럿
+        if target_id == "ALL":
+            if not _is_director_up(me):
+                return self.error("지점 전체 이력은 원장 이상만 볼 수 있습니다.")
+            view = viewable_branch_ids(me)
+            aq = AcademyProfile.objects.filter(is_deleted=False, role__in=STAFF_ROLES)
+            if view is not None:
+                aq = aq.filter(branch_id__in=view)
+            actors = list(aq.values_list("user_id", flat=True))
+            target = me
+        elif target_id and str(target_id) != str(me.id):
             if not _is_director_up(me):
                 return self.error("다른 사람의 사용 이력은 원장 이상만 볼 수 있습니다.")
             target = User.objects.filter(id=target_id).first()
@@ -5551,31 +5568,40 @@ class ActivityLogAPI(APIView):
 
         rows = []
 
-        def add(dt, kind, target_name, detail, reason=""):
-            rows.append({"time": str(dt + timedelta(hours=9))[:19], "kind": kind,
-                         "target": target_name or "", "detail": detail or "", "reason": reason or ""})
+        # 지점 전체를 볼 때는 누가 한 일인지도 있어야 한다(한 사람만 볼 때는 뻔하므로 비운다)
+        who = {}
+        if actors is not None:
+            who = {u.id: _name_of(u) for u in User.objects.filter(id__in=actors)
+                                                          .select_related("userprofile")}
 
-        base = dict(actor=target, create_time__gte=lo, create_time__lt=hi)
+        def add(dt, kind, target_name, detail, reason="", actor_id=None):
+            rows.append({"time": str(dt + timedelta(hours=9))[:19], "kind": kind,
+                         "target": target_name or "", "detail": detail or "", "reason": reason or "",
+                         "actor": who.get(actor_id, "") if actors is not None else ""})
+
+
+        base = ({"actor_id__in": actors} if actors is not None else {"actor": target})
+        base.update(create_time__gte=lo, create_time__lt=hi)
         for c in TimetableChange.objects.filter(**base).select_related("student", "student__userprofile")[:1000]:
-            add(c.create_time, "시간표·보강", _name_of(c.student), c.detail, c.reason)
+            add(c.create_time, "시간표·보강", _name_of(c.student), c.detail, c.reason, actor_id=c.actor_id)
         for c in AttendanceChange.objects.filter(**base).select_related(
                 "attendance", "attendance__student", "attendance__student__userprofile")[:1000]:
             a = c.attendance
             add(c.create_time, "출결", "%s %s" % (_name_of(a.student) if a else "", str(a.date) if a else ""),
-                c.detail, c.reason)
+                c.detail, c.reason, actor_id=c.actor_id)
         for c in StudentStatusChange.objects.filter(**base).select_related("student", "student__userprofile")[:1000]:
             add(c.create_time, "등록상태", _name_of(c.student),
                 "%s → %s%s" % (c.from_status, c.to_status,
-                               (" (적용 %s)" % c.effective_date) if c.effective_date else ""), c.reason)
+                               (" (적용 %s)" % c.effective_date) if c.effective_date else ""), c.reason, actor_id=c.actor_id)
         for c in StaffChangeLog.objects.filter(**base).select_related("staff", "staff__userprofile")[:1000]:
-            add(c.create_time, "직원관리", _name_of(c.staff), "%s %s" % (c.change_type, c.detail), c.reason)
+            add(c.create_time, "직원관리", _name_of(c.staff), "%s %s" % (c.change_type, c.detail), c.reason, actor_id=c.actor_id)
         for c in StaffProfileHistory.objects.filter(**base).select_related("user", "user__userprofile")[:1000]:
             ov = staff_value_text(c.field, c.old_value)
             nv = staff_value_text(c.field, c.new_value)
             if ov == nv:
                 continue        # 빈 값에서 빈 값으로 — 사람 눈에는 바뀐 게 없다
             add(c.create_time, "인사정보", _name_of(c.user),
-                "%s: %s → %s" % (staff_field_label(c.field), ov, nv), c.reason)
+                "%s: %s → %s" % (staff_field_label(c.field), ov, nv), c.reason, actor_id=c.actor_id)
         # 학생 등록 — 일괄은 한 번을 한 줄로 묶고 이름만 늘어놓는다.
         # 상세를 적어 봐야 뒤에 고치면 그건 각자의 이력에 남으므로 두 번 적는 셈이다.
         regs = list(StudentRegisterLog.objects.filter(**base)
@@ -5587,21 +5613,23 @@ class ActivityLogAPI(APIView):
                 continue
             label = "상담 전환" if c.source == "LEAD" else "직접 등록"
             add(c.create_time, "학생등록", _name_of(c.student),
-                "%s%s" % (label, (" · %s" % c.branch.name) if c.branch_id else ""))
+                "%s%s" % (label, (" · %s" % c.branch.name) if c.branch_id else ""), actor_id=c.actor_id)
         for items in batches.values():
             names = [_name_of(x.student) for x in items]
             bn = items[0].branch.name if items[0].branch_id else ""
             add(max(x.create_time for x in items), "학생등록", "%d명" % len(names),
-                "일괄 등록%s — %s" % ((" · %s" % bn) if bn else "", ", ".join(names)))
+                "일괄 등록%s — %s" % ((" · %s" % bn) if bn else "", ", ".join(names)),
+                actor_id=items[0].actor_id)
 
         for c in CounselingLogEdit.objects.filter(**base).select_related("log")[:1000]:
-            add(c.create_time, "상담기록", "", "상담 기록 수정(이전 내용: %s)" % (c.old_summary or "")[:80])
+            add(c.create_time, "상담기록", "", "상담 기록 수정(이전 내용: %s)" % (c.old_summary or "")[:80], actor_id=c.actor_id)
 
         if q:
             ql = q.lower()
             rows = [r for r in rows
                     if ql in r["target"].lower() or ql in r["detail"].lower()
-                    or ql in r["reason"].lower() or ql in r["kind"].lower()]
+                    or ql in r["reason"].lower() or ql in r["kind"].lower()
+                    or ql in (r.get("actor") or "").lower()]
         rows.sort(key=lambda r: r["time"], reverse=True)
         truncated = len(rows) > 500
         rows = rows[:500]
@@ -5619,7 +5647,8 @@ class ActivityLogAPI(APIView):
                                "role": p.role, "branch": p.branch.name if p.branch_id else ""})
             people.sort(key=lambda x: (x["branch"], x["name"] or ""))
         return self.success({"rows": rows, "truncated": truncated, "people": people,
-                             "user_id": target.id, "user_name": _name_of(target),
+                             "user_id": ("ALL" if actors is not None else target.id),
+                             "user_name": ("지점 직원 전체 (%d명)" % len(actors)) if actors is not None else _name_of(target),
                              "from": str(d0), "to": str(d1)})
 
 

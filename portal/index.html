@@ -4137,6 +4137,10 @@
           <label class="flex items-center gap-1 cursor-pointer" title="퇴원 처리로 끝났거나, 시간표를 지운 것(요일 변경 포함)">
             <input type="checkbox" v-model="ttStatusShow.ENDED" @change="loadAllTt" class="w-4 h-4"> 종료
           </label>
+          <!-- 거르는 게 아니라 더하는 체크다. 이력은 지금 것과 견주려고 보는 것이라 따로 떼면 소용이 없다 -->
+          <label class="flex items-center gap-1 cursor-pointer border-l border-slate-200 pl-2" title="요일·시각을 바꿔 끝난 옛 줄까지 함께 봅니다. 같은 학생의 줄이 적용 시작일 순으로 이어집니다.">
+            <input type="checkbox" v-model="ttIncludePast" @change="loadAllTt" class="w-4 h-4"> 지난 이력도 함께
+          </label>
         </span>
         <span class="text-xs text-slate-400 ml-auto self-center">{{ filteredTt.length }}건</span>
         </div>
@@ -7192,8 +7196,10 @@
         <div class="flex flex-wrap items-end gap-2">
           <div v-if="(actLog.people||[]).length">
             <label class="lbl">대상</label>
-            <select v-model="actFilter.user_id" @change="loadActivity" class="input py-1 w-48">
+            <select v-model="actFilter.user_id" @change="loadActivity" class="input py-1 w-52">
               <option :value="null">나 ({{ me ? (me.real_name||me.user.username) : '' }})</option>
+              <!-- 한 명씩 골라 보면 누가 언제 뭘 했는지 찾을 때마다 사람을 바꿔 가며 훑어야 한다 -->
+              <option value="ALL">📋 지점 직원 전체</option>
               <option v-for="p in actLog.people" :key="p.id" :value="p.id">{{ p.name }} · {{ roleLabel(p.role) }}{{ p.branch ? ' · '+p.branch : '' }}</option>
             </select>
           </div>
@@ -7219,8 +7225,9 @@
             <div v-for="(r,i) in g.rows" :key="i" class="px-3 py-2 border-b last:border-b-0 text-xs flex gap-2">
               <span class="font-mono text-slate-400 shrink-0">{{ r.time.slice(11) }}</span>
               <span :class="['px-1.5 py-0.5 rounded shrink-0 h-fit', actKindCls(r.kind)]">{{ r.kind }}</span>
-              <span v-if="r.target" class="font-medium text-slate-700 shrink-0">{{ r.target }}</span>
-              <span class="text-slate-600 break-all">{{ r.detail }}<span v-if="r.reason" class="text-slate-400"> — {{ r.reason }}</span></span>
+              <span v-if="r.actor" class="px-1.5 py-0.5 rounded shrink-0 h-fit bg-indigo-50 text-indigo-600" v-html="actMark(r.actor)"></span>
+              <span v-if="r.target" class="font-medium text-slate-700 shrink-0" v-html="actMark(r.target)"></span>
+              <span class="text-slate-600 break-all"><span v-html="actMark(r.detail)"></span><span v-if="r.reason" class="text-slate-400"> — <span v-html="actMark(r.reason)"></span></span></span>
             </div>
           </div>
         </div>
@@ -7740,7 +7747,7 @@ const app = createApp({
       earlyLeavePrompt: null,
       bulkAbsentPrompt: null, bulkMakeupOpen: false, bulkMakeupItems: [],
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
-      ttStatusShow: { ACTIVE:true, PAUSED:false, ENDED:false },
+      ttStatusShow: { ACTIVE:true, PAUSED:false, ENDED:false }, ttIncludePast: false,
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadStatusSel: [], leadSearch: '', leadSearch2: '', leadSearchRaw: '', leadSearch2Raw: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteTime: { date:'', hour:'', min:'' }, showDeletedLeads: null, editLogId: null, editLogText: '',
@@ -8693,6 +8700,16 @@ const app = createApp({
         };
         const dir = this.ttSortDir==='asc'?1:-1;
         list = list.slice().sort((a,b)=>{ const x=val(a),y=val(b); return (x<y?-1:x>y?1:0)*dir; });
+      } else if (this.ttIncludePast){
+        // 이력을 함께 볼 때는 학생별로 묶고, 그 안에서 지금 것이 위로 오게 한다.
+        // 흩어져 있으면 무엇이 무엇으로 바뀌었는지 눈으로 못 따라간다.
+        list = list.slice().sort((a,b)=>{
+          const an=(a.student.real_name||a.student.username||''), bn=(b.student.real_name||b.student.username||'');
+          if (an!==bn) return an.localeCompare(bn,'ko');
+          const af=a.active_from||'', bf=b.active_from||'';
+          if (af!==bf) return af<bf ? 1 : -1;           // 늦게 시작한 것(지금 것)이 위로
+          return (a.weekday-b.weekday) || String(a.start_time).localeCompare(String(b.start_time));
+        });
       }
       return list;
     },
@@ -9160,7 +9177,8 @@ const app = createApp({
     async loadAllTt(){
       try {
         const want = Object.keys(this.ttStatusShow).filter(k => this.ttStatusShow[k]);
-        const d = await api('GET','/api/admin/academy/student_timetable?status=' + (want.join(',') || 'NONE'));
+        const d = await api('GET','/api/admin/academy/student_timetable?status=' + (want.join(',') || 'NONE')
+                            + (this.ttIncludePast ? '&include_past=1' : ''));
         this.ttAll = (d.results || d).map(s=>{
           const row = { ...s, start_time: this.hm(s.start_time), _instructor_id: s.instructor ? s.instructor.id : null,
                         language: (s.program==='LANG') ? this.parseRowLanguage(s.subject) : '', effective_date: this.todayStr };
@@ -9821,6 +9839,23 @@ const app = createApp({
         if(!m.has(d)){ m.set(d,{date:d, rows:[]}); out.push(m.get(d)); }
         m.get(d).rows.push(r);
       });
+      return out;
+    },
+    // 어디에 찾는 말이 있는지 눈에 보여야 한다. 내용에 꺾쇠가 섞일 수 있어 반드시 막고 칠한다.
+    actMark(text){
+      const esc = t => String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const q = (this.actFilter.q || '').trim();
+      const src = String(text == null ? '' : text);
+      if (!q) return esc(src);
+      const lc = src.toLowerCase(), lq = q.toLowerCase();
+      let out = '', i = 0;
+      for (;;){
+        const k = lc.indexOf(lq, i);
+        if (k < 0){ out += esc(src.slice(i)); break; }
+        out += esc(src.slice(i, k)) + '<mark class="bg-amber-200 text-slate-900 rounded px-0.5">'
+             + esc(src.slice(k, k + q.length)) + '</mark>';
+        i = k + q.length;
+      }
       return out;
     },
     actKindCls(k){
