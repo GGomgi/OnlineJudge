@@ -1807,7 +1807,7 @@
         <button @click="closeColCfg" class="text-slate-400 hover:text-slate-600">✕</button>
       </div>
       <div class="px-3 py-1.5 text-[11px] text-slate-400 border-b shrink-0">
-        체크로 보이기/숨기기, 끌거나 ▲▼로 순서를 바꿉니다.
+        체크로 보이기/숨기기, 끌거나 ◀▶로 순서를 바꿉니다.
       </div>
       <div class="overflow-y-auto p-2 space-y-0.5">
         <div v-for="(c,i) in colCfgList" :key="c.k"
@@ -4118,7 +4118,14 @@
         </div>
         <div><label class="lbl">과정</label><select v-model="ttFilter.program" class="input w-32"><option value="">전체</option><option v-for="o in ttUsedProgramOpts()" :key="o.value" :value="o.value">{{ o.label }}</option></select></div>
         <button @click="resetTtFilter" class="btn-secondary text-xs">초기화</button>
-        <label class="flex items-center gap-1 text-xs text-slate-500 self-center whitespace-nowrap"><input type="checkbox" v-model="ttShowEnded" @change="loadAllTt" class="w-4 h-4"> 삭제(종료) 보기</label>
+        <!-- 상태를 하나로 묶어 두니 '삭제(종료)'가 무슨 뜻인지 알기 어려웠고, 휴원만 보고 싶을 때도 방법이 없었다 -->
+        <span class="flex items-center gap-2 text-xs text-slate-500 self-center whitespace-nowrap">
+          <label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" v-model="ttStatusShow.ACTIVE" @change="loadAllTt" class="w-4 h-4"> 사용중</label>
+          <label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" v-model="ttStatusShow.PAUSED" @change="loadAllTt" class="w-4 h-4"> 휴원 중지</label>
+          <label class="flex items-center gap-1 cursor-pointer" title="퇴원 처리로 끝났거나, 시간표를 지운 것(요일 변경 포함)">
+            <input type="checkbox" v-model="ttStatusShow.ENDED" @change="loadAllTt" class="w-4 h-4"> 종료
+          </label>
+        </span>
         <span class="text-xs text-slate-400 ml-auto self-center">{{ filteredTt.length }}건</span>
         </div>
       </div>
@@ -4142,7 +4149,7 @@
           </thead>
           <tbody>
             <tr v-for="s in filteredTt" :key="s.id" :class="['border-t align-middle', s.status==='ENDED' ? 'bg-rose-50 opacity-70' : (ttSlotEnded(s) ? 'bg-slate-50 opacity-60' : (ttRowDirty(s) ? 'bg-amber-50 ring-1 ring-amber-200' : ''))]">
-              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> <span :class="s.status==='ENDED' ? 'line-through text-rose-400' : ''">{{ s.student.real_name || s.student.username }}</span> <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">휴원중지</span><span v-if="ttSlotEnded(s)" class="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-600">종료 {{ (s.active_until||'').slice(5) }}</span><span v-if="s.status==='ENDED'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600">삭제(종료)</span></td>
+              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> <span :class="s.status==='ENDED' ? 'line-through text-rose-400' : ''">{{ s.student.real_name || s.student.username }}</span> <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700" title="휴원 처리로 멈춘 시간표 — 재등록하면 되살아납니다">휴원 중지</span><span v-if="ttSlotEnded(s)" class="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-600" title="적용 기간이 지난 줄(요일·시각을 바꾸면 옛 줄이 이렇게 남습니다)">기간 지남 {{ (s.active_until||'').slice(5) }}</span><span v-if="s.status==='ENDED'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600" title="퇴원 처리로 끝났거나 시간표를 지운 것">종료</span></td>
               <td class="px-3 py-2"><select v-model.number="s.weekday" :disabled="s.status==='ENDED'" :class="ttCls(s,'weekday','py-1 w-16 px-2')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
               <td class="px-3 py-2"><input :value="s.start_time" @input="s.start_time = hmTyped($event.target.value)" :disabled="s.status==='ENDED'" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="ttCls(s,'start_time','py-1 w-24 text-center font-mono')" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" :disabled="s.status==='ENDED'" :class="ttCls(s,'duration_minutes','py-1 w-24 px-2')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
@@ -7718,6 +7725,7 @@ const app = createApp({
       earlyLeavePrompt: null,
       bulkAbsentPrompt: null, bulkMakeupOpen: false, bulkMakeupItems: [],
       ttSortKey: '', ttSortDir: 'asc', ttShowEnded: false,
+      ttStatusShow: { ACTIVE:true, PAUSED:false, ENDED:false },
       leadExpandAll: false, leadPage: 1, leadPageSize: 20,
       leadStatusSel: [], leadSearch: '', leadSearch2: '', leadSearchRaw: '', leadSearch2Raw: '', leadSortKey: 'reg', leadSortDir: 'desc', leads: [], openLeadId: null, noteText: '',
       noteChannel: 'VISIT', noteTime: { date:'', hour:'', min:'' }, showDeletedLeads: null, editLogId: null, editLogText: '',
@@ -9133,7 +9141,8 @@ const app = createApp({
     },
     async loadAllTt(){
       try {
-        const d = await api('GET','/api/admin/academy/student_timetable' + (this.ttShowEnded ? '?show_ended=1' : ''));
+        const want = Object.keys(this.ttStatusShow).filter(k => this.ttStatusShow[k]);
+        const d = await api('GET','/api/admin/academy/student_timetable?status=' + (want.join(',') || 'NONE'));
         this.ttAll = (d.results || d).map(s=>{
           const row = { ...s, start_time: this.hm(s.start_time), _instructor_id: s.instructor ? s.instructor.id : null,
                         language: (s.program==='LANG') ? this.parseRowLanguage(s.subject) : '', effective_date: this.todayStr };
@@ -10444,7 +10453,9 @@ const app = createApp({
         this.me = await api('GET','/api/profile');
         await this.loadMyProfile();
         this.onboardingDismissed = false;
-        if (this.isStaff) await this.loadStaffProfile();
+        // 앞사람의 메뉴 목록이 남아 있으면 안 보여야 할 메뉴가 보인다. 다시 받는다.
+        this.myMenus = null;
+        if (this.isStaff){ await this.loadStaffProfile(); await this.loadMyMenus(); }
         this.notify('로그인되었습니다.');
         this.tab = this.tabs[0].key; this.onTab(this.tab); this._syncTabUrl(this.tab);
         if (this.isStaff) this.startNotiPoll();
@@ -10458,7 +10469,12 @@ const app = createApp({
         try { const d=await api('GET','/api/academy/staff_name_hint?sabun='+encodeURIComponent(s)); this.sabunHint=d.name||''; } catch(e){ this.sabunHint=''; }
       }, 250);
     },
-    async logout(){ try { await api('GET','/api/logout'); } catch(e){} this.me=null; this.myProfile=null; this.staffProfile=null; this.onboardingDismissed=false; this.tab='login'; },
+    async logout(){
+      try { await api('GET','/api/logout'); } catch(e){}
+      // 다음 사람에게 남지 않게 앞사람 것을 모두 비운다
+      this.me=null; this.myProfile=null; this.staffProfile=null; this.myMenus=null;
+      this.onboardingDismissed=false; this.tab='login';
+    },
     savedLeadBranch(){ const v = Number(localStorage.getItem('dc_lead_branch')); return v || null; },
     saveLeadBranch(){ if (this.leadForm.branch_id) localStorage.setItem('dc_lead_branch', String(this.leadForm.branch_id)); },
     async submitLead(){

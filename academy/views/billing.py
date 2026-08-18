@@ -20,6 +20,7 @@ from ..models import (Invoice, Payment, PaymentAlloc, AcademyProfile, AcademyRol
                       StudentProfile, EnrollmentStatus, Branch)
 from ..services import viewable_branch_ids, can_manage_branch, can_view_branch
 from ..services_tuition import compute
+from .exam import menu_denied
 
 _METHOD = {"TRANSFER": "계좌이체", "CASH": "현금", "CARD": "카드", "ETC": "기타"}
 
@@ -82,6 +83,9 @@ class InvoiceAPI(APIView):
 
     @admin_role_required
     def get(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         view = viewable_branch_ids(request.user)
         ym = (request.GET.get("ym") or str(_kst_today())[:7]).strip()
         flt = {"ym": ym}
@@ -105,6 +109,9 @@ class InvoiceAPI(APIView):
 
     @admin_role_required
     def post(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         """{branch_id, ym, commit}. 이미 있는 학생은 건너뛴다(두 번 눌러도 안전)."""
         d = request.data
         ym = (d.get("ym") or str(_kst_today())[:7]).strip()
@@ -216,6 +223,9 @@ class InvoiceAPI(APIView):
 
     @admin_role_required
     def delete(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         """청구서 취소. 지우지 않고 취소로 둔다 — 돈이 오간 기록이다."""
         inv = Invoice.objects.filter(id=request.GET.get("id")).first()
         if not inv:
@@ -238,6 +248,9 @@ class PaymentAPI(APIView):
 
     @admin_role_required
     def get(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         sid = request.GET.get("student_id")
         if sid:
             prof = AcademyProfile.objects.filter(user_id=sid, is_deleted=False).first()
@@ -281,6 +294,9 @@ class PaymentAPI(APIView):
 
     @admin_role_required
     def post(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         """{student_id, paid_on, amount, method, note}. 오래 밀린 달부터 채운다."""
         d = request.data
         sid = d.get("student_id")
@@ -321,6 +337,9 @@ class PaymentAPI(APIView):
 
     @admin_role_required
     def delete(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         """납부 취소. 붙어 있던 것도 함께 떨어진다."""
         pay = Payment.objects.filter(id=request.GET.get("id")).first()
         if not pay:

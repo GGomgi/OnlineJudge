@@ -804,6 +804,10 @@ class DevRequestAPI(APIView):
         me = request.user
         if not _is_staff_user(me):
             return self.error("권한이 없습니다.")
+        from .exam import menu_denied
+        _d = menu_denied(me, "devboard")
+        if _d:
+            return self.error(_d)
         hq = _is_hq(me)
         rid = request.GET.get("id")
         if rid:
@@ -836,6 +840,10 @@ class DevRequestAPI(APIView):
     def post(self, request):
         if not _is_staff_user(request.user):
             return self.error("권한이 없습니다.")
+        from .exam import menu_denied
+        _d = menu_denied(request.user, "devboard")
+        if _d:
+            return self.error(_d)
         title = (request.data.get("title") or "").strip()
         if not title:
             return self.error("제목을 입력하세요.")
@@ -847,6 +855,10 @@ class DevRequestAPI(APIView):
     def put(self, request):
         if not _is_staff_user(request.user):
             return self.error("권한이 없습니다.")
+        from .exam import menu_denied
+        _d = menu_denied(request.user, "devboard")
+        if _d:
+            return self.error(_d)
         o = DevRequest.objects.filter(id=request.data.get("id")).first()
         if not o:
             return self.error("글이 없습니다.")
@@ -879,6 +891,10 @@ class DevRequestAPI(APIView):
     def delete(self, request):
         if not _is_staff_user(request.user):
             return self.error("권한이 없습니다.")
+        from .exam import menu_denied
+        _d = menu_denied(request.user, "devboard")
+        if _d:
+            return self.error(_d)
         o = DevRequest.objects.filter(id=request.GET.get("id")).first()
         if not o:
             return self.error("글이 없습니다.")
@@ -894,6 +910,10 @@ class DevCommentAPI(APIView):
     def post(self, request):
         if not _is_staff_user(request.user):
             return self.error("권한이 없습니다.")
+        from .exam import menu_denied
+        _d = menu_denied(request.user, "devboard")
+        if _d:
+            return self.error(_d)
         o = DevRequest.objects.filter(id=request.data.get("request_id")).first()
         if not o:
             return self.error("글이 없습니다.")
@@ -909,6 +929,10 @@ class DevCommentAPI(APIView):
     def delete(self, request):
         if not _is_staff_user(request.user):
             return self.error("권한이 없습니다.")
+        from .exam import menu_denied
+        _d = menu_denied(request.user, "devboard")
+        if _d:
+            return self.error(_d)
         c = DevRequestComment.objects.filter(id=request.GET.get("id")).first()
         if not c:
             return self.error("덧글이 없습니다.")

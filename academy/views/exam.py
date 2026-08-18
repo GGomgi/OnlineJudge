@@ -789,6 +789,19 @@ def menu_allowed_keys(user):
     return out
 
 
+# 메뉴 설정은 화면만 가리고 API 는 안 막고 있었다. 주소를 알면 그냥 들어갔다
+# (강사가 원비 청구서·납부·기준표·메뉴 설정에 접근됐다). 화면을 가린 것과 같은
+# 기준으로 서버에서도 막는다.
+_MENU_LABEL = {m["key"]: m["label"] for m in MENU_DEFS}
+
+
+def menu_denied(user, key):
+    """이 사람이 그 메뉴를 못 보면 막을 말을 돌려준다. 볼 수 있으면 None."""
+    if key in menu_allowed_keys(user):
+        return None
+    return "%s 메뉴를 볼 권한이 없습니다." % _MENU_LABEL.get(key, key)
+
+
 def menu_scope_branch(user):
     """설정을 어느 지점에 저장·조회할지. 전지점 역할은 전 지점 기본값(None)을 다룬다."""
     if editable_branch_ids(user) is None:
@@ -836,6 +849,9 @@ class TuitionRateAdminAPI(APIView):
 
     @admin_role_required
     def get(self, request):
+        _d = menu_denied(request.user, "options")
+        if _d:
+            return self.error(_d)
         me = request.user
         view = viewable_branch_ids(me)
         bq = Branch.objects.filter(is_active=True)
@@ -879,6 +895,9 @@ class TuitionRateAdminAPI(APIView):
 
     @admin_role_required
     def post(self, request):
+        _d = menu_denied(request.user, "options")
+        if _d:
+            return self.error(_d)
         """{branch_id, sessions_per_week, duration_minutes, amount, note?, reason?}"""
         d = request.data
         b = Branch.objects.filter(id=d.get("branch_id")).first()
@@ -917,6 +936,9 @@ class DiscountItemAdminAPI(APIView):
 
     @admin_role_required
     def get(self, request):
+        _d = menu_denied(request.user, "options")
+        if _d:
+            return self.error(_d)
         view = viewable_branch_ids(request.user)
         qs = DiscountItem.objects.select_related("branch")
         if view is not None:
@@ -929,6 +951,9 @@ class DiscountItemAdminAPI(APIView):
 
     @admin_role_required
     def post(self, request):
+        _d = menu_denied(request.user, "options")
+        if _d:
+            return self.error(_d)
         d = request.data
         if not _is_director_up_exam(request.user):
             return self.error("원장 이상만 고칠 수 있습니다.")
@@ -963,6 +988,9 @@ class DiscountItemAdminAPI(APIView):
 
     @admin_role_required
     def delete(self, request):
+        _d = menu_denied(request.user, "options")
+        if _d:
+            return self.error(_d)
         if not _is_director_up_exam(request.user):
             return self.error("원장 이상만 지울 수 있습니다.")
         x = DiscountItem.objects.filter(id=request.GET.get("id")).first()
@@ -1057,6 +1085,9 @@ class StudentTuitionAdminAPI(APIView):
 
     @admin_role_required
     def get(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         from ..services_tuition import compute
         from ..models import StudentTuitionChange
         sid = request.GET.get("student_id")
@@ -1080,6 +1111,9 @@ class StudentTuitionAdminAPI(APIView):
 
     @admin_role_required
     def post(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         """{student_id, mode, planned_sessions?, planned_duration?, manual_amount?, note?, reason?}"""
         from ..models import StudentTuition, StudentTuitionChange
         from ..services_tuition import compute
@@ -1129,6 +1163,9 @@ class TuitionPreviewAPI(APIView):
 
     @admin_role_required
     def get(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         from ..services_tuition import rate_table, unit_price, WEEKS_PER_MONTH
         bid = request.GET.get("branch_id")
         if not bid or not can_view_branch(request.user, int(bid)):
@@ -1165,6 +1202,9 @@ class StudentDiscountAdminAPI(APIView):
 
     @admin_role_required
     def post(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         from ..models import StudentDiscount, StudentTuitionChange
         from ..services_tuition import compute
         d = request.data
@@ -1188,6 +1228,9 @@ class StudentDiscountAdminAPI(APIView):
 
     @admin_role_required
     def delete(self, request):
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
         from ..models import StudentDiscount, StudentTuitionChange
         from ..services_tuition import compute
         row = StudentDiscount.objects.filter(id=request.GET.get("id")).select_related("item").first()
@@ -1209,6 +1252,9 @@ class MenuSettingAdminAPI(APIView):
 
     @admin_role_required
     def get(self, request):
+        _d = menu_denied(request.user, "options")
+        if _d:
+            return self.error(_d)
         bid = menu_scope_branch(request.user)
         key_map = {(m.key, m.branch_id): m for m in MenuSetting.objects.all()}
         # 직원 예외는 볼 수 있는 지점 사람만
@@ -1256,6 +1302,9 @@ class MenuSettingAdminAPI(APIView):
 
     @admin_role_required
     def post(self, request):
+        _d = menu_denied(request.user, "options")
+        if _d:
+            return self.error(_d)
         d = request.data
         key = d.get("key")
         if not key or key not in {m["key"] for m in MENU_DEFS}:
