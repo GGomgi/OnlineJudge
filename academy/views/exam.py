@@ -23,7 +23,6 @@ from ..services import viewable_branch_ids, can_manage_branch, can_view_branch
 from .admin import DIRECTOR_UP_ROLES
 from ..models import ExamChange, ExamChangeKind, EXAM_CHANGE_CHOICES, SavedSearch
 from ..models import TuitionRate, TuitionRateChange, DiscountItem, Branch, AcademyRole
-from itertools import product
 from ..services_brand import (KINDS as BRAND_KINDS, MAX_UPLOAD_BYTES as BRAND_MAX_BYTES,
                               ALLOWED_EXT as BRAND_EXT, brand_all, save_brand, delete_brand)
 
@@ -812,9 +811,22 @@ class MyMenuAPI(APIView):
         return self.success({"keys": menu_allowed_keys(request.user)})
 
 
-# 실제로 쓰이는 회당 시간. 여기 없는 값도 시간표에는 있을 수 있어 화면에서 함께 보여 준다.
-TUITION_DURATIONS = [50, 60, 90, 120, 180]
+# 보통 이 학년이 이 시간을 한다는 안내일 뿐, 강제하지 않는다.
+# 초등학생에게 중학생 시간·금액을 적용하는 경우가 실제로 있다.
+TUITION_TIERS = [
+    ("초등 1·2학년", [(1, 50), (2, 50)]),
+    ("초등 3~6학년", [(1, 90), (2, 60)]),
+    ("중학생 이상", [(1, 120), (2, 90)]),
+]
+TUITION_STD = [c for _lb, cs in TUITION_TIERS for c in cs]
 TUITION_WEEKS = [1, 2]
+
+
+def _tuition_tier(wk, du):
+    for lb, cs in TUITION_TIERS:
+        if (wk, du) in cs:
+            return lb
+    return ""
 
 
 class TuitionRateAdminAPI(APIView):
@@ -832,27 +844,33 @@ class TuitionRateAdminAPI(APIView):
                 for r in TuitionRate.objects.filter(branch_id__in=[b.id for b in branches])}
         # 시간표에 실제로 있는 조합(표에 없더라도 알려 줘야 한다)
         used = _tuition_used_combos([b.id for b in branches])
+        counts = _tuition_people_counts([b.id for b in branches])
         rows = []
         for b in branches:
-            combos = sorted(set(list(product(TUITION_WEEKS, TUITION_DURATIONS)) + used.get(b.id, [])))
-            for wk, du in combos:
-                r = have.get((b.id, wk, du))
-                rows.append({
-                    "branch_id": b.id, "branch": b.name,
-                    "sessions_per_week": wk, "duration_minutes": du,
-                    "amount": (r.amount if r else 0),
-                    "note": (r.note if r else ""),
-                    "people": used.get(b.id, {}).count((wk, du)) if isinstance(used.get(b.id), list) else 0,
-                })
-        counts = _tuition_people_counts([b.id for b in branches])
-        for r in rows:
-            r["people"] = counts.get((r["branch_id"], r["sessions_per_week"], r["duration_minutes"]), 0)
+            # 기본 구간을 사람이 보는 순서대로 먼저, 그 밖의 시간을 뒤에.
+            extra = sorted(c for c in used.get(b.id, []) if c not in TUITION_STD and c[0] <= 2)
+            # 주3회 이상은 회당 단가로 계산하므로 표에 금액 칸이 필요 없다(아래 목록으로 따로 본다)
+            for group, combos in (("std", TUITION_STD), ("extra", extra)):
+                for wk, du in combos:
+                    r = have.get((b.id, wk, du))
+                    rows.append({
+                        "branch_id": b.id, "branch": b.name, "group": group,
+                        "tier": _tuition_tier(wk, du),
+                        "sessions_per_week": wk, "duration_minutes": du,
+                        "amount": (r.amount if r else 0),
+                        "note": (r.note if r else ""),
+                        "people": counts.get((b.id, wk, du), 0),
+                    })
+        # 회당 단가로 계산되는 사람(주3회 이상·회당 시간 섞임)은 표의 칸에 담기지 않는다
+        by_unit = _tuition_by_unit([b.id for b in branches])
         hist = [{"branch": (c.branch.name if c.branch_id else "전 지점"), "detail": c.detail,
                  "reason": c.reason, "actor": name_of(c.actor) if c.actor_id else "",
                  "time": kst_dt(c.create_time)}
                 for c in TuitionRateChange.objects.select_related("branch", "actor")[:100]]
         return self.success({"rows": rows,
                              "branches": [{"id": b.id, "name": b.name} for b in branches],
+                             "by_unit": by_unit,
+                             "tiers": [lb for lb, _ in TUITION_TIERS],
                              "history": hist})
 
     @admin_role_required
@@ -993,6 +1011,33 @@ def _tuition_student_combos(branch_ids):
         out.setdefault(branch_of[sid], {})
         out[branch_of[sid]][key] = out[branch_of[sid]].get(key, 0) + 1
     return out
+
+
+def _tuition_by_unit(branch_ids):
+    """회당 단가로 계산되는 학생 — 주3회 이상이거나 회당 시간이 섞인 사람."""
+    from ..models import StudentTimetable, StudentProfile, AcademyProfile, EnrollmentStatus
+    from .admin import _slot_active_on
+    today = (now() + timedelta(hours=9)).date()
+    enrolled = set(StudentProfile.objects.filter(
+        enrollment_status=EnrollmentStatus.ENROLLED).values_list("user_id", flat=True))
+    prof = {a.user_id: a for a in AcademyProfile.objects.filter(
+        is_deleted=False, branch_id__in=branch_ids, user_id__in=enrolled).select_related("branch")}
+    per = {}
+    for t in StudentTimetable.objects.exclude(status="ENDED").select_related("student__userprofile"):
+        if t.student_id in prof and _slot_active_on(t, today):
+            per.setdefault(t.student_id, []).append(t)
+    out = []
+    for sid, ts in per.items():
+        ds = [x.duration_minutes for x in ts]
+        if len(ds) <= 2 and len(set(ds)) == 1:
+            continue
+        out.append({"student_id": sid, "name": name_of(ts[0].student),
+                    "branch_id": prof[sid].branch_id,
+                    "branch": (prof[sid].branch.name if prof[sid].branch_id else ""),
+                    "sessions": len(ds),
+                    "durations": sorted(ds),
+                    "why": ("주%d회" % len(ds)) if len(ds) > 2 else "회당 시간 섞임"})
+    return sorted(out, key=lambda x: (x["branch"], -x["sessions"], x["name"]))
 
 
 def _is_director_up_exam(user):
