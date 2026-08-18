@@ -971,8 +971,17 @@
                 나중에 <b>재원(재등록)</b>으로 되돌리면 그날부터 <b>같은 시간표가 되살아납니다</b>.</p>
               <p><b class="text-rose-600">퇴원</b>은 그만두는 것 — 시간표를 <b>끝냅니다</b>.
                 다시 다니게 되면 <b>시간표를 새로 등록</b>해야 합니다(되살아나지 않습니다).</p>
-              <p class="text-amber-700">⚠ 앞날을 적어도 <b>상태 배지는 지금 바로</b> 바뀝니다. 8월 말까지 다니고 그만두는 학생을
-                미리 퇴원으로 넣으면 오늘부터 퇴원생으로 보입니다 — 그만두는 날 처리하시는 편이 낫습니다.</p>
+              <div class="text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 space-y-1">
+                <p>⚠ <b>적용일을 미래로 적어도 상태는 지금 당장 바뀝니다.</b> 날짜는 <b>시간표에만</b> 쓰이고,
+                  재원/휴원/퇴원 표시는 <b>누르는 순간</b> 바뀝니다.</p>
+                <p class="text-amber-800">
+                  예를 들어 오늘이 <b>{{ todayStr }}</b> 인데 적용일을 <b>{{ stuStatusEg.future }}</b> 로 넣고 퇴원하면 —<br>
+                  · {{ stuStatusEg.futureUntil }} 까지 수업은 시간표에 그대로 남지만<br>
+                  · <b>오늘부터 퇴원생</b>이 되어 재원생 수·원비 청구 대상에서 빠집니다. 이번 달 청구서가 안 나갑니다.
+                </p>
+                <p>그래서 <b>그만두는 날 그날 처리</b>하시는 편이 낫습니다.
+                  적용일을 지난 날(예: {{ stuStatusEg.past }})로 넣는 것은 괜찮습니다 — 늦게 처리한 것을 바로잡는 쓰임입니다.</p>
+              </div>
             </div>
           </div>
           <ul class="space-y-1">
@@ -8680,6 +8689,13 @@ const app = createApp({
       const cells=[]; const lead=first.getDay(); for(let i=0;i<lead;i++) cells.push({});   // 일요일 시작
       for(let dd=1;dd<=last.getDate();dd++){ const ds=y+'-'+p(m)+'-'+p(dd); cells.push({ day:dd, date:ds, isToday:ds===this.todayStr }); }
       return cells;
+    },
+    // 설명에 넣을 보기 날짜. 말로만 하면 '앞날'이 언제인지 헷갈린다.
+    stuStatusEg(){
+      const p = x => String(x).padStart(2,'0');
+      const mk = n => { const d = new Date(); d.setDate(d.getDate()+n);
+                        return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); };
+      return { future: mk(13), futureUntil: mk(12), past: mk(-7) };
     },
     hdCmpYears(){ return [this.hdYear-2, this.hdYear-1, this.hdYear]; },
     ttStatusKeys(){ return ['ttShowPre','ttShowInProgress','ttShowDone','ttShowAbsent','ttShowLeave','ttShowMakeup']; },
