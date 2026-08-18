@@ -2,6 +2,7 @@ from django.conf.urls import url
 
 from ..views.verify import ProfileVerifyAdminAPI, ProfileVerifyResolveAPI, StudentVoiceAdminAPI
 from ..views.promotion import PromotionPreviewAPI, PromotionAPI
+from ..views.billing import InvoiceAPI, PaymentAPI
 from ..views.exam import (SavedSearchAPI, ExamChangeAdminAPI, ExamCatalogAdminAPI, ExamSessionAdminAPI, ExamEntryAdminAPI,
                           ExamContactAdminAPI, ExamStageAdminAPI,
                           MenuSettingAdminAPI, MyMenuAPI,
@@ -142,4 +143,6 @@ urlpatterns = [
     url(r"^academy/student_tuition/?$", StudentTuitionAdminAPI.as_view(), name="academy_student_tuition"),
     url(r"^academy/student_discount/?$", StudentDiscountAdminAPI.as_view(), name="academy_student_discount"),
     url(r"^academy/tuition_preview/?$", TuitionPreviewAPI.as_view(), name="academy_tuition_preview"),
+    url(r"^academy/invoice/?$", InvoiceAPI.as_view(), name="academy_invoice"),
+    url(r"^academy/payment/?$", PaymentAPI.as_view(), name="academy_payment"),
 ]

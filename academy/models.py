@@ -948,6 +948,66 @@ class StudentTuitionChange(models.Model):
         ordering = ["-id"]
 
 
+class Invoice(models.Model):
+    """월 청구서. 만들 때의 금액을 굳혀 둔다 — 나중에 기준표가 바뀌어도 지난 청구서는
+    그대로여야 장부가 된다. 학생별 원비(StudentTuition)는 '지금 얼마인가'이고,
+    이것은 '그달에 얼마를 청구했는가'다."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="invoices")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="invoices")
+    ym = models.CharField(max_length=7)                   # 2026-08
+    base_amount = models.PositiveIntegerField(default=0)  # 할인 전
+    discount_amount = models.PositiveIntegerField(default=0)
+    amount = models.PositiveIntegerField(default=0)       # 청구 금액
+    source = models.CharField(max_length=255, blank=True, default="")   # 시간표 주2회 90+90분
+    lines = models.TextField(blank=True, default="")      # 할인 줄 JSON
+    note = models.CharField(max_length=255, blank=True, default="")
+    is_void = models.BooleanField(default=False)          # 취소(지우지 않는다)
+    void_reason = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_invoice"
+        unique_together = ("student", "ym")
+        ordering = ["-ym", "student_id"]
+
+
+class Payment(models.Model):
+    """받은 돈. 청구서와 따로 둔다 — 늦게 내고, 두 달치를 한 번에 내는 일이 잦아
+    한 번 낸 돈이 여러 청구서에 나눠 붙어야 한다."""
+    METHOD_CHOICES = (("TRANSFER", "계좌이체"), ("CASH", "현금"), ("CARD", "카드"), ("ETC", "기타"))
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="payments")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="+")
+    paid_on = models.DateField()
+    amount = models.PositiveIntegerField()
+    method = models.CharField(max_length=16, default="TRANSFER")
+    note = models.CharField(max_length=255, blank=True, default="")
+    is_void = models.BooleanField(default=False)
+    void_reason = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_payment"
+        ordering = ["-paid_on", "-id"]
+
+
+class PaymentAlloc(models.Model):
+    """받은 돈을 어느 청구서에 얼마씩 붙였는지."""
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE, related_name="allocs")
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="allocs")
+    amount = models.PositiveIntegerField()
+
+    class Meta:
+        db_table = "academy_payment_alloc"
+
+
 class StudentStatusChange(models.Model):
     """학생 등록상태 변경 이력(재원↔휴원↔퇴원↔재등록). 휴원/퇴원 모아보기·재등록 관리·
     안내문자 연계의 근거 자료로 영구 보존한다."""

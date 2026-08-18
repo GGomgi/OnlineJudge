@@ -6190,6 +6190,154 @@
       </div>
     </section>
 
+    <!-- ============ 원비·수납 ============
+         청구와 납부를 따로 둔다 — 늦게 내고 두 달치를 한 번에 내는 일이 잦아,
+         한 번 낸 돈이 여러 달 청구서에 나눠 붙어야 한다. -->
+    <section v-if="tab==='billing'">
+      <div class="flex items-center gap-2 mb-3 flex-wrap">
+        <h2 class="text-lg font-bold">원비 · 수납</h2>
+        <input v-model="ivYm" type="month" @change="loadInvoices" class="input py-1" style="width:9rem" />
+        <select v-if="(ivBranches||[]).length>1" v-model="ivBranch" @change="loadInvoices" class="input py-1" style="width:9rem">
+          <option value="">지점 전체</option>
+          <option v-for="b in ivBranches" :key="b.id" :value="b.id">{{ b.name }}</option>
+        </select>
+        <button @click="previewInvoices" class="px-3 py-1.5 rounded border border-slate-300 text-slate-600 text-sm whitespace-nowrap">청구서 만들기 미리보기</button>
+        <div class="ml-auto flex items-center gap-3 text-sm">
+          <span class="text-slate-500">청구 <b class="font-mono">{{ Number(ivSum.total||0).toLocaleString() }}</b>원</span>
+          <span class="text-emerald-600">받음 <b class="font-mono">{{ Number(ivSum.paid||0).toLocaleString() }}</b>원</span>
+          <span class="text-rose-500">남음 <b class="font-mono">{{ Number(ivSum.remain||0).toLocaleString() }}</b>원</span>
+        </div>
+      </div>
+
+      <!-- 미리보기 — 만들기 전에 무엇이 얼마로 잡히는지 다 보여 준다 -->
+      <div v-if="ivPreview" class="bg-white rounded-xl shadow-sm p-4 mb-4 border-l-4 border-indigo-300">
+        <div class="flex items-center gap-2 mb-2 flex-wrap">
+          <div class="text-sm font-bold">{{ ivPreview.ym }} 청구서 미리보기</div>
+          <span class="text-xs text-slate-500">만들 것 <b>{{ ivPreview.rows.length - ivPreview.undecided }}명</b> · 합계 <b class="font-mono">{{ Number(ivPreview.total||0).toLocaleString() }}원</b></span>
+          <span v-if="ivPreview.undecided" class="text-xs text-amber-700">금액 미정 {{ ivPreview.undecided }}명은 만들지 않습니다</span>
+          <span v-if="ivPreview.skipped" class="text-xs text-slate-400">이미 있는 {{ ivPreview.skipped }}명은 건너뜁니다</span>
+          <div class="ml-auto flex gap-2">
+            <button @click="ivPreview=null" class="px-2.5 py-1.5 rounded border border-slate-300 text-slate-600 text-sm">닫기</button>
+            <button @click="makeInvoices" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm whitespace-nowrap">이대로 만들기</button>
+          </div>
+        </div>
+        <div class="max-h-72 overflow-y-auto border rounded-lg divide-y text-sm">
+          <div v-for="r in ivPreview.rows" :key="r.student_id" class="flex items-center gap-2 px-3 py-1.5">
+            <span class="w-20 font-medium">{{ r.name }}</span>
+            <span v-if="r.amount!==null" class="w-24 text-right font-mono">{{ Number(r.amount).toLocaleString() }}원</span>
+            <span v-else class="w-24 text-right text-amber-600">금액 미정</span>
+            <span class="text-xs text-slate-400">{{ r.source }}</span>
+            <span v-for="(w,i) in r.warnings" :key="i" class="text-[11px] text-amber-700">⚠ {{ w }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 밀린 돈 — 누가 몇 달치 얼마인지 -->
+      <div v-if="(unpaid||[]).length" class="bg-white rounded-xl shadow-sm p-3 mb-4 border-l-4 border-rose-300">
+        <button @click="togglePanel('unpaid')" class="w-full text-left text-xs font-semibold text-rose-600 flex items-center gap-1">
+          <span class="text-rose-400">{{ panelOpen('unpaid') ? '▾' : '▸' }}</span>
+          💸 밀린 원비 <span class="text-slate-400 font-normal">{{ unpaid.length }}명 · {{ Number(unpaidTotal||0).toLocaleString() }}원</span>
+          <span class="ml-auto font-normal text-slate-400">{{ panelOpen('unpaid') ? '접기' : '펼치기' }}</span>
+        </button>
+        <div v-if="panelOpen('unpaid')" class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+          <div v-for="u in unpaid" :key="u.student_id" class="whitespace-nowrap">
+            <button @click="openPay(u.student_id, u.name)" class="font-medium hover:underline">{{ u.name }}</button>
+            <span class="text-rose-600 font-mono ml-1">{{ Number(u.remain).toLocaleString() }}원</span>
+            <span class="text-xs text-slate-400 ml-1">{{ u.months.length }}달 ({{ u.months.join(', ') }})</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs">
+            <tr>
+              <th class="px-3 py-2 text-left w-24">학생</th>
+              <th class="px-3 py-2 text-left w-20">지점</th>
+              <th class="px-3 py-2 text-right w-28">청구</th>
+              <th class="px-3 py-2 text-right w-28">받음</th>
+              <th class="px-3 py-2 text-right w-28">남음</th>
+              <th class="px-3 py-2 text-left w-20">상태</th>
+              <th class="px-3 py-2 text-left">근거</th>
+              <th class="px-3 py-2 text-right w-24"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in (ivRows||[])" :key="r.id" :class="['border-t', r.is_void ? 'text-slate-300' : '']">
+              <td class="px-3 py-1.5"><button @click="openStudent({ id:r.student_id })" class="font-medium hover:underline">{{ r.name }}</button></td>
+              <td class="px-3 py-1.5 text-xs text-slate-400">{{ r.branch }}</td>
+              <td class="px-3 py-1.5 text-right font-mono">{{ Number(r.amount).toLocaleString() }}</td>
+              <td class="px-3 py-1.5 text-right font-mono text-emerald-600">{{ r.paid ? Number(r.paid).toLocaleString() : '-' }}</td>
+              <td class="px-3 py-1.5 text-right font-mono" :class="r.remain ? 'text-rose-500' : 'text-slate-300'">{{ r.remain ? Number(r.remain).toLocaleString() : '-' }}</td>
+              <td class="px-3 py-1.5">
+                <span :class="['text-[11px] px-1.5 py-0.5 rounded', ivStateCls(r.state)]">{{ r.state }}</span>
+              </td>
+              <td class="px-3 py-1.5 text-xs text-slate-400">
+                {{ r.source }}
+                <span v-for="dc in r.lines" :key="dc.id" class="ml-1 text-rose-400">{{ dc.name }} -{{ Number(dc.off).toLocaleString() }}</span>
+              </td>
+              <td class="px-3 py-1.5 text-right">
+                <button v-if="!r.is_void" @click="openPay(r.student_id, r.name)" class="text-xs text-indigo-500 hover:underline">납부</button>
+              </td>
+            </tr>
+            <tr v-if="!(ivRows||[]).length"><td colspan="8" class="px-3 py-8 text-center text-sm text-slate-400">{{ ivYm }} 청구서가 없습니다. 위 [청구서 만들기 미리보기]를 눌러 주세요.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 납부 기록 창 -->
+    <div v-if="payFor" class="fixed inset-0 bg-black/40 z-[65] flex items-start justify-center p-4 overflow-auto" @click.self="payFor=null">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl my-4">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <div class="font-bold">{{ payFor.name }} — 원비 수납</div>
+          <button @click="payFor=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+        </div>
+        <div class="p-4 space-y-3">
+          <div class="flex items-end gap-2 flex-wrap bg-slate-50 rounded-lg p-3">
+            <div><label class="lbl">받은 날</label><date-box v-model="payForm.paid_on" box-class="input py-1"></date-box></div>
+            <div><label class="lbl">금액</label><input v-model="payForm.amount" inputmode="numeric" placeholder="320000" class="input py-1 text-right font-mono" style="width:8rem" /></div>
+            <div><label class="lbl">방법</label><select v-model="payForm.method" class="input py-1 px-2" style="width:7rem">
+              <option value="TRANSFER">계좌이체</option><option value="CASH">현금</option><option value="CARD">카드</option><option value="ETC">기타</option></select></div>
+            <div class="flex-1 min-w-[8rem]"><label class="lbl">메모</label><input v-model="payForm.note" class="input py-1 text-xs" /></div>
+            <button @click="savePayment" class="btn-primary text-sm">기록</button>
+          </div>
+          <p class="text-[11px] text-slate-400">받은 돈은 <b>오래 밀린 달부터</b> 저절로 채워집니다. 남으면 그대로 두었다가 다음 청구서가 생길 때 붙습니다.</p>
+
+          <div>
+            <div class="text-xs font-semibold text-slate-500 mb-1">청구서</div>
+            <div class="border rounded-lg divide-y text-sm">
+              <div v-for="i in (payData.invoices||[])" :key="i.id" :class="['flex items-center gap-2 px-3 py-1.5', i.is_void ? 'text-slate-300' : '']">
+                <span class="w-20 font-mono">{{ i.ym }}</span>
+                <span class="w-24 text-right font-mono">{{ Number(i.amount).toLocaleString() }}</span>
+                <span class="w-24 text-right font-mono text-emerald-600">{{ i.paid ? Number(i.paid).toLocaleString() : '-' }}</span>
+                <span class="w-24 text-right font-mono" :class="i.remain ? 'text-rose-500' : 'text-slate-300'">{{ i.remain ? Number(i.remain).toLocaleString() : '-' }}</span>
+                <span :class="['text-[11px] px-1.5 py-0.5 rounded', ivStateCls(i.state)]">{{ i.state }}</span>
+                <span class="text-xs text-slate-400 truncate">{{ i.source }}</span>
+              </div>
+              <div v-if="!(payData.invoices||[]).length" class="px-3 py-4 text-center text-xs text-slate-400">청구서가 없습니다.</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-xs font-semibold text-slate-500 mb-1">받은 기록</div>
+            <div class="border rounded-lg divide-y text-sm">
+              <div v-for="p in (payData.payments||[])" :key="p.id" :class="['flex items-center gap-2 px-3 py-1.5', p.is_void ? 'text-slate-300 line-through' : '']">
+                <span class="w-24 font-mono">{{ dd(p.paid_on) }}</span>
+                <span class="w-24 text-right font-mono">{{ Number(p.amount).toLocaleString() }}</span>
+                <span class="text-xs text-slate-500">{{ p.method }}</span>
+                <span class="text-xs text-slate-400">{{ (p.allocs||[]).map(a=>a.ym+' '+Number(a.amount).toLocaleString()).join(' · ') }}</span>
+                <span v-if="p.note" class="text-xs text-slate-500 truncate">{{ p.note }}</span>
+                <button v-if="!p.is_void" @click="voidPayment(p)" class="ml-auto text-xs text-rose-400 hover:underline shrink-0">취소</button>
+                <span class="ml-auto text-[11px] text-slate-400 shrink-0">{{ p.actor }}</span>
+              </div>
+              <div v-if="!(payData.payments||[]).length" class="px-3 py-4 text-center text-xs text-slate-400">아직 받은 기록이 없습니다.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ============ 개발 요청 게시판 (로그인 모두) ============ -->
     <section v-if="tab==='devboard'" class="max-w-3xl mx-auto">
       <!-- 목록 -->
@@ -7201,6 +7349,10 @@ const app = createApp({
       tuRows: [], tuOrig: {}, tuBranches: [], tuHistory: [], tuShowHist: false, tuEdit: false, tuByUnit: [],
       tuAddFor: null, tuAdd: { wk:'', du:'' },
       cvFee: { amount:null, source:'', warning:'' },
+      ivYm: '', ivBranch: '', ivRows: [], ivBranches: [], ivSum: {}, ivPreview: null,
+      unpaid: [], unpaidTotal: 0,
+      payFor: null, payData: { invoices:[], payments:[] },
+      payForm: { paid_on:'', amount:'', method:'TRANSFER', note:'' },
       stuFee: null, stuFeeEdit: false, stuFeeAddId: '',
       stuFeeForm: { mode:'AUTO', planned_sessions:'', planned_duration:'', manual_amount:'', note:'' },
       dcRows: [], dcNew: null,
@@ -8336,6 +8488,7 @@ const app = createApp({
         if (this.canManageStaff) t.push({key:'staff',label:'직원 관리'});
         t.push({key:'hr',label:'내 정보' + (this.staffProfile && !this.staffProfile.completed ? ' ❗' : '')});
         if (this.acadTabs.length) t.push({key:'options',label:'학원 관리'});
+        if (this.isDirectorUp) t.push({key:'billing',label:'원비·수납'});
         t.push({key:'msgtpl',label:'문자 템플릿'});
         t.push({key:'devboard',label:'개발 요청'});
         if (this.me.user.admin_type === 'Super Admin') t.push({key:'devlog',label:'개발일지'});
@@ -8476,6 +8629,7 @@ const app = createApp({
         this.selectAcadTab(this.acadTab);
       }
       else if (key==='devlog') this.loadDevlog(true);
+      else if (key==='billing'){ this.loadInvoices(); this.loadUnpaid(); }
       else if (key==='devboard') this.loadDevBoard();
       else if (key==='msgtpl') this.loadMsgtpl();
       else if (key==='messages'){ this.msgBox='inbox'; this.loadMessages(); }
@@ -10390,6 +10544,79 @@ const app = createApp({
       try {
         this.cvFee = await api('GET','/api/admin/academy/tuition_preview?branch_id='+f.branch_id+'&durations='+durs.join(','));
       } catch(e){ this.cvFee = { amount:null, source:'', warning:'' }; }
+    },
+    // ── 원비·수납 ──
+    ivStateCls(st){
+      return ({ '완납':'bg-emerald-50 text-emerald-700', '일부':'bg-amber-50 text-amber-700',
+                '미납':'bg-rose-50 text-rose-600', '취소':'bg-slate-100 text-slate-400' })[st] || 'bg-slate-100';
+    },
+    async loadInvoices(){
+      if (!this.ivYm) this.ivYm = this.todayStr.slice(0,7);
+      try {
+        const q = '?ym='+this.ivYm + (this.ivBranch ? '&branch_id='+this.ivBranch : '');
+        const d = await api('GET','/api/admin/academy/invoice'+q);
+        this.ivRows = d.rows || []; this.ivBranches = d.branches || [];
+        this.ivSum = { total:d.total, paid:d.paid, remain:d.remain };
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async loadUnpaid(){
+      try {
+        const d = await api('GET','/api/admin/academy/payment' + (this.ivBranch ? '?branch_id='+this.ivBranch : ''));
+        this.unpaid = d.rows || []; this.unpaidTotal = d.total || 0;
+      } catch(e){ this.unpaid = []; }
+    },
+    ivBranchId(){
+      if (this.ivBranch) return this.ivBranch;
+      if ((this.ivBranches||[]).length === 1) return this.ivBranches[0].id;
+      return null;
+    },
+    async previewInvoices(){
+      const bid = this.ivBranchId();
+      if (!bid) return this.notify('지점을 고르세요.', false);
+      try {
+        this.ivPreview = await api('POST','/api/admin/academy/invoice',
+                                   { branch_id:bid, ym:this.ivYm, commit:false });
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async makeInvoices(){
+      const bid = this.ivBranchId();
+      if (!bid) return;
+      const n = this.ivPreview ? (this.ivPreview.rows.length - this.ivPreview.undecided) : 0;
+      if (!await this.askConfirm(this.ivYm + ' 청구서 ' + n + '건을 만듭니다.\n이미 있는 학생은 건너뜁니다.')) return;
+      try {
+        const d = await api('POST','/api/admin/academy/invoice',
+                            { branch_id:bid, ym:this.ivYm, commit:true });
+        this.ivPreview = null;
+        this.notify(d.made + '건 만들었습니다.' + (d.undecided ? ' (금액 미정 '+d.undecided+'명 제외)' : ''));
+        this.loadInvoices(); this.loadUnpaid();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async openPay(sid, name){
+      this.payFor = { id:sid, name };
+      this.payForm = { paid_on:this.todayStr, amount:'', method:'TRANSFER', note:'' };
+      await this.loadPayData();
+    },
+    async loadPayData(){
+      try { this.payData = await api('GET','/api/admin/academy/payment?student_id='+this.payFor.id); }
+      catch(e){ this.payData = { invoices:[], payments:[] }; }
+    },
+    async savePayment(){
+      const f = this.payForm;
+      if (!String(f.amount||'').replace(/[^0-9]/g,'')) return this.notify('금액을 넣어 주세요.', false);
+      try {
+        const d = await api('POST','/api/admin/academy/payment', { student_id:this.payFor.id, ...f });
+        this.notify(Number(d.allocated).toLocaleString() + '원 붙였습니다.' + (d.left ? ' (남은 돈 '+Number(d.left).toLocaleString()+'원은 다음 청구서에)' : ''));
+        this.payForm.amount = ''; this.payForm.note = '';
+        await this.loadPayData(); this.loadInvoices(); this.loadUnpaid();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async voidPayment(p){
+      const reason = await this.askInput('납부를 취소합니다. 사유(선택)', '');
+      if (reason === null) return;
+      try {
+        await api('DELETE','/api/admin/academy/payment?id='+p.id+'&reason='+encodeURIComponent(reason));
+        await this.loadPayData(); this.loadInvoices(); this.loadUnpaid();
+      } catch(e){ this.notify(e.message,false); }
     },
     // ── 학생별 원비 ──
     async loadStuFee(){
