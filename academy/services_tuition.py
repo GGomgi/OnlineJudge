@@ -51,7 +51,7 @@ def unit_price(rates, duration):
     return (base / 8.0) if base else None
 
 
-def compute(student_id):
+def compute(student_id, for_ym=None):
     """{mode, amount, base, source, discounts, warnings, sessions, durations} 를 돌려준다.
 
     amount 가 None 이면 '금액 미정'이다. 임의로 계산해 틀린 금액을 청구하느니 비워 둔다.
@@ -91,7 +91,7 @@ def compute(student_id):
             out["warnings"].append("직접 지정인데 금액이 비어 있습니다.")
         # 기준표대로면 얼마인지 함께 알려 준다 — 얼마나 깎아 주고 있는지 보여야 한다
         out["auto_base"] = _auto_base(branch_id, slots, st)[0]
-        return _apply_discounts(student_id, out)
+        return _apply_discounts(student_id, out, for_ym)
 
     # ── 자동 ──
     out["auto_base"] = None
@@ -135,7 +135,7 @@ def compute(student_id):
         out["auto_base"] = out["base"]
         out["source"] += " · 회당 단가"
 
-    return _apply_discounts(student_id, out)
+    return _apply_discounts(student_id, out, for_ym)
 
 
 def _auto_base(branch_id, slots, st):
@@ -162,26 +162,37 @@ def _auto_base(branch_id, slots, st):
     return int(round(total)), ""
 
 
-def _apply_discounts(student_id, out):
-    """정액을 먼저 빼고, 남은 금액에 비율을 적용한다."""
-    rows = list(StudentDiscount.objects.filter(student_id=student_id, is_active=True)
-                .select_related("item"))
+def _apply_discounts(student_id, out, for_ym=None):
+    """정액을 먼저 빼고, 남은 금액에 비율을 적용한다.
+
+    '한 번만' 할인은 이미 쓴 것이면 빠진다. 그 달 청구서에 쓴 것이면 그대로 붙어
+    있어야 하므로(다시 뽑아도 금액이 같아야 한다) 쓴 달이 지금 보는 달과 같으면 붙인다.
+    """
+    rows = []
+    for r in StudentDiscount.objects.filter(student_id=student_id, is_active=True) \
+                                    .select_related("item"):
+        if not r.item.recurring and r.used_ym and r.used_ym != (for_ym or ""):
+            continue                      # 다른 달에 이미 쓴 한 번만 할인
+        rows.append(r)
     amount = out["base"]
     if amount is None:
         out["discounts"] = [{"id": r.id, "name": r.item.name, "kind": r.item.kind,
-                             "value": r.item.value, "off": 0, "note": r.note} for r in rows]
+                             "value": r.item.value, "off": 0, "note": r.note,
+                             "recurring": r.item.recurring, "used_ym": r.used_ym} for r in rows]
         return out
     lines = []
     for r in [x for x in rows if x.item.kind == "AMOUNT"]:
         off = min(r.item.value, amount)
         amount -= off
         lines.append({"id": r.id, "name": r.item.name, "kind": "AMOUNT",
-                      "value": r.item.value, "off": off, "note": r.note})
+                      "value": r.item.value, "off": off, "note": r.note,
+                      "recurring": r.item.recurring, "used_ym": r.used_ym})
     for r in [x for x in rows if x.item.kind == "PERCENT"]:
         off = int(amount * r.item.value / 100.0)
         amount -= off
         lines.append({"id": r.id, "name": r.item.name, "kind": "PERCENT",
-                      "value": r.item.value, "off": off, "note": r.note})
+                      "value": r.item.value, "off": off, "note": r.note,
+                      "recurring": r.item.recurring, "used_ym": r.used_ym})
     out["discounts"] = lines
     out["amount"] = max(0, int(amount))
     return out

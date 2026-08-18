@@ -148,7 +148,7 @@ class InvoiceAPI(APIView):
 
         made, skipped, undecided, rows = 0, 0, 0, []
         for p in sorted(profs, key=lambda x: _name_of(x.user)):
-            t = compute(p.user_id)
+            t = compute(p.user_id, ym)
             slots = sorted(active_slots(p.user_id), key=lambda x: (x.weekday, x.start_time))
             sp = sprof.get(p.user_id)
             row = {"student_id": p.user_id, "name": _name_of(p.user),
@@ -197,6 +197,11 @@ class InvoiceAPI(APIView):
                 old_inv.save(update_fields=["is_void", "void_reason"])
             else:
                 rev = 1
+            # 한 번만 할인을 이 청구서에서 썼다고 표시한다 — 다음 달부터는 빠진다
+            from ..models import StudentDiscount
+            for dc in t["discounts"]:
+                if not dc.get("recurring"):
+                    StudentDiscount.objects.filter(id=dc["id"], used_ym="").update(used_ym=ym)
             Invoice.objects.create(
                 student_id=p.user_id, branch_id=p.branch_id, ym=ym, revision=rev,
                 base_amount=t["base"] or 0,
@@ -222,6 +227,9 @@ class InvoiceAPI(APIView):
         inv.is_void = True
         inv.void_reason = (request.GET.get("reason") or "").strip()
         inv.save(update_fields=["is_void", "void_reason"])
+        # 이 달에 썼던 '한 번만' 할인을 다시 풀어 준다 — 안 쓴 것이 되어야 한다
+        from ..models import StudentDiscount
+        StudentDiscount.objects.filter(student_id=inv.student_id, used_ym=inv.ym).update(used_ym="")
         return self.success({"ok": True})
 
 

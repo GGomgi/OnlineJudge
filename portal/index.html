@@ -758,8 +758,9 @@
                   <span class="w-32">기본 원비</span><span class="font-mono">{{ Number(stuFee.base).toLocaleString() }}원</span>
                 </div>
                 <div v-for="dc in stuFee.discounts" :key="dc.id" class="flex items-center gap-2">
-                  <span class="w-32 text-slate-600">{{ dc.name }}
+                  <span class="w-44 text-slate-600">{{ dc.name }}
                     <span class="text-slate-400">{{ dc.kind==='PERCENT' ? dc.value+'%' : Number(dc.value).toLocaleString()+'원' }}</span>
+                    <span v-if="!dc.recurring" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">한 번만</span>
                   </span>
                   <span class="font-mono text-rose-500">-{{ Number(dc.off).toLocaleString() }}원</span>
                   <button v-if="stuFee.can_edit" @click="removeStuDiscount(dc)" class="text-slate-400 hover:text-rose-500">✕</button>
@@ -774,6 +775,7 @@
                 </select>
                 <button v-if="stuFeeAddId" @click="addStuDiscount" class="px-2 py-1 rounded bg-indigo-600 text-white text-xs">붙이기</button>
                 <span v-if="!(stuFee.items||[]).length" class="text-[11px] text-slate-400">학원 관리 › 원비에서 할인 항목을 먼저 만드세요.</span>
+                <span v-else class="text-[11px] text-slate-400"><b>한 번만</b> 할인은 다음 청구서 한 번에만 붙고 그 뒤로는 빠집니다.</span>
               </div>
             </div>
           </div>
@@ -6268,7 +6270,7 @@
                   <div v-if="pvOffBase(r)" class="text-[10px] text-slate-400 font-mono">기본 {{ Number(pvBase(r)).toLocaleString() }}</div>
                 </td>
                 <td class="px-2 py-1.5 text-xs">
-                  <span v-for="dc in r.discounts" :key="dc.id" class="text-rose-500 mr-1">{{ dc.name }} -{{ Number(dc.off).toLocaleString() }}</span>
+                  <span v-for="dc in r.discounts" :key="dc.id" class="text-rose-500 mr-1">{{ dc.name }} -{{ Number(dc.off).toLocaleString() }}<span v-if="!dc.recurring" class="text-amber-600">(한 번만)</span></span>
                   <span v-for="(w,i) in r.warnings" :key="'w'+i" class="text-amber-700 mr-1">⚠ {{ w }}</span>
                   <span v-if="r.paid" class="text-emerald-600">받음 {{ Number(r.paid).toLocaleString() }} — 고치려면 납부부터 취소</span>
                   <span v-if="r.mode==='MANUAL'" class="text-indigo-600 mr-1">직접 지정<span v-if="r.auto_base"> (기준표 {{ Number(r.auto_base).toLocaleString() }})</span></span>

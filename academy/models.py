@@ -918,10 +918,15 @@ class StudentTuition(models.Model):
 
 
 class StudentDiscount(models.Model):
-    """학생에게 붙인 할인. 여러 개를 겹쳐 붙일 수 있다."""
+    """학생에게 붙인 할인. 여러 개를 겹쳐 붙일 수 있다.
+
+    '한 번만' 할인(친구 소개 등)은 청구서 한 번에만 붙고 그 뒤로는 빠진다.
+    어느 달 청구서에 썼는지 used_ym 에 적어 두고, 그 청구서를 취소하면 다시 풀린다.
+    '계속' 할인(형제·진급)은 매달 붙는다."""
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                 related_name="discounts")
     item = models.ForeignKey(DiscountItem, on_delete=models.CASCADE, related_name="+")
+    used_ym = models.CharField(max_length=7, blank=True, default="")   # 한 번만 할인이 쓰인 달
     is_active = models.BooleanField(default=True)
     note = models.CharField(max_length=255, blank=True, default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
