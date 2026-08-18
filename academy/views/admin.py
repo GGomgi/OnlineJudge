@@ -3,7 +3,7 @@ import secrets
 from datetime import timedelta, datetime, date as date_cls
 
 from django.utils.timezone import now
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F
 
 
 def _to_date(v):
@@ -2938,10 +2938,13 @@ class StudentDetailAdminAPI(APIView):
             profile_edits = _json.loads(sp.edit_log) if (sp and sp.edit_log) else []
         except (ValueError, TypeError):
             profile_edits = []
-        # 개별 시간표(종료 제외)
+        # 개별 시간표 — 종료된 것도 함께 보낸다. 화면의 '과거 이력 보기' 가 갈라 보여 주는데
+        # 여기서 빼 버려 지운 시간표가 이력에 아예 안 나왔다(이정윤 토요일이 그랬다).
+        # 정렬은 적용 시작일 순, 같으면 요일·시각 순 — 언제 무엇이 무엇으로 바뀌었는지 눈으로 따라간다.
         timetables = []
         for s in StudentTimetable.objects.select_related("instructor", "branch").filter(
-                student=u).exclude(status="ENDED").order_by("weekday", "start_time"):
+                student=u).order_by(F("active_from").asc(nulls_first=True),
+                                    "weekday", "start_time"):
             timetables.append({"id": s.id, "weekday": s.weekday, "start_time": str(s.start_time)[:5],
                                "duration_minutes": s.duration_minutes, "program": s.program or "",
                                "subject": s.subject or resolve_program_label(s.program) or "미지정",

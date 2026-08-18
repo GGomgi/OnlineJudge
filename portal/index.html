@@ -4149,7 +4149,7 @@
           </thead>
           <tbody>
             <tr v-for="s in filteredTt" :key="s.id" :class="['border-t align-middle', s.status==='ENDED' ? 'bg-rose-50 opacity-70' : (ttSlotEnded(s) ? 'bg-slate-50 opacity-60' : (ttRowDirty(s) ? 'bg-amber-50 ring-1 ring-amber-200' : ''))]">
-              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> <span :class="s.status==='ENDED' ? 'line-through text-rose-400' : ''">{{ s.student.real_name || s.student.username }}</span> <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700" title="휴원 처리로 멈춘 시간표 — 재등록하면 되살아납니다">휴원 중지</span><span v-if="ttSlotEnded(s)" class="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-600" title="적용 기간이 지난 줄(요일·시각을 바꾸면 옛 줄이 이렇게 남습니다)">기간 지남 {{ (s.active_until||'').slice(5) }}</span><span v-if="s.status==='ENDED'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600">종료({{ ttEndKind(s) }})</span></td>
+              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> <button @click="openStudent({ id:s.student.id }, { history:true })" :class="['hover:underline', s.status==='ENDED' ? 'line-through text-rose-400' : 'text-indigo-700']">{{ s.student.real_name || s.student.username }}</button> <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700" title="휴원 처리로 멈춘 시간표 — 재등록하면 되살아납니다">휴원 중지</span><span v-if="ttSlotEnded(s)" class="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-600" title="적용 기간이 지난 줄(요일·시각을 바꾸면 옛 줄이 이렇게 남습니다)">기간 지남 {{ (s.active_until||'').slice(5) }}</span><span v-if="s.status==='ENDED'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600">종료({{ ttEndKind(s) }})</span></td>
               <td class="px-3 py-2"><select v-model.number="s.weekday" :disabled="s.status==='ENDED'" style="width:4rem" :class="ttCls(s,'weekday','py-1 px-1')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
               <td class="px-3 py-2"><input :value="s.start_time" @input="s.start_time = hmTyped($event.target.value)" :disabled="s.status==='ENDED'" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" style="width:5rem" :class="ttCls(s,'start_time','py-1 px-1 text-center font-mono')" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" :disabled="s.status==='ENDED'" style="width:5.5rem" :class="ttCls(s,'duration_minutes','py-1 px-1')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
@@ -9847,7 +9847,7 @@ const app = createApp({
       const t = this.stuNavList()[i+delta];
       if (!t) return this.notify(delta<0 ? '첫 학생입니다.' : '마지막 학생입니다.', false);
       const keep = this.stuTab;   // 보고 있던 탭 유지 — 학생만 바뀌게
-      await this.openStudent(t);
+      await this.openStudent(t, { keepView:true });   // 과거 이력 체크 등 보던 설정도 그대로
       if (keep && keep !== 'info') this.selectStuTab(keep);
     },
     truncate(s,n){ s=s||''; return s.length>n ? s.slice(0,n)+'...' : s; },
@@ -13336,7 +13336,9 @@ const app = createApp({
     stuStatusBadge(s){ return ({ENROLLED:{label:'재원',cls:'bg-emerald-50 text-emerald-700'},ON_LEAVE:{label:'휴원',cls:'bg-amber-50 text-amber-700'},WITHDRAWN:{label:'퇴원',cls:'bg-slate-100 text-slate-500'}})[s] || {label:s||'-',cls:'bg-slate-100 text-slate-500'}; },
     showStatusPop(s,e){ this.statusPop={ show:true, name:(s.real_name||s.username), list:(s.status_history||[]), x:Math.min(e.clientX+12,window.innerWidth-300), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
     hideStatusPop(){ this.statusPop.show=false; },
-    async openStudent(s){
+    // opt.history 로 과거 이력을 켜 둔 채 열 수 있고, opt.keepView 면 보던 설정을 그대로 둔다
+    async openStudent(s, opt){
+      const keepView = !!(opt && opt.keepView);
       try {
         const d = await api('GET','/api/admin/academy/student_detail/info?student_id='+s.id);
         this.stuDetail = d; this.stuTab='info';
@@ -13345,7 +13347,10 @@ const app = createApp({
         try { this.stuProgramsEdit = JSON.parse((d.profile&&d.profile.programs)||'[]'); } catch(e){ this.stuProgramsEdit=[]; }
         this.stuProgramsEditOrig = JSON.parse(JSON.stringify(this.stuProgramsEdit));
         this.stuEditMode = false;
-        this.stuTtShowHistory = false; this.stuTtEditMode = false;
+        // 과거 이력 체크는 사람이 켜 둔 것이라 학생을 옮겨도 그대로 둔다. 열 때만 지정에 따른다.
+        if (opt && 'history' in opt) this.stuTtShowHistory = !!opt.history;
+        else if (!keepView) this.stuTtShowHistory = false;
+        this.stuTtEditMode = false;
         this.buildStuTimetables(d);
         this.stuNoteText = ''; this.stuEditLogText = '';
         this.stuFee = null; this.stuFeeEdit = false; this.stuFeeAddId = ''; this.loadStuFee();
