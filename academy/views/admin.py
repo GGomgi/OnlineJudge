@@ -4263,6 +4263,27 @@ class DashboardAdminAPI(APIView):
                 "channel": rv.channel, "status": rv.status,
                 "school_type": lg.school_type, "school_name": lg.school_name, "grade": lg.grade,
                 "parent_phone": lg.parent_phone, "logs": logs, "edits": edits})
+        # 앞으로 있을 상담 예약 — 내일부터 이레. 토요일에 보면 다음 주 금요일까지 들어와
+        # "다음 주에 상담 있네" 를 미리 알 수 있다. 오늘 것은 위 칸에 따로 있어 뺀다.
+        nq = CounselReservation.objects.select_related("lead", "lead__branch").filter(
+            status="ACTIVE", scheduled_at__gte=day_hi,
+            scheduled_at__lt=_kst_to_utc(d + timedelta(days=8), "00:00"))
+        if view is not None:
+            nq = nq.filter(lead__branch_id__in=view)
+        if bid:
+            nq = nq.filter(lead__branch_id=bid)
+        next_resv = []
+        for rv in nq.order_by("scheduled_at"):
+            when = (rv.scheduled_at + timedelta(hours=9)).date()
+            lg = rv.lead
+            next_resv.append({
+                "id": rv.id, "lead_id": rv.lead_id,
+                "date": str(when), "wd": _WD[when.weekday()], "time": _hm_kst(rv.scheduled_at),
+                "d_day": (when - d).days,
+                "student_name": lg.student_name, "parent_name": lg.parent_name,
+                "parent_phone": lg.parent_phone, "note": rv.note, "channel": rv.channel,
+                "branch": (lg.branch.name if lg.branch_id else "")})
+
         # 학부모 등록 링크 작성 완료(등록 전환 전까지 계속 표시, 날짜와 무관)
         eq = Lead.objects.select_related("branch").filter(
             enroll_status="SUBMITTED").exclude(status=LeadStatus.CONVERTED)
@@ -4304,6 +4325,7 @@ class DashboardAdminAPI(APIView):
                              "student_extra": extra,
                              "total": len(lessons), "present": len(att), "reservations": reservations,
                              "enrolled_leads": enrolled, "temp_leaves": temp_leaves,
+                             "next_reservations": next_resv,
                              "next_open_day": (str(nxt) if nxt else ""),
                              "next_makeups": makeups,
                              "no_work_schedule": no_ws,

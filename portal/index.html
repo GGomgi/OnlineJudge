@@ -2466,6 +2466,31 @@
           </li>
         </ul>
       </div>
+      <!-- 앞으로 있을 상담 예약 — 내일 상담이 있으면 오늘 알아야 한다.
+           이레치를 보므로 토요일에 보면 다음 주 상담까지 들어온다. -->
+      <div v-if="(dashData.next_reservations||[]).length" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-violet-300">
+        <button @click="togglePanel('nresv')" class="w-full text-left text-xs font-semibold text-violet-600 flex items-center gap-2">
+          <span class="text-violet-400">{{ panelOpen('nresv') ? '▾' : '▸' }}</span>
+          🗓 앞으로 상담 예약
+          <span class="text-slate-400 font-normal">{{ dashData.next_reservations.length }}건 · 이레 안</span>
+          <span v-if="dashNextResvSoon" class="text-[11px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-semibold">내일 {{ dashNextResvSoon }}건</span>
+          <span class="ml-auto font-normal text-slate-400">{{ panelOpen('nresv') ? '접기' : '펼치기' }}</span>
+        </button>
+        <div v-if="panelOpen('nresv')" class="mt-2 flex flex-wrap items-baseline gap-y-1 text-sm">
+          <template v-for="(rv,i) in dashData.next_reservations" :key="rv.id">
+            <span v-if="i" class="text-slate-300 px-2">|</span>
+            <span class="whitespace-nowrap">
+              <span :class="['font-mono text-xs px-1 rounded', rv.d_day===1 ? 'bg-violet-100 text-violet-700 font-bold' : 'text-slate-500']">D-{{ rv.d_day }}</span>
+              <span class="ml-1 text-xs text-slate-500">{{ rv.date.slice(5) }}({{ rv.wd }}) {{ rv.time }}</span>
+              <button @click="goLeadFromResv(rv)" class="ml-1 font-medium text-indigo-600 hover:underline">{{ rv.student_name }}</button>
+              <span v-if="rv.note" class="ml-1 text-xs text-slate-400 cursor-help"
+                    @mouseenter="showTextPop('메모', rv.note, $event)" @mouseleave="hideNotePop">📝</span>
+              <span v-if="showBranchCol" class="ml-1 text-xs text-slate-400">{{ rv.branch }}</span>
+            </span>
+          </template>
+        </div>
+      </div>
+
       <!-- 다음 수업일 보강 — 그날 오는 학생에게 미리 안내하려고 본다.
            내일이 휴무일이거나 문 안 여는 요일이면 그다음 날로 넘어간다. -->
       <div v-if="dashData.next_open_day" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-blue-300">
@@ -8196,6 +8221,7 @@ const app = createApp({
     dashAllDone(){ const ls=this.dashLessons; return ls.length>0 && ls.every(l=>this.isAbsent(l) || this.isLeave(l) || l.att.out); },
     nowClock(){ const d=new Date(this.clockNow); const p=x=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); },
     dashIsToday(){ return this.dashDate===this.todayStr; },
+    dashNextResvSoon(){ return (this.dashData.next_reservations||[]).filter(r => r.d_day === 1).length; },
     nowMin(){ const d=new Date(this.clockNow); return d.getHours()*60+d.getMinutes(); },
     nowLineIndex(){
       // 이미 시작된(현재 시각 이하) 마지막 수업 바로 다음 인덱스(없으면 0)
