@@ -1869,7 +1869,7 @@
       <span class="font-mono">{{ n.time }}</span>
       <span class="text-slate-400">{{ n.subject }}</span>
       <span v-if="nextStatusLabel(n)" :class="['ml-auto px-1.5 py-0.5 rounded',
-            n.status==='ABSENT' ? 'bg-rose-100 text-rose-600' : (n.status==='HOLIDAY' ? 'bg-slate-100 text-slate-500'
+            n.status==='ABSENT' ? 'bg-rose-100 text-rose-600' : (n.status==='HOLIDAY' ? 'bg-teal-100 text-teal-700'
             : (n.status==='LEAVE' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-700'))]">{{ nextStatusLabel(n) }}</span>
     </div>
     <div v-if="!nextPop.rows.length" class="text-slate-400">예정된 수업이 없습니다.</div>
@@ -2017,7 +2017,7 @@
     <div class="text-slate-500">{{ dd(calPop.date) }} {{ calPop.it.start_time }} · {{ calPop.it.subject }}<template v-if="calPop.it.makeup"> (보강)</template></div>
     <div v-if="calPop.it.status==='ABSENT'" class="mt-1 text-rose-500">결석</div>
     <div v-else-if="calPop.it.status==='LEAVE'" class="mt-1 text-purple-600">임시휴원<span v-if="calPop.it.lesson_note"> · {{ calPop.it.lesson_note }}</span></div>
-    <div v-else-if="calPop.it.status==='HOLIDAY'" class="mt-1 text-slate-500">🏖 학원 휴무일</div>
+    <div v-else-if="calPop.it.status==='HOLIDAY'" class="mt-1 text-teal-700 font-medium">🏖 학원 휴무일</div>
     <div class="mt-2 pt-2 border-t">
       <div class="text-indigo-600 font-semibold">📝 진도</div>
       <template v-if="calPop.it.progress && calPop.it.progress.content">
@@ -11580,7 +11580,7 @@ const app = createApp({
       const label = n.date.slice(5)+'('+n.wd+') '+n.time;
       if (n.status==='ABSENT') return { text:label+' 결석', cls:'text-rose-500 font-medium' };
       if (n.status==='LEAVE') return { text:label+' 임시휴원', cls:'text-purple-500' };
-      if (n.status==='HOLIDAY') return { text:label+' 휴무', cls:'text-slate-400' };
+      if (n.status==='HOLIDAY') return { text:label+' 🏖 휴무', cls:'text-teal-600' };
       return { text:label+(n.is_makeup ? ' 보강' : ''), cls:(n.is_makeup ? 'text-blue-600' : 'text-slate-600') };
     },
     showWdPop(l, wi, e){
@@ -11607,10 +11607,11 @@ const app = createApp({
     hideNextPop(){ this.nextPop.show = false; },
     nextStatusLabel(n){
       return n.status==='ABSENT' ? '결석' : (n.status==='LEAVE' ? '임시휴원'
-           : (n.status==='HOLIDAY' ? '휴무' : (n.is_makeup ? '보강' : '')));
+           : (n.status==='HOLIDAY' ? '🏖 휴무' : (n.is_makeup ? '보강' : '')));
     },
     isEarlyLeavePending(l){ return !!(l && l.att && l.att.note_tag===EARLY_LEAVE_TAG); },
     calBadge(it){
+      if (this.isHoliday(it)) return { label:'🏖 휴무', style:{backgroundColor:'#ccfbf1',color:'#0f766e'} };
       if (this.isLeave(it)) return { label:'임시휴원', style:{backgroundColor:'#f3e8ff',color:'#9333ea'} };
       if (this.isAbsent(it)) return { label:'결석'+this.stuAbsenceSuffix(it), style: this.attTagStyle('ABSENT') };
       if (this.isEarlyLeavePending(it)) return { label:'조퇴예정'+this.stuAbsenceSuffix(it), style: this.attTagStyle(EARLY_LEAVE_TAG) };
@@ -13161,7 +13162,8 @@ const app = createApp({
     stuAttStatusInfo(row){
       if (row.status==='ABSENT') return { label:'결석'+this.stuAbsenceSuffix(row), cls:'bg-rose-100 text-rose-600' };
       if (row.status==='LEAVE') return { label:'임시휴원', cls:'bg-purple-100 text-purple-600' };
-      if (row.status==='HOLIDAY') return { label:'휴무', cls:'bg-slate-100 text-slate-500' };
+      // 회색은 '등원전'이 쓰고 있어 휴무가 묻혔다. 학원이 쉬는 날이니 색과 아이콘으로 갈라 준다.
+      if (row.status==='HOLIDAY') return { label:'🏖 휴무', cls:'bg-teal-100 text-teal-700' };
       if (row.is_makeup) return { label:'보강'+this.mkAbsenceRefSuffix(row), cls:'bg-blue-100 text-blue-700' };
       if (this.isEarlyLeavePending(row)) return { label:'조퇴예정'+this.stuAbsenceSuffix(row), cls:'bg-orange-100 text-orange-700' };
       if (row.att.in){
