@@ -89,9 +89,12 @@ def compute(student_id):
         out["source"] = "직접 지정"
         if out["base"] is None:
             out["warnings"].append("직접 지정인데 금액이 비어 있습니다.")
+        # 기준표대로면 얼마인지 함께 알려 준다 — 얼마나 깎아 주고 있는지 보여야 한다
+        out["auto_base"] = _auto_base(branch_id, slots, st)[0]
         return _apply_discounts(student_id, out)
 
     # ── 자동 ──
+    out["auto_base"] = None
     if not branch_id:
         out["warnings"].append("지점이 없어 기준표를 찾을 수 없습니다.")
         return out
@@ -114,6 +117,7 @@ def compute(student_id):
             out["warnings"].append("기준표에 주%d회 %d분 금액이 없습니다." % (n, durs[0]))
             return out
         out["base"] = amt
+        out["auto_base"] = amt
     else:
         # 회당 단가로 회차마다 셈해 더한다(주3회 이상 · 회당 시간 섞임)
         total, missing = 0, []
@@ -128,9 +132,34 @@ def compute(student_id):
                                    % "·".join(str(x) for x in sorted(set(missing))))
             return out
         out["base"] = int(round(total))
+        out["auto_base"] = out["base"]
         out["source"] += " · 회당 단가"
 
     return _apply_discounts(student_id, out)
+
+
+def _auto_base(branch_id, slots, st):
+    """기준표대로면 얼마인가. (금액, 까닭) — 못 셈하면 (None, 까닭)."""
+    if not branch_id:
+        return None, "지점 없음"
+    rates = rate_table(branch_id)
+    if slots:
+        durs = sorted(s.duration_minutes for s in slots)
+    elif st and st.planned_sessions and st.planned_duration:
+        durs = [st.planned_duration] * st.planned_sessions
+    else:
+        return None, "시간표 없음"
+    n = len(durs)
+    if n <= 2 and len(set(durs)) == 1:
+        amt = rates.get((n, durs[0]))
+        return (amt, "") if amt else (None, "기준표에 없음")
+    total = 0
+    for d in durs:
+        u = unit_price(rates, d)
+        if u is None:
+            return None, "기준표에 없음"
+        total += u * WEEKS_PER_MONTH
+    return int(round(total)), ""
 
 
 def _apply_discounts(student_id, out):

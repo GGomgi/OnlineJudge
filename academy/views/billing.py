@@ -128,6 +128,12 @@ class InvoiceAPI(APIView):
         for inv in live_invoices(ym=ym, student_id__in=[p.user_id for p in profs]):
             cur[inv.student_id] = inv
         paid_now = _paid_map([i.id for i in cur.values()])
+        # 지난달에 조정한 게 있으면 알려 준다. 금액을 물려받지는 않는다 —
+        # 결석 이월 같은 건 그 달 한 번뿐이라 물려받으면 매달 새어 나간다.
+        y, m = int(ym[:4]), int(ym[5:7])
+        pym = "%04d-%02d" % ((y - 1, 12) if m == 1 else (y, m - 1))
+        prev = {i.student_id: i for i in live_invoices(
+            ym=pym, student_id__in=[p.user_id for p in profs])}
 
         # 금액만 봐서는 맞는지 알 수 없다. 학교·요일·시간·과목·담당까지 옆에 놓아
         # 한 줄로 확인할 수 있게 한다.
@@ -156,7 +162,12 @@ class InvoiceAPI(APIView):
                    "subjects": " · ".join(sorted({(x.subject or "") for x in slots if x.subject})),
                    "instructors": " · ".join(sorted({_name_of(x.instructor)
                                                      for x in slots if x.instructor_id})) or "미배정",
-                   "mode": t["mode"]}
+                   "mode": t["mode"], "auto_base": t.get("auto_base")}
+            pv = prev.get(p.user_id)
+            if pv:
+                row["prev"] = {"ym": pv.ym, "amount": pv.amount, "note": pv.note,
+                               "revision": pv.revision,
+                               "adjusted": (pv.amount != (pv.base_amount - pv.discount_amount))}
             old_inv = cur.get(p.user_id)
             if old_inv:
                 row.update({"invoice_id": old_inv.id, "revision": old_inv.revision,

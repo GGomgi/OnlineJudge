@@ -6255,21 +6255,32 @@
                 <td class="px-2 py-1.5">{{ r.subjects || '-' }}</td>
                 <td class="px-2 py-1.5 text-slate-600">{{ r.instructors }}</td>
                 <td class="px-2 py-1.5 text-right">
-                  <input v-if="r.amount!==null" :value="pvAmount(r) ? Number(pvAmount(r)).toLocaleString() : ''"
-                         @input="pvSetAmount(r, $event.target.value)" inputmode="numeric"
-                         :class="['input py-1 text-right font-mono', pvAmountChanged(r) ? 'bg-amber-50 ring-1 ring-amber-300 text-amber-800 font-semibold' : '']"
-                         style="width:7.5rem" />
-                  <span v-else class="text-amber-600 text-xs">미정</span>
-                  <div v-if="pvAmountChanged(r)" class="text-[10px] text-slate-400 font-mono">원래 {{ Number(r.amount).toLocaleString() }}</div>
+                  <div class="flex items-center justify-end gap-1">
+                    <input v-if="r.amount!==null" :value="pvAmount(r) ? Number(pvAmount(r)).toLocaleString() : ''"
+                           @input="pvSetAmount(r, $event.target.value)" inputmode="numeric"
+                           :class="['input py-1 text-right font-mono', pvOffBase(r) ? 'bg-amber-50 ring-1 ring-amber-300 text-amber-800 font-semibold' : '']"
+                           style="width:7.5rem" />
+                    <span v-else class="text-amber-600 text-xs">미정</span>
+                    <!-- 기본값과 다를 때만 나온다. 눌러서 기준표 금액으로 되돌린다 -->
+                    <button v-if="pvOffBase(r)" @click="pvReset(r)" title="기준표 금액으로 되돌리기"
+                            class="text-slate-400 hover:text-indigo-600 text-xs leading-none">↺</button>
+                  </div>
+                  <div v-if="pvOffBase(r)" class="text-[10px] text-slate-400 font-mono">기본 {{ Number(pvBase(r)).toLocaleString() }}</div>
                 </td>
                 <td class="px-2 py-1.5 text-xs">
                   <span v-for="dc in r.discounts" :key="dc.id" class="text-rose-500 mr-1">{{ dc.name }} -{{ Number(dc.off).toLocaleString() }}</span>
                   <span v-for="(w,i) in r.warnings" :key="'w'+i" class="text-amber-700 mr-1">⚠ {{ w }}</span>
                   <span v-if="r.paid" class="text-emerald-600">받음 {{ Number(r.paid).toLocaleString() }} — 고치려면 납부부터 취소</span>
+                  <span v-if="r.mode==='MANUAL'" class="text-indigo-600 mr-1">직접 지정<span v-if="r.auto_base"> (기준표 {{ Number(r.auto_base).toLocaleString() }})</span></span>
+                  <!-- 지난달에 손댄 적이 있으면 알려 준다. 금액을 물려받지는 않는다 -->
+                  <span v-if="r.prev && r.prev.adjusted" class="text-slate-500 cursor-help"
+                        @mouseenter="showTextPop('지난달('+r.prev.ym+') 조정', r.prev.note || '(비고 없음)', $event)" @mouseleave="hideNotePop">
+                    지난달 {{ Number(r.prev.amount).toLocaleString() }} 조정함
+                  </span>
                 </td>
                 <td class="px-2 py-1.5">
-                  <input v-model="pvNote[r.student_id]" :placeholder="pvAmountChanged(r) ? '왜 이 금액인지 적어 주세요' : ''"
-                         :class="['input py-1 text-xs', pvAmountChanged(r) && !(pvNote[r.student_id]||'').trim() ? 'ring-1 ring-amber-300 bg-amber-50' : '']" />
+                  <input v-model="pvNote[r.student_id]" :placeholder="pvOffBase(r) ? '왜 이 금액인지 적어 주세요' : ''"
+                         :class="['input py-1 text-xs', pvOffBase(r) && !(pvNote[r.student_id]||'').trim() ? 'ring-1 ring-amber-300 bg-amber-50' : '']" />
                 </td>
               </tr>
             </tbody>
@@ -10644,6 +10655,14 @@ const app = createApp({
     pvAmount(r){ const v = this.pvAmt[r.student_id]; return v === undefined ? r.amount : v; },
     pvSetAmount(r, v){ this.pvAmt[r.student_id] = Number(String(v).replace(/[^0-9]/g,'')) || 0; },
     pvAmountChanged(r){ const v = this.pvAmt[r.student_id]; return v !== undefined && v !== r.amount; },
+    // 기준표대로면 얼마인가(할인 뺀 값). 학생 원비가 '직접 지정'이면 계산값과 다르다.
+    pvBase(r){
+      if (r.auto_base == null) return r.amount;
+      const off = (r.discounts||[]).reduce((a,d)=>a+d.off, 0);
+      return Math.max(0, r.auto_base - off);
+    },
+    pvOffBase(r){ return r.amount !== null && this.pvAmount(r) !== this.pvBase(r); },
+    pvReset(r){ this.pvAmt[r.student_id] = this.pvBase(r); },
     pvPickAll(on){
       for (const r of (this.ivPreview ? this.ivPreview.rows : [])){
         if (r.amount === null || r.paid) continue;
@@ -10696,7 +10715,7 @@ const app = createApp({
       const picked = this.pvPicked;
       if (!picked.length) return this.notify('만들 학생을 골라 주세요.', false);
       // 금액을 고쳤으면 까닭을 적어야 한다. 나중에 왜 이 금액인지 알 길이 없어진다.
-      const noReason = picked.filter(r => this.pvAmountChanged(r) && !(this.pvNote[r.student_id]||'').trim());
+      const noReason = picked.filter(r => this.pvOffBase(r) && !(this.pvNote[r.student_id]||'').trim());
       if (noReason.length)
         return this.notify('금액을 고친 ' + noReason.map(r=>r.name).join(', ') + ' 의 비고를 적어 주세요.', false);
       const again = picked.filter(r => r.revision);
