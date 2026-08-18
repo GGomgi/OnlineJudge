@@ -4585,13 +4585,22 @@ class AttendanceCheckAdminAPI(APIView):
         label = "등원" if kind == "in" else "하원"
         if kind == "out" and not clear and not a.check_in_at:
             return self.error("등원 기록이 없습니다. 등원을 먼저 넣어 주세요.")
+        # 등원을 지우면 하원만 남아 버린다 — 들어온 적 없는데 나간 기록이라 뜻이 없고,
+        # 화면에서 하원 칸이 눌리지 않아 지울 수도 없게 된다. 둘을 함께 지운다.
+        cascade = bool(data.get("cascade"))
+        if kind == "in" and clear and a.check_out_at and not cascade:
+            return self.error("하원 %s 기록이 함께 있습니다. 둘 다 지울지 확인이 필요합니다."
+                              % _hm_kst(a.check_out_at))
         # 지난 날짜에 '지금'을 찍으면 8월 4일 기록에 8월 14일 시각이 들어간다.
         # 그날이 아니면 시각을 반드시 받는다(화면이 수업 시각을 채워 준다).
         if not clear and not tm and d != kst_today_admin():
             return self.error("지난 날짜는 시각을 함께 넣어 주세요.")
         old = _hm_kst(getattr(a, field))
+        old_out_c = _hm_kst(a.check_out_at)
         if clear:
             setattr(a, field, None)
+            if kind == "in" and cascade:
+                a.check_out_at = None
         elif tm:
             try:
                 setattr(a, field, _kst_to_utc(d, tm))
@@ -4605,6 +4614,8 @@ class AttendanceCheckAdminAPI(APIView):
         if old != new:
             if clear:
                 detail = "%s 체크 취소 (%s → -) (포털 수동)" % (label, old or "-")
+                if kind == "in" and cascade and old_out_c:
+                    detail += " · 하원 %s 도 함께 삭제" % old_out_c
             elif old:
                 detail = "%s %s → %s (포털 수동)" % (label, old, new)
             else:
