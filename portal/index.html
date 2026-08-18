@@ -1130,7 +1130,10 @@
             <input v-model="stuAttBulkForm.note" placeholder="사유(예: 가족여행으로 일정 결석 / 다른 학원 특강으로 이 기간 시간 변동)" class="input py-1" />
             <div class="flex justify-end"><button @click="applyStuAttBulk" class="btn-primary text-sm">선택한 {{ stuAttSelected.length }}건에 적용</button></div>
           </div>
-          <p class="text-[11px] text-slate-400">행을 누르면 <b>비고·결석 처리</b>, <b>등원·하원 칸</b>을 누르면 그 시각을 바꿀 수 있습니다.</p>
+          <div class="flex items-center gap-2">
+            <p class="text-[11px] text-slate-400">행을 누르면 <b>비고·결석 처리</b>, <b>등원·하원 칸</b>을 누르면 그 시각을 바꿀 수 있습니다.</p>
+            <button @click="openColCfg('stuatt','출결기록 — 화면 표시', $event)" class="ml-auto shrink-0 px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 whitespace-nowrap">⚙ 화면표시</button>
+          </div>
           <div v-if="stuAttHist.rows.length===0" class="text-xs text-slate-400 py-4 text-center">출결 기록이 없습니다.</div>
           <div v-for="g in stuAttHistByMonth" :key="g.ym" class="border rounded-lg overflow-hidden">
             <div class="bg-slate-50 px-3 py-1.5 text-xs flex items-center gap-2">
@@ -1140,48 +1143,43 @@
               <span v-if="g.makeup" class="text-blue-600">보강 {{ g.makeup }}</span>
               <span class="ml-auto text-slate-400">{{ g.rows.length }}건</span>
             </div>
-            <table class="w-full text-xs" style="table-layout:fixed">
-              <colgroup>
-                <col style="width:4%"><col style="width:9%"><col style="width:7%"><col style="width:10%"><col style="width:7%">
-                <col style="width:8%"><col style="width:8%"><col style="width:11%"><col style="width:13%"><col>
-              </colgroup>
+            <table class="w-full text-xs">
               <thead class="text-slate-400"><tr>
-                <th class="px-2 py-1"><input v-if="stuAttBulkMode" type="checkbox" :checked="isGroupFullySelected(g)" @click="toggleStuAttGroupSel(g)" class="w-3.5 h-3.5 align-middle" title="이 달 전체 선택" /></th>
-                <th class="px-2 py-1 text-left">날짜</th>
-                <th class="px-2 py-1 text-left">시간</th>
-                <th class="px-2 py-1 text-left">과목</th>
-                <th class="px-2 py-1 text-left">강사</th>
-                <th class="px-2 py-1 text-left">등원</th>
-                <th class="px-2 py-1 text-left">하원</th>
-                <th class="px-2 py-1 text-left">경과</th>
-                <th class="px-2 py-1 text-left">상태</th>
-                <th class="px-2 py-1 text-left">비고</th>
+                <th class="px-2 py-1 w-8"><input v-if="stuAttBulkMode" type="checkbox" :checked="isGroupFullySelected(g)" @click="toggleStuAttGroupSel(g)" class="w-3.5 h-3.5 align-middle" title="이 달 전체 선택" /></th>
+                <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다 -->
+                <th v-for="c in stuAttCols" :key="c.k" :class="['px-2 py-1 text-left whitespace-nowrap', stuAttColW(c.k)]">{{ c.l }}</th>
               </tr></thead>
               <tbody>
                 <tr v-for="row in g.rows" :key="row.occ_id" @click="openStuAttRow(row)" class="border-t hover:bg-indigo-50/50 cursor-pointer">
                   <td class="px-2 py-1" @click.stop="stuAttBulkMode && toggleStuAttSel(row.occ_id)"><input v-if="stuAttBulkMode" type="checkbox" :checked="stuAttSelected.includes(row.occ_id)" class="w-3.5 h-3.5 align-middle" /></td>
-                  <td class="px-2 py-1 whitespace-nowrap truncate">{{ row.date.slice(5) }}({{ wdOf(row.date) }})</td>
-                  <td class="px-2 py-1 truncate" @click.stop="row.time_changed && showTcPop(row,$event)" @mouseenter="row.time_changed && showTcPop(row,$event)" @mouseleave="hideTcPop">
-                    <span :class="row.time_changed ? 'text-amber-600 font-bold cursor-help' : ''">{{ row.start_time }}</span>
-                  </td>
-                  <td class="px-2 py-1 truncate">{{ row.subject }}</td>
-                  <td class="px-2 py-1 truncate text-slate-500">{{ row.instructor }}</td>
-                  <td class="px-2 py-1 truncate" @click.stop="openStuAttTime(row,'in')">
-                    <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.in || '-' }}</span>
-                    <span v-if="stuAttLateText(row)" class="block text-[10px]" :class="stuAttLateCls(row)">{{ stuAttLateText(row) }}</span>
-                  </td>
-                  <td class="px-2 py-1 truncate" @click.stop="openStuAttTime(row,'out')">
-                    <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.out || '-' }}</span>
-                  </td>
-                  <!-- 얼마나 했는지가 안 보여 감이 안 왔다. 오늘 운영과 같은 모양으로 적는다 -->
-                  <td class="px-2 py-1 truncate font-mono text-[11px]">
-                    <span v-if="stuElapsed(row)" :class="stuElapsed(row).done ? 'text-emerald-600 font-bold' : (stuElapsed(row).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ stuElapsed(row).mins }}분 / {{ stuElapsed(row).dur }}분</span>
-                    <span v-else-if="row.status!=='ABSENT' && row.status!=='LEAVE' && row.status!=='HOLIDAY'" class="text-slate-300">/ {{ row.duration_minutes||60 }}분</span>
-                    <span v-else class="text-slate-200">-</span>
-                  </td>
-                  <td class="px-2 py-1 overflow-hidden"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap text-[11px]', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
-                  <td class="px-2 py-1 text-slate-500 truncate" @mouseenter="showNotePop(row,$event)" @mouseleave="hideNotePop">
-                    {{ row.lesson_note || row.att.note || '' }}
+                  <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다 -->
+                  <td v-for="c in stuAttCols" :key="c.k" :class="['px-2 py-1', stuAttColW(c.k)]"
+                      @click.stop="c.k==='in' ? openStuAttTime(row,'in') : (c.k==='out' ? openStuAttTime(row,'out') : (c.k==='time' && row.time_changed ? showTcPop(row,$event) : openStuAttRow(row)))">
+                    <template v-if="c.k==='date'"><span class="whitespace-nowrap">{{ row.date.slice(5) }}({{ wdOf(row.date) }})</span></template>
+                    <template v-else-if="c.k==='time'">
+                      <span @mouseenter="row.time_changed && showTcPop(row,$event)" @mouseleave="hideTcPop"
+                            :class="row.time_changed ? 'text-amber-600 font-bold cursor-help' : ''">{{ row.start_time }}</span>
+                    </template>
+                    <template v-else-if="c.k==='subject'"><span class="truncate block">{{ row.subject }}</span></template>
+                    <template v-else-if="c.k==='instructor'"><span class="truncate block text-slate-500">{{ row.instructor }}</span></template>
+                    <template v-else-if="c.k==='in'">
+                      <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.in || '-' }}</span>
+                      <span v-if="stuAttLateText(row)" class="block text-[10px]" :class="stuAttLateCls(row)">{{ stuAttLateText(row) }}</span>
+                    </template>
+                    <template v-else-if="c.k==='out'">
+                      <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.out || '-' }}</span>
+                    </template>
+                    <template v-else-if="c.k==='elapsed'">
+                      <span v-if="stuElapsed(row)" class="font-mono text-[11px]" :class="stuElapsed(row).done ? 'text-emerald-600 font-bold' : (stuElapsed(row).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ stuElapsed(row).mins }}분 / {{ stuElapsed(row).dur }}분</span>
+                      <span v-else-if="row.status!=='ABSENT' && row.status!=='LEAVE' && row.status!=='HOLIDAY'" class="font-mono text-[11px] text-slate-300">/ {{ row.duration_minutes||60 }}분</span>
+                      <span v-else class="text-slate-200">-</span>
+                    </template>
+                    <template v-else-if="c.k==='status'">
+                      <span :class="['px-1.5 py-0.5 rounded whitespace-nowrap text-[11px]', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span>
+                    </template>
+                    <template v-else-if="c.k==='note'">
+                      <span class="text-slate-500 truncate block" @mouseenter="showNotePop(row,$event)" @mouseleave="hideNotePop">{{ row.lesson_note || row.att.note || '' }}</span>
+                    </template>
                   </td>
                 </tr>
               </tbody>
@@ -1817,9 +1815,12 @@
                    @change="toggleCol(c.k, $event.target.checked)" class="w-3.5 h-3.5 shrink-0" />
             <span class="text-sm truncate">{{ c.l }}<span v-if="c.always" class="ml-1 text-[10px] text-slate-400">(항상)</span><span v-if="c.d" class="block text-[10px] text-slate-400 truncate">{{ c.d }}</span></span>
           </label>
-          <span class="flex flex-col shrink-0">
-            <button @click="moveCol(i,-1)" :disabled="i===0" class="text-[10px] leading-none px-1 text-slate-400 hover:text-indigo-600 disabled:opacity-20">▲</button>
-            <button @click="moveCol(i,1)" :disabled="i===colCfgList.length-1" class="text-[10px] leading-none px-1 text-slate-400 hover:text-indigo-600 disabled:opacity-20">▼</button>
+          <!-- 위아래로 붙여 두니 너무 좁아 잘못 눌렸다. 좌우로 벌려 놓는다 -->
+          <span class="flex items-center gap-1 shrink-0">
+            <button @click="moveCol(i,-1)" :disabled="i===0" title="위로"
+                    class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 disabled:opacity-20 disabled:hover:border-slate-200">◀</button>
+            <button @click="moveCol(i,1)" :disabled="i===colCfgList.length-1" title="아래로"
+                    class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 disabled:opacity-20 disabled:hover:border-slate-200">▶</button>
           </span>
         </div>
       </div>
@@ -7463,6 +7464,18 @@ const COLDEFS = {
     { k:'missing',    l:'정보 미완료', d:'빠진 항목 수 — 올리면 무엇이 없는지, 누르면 학생 정보' },
     { k:'note',       l:'비고', always:true },
   ],
+  // 학생 상세 → 출결기록. 날짜·시간·상태·비고만 늘 보이고 나머지는 골라서 켠다.
+  stuatt: [
+    { k:'date',       l:'날짜', always:true },
+    { k:'time',       l:'시간', always:true },
+    { k:'subject',    l:'과목' },
+    { k:'instructor', l:'강사' },
+    { k:'in',         l:'등원', d:'눌러서 시각 수정' },
+    { k:'out',        l:'하원', d:'눌러서 시각 수정' },
+    { k:'elapsed',    l:'경과', d:'실제로 한 시간 / 정해진 시간' },
+    { k:'status',     l:'상태', always:true },
+    { k:'note',       l:'비고', always:true },
+  ],
   stu: [
     { k:'enroll_no',    l:'원번', always:true },
     { k:'name',         l:'이름', always:true },
@@ -7494,6 +7507,7 @@ const COLDEFS = {
 // 처음엔 지금까지 보이던 열만 켠다(다 켜져 있으면 첫인상이 복잡하다)
 const COL_DEFAULT_OFF = {
   dash: ['school','weekdays','mk','month','next','missing'],
+  stuatt: [],           // 출결기록은 처음엔 다 켜 둔다(지금까지 보이던 그대로)
   stu: ['age','schoolshort','programs','weekly','weekdays','instructor','parent_phone',
         'student_phone','sibling','month','mk','last_attend','verify','missing',
         'enrolled_at','tenure','branch'],
@@ -8030,6 +8044,7 @@ const app = createApp({
       return (this.students||[]).filter(s=>s.enrollment_status==='ENROLLED' &&
         ((s.real_name||'').toLowerCase().includes(q) || (s.username||'').toLowerCase().includes(q))).slice(0,30);
     },
+    stuAttCols(){ return this.colOrder('stuatt'); },
     stuAttHistByMonth(){
       const groups = [];
       const map = {};
@@ -11809,6 +11824,10 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     // 학생 출결기록의 경과. 오늘 운영과 셈은 같되 형제 수업을 그 화면 목록에서 찾는다.
+    stuAttColW(k){
+      return ({ date:'w-20', time:'w-14', subject:'w-24', instructor:'w-16',
+                in:'w-16', out:'w-16', elapsed:'w-24', status:'w-24' })[k] || '';
+    },
     stuElapsed(row){
       if (row.status==='ABSENT' || row.status==='LEAVE' || row.status==='HOLIDAY') return null;
       if (!row.att || !row.att.in) return null;
