@@ -954,11 +954,26 @@
                 <option value="ON_LEAVE">휴원</option>
                 <option value="WITHDRAWN">퇴원</option>
               </select></div>
-              <div class="shrink-0 date-w"><date-box v-model="stuStatusDate" box-class="input py-1" title="적용일"></date-box></div>
+              <div class="shrink-0">
+                <date-box v-model="stuStatusDate" box-class="input py-1" title="적용일 — 이 날부터 바뀝니다"></date-box>
+              </div>
               <input v-model="stuStatusReason" placeholder="사유 (필수)" class="input flex-1 min-w-0 py-1" />
               <button @click="changeStuStatus" class="btn-secondary text-sm whitespace-nowrap shrink-0">상태 변경</button>
             </div>
-            <p class="text-[11px] text-slate-400">현재 상태: <b>{{ stuStatusBadge(stuDetail.enrollment_status).label }}</b> · 변경 시 이력에 영구 기록됩니다.</p>
+            <!-- 날짜 칸이 무슨 뜻인지 몰라 볼 때마다 헷갈렸다. 그 자리에서 알 수 있게 적어 둔다 -->
+            <div class="text-[11px] text-slate-500 space-y-1 leading-relaxed">
+              <p>현재 상태: <b class="text-slate-700">{{ stuStatusBadge(stuDetail.enrollment_status).label }}</b> · 변경하면 이력에 영구 기록됩니다.</p>
+              <p><b class="text-slate-600">날짜 = 적용일</b> — <b>이 날부터</b> 바뀝니다. 전날까지의 수업·출결 기록은 그대로 남고,
+                이 날부터는 시간표가 잡히지 않습니다. 적용일 이후에 이미 만들어져 있던 수업은 지워지지만,
+                <b>등원·결석·수업일지가 남아 있는 수업은 건드리지 않습니다</b>(그날 실제로 있었던 일이므로).
+                비우면 오늘부터입니다.</p>
+              <p><b class="text-purple-600">휴원</b>은 잠깐 쉬는 것 — 시간표를 <b>멈춰만</b> 둡니다.
+                나중에 <b>재원(재등록)</b>으로 되돌리면 그날부터 <b>같은 시간표가 되살아납니다</b>.</p>
+              <p><b class="text-rose-600">퇴원</b>은 그만두는 것 — 시간표를 <b>끝냅니다</b>.
+                다시 다니게 되면 <b>시간표를 새로 등록</b>해야 합니다(되살아나지 않습니다).</p>
+              <p class="text-amber-700">⚠ 앞날을 적어도 <b>상태 배지는 지금 바로</b> 바뀝니다. 8월 말까지 다니고 그만두는 학생을
+                미리 퇴원으로 넣으면 오늘부터 퇴원생으로 보입니다 — 그만두는 날 처리하시는 편이 낫습니다.</p>
+            </div>
           </div>
           <ul class="space-y-1">
             <li v-for="h in stuDetail.status_history" :key="h.id" class="text-sm bg-slate-50 rounded px-3 py-1.5">
