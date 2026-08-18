@@ -5646,6 +5646,129 @@
         </div>
       </div>
 
+      <!-- ===== 원비 =====
+           금액을 정하는 단위는 지점 × 주횟수 × 회당 시간이다. 학교급으로 나누면 국제학교·
+           대학생이 표에 안 걸린다. 인원은 '오늘 적용중인' 시간표로만 센다 — 요일을 옮기면
+           옛 줄이 남아 주1회가 주2회로 둔갑한다. -->
+      <div v-if="acadTab==='tuition'">
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-5">
+          <div class="flex items-center gap-2 mb-1">
+            <h2 class="text-lg font-bold">원비 기준표</h2>
+            <span class="text-xs text-slate-400">지점 × 주횟수 × 회당 시간</span>
+            <button v-if="tuDirty" @click="saveTuition" class="ml-auto px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">저장 ({{ tuDirty }}칸)</button>
+            <button v-if="tuDirty" @click="loadTuition" class="px-2.5 py-1.5 rounded border border-slate-300 text-slate-600 text-sm">되돌리기</button>
+            <button v-if="!tuDirty && (tuHistory||[]).length" @click="tuShowHist=!tuShowHist" class="ml-auto text-xs text-indigo-500 hover:underline">바꾼 이력 {{ tuHistory.length }}건 {{ tuShowHist ? '접기' : '보기' }}</button>
+          </div>
+          <p class="text-xs text-slate-400 mb-3">
+            <b>인원</b>은 오늘 적용중인 시간표로 셉니다. 금액을 비워 두면 청구서에 <b>금액 미정</b>으로 표시되고 넘어갑니다 —
+            임의로 계산해 틀린 금액을 청구하지 않기 위해서입니다.
+            주3회 이상과 회당 시간이 섞인 학생은 <b>회당 단가</b>(주2회 금액 ÷ 8)로 계산되어 이 표에 인원이 잡히지 않습니다.
+          </p>
+
+          <div v-if="tuShowHist && (tuHistory||[]).length" class="border rounded-lg divide-y max-h-40 overflow-y-auto text-[11px] mb-3">
+            <div v-for="(h,i) in tuHistory" :key="i" class="px-2 py-1 flex items-center gap-2">
+              <span class="text-slate-500 w-16 shrink-0">{{ h.branch }}</span>
+              <span class="text-slate-700">{{ h.detail }}</span>
+              <span v-if="h.reason" class="text-slate-500 truncate">{{ h.reason }}</span>
+              <span class="ml-auto text-slate-400 whitespace-nowrap">{{ h.actor }} · {{ h.time }}</span>
+            </div>
+          </div>
+
+          <div v-for="b in (tuBranches||[])" :key="b.id" class="mb-4">
+            <div class="text-sm font-semibold text-slate-600 mb-1">{{ b.name }}</div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-slate-500 text-xs">
+                  <tr>
+                    <th class="px-3 py-2 text-left w-24">주횟수</th>
+                    <th class="px-3 py-2 text-left w-24">회당 시간</th>
+                    <th class="px-3 py-2 text-right w-32">한 달 금액</th>
+                    <th class="px-3 py-2 text-right w-20">인원</th>
+                    <th class="px-3 py-2 text-right w-28">회당 단가</th>
+                    <th class="px-3 py-2 text-left">비고</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in tuRowsOf(b.id)" :key="r.sessions_per_week+'-'+r.duration_minutes"
+                      :class="['border-t', r.people ? '' : 'text-slate-400']">
+                    <td class="px-3 py-1.5">주{{ r.sessions_per_week }}회</td>
+                    <td class="px-3 py-1.5">{{ r.duration_minutes }}분</td>
+                    <td class="px-3 py-1.5 text-right">
+                      <input :value="r.amount ? Number(r.amount).toLocaleString() : ''" @input="tuSetAmount(r, $event.target.value)"
+                             inputmode="numeric" placeholder="미정"
+                             :class="['input py-1 text-right font-mono', tuChanged(r) ? 'bg-amber-50 ring-1 ring-amber-300 text-amber-800 font-semibold' : '']"
+                             style="width:8rem" />
+                    </td>
+                    <td class="px-3 py-1.5 text-right">
+                      <span v-if="r.people" class="font-semibold text-slate-700">{{ r.people }}명</span>
+                      <span v-else class="text-slate-300">-</span>
+                    </td>
+                    <td class="px-3 py-1.5 text-right font-mono text-xs text-slate-500">
+                      {{ r.sessions_per_week===2 && r.amount ? Math.round(r.amount/8).toLocaleString()+'원' : '-' }}
+                    </td>
+                    <td class="px-3 py-1.5"><input v-model="r.note" placeholder="" class="input py-1 text-xs" /></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 할인 — 여러 개를 겹쳐 붙일 수 있다. 정액을 먼저 빼고 남은 금액에 비율을 적용한다. -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-5">
+          <div class="flex items-center gap-2 mb-1">
+            <h2 class="text-lg font-bold">할인 항목</h2>
+            <button @click="dcNew = dcNew ? null : { name:'', kind:'AMOUNT', value:'', recurring:true, branch_id:'', note:'' }"
+                    class="ml-auto px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">{{ dcNew ? '취소' : '+ 할인 추가' }}</button>
+          </div>
+          <p class="text-xs text-slate-400 mb-3">
+            학생마다 <b>여러 개를 겹쳐</b> 붙일 수 있습니다. 계산은 <b>정액을 먼저 빼고, 남은 금액에 비율</b>을 적용합니다.
+            끄면 새로 붙일 수 없고 이미 붙은 것은 그대로 둡니다.
+          </p>
+
+          <div v-if="dcNew" class="bg-slate-50 rounded-lg p-3 mb-3 grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
+            <div><label class="lbl">이름</label><input v-model="dcNew.name" placeholder="형제 할인" class="input py-1" /></div>
+            <div><label class="lbl">방식</label><select v-model="dcNew.kind" class="input py-1 px-2"><option value="AMOUNT">정액(원)</option><option value="PERCENT">비율(%)</option></select></div>
+            <div><label class="lbl">값</label><input v-model="dcNew.value" inputmode="numeric" class="input py-1 text-right" /></div>
+            <div><label class="lbl">지속</label><select v-model="dcNew.recurring" class="input py-1 px-2"><option :value="true">계속</option><option :value="false">한 번만</option></select></div>
+            <div><label class="lbl">적용 지점</label><select v-model="dcNew.branch_id" class="input py-1 px-2"><option value="">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></div>
+            <button @click="saveDiscount(dcNew)" class="btn-primary text-sm">추가</button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-slate-500 text-xs">
+                <tr>
+                  <th class="px-3 py-2 text-left">이름</th>
+                  <th class="px-3 py-2 text-left w-28">방식</th>
+                  <th class="px-3 py-2 text-right w-28">값</th>
+                  <th class="px-3 py-2 text-left w-24">지속</th>
+                  <th class="px-3 py-2 text-left w-28">적용 지점</th>
+                  <th class="px-3 py-2 text-left">비고</th>
+                  <th class="px-3 py-2 text-right w-20">사용</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="x in (dcRows||[])" :key="x.id" :class="['border-t', x.is_active ? '' : 'text-slate-300']">
+                  <td class="px-3 py-1.5"><input v-model="x.name" @change="saveDiscount(x)" class="input py-1" /></td>
+                  <td class="px-3 py-1.5"><select v-model="x.kind" @change="saveDiscount(x)" class="input py-1 px-2"><option value="AMOUNT">정액(원)</option><option value="PERCENT">비율(%)</option></select></td>
+                  <td class="px-3 py-1.5"><input v-model="x.value" @change="saveDiscount(x)" inputmode="numeric" class="input py-1 text-right font-mono" /></td>
+                  <td class="px-3 py-1.5"><select v-model="x.recurring" @change="saveDiscount(x)" class="input py-1 px-2"><option :value="true">계속</option><option :value="false">한 번만</option></select></td>
+                  <td class="px-3 py-1.5"><select v-model="x.branch_id" @change="saveDiscount(x)" class="input py-1 px-2"><option :value="null">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></td>
+                  <td class="px-3 py-1.5"><input v-model="x.note" @change="saveDiscount(x)" class="input py-1 text-xs" /></td>
+                  <td class="px-3 py-1.5 text-right">
+                    <label class="inline-flex items-center gap-1 cursor-pointer">
+                      <input type="checkbox" v-model="x.is_active" @change="saveDiscount(x)" class="w-4 h-4" />
+                    </label>
+                  </td>
+                </tr>
+                <tr v-if="!(dcRows||[]).length"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">아직 만든 할인이 없습니다.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div v-if="acadTab==='notice'" class="bg-white rounded-xl shadow-sm p-10 text-center text-sm text-slate-400">
         준비 중인 기능입니다.<br><span class="text-xs">로그인 첫 화면에 뜨는 한 줄 공지를 등록하는 곳입니다.</span>
       </div>
@@ -6954,6 +7077,8 @@ const app = createApp({
       // 켜져 있으면 복잡해 보이고 대부분 다시 끄게 된다.
       COLDEFS: COLDEFS,
       menuRows: [], menuStaff: [], menuRoles: [], menuScope: '', myMenus: null,
+      tuRows: [], tuOrig: {}, tuBranches: [], tuHistory: [], tuShowHist: false,
+      dcRows: [], dcNew: null,
       examCatalogs: [], examKinds: [], examModes: [],
       examSessions: [], examEntries: [], examLoading: false,
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
@@ -7162,6 +7287,17 @@ const app = createApp({
     };
   },
   computed: {
+    // 원비 — 고친 칸 수. 돈이라 바로 저장하지 않고 [저장]을 눌러야 반영된다.
+    tuDirty(){
+      let n = 0;
+      for (const r of this.tuRows){
+        const k = r.branch_id + '/' + r.sessions_per_week + '/' + r.duration_minutes;
+        const o = this.tuOrig[k];
+        if (!o) continue;
+        if (String(o.amount) !== String(r.amount||0) || String(o.note||'') !== String(r.note||'')) n++;
+      }
+      return n;
+    },
     // 개발일지 찾기 — 아래(최근)에서 위로 센 차례. 이전 기록을 더 불러오면 저절로 늘어난다
     devlogHits(){
       const q = (this.devlogQ||'').trim().toLowerCase();
@@ -7439,7 +7575,8 @@ const app = createApp({
       const t = [];
       if (this.canManageOptions) t.push({k:'options',l:'선택 목록'}, {k:'branch',l:'지점'});
       if (this.isDirectorUp) t.push({k:'notice',l:'공지'}, {k:'work',l:'근무 기준'},
-                                    {k:'holiday',l:'휴무일'}, {k:'promo',l:'학년 올리기'}, {k:'menu',l:'메뉴'});
+                                    {k:'holiday',l:'휴무일'}, {k:'tuition',l:'원비'},
+                                    {k:'promo',l:'학년 올리기'}, {k:'menu',l:'메뉴'});
       return t;
     },
     hrGridDays(){ const p=(this.hrAtt.people||[])[0]; return p ? p.days : []; },
@@ -8699,6 +8836,7 @@ const app = createApp({
         this.loadHolidays();
       }
       if (k==='menu') this.loadMenuSettings();
+      if (k==='tuition'){ this.loadTuition(); this.loadDiscounts(); }
       if (k==='work'){
         if (!this.wsForm.branch_id) this.wsForm.branch_id = (this.myProfile && this.myProfile.branch_id) || '';
         if (!this.ttInstructors.length) this.loadTtInstructors();
@@ -10118,6 +10256,54 @@ const app = createApp({
     isLeave(l){ return l.status==='LEAVE'; },
     isHoliday(l){ return l.status==='HOLIDAY'; },
     // ── 메뉴 관리 ──
+    // ── 원비 기준표 ──
+    tuKey(r){ return r.branch_id + '/' + r.sessions_per_week + '/' + r.duration_minutes; },
+    tuRowsOf(bid){ return this.tuRows.filter(r => r.branch_id === bid); },
+    tuChanged(r){
+      const o = this.tuOrig[this.tuKey(r)];
+      return !!o && (String(o.amount) !== String(r.amount||0) || String(o.note||'') !== String(r.note||''));
+    },
+    tuSetAmount(r, v){ r.amount = Number(String(v).replace(/[^0-9]/g,'')) || 0; },
+    async loadTuition(){
+      try {
+        const d = await api('GET','/api/admin/academy/tuition_rate');
+        this.tuRows = d.rows || []; this.tuBranches = d.branches || []; this.tuHistory = d.history || [];
+        const o = {};
+        this.tuRows.forEach(r => { o[this.tuKey(r)] = { amount:r.amount, note:r.note }; });
+        this.tuOrig = o;
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async saveTuition(){
+      const rows = this.tuRows.filter(r => this.tuChanged(r));
+      if (!rows.length) return;
+      const reason = await this.askInput('원비를 바꾸는 사유(선택) — 이력에 남습니다', '');
+      if (reason === null) return;
+      try {
+        for (const r of rows){
+          await api('POST','/api/admin/academy/tuition_rate',
+                    { branch_id:r.branch_id, sessions_per_week:r.sessions_per_week,
+                      duration_minutes:r.duration_minutes, amount:r.amount, note:r.note, reason });
+        }
+        this.notify(rows.length + '칸 저장했습니다.');
+        this.loadTuition();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    // ── 할인 항목 ──
+    async loadDiscounts(){
+      try { const d = await api('GET','/api/admin/academy/discount_item'); this.dcRows = d.rows || []; }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async saveDiscount(x){
+      if (!(x.name||'').trim()) return this.notify('할인 이름을 적어 주세요.', false);
+      try {
+        await api('POST','/api/admin/academy/discount_item',
+                  { id:x.id||null, name:x.name, kind:x.kind, value:String(x.value||'').replace(/[^0-9]/g,''),
+                    recurring:x.recurring, branch_id:x.branch_id || null, note:x.note,
+                    ...(x.id ? { is_active:x.is_active } : {}) });
+        if (!x.id){ this.dcNew = null; this.notify('추가했습니다.'); }
+        this.loadDiscounts();
+      } catch(e){ this.notify(e.message,false); this.loadDiscounts(); }
+    },
     async loadMenuSettings(){
       try {
         const d = await api('GET','/api/admin/academy/menu_setting');
