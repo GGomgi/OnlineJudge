@@ -1923,6 +1923,10 @@ def _student_list_extra(rows, want):
     today = (now() + timedelta(hours=9)).date()
     ex = {i: {} for i in ids}
 
+    for sp in StudentProfile.objects.filter(user_id__in=ids).exclude(pending_status=""):
+        ex[sp.user_id]["pending"] = {"status": sp.pending_status, "date": str(sp.pending_date),
+                                     "reason": sp.pending_reason}
+
     if "missing" in want or "verify" in want:
         for sp in StudentProfile.objects.filter(user_id__in=ids):
             if "missing" in want:
@@ -2864,6 +2868,10 @@ def _student_profile_dict(sp):
         "student_phone": sp.student_phone or "",
         "legacy_url": sp.legacy_url or "",
         "consent_paper": bool(sp.consent_paper),
+        # 앞날로 잡아 둔 상태 변경(퇴원·휴원 예정). 그날이 되면 저절로 바뀐다.
+        "pending_status": sp.pending_status or "",
+        "pending_date": str(sp.pending_date) if sp.pending_date else "",
+        "pending_reason": sp.pending_reason or "",
         "parent_name": sp.parent_name or "", "parent_phone": sp.parent_phone or "",
         "parent_relation": sp.parent_relation or "", "notify_optin": sp.notify_optin,
         "guardian2_phone": sp.guardian2_phone or "", "guardian2_relation": sp.guardian2_relation or "",
@@ -3080,18 +3088,61 @@ class StudentStatusAdminAPI(APIView):
             return self.error("상태 값이 올바르지 않습니다.")
         sp, _ = StudentProfile.objects.get_or_create(user=u)
         from_status = sp.enrollment_status
+        reason = (data.get("reason") or "").strip()
+        eff_s = data.get("effective_date") or None
+        eff = None
+        if eff_s:
+            try:
+                eff = datetime.strptime(eff_s, "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                return self.error("적용일이 올바르지 않습니다.")
+        today = (now() + timedelta(hours=9)).date()
+
+        # 적용일이 앞날이면 그날까지는 지금 상태 그대로다. 미리 바꿔 버리면 아직 다니는
+        # 학생이 재원생 수와 원비 청구 대상에서 빠져 그달 청구서가 안 나간다.
+        if eff and eff > today:
+            if from_status == to_status:
+                return self.error("이미 해당 상태입니다.")
+            sp.pending_status = to_status
+            sp.pending_date = eff
+            sp.pending_reason = reason
+            sp.save(update_fields=["pending_status", "pending_date", "pending_reason"])
+            # 시간표는 그날부터 끊는다(수업이 미리 안 잡히게)
+            tt_msg = self._sync_timetables(u, to_status, request.user, reason, eff_s)
+            return self.success({"scheduled": True, "date": str(eff), "timetable": tt_msg})
+
         if from_status == to_status:
             return self.error("이미 해당 상태입니다.")
         sp.enrollment_status = to_status
-        sp.save(update_fields=["enrollment_status"])
-        reason = (data.get("reason") or "").strip()
+        sp.pending_status = ""
+        sp.pending_date = None
+        sp.pending_reason = ""
+        sp.save(update_fields=["enrollment_status", "pending_status", "pending_date", "pending_reason"])
         StudentStatusChange.objects.create(
             student=u, from_status=from_status, to_status=to_status,
-            reason=reason, effective_date=data.get("effective_date") or None, actor=request.user)
+            reason=reason, effective_date=eff, actor=request.user)
 
         # 등록상태에 따라 개별 시간표 자동 처리(+이력)
-        tt_msg = self._sync_timetables(u, to_status, request.user, reason, data.get("effective_date"))
+        tt_msg = self._sync_timetables(u, to_status, request.user, reason, eff_s)
         return self.success({"timetable": tt_msg})
+
+    @admin_role_required
+    def delete(self, request):
+        """예약해 둔 상태 변경 취소. 시간표는 그대로 두고 예약만 푼다(되돌리려면 다시 잡는다)."""
+        u = User.objects.filter(id=request.GET.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        sp = StudentProfile.objects.filter(user=u).first()
+        if not sp or not sp.pending_status:
+            return self.error("예약된 것이 없습니다.")
+        sp.pending_status = ""
+        sp.pending_date = None
+        sp.pending_reason = ""
+        sp.save(update_fields=["pending_status", "pending_date", "pending_reason"])
+        return self.success({"ok": True})
 
     @staticmethod
     def _sync_timetables(student, to_status, actor, reason, effective_date=None):
@@ -4074,6 +4125,7 @@ class DashboardAdminAPI(APIView):
             d = now().date()
         wd = d.weekday()
         view = viewable_branch_ids(request.user)  # None=전체
+        apply_due_status()          # 적용일이 된 예약을 여기서 반영한다
         ensure_occurrences(d, view)
         # 그날이 휴무일이면 이름을 함께 내려 화면 위에 사유를 띄운다("왜 수업이 없지?" 방지)
         from ..models import Holiday
@@ -4379,6 +4431,32 @@ class DashboardAdminAPI(APIView):
 
 def kst_today_admin():
     return (now() + timedelta(hours=9)).date()
+
+
+def apply_due_status(branch_ids=None):
+    """적용일이 된 예약을 반영한다.
+
+    크론은 안 돌면 영영 안 바뀌어 위험하다. 매일 누군가 접속하므로 그때 확인한다 —
+    아무도 안 들어온 날은 어차피 아무 일도 일어나지 않는다."""
+    today = (now() + timedelta(hours=9)).date()
+    qs = StudentProfile.objects.exclude(pending_status="").filter(pending_date__lte=today)
+    done = 0
+    for sp in qs.select_related("user"):
+        frm = sp.enrollment_status
+        to = sp.pending_status
+        eff = sp.pending_date
+        rsn = sp.pending_reason
+        sp.enrollment_status = to
+        sp.pending_status = ""
+        sp.pending_date = None
+        sp.pending_reason = ""
+        sp.save(update_fields=["enrollment_status", "pending_status", "pending_date", "pending_reason"])
+        if frm != to:
+            StudentStatusChange.objects.create(
+                student_id=sp.user_id, from_status=frm, to_status=to,
+                reason=(rsn + " (예약 적용)").strip(), effective_date=eff, actor=None)
+            done += 1
+    return done
 
 
 def _next_open_day(d, branch_ids, limit=21):

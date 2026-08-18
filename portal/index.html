@@ -960,6 +960,14 @@
               <input v-model="stuStatusReason" placeholder="사유 (필수)" class="input flex-1 min-w-0 py-1" />
               <button @click="changeStuStatus" class="btn-secondary text-sm whitespace-nowrap shrink-0">상태 변경</button>
             </div>
+            <!-- 앞날로 잡아 둔 것이 있으면 맨 위에. 잊고 또 누르면 안 된다 -->
+            <div v-if="stuPending" class="rounded-lg bg-violet-50 border border-violet-200 px-3 py-2 flex items-center gap-2 text-sm">
+              <span class="text-violet-700">📌 <b>{{ dd(stuPending.date) }}부터 {{ stuStatusBadge(stuPending.status).label }}</b> 로 잡혀 있습니다</span>
+              <span class="text-xs text-violet-500">D-{{ stuPendingDday }}</span>
+              <span v-if="stuPending.reason" class="text-xs text-slate-500 truncate">· {{ stuPending.reason }}</span>
+              <button @click="cancelStuPending" class="ml-auto shrink-0 text-xs text-rose-500 hover:underline">예약 취소</button>
+            </div>
+
             <!-- 날짜 칸이 무슨 뜻인지 몰라 볼 때마다 헷갈렸다. 그 자리에서 알 수 있게 적어 둔다 -->
             <div class="text-[11px] text-slate-500 space-y-1 leading-relaxed">
               <p>현재 상태: <b class="text-slate-700">{{ stuStatusBadge(stuDetail.enrollment_status).label }}</b> · 변경하면 이력에 영구 기록됩니다.</p>
@@ -971,16 +979,15 @@
                 나중에 <b>재원(재등록)</b>으로 되돌리면 그날부터 <b>같은 시간표가 되살아납니다</b>.</p>
               <p><b class="text-rose-600">퇴원</b>은 그만두는 것 — 시간표를 <b>끝냅니다</b>.
                 다시 다니게 되면 <b>시간표를 새로 등록</b>해야 합니다(되살아나지 않습니다).</p>
-              <div class="text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 space-y-1">
-                <p>⚠ <b>적용일을 미래로 적어도 상태는 지금 당장 바뀝니다.</b> 날짜는 <b>시간표에만</b> 쓰이고,
-                  재원/휴원/퇴원 표시는 <b>누르는 순간</b> 바뀝니다.</p>
-                <p class="text-amber-800">
+              <div class="text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-1.5 space-y-1">
+                <p>📌 <b>적용일을 앞날로 적으면 그날까지는 지금 상태 그대로입니다.</b> 예약해 두었다가 <b>그날이 되면 저절로</b> 바뀝니다.</p>
+                <p>
                   예를 들어 오늘이 <b>{{ todayStr }}</b> 인데 적용일을 <b>{{ stuStatusEg.future }}</b> 로 넣고 퇴원하면 —<br>
-                  · {{ stuStatusEg.futureUntil }} 까지 수업은 시간표에 그대로 남지만<br>
-                  · <b>오늘부터 퇴원생</b>이 되어 재원생 수·원비 청구 대상에서 빠집니다. 이번 달 청구서가 안 나갑니다.
+                  · {{ stuStatusEg.futureUntil }} 까지는 <b>재원생 그대로</b> — 이번 달 원비도 정상으로 청구됩니다<br>
+                  · 수업은 {{ stuStatusEg.futureUntil }} 까지만 잡히고<br>
+                  · {{ stuStatusEg.future }} 이 되면 <b>저절로 퇴원</b>이 됩니다(그때 이력에 남습니다)
                 </p>
-                <p>그래서 <b>그만두는 날 그날 처리</b>하시는 편이 낫습니다.
-                  적용일을 지난 날(예: {{ stuStatusEg.past }})로 넣는 것은 괜찮습니다 — 늦게 처리한 것을 바로잡는 쓰임입니다.</p>
+                <p>적용일이 <b>오늘이거나 지난 날</b>이면 바로 처리됩니다 — 늦게 처리한 것을 바로잡는 쓰임입니다.</p>
               </div>
             </div>
           </div>
@@ -8706,6 +8713,15 @@ const app = createApp({
       return cells;
     },
     // 설명에 넣을 보기 날짜. 말로만 하면 '앞날'이 언제인지 헷갈린다.
+    stuPending(){
+      const p = this.stuDetail && this.stuDetail.profile;
+      return (p && p.pending_status) ? { status:p.pending_status, date:p.pending_date, reason:p.pending_reason } : null;
+    },
+    stuPendingDday(){
+      if (!this.stuPending) return 0;
+      const a = new Date(this.stuPending.date.replace(/-/g,'/')), b = new Date(this.todayStr.replace(/-/g,'/'));
+      return Math.round((a-b)/86400000);
+    },
     stuStatusEg(){
       const p = x => String(x).padStart(2,'0');
       const mk = n => { const d = new Date(); d.setDate(d.getDate()+n);
@@ -13494,13 +13510,25 @@ const app = createApp({
       try { const lead = await api('DELETE','/api/admin/academy/lead/note?log_id='+g.id+'&hidden=0'); this.stuDetail.lead = lead; this.notify('복원되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
     },
+    async cancelStuPending(){
+      if (!await this.askConfirm('잡아 둔 상태 변경을 취소합니다.\n시간표는 그대로 두므로, 되돌리려면 시간표를 다시 확인해 주세요.')) return;
+      try {
+        await api('DELETE','/api/admin/academy/student_status?student_id='+this.stuDetail.id);
+        this.notify('예약을 취소했습니다.');
+        await this.refreshStuDetail();
+      } catch(e){ this.notify(e.message,false); }
+    },
     async changeStuStatus(){
       if (!(this.stuStatusReason||'').trim()) return this.notify('변경 사유를 입력하세요.', false);
       try {
         const body = { student_id:this.stuDetail.id, status:this.stuStatusNew, reason:this.stuStatusReason };
         if (this.stuStatusDate) body.effective_date = this.stuStatusDate;
         const r = await api('POST','/api/admin/academy/student_status', body);
-        this.notify('상태가 변경되었습니다.' + (r && r.timetable ? ' (' + r.timetable + ')' : '')); this.stuStatusReason=''; this.stuStatusDate='';
+        this.notify(r && r.scheduled
+          ? (this.dd(r.date) + '부터 바뀌도록 잡아 두었습니다. 그날까지는 지금 상태 그대로입니다.'
+             + (r.timetable ? ' (' + r.timetable + ')' : ''))
+          : ('상태가 변경되었습니다.' + (r && r.timetable ? ' (' + r.timetable + ')' : '')));
+        this.stuStatusReason=''; this.stuStatusDate='';
         await this.refreshStuDetail(); this.loadStudents();
         this.stuStatusNew = this.stuDetail.enrollment_status==='ENROLLED' ? 'ON_LEAVE' : 'ENROLLED';
       } catch(e){ this.notify(e.message,false); }
