@@ -3487,7 +3487,7 @@
               <date-box v-model="convertForm.lesson_start_date" box-class="input" wrap-class="date-w"></date-box>
             </div>
             <label class="flex items-center gap-2 text-sm bg-amber-50 rounded-lg px-3 py-2">
-              <input type="checkbox" v-model="convertForm.schedule_pending" class="w-4 h-4" />
+              <input type="checkbox" v-model="convertForm.schedule_pending" @change="refreshCvFee" class="w-4 h-4" />
               <span>교육 일정 <b>추후 안내</b> (기존 학원 스케줄 정리 후 요일·시간 안내) — 체크 시 아래 입력 생략</span>
             </label>
             <template v-if="!convertForm.schedule_pending">
@@ -3524,7 +3524,7 @@
                     <span></span>
                     <div class="flex items-center gap-1">
                       <span class="text-[10px] text-slate-400 whitespace-nowrap">수업시간</span>
-                      <select v-model.number="row.duration" class="input px-1" title="수업시간">
+                      <select v-model.number="row.duration" @change="refreshCvFee" class="input px-1" title="수업시간">
                         <option v-for="m in durationOptions" :key="m" :value="m">{{ m }}분</option>
                       </select>
                     </div>
@@ -3551,6 +3551,25 @@
                 <p class="text-[11px] text-slate-400"><b>격주</b>를 체크하면 같은 요일·시간에 <b>번갈아 들을 과정</b> 줄이 아래에 생깁니다(2주에 한 번씩 교대).</p>
               </div>
             </template>
+
+            <!-- 원비 — 시간표를 넣는 대로 금액이 바뀐다. 등록 뒤에도 학생 상세에서 고칠 수 있다 -->
+            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-semibold text-slate-500">원비</span>
+                <span v-if="cvFee.amount !== null" class="text-base font-bold text-indigo-700">{{ Number(cvFee.amount).toLocaleString() }}원</span>
+                <span v-else class="text-sm font-bold text-slate-400">금액 미정</span>
+                <span class="text-[11px] text-slate-400">{{ cvFee.source }}</span>
+                <label class="ml-auto flex items-center gap-1 text-xs text-slate-600">정하는 방법
+                  <select v-model="convertForm.tuition_mode" class="input py-0.5 px-2 text-xs" style="width:7rem">
+                    <option value="AUTO">자동</option><option value="MANUAL">직접 지정</option><option value="UNDECIDED">미정</option>
+                  </select>
+                </label>
+                <input v-if="convertForm.tuition_mode==='MANUAL'" v-model="convertForm.tuition_amount"
+                       inputmode="numeric" placeholder="받을 금액" class="input py-0.5 text-right font-mono text-xs" style="width:8rem" />
+              </div>
+              <div v-if="cvFee.warning" class="text-[11px] text-amber-700 mt-1">⚠ {{ cvFee.warning }}</div>
+              <div class="text-[11px] text-slate-400 mt-1">시간표를 넣으면 금액이 따라 바뀝니다. 할인은 등록한 뒤 학생 정보에서 붙입니다.</div>
+            </div>
           </div>
 
           <!-- 계정 -->
@@ -5745,7 +5764,16 @@
           </div>
 
           <div v-for="b in (tuBranches||[])" :key="b.id" class="mb-4">
-            <div class="text-sm font-semibold text-slate-600 mb-1">{{ b.name }}</div>
+            <div class="flex items-center gap-2 mb-1">
+              <div class="text-sm font-semibold text-slate-600">{{ b.name }}</div>
+              <!-- 새 시간대를 미리 만들어 둘 때. 시간표에 쓰이면 저절로 생기지만 미리 정할 수도 있어야 한다 -->
+              <button v-if="tuEdit" @click="tuAddFor = (tuAddFor===b.id ? null : b.id)" class="text-xs text-indigo-500 hover:underline">{{ tuAddFor===b.id ? '취소' : '+ 칸 추가' }}</button>
+              <div v-if="tuAddFor===b.id" class="flex items-center gap-1 text-xs">
+                주<input v-model="tuAdd.wk" inputmode="numeric" class="input py-0.5 px-1 text-center" style="width:3rem" />회
+                <input v-model="tuAdd.du" inputmode="numeric" placeholder="분" class="input py-0.5 px-1 text-center ml-1" style="width:4rem" />분
+                <button @click="addTuRow(b.id)" class="ml-1 px-2 py-1 rounded bg-indigo-600 text-white">만들기</button>
+              </div>
+            </div>
             <div class="overflow-x-auto">
               <table class="w-full text-sm">
                 <thead class="bg-slate-50 text-slate-500 text-xs">
@@ -7171,6 +7199,8 @@ const app = createApp({
       COLDEFS: COLDEFS,
       menuRows: [], menuStaff: [], menuRoles: [], menuScope: '', myMenus: null,
       tuRows: [], tuOrig: {}, tuBranches: [], tuHistory: [], tuShowHist: false, tuEdit: false, tuByUnit: [],
+      tuAddFor: null, tuAdd: { wk:'', du:'' },
+      cvFee: { amount:null, source:'', warning:'' },
       stuFee: null, stuFeeEdit: false, stuFeeAddId: '',
       stuFeeForm: { mode:'AUTO', planned_sessions:'', planned_duration:'', manual_amount:'', note:'' },
       dcRows: [], dcNew: null,
@@ -7322,7 +7352,7 @@ const app = createApp({
         {bg:'bg-orange-100', text:'text-orange-700', dot:'bg-orange-500'},
         {bg:'bg-lime-100', text:'text-lime-700', dot:'bg-lime-500'},
       ],
-      convertForm: { student_name:'', gender:'', birth_date:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', memo:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
+      convertForm: { tuition_mode:'AUTO', tuition_amount:'', student_name:'', gender:'', birth_date:'', parent_name:'', parent_phone:'', parent_relation:'', parent_relation_etc:'', notify_optin:null, guardian2_phone:'', guardian2_relation:'', guardian2_relation_etc:'', school_type:'', school_name:'', grade:'', student_phone:'', zipcode:'', address:'', address_detail:'', memo:'', program_count:1, programs:[{value:'',language:'',custom:''}], lesson_start_date:'', weekly_sessions:0, schedule:[], schedule_pending:false, login_id:'', password:'', parent_login_id:'', parent_password:'', consent_privacy:false, consent_guardian_name:'' },
       children: [], childSel: null, childTt: [], childGroups: [], childAtt: [],
       showParentLogin: false, parentLogin: { id:'', pw:'' },
       dragIndex: null, dragOverIndex: null,
@@ -10351,6 +10381,16 @@ const app = createApp({
     isLeave(l){ return l.status==='LEAVE'; },
     isHoliday(l){ return l.status==='HOLIDAY'; },
     // ── 메뉴 관리 ──
+    // 등록 화면의 원비 미리보기. 시간표를 고칠 때마다 다시 셈한다.
+    async refreshCvFee(){
+      const f = this.convertForm;
+      if (f.schedule_pending || !f.branch_id){ this.cvFee = { amount:null, source:'', warning:'' }; return; }
+      const durs = (f.schedule||[]).map(r => Number(r.duration)||0).filter(x => x > 0);
+      if (!durs.length){ this.cvFee = { amount:null, source:'', warning:'' }; return; }
+      try {
+        this.cvFee = await api('GET','/api/admin/academy/tuition_preview?branch_id='+f.branch_id+'&durations='+durs.join(','));
+      } catch(e){ this.cvFee = { amount:null, source:'', warning:'' }; }
+    },
     // ── 학생별 원비 ──
     async loadStuFee(){
       if (!this.stuDetail) { this.stuFee = null; return; }
@@ -10396,7 +10436,22 @@ const app = createApp({
       const list = this.tuRowsOf(bid); const i = list.indexOf(r);
       return i > 0 && list[i-1].group === 'extra';
     },
-    cancelTuition(){ this.tuEdit = false; this.loadTuition(); },
+    cancelTuition(){ this.tuEdit = false; this.tuAddFor = null; this.loadTuition(); },
+    async addTuRow(bid){
+      const wk = Number(String(this.tuAdd.wk).replace(/[^0-9]/g,''));
+      const du = Number(String(this.tuAdd.du).replace(/[^0-9]/g,''));
+      if (!wk || !du) return this.notify('주횟수와 회당 시간을 적어 주세요.', false);
+      if (this.tuRows.some(r => r.branch_id===bid && r.sessions_per_week===wk && r.duration_minutes===du))
+        return this.notify('이미 있는 칸입니다.', false);
+      if (wk > 2) return this.notify('주3회 이상은 회당 단가로 계산되어 칸이 필요 없습니다.', false);
+      try {
+        await api('POST','/api/admin/academy/tuition_rate',
+                  { branch_id:bid, sessions_per_week:wk, duration_minutes:du, amount:0, reason:'칸 추가' });
+        this.tuAddFor = null; this.tuAdd = { wk:'', du:'' };
+        await this.loadTuition();
+        this.notify('주' + wk + '회 ' + du + '분 칸을 만들었습니다. 금액을 넣어 주세요.');
+      } catch(e){ this.notify(e.message,false); }
+    },
     tuChanged(r){
       const o = this.tuOrig[this.tuKey(r)];
       return !!o && (String(o.amount) !== String(r.amount||0) || String(o.note||'') !== String(r.note||''));
@@ -13148,6 +13203,7 @@ const app = createApp({
       const next = [];
       for (let i=0; i<n; i++) next.push(cur[i] || { programIdx:0, day:-1, hour:null, min:null, biweekly:false, altProgramIdx:0, duration:this.lessonDurationMin, instructor_id:null });
       this.convertForm.schedule = next;
+      this.refreshCvFee();
     },
     onBiweeklyToggle(row){
       // 격주 켜면 번갈아 과정 기본값을 다른 과정으로(과정 2개 이상일 때)

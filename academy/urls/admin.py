@@ -6,7 +6,7 @@ from ..views.exam import (SavedSearchAPI, ExamChangeAdminAPI, ExamCatalogAdminAP
                           ExamContactAdminAPI, ExamStageAdminAPI,
                           MenuSettingAdminAPI, MyMenuAPI,
                           TuitionRateAdminAPI, DiscountItemAdminAPI,
-                          StudentTuitionAdminAPI, StudentDiscountAdminAPI)
+                          StudentTuitionAdminAPI, StudentDiscountAdminAPI, TuitionPreviewAPI)
 from ..views.hr import (WorkPlanAPI, HolidayAdminAPI, WorkScheduleAdminAPI, StaffAttendanceAPI,
                         StaffAttendanceCheckAPI, StaffAttendanceEditAPI,
                         StaffAttendanceApproveAPI, StaffAttendanceHistoryAPI,
@@ -141,4 +141,5 @@ urlpatterns = [
     url(r"^academy/discount_item/?$", DiscountItemAdminAPI.as_view(), name="academy_discount_item"),
     url(r"^academy/student_tuition/?$", StudentTuitionAdminAPI.as_view(), name="academy_student_tuition"),
     url(r"^academy/student_discount/?$", StudentDiscountAdminAPI.as_view(), name="academy_student_discount"),
+    url(r"^academy/tuition_preview/?$", TuitionPreviewAPI.as_view(), name="academy_tuition_preview"),
 ]

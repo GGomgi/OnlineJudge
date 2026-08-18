@@ -1550,6 +1550,15 @@ def _create_student_from_lead(request, lead, data, source="LEAD"):
         lead.converted_user = user
         lead.is_hidden = True  # 등록 전환 완료 시 상담 목록에서 자동 숨김
         lead.save()
+        # 원비를 등록할 때 정해 둘 수 있다. 비워 두면 자동(기준표에서 계산)이다.
+        _tm = data.get("tuition_mode")
+        if _tm in ("MANUAL", "UNDECIDED"):
+            from ..models import StudentTuition
+            _amt = str(data.get("tuition_amount") or "").replace(",", "").strip()
+            StudentTuition.objects.update_or_create(
+                student=user,
+                defaults={"mode": _tm, "updated_by": (request.user if request else None),
+                          "manual_amount": (int(_amt) if _amt.isdigit() else None)})
         # 누가 언제 누구를 등록했는지. 상세는 남기지 않는다 — 뒤에 고친 것은 각자의 이력에 남는다
         StudentRegisterLog.objects.create(
             student=user, actor=(request.user if request else None),

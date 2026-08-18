@@ -848,7 +848,9 @@ class TuitionRateAdminAPI(APIView):
         rows = []
         for b in branches:
             # 기본 구간을 사람이 보는 순서대로 먼저, 그 밖의 시간을 뒤에.
-            extra = sorted(c for c in used.get(b.id, []) if c not in TUITION_STD and c[0] <= 2)
+            saved = {(k[1], k[2]) for k in have if k[0] == b.id}
+            extra = sorted({c for c in list(used.get(b.id, [])) + list(saved)
+                            if c not in TUITION_STD and c[0] <= 2})
             # 주3회 이상은 회당 단가로 계산하므로 표에 금액 칸이 필요 없다(아래 목록으로 따로 본다)
             for group, combos in (("std", TUITION_STD), ("extra", extra)):
                 for wk, du in combos:
@@ -1117,6 +1119,43 @@ class StudentTuitionAdminAPI(APIView):
                 student_id=sid, actor=request.user, reason=(d.get("reason") or "").strip(),
                 detail="%s → %s" % (before, after))
         return self.success(compute(int(sid)))
+
+
+class TuitionPreviewAPI(APIView):
+    """아직 등록하지 않은 학생의 원비를 미리 셈한다.
+    ?branch_id=&durations=90,90  (시간표를 넣는 대로 아래 금액이 바뀌게 하는 용도)"""
+
+    @admin_role_required
+    def get(self, request):
+        from ..services_tuition import rate_table, unit_price, WEEKS_PER_MONTH
+        bid = request.GET.get("branch_id")
+        if not bid or not can_view_branch(request.user, int(bid)):
+            return self.error("지점을 고르세요.")
+        raw = (request.GET.get("durations") or "").strip()
+        durs = sorted(int(x) for x in raw.split(",") if x.strip().isdigit())
+        if not durs:
+            return self.success({"amount": None, "source": "", "warning": ""})
+        rates = rate_table(int(bid))
+        n = len(durs)
+        src = "주%d회 %s분" % (n, "+".join(str(x) for x in durs))
+        if n <= 2 and len(set(durs)) == 1:
+            amt = rates.get((n, durs[0]))
+            if amt is None:
+                return self.success({"amount": None, "source": src,
+                                     "warning": "기준표에 주%d회 %d분 금액이 없습니다." % (n, durs[0])})
+            return self.success({"amount": amt, "source": src, "warning": ""})
+        total, missing = 0, []
+        for d in durs:
+            u = unit_price(rates, d)
+            if u is None:
+                missing.append(d)
+            else:
+                total += u * WEEKS_PER_MONTH
+        if missing:
+            return self.success({"amount": None, "source": src,
+                                 "warning": "기준표에 주2회 %s분 금액이 없습니다."
+                                            % "·".join(str(x) for x in sorted(set(missing)))})
+        return self.success({"amount": int(round(total)), "source": src + " · 회당 단가", "warning": ""})
 
 
 class StudentDiscountAdminAPI(APIView):
