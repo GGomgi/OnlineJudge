@@ -1048,6 +1048,121 @@ def _is_director_up_exam(user):
                                        AcademyRole.REGIONAL_MANAGER, AcademyRole.BRANCH_MANAGER))
 
 
+class StudentTuitionAdminAPI(APIView):
+    """학생 한 명의 원비 — 자동 계산 결과 + 사람이 정한 값."""
+
+    @admin_role_required
+    def get(self, request):
+        from ..services_tuition import compute
+        from ..models import StudentTuitionChange
+        sid = request.GET.get("student_id")
+        prof = AcademyProfile.objects.filter(user_id=sid, is_deleted=False).first()
+        if not prof:
+            return self.error("학생이 없습니다.")
+        if not can_view_branch(request.user, prof.branch_id):
+            return self.error("이 지점을 볼 권한이 없습니다.")
+        d = compute(int(sid))
+        d["can_edit"] = can_manage_branch(request.user, prof.branch_id)
+        d["items"] = [{"id": x.id, "name": x.name, "kind": x.kind, "value": x.value,
+                       "recurring": x.recurring}
+                      for x in DiscountItem.objects.filter(is_active=True).filter(
+                          Q(branch__isnull=True) | Q(branch_id=prof.branch_id))]
+        d["history"] = [{"detail": c.detail, "reason": c.reason,
+                         "actor": name_of(c.actor) if c.actor_id else "",
+                         "time": kst_dt(c.create_time)}
+                        for c in StudentTuitionChange.objects.filter(student_id=sid)
+                                                              .select_related("actor")[:50]]
+        return self.success(d)
+
+    @admin_role_required
+    def post(self, request):
+        """{student_id, mode, planned_sessions?, planned_duration?, manual_amount?, note?, reason?}"""
+        from ..models import StudentTuition, StudentTuitionChange
+        from ..services_tuition import compute
+        d = request.data
+        sid = d.get("student_id")
+        prof = AcademyProfile.objects.filter(user_id=sid, is_deleted=False).first()
+        if not prof:
+            return self.error("학생이 없습니다.")
+        if not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        mode = d.get("mode") if d.get("mode") in ("AUTO", "MANUAL", "UNDECIDED") else "AUTO"
+
+        def _num(v):
+            v = str(v or "").replace(",", "").strip()
+            return int(v) if v.isdigit() else None
+
+        _M = {"AUTO": "자동", "MANUAL": "직접 지정", "UNDECIDED": "미정"}
+
+        def _label(st_):
+            base = _M.get(st_.mode, st_.mode)
+            if st_.mode == "MANUAL":
+                base += " %s원" % format(st_.manual_amount or 0, ",")
+            elif st_.planned_sessions:
+                base += " (예정 주%d회 %s분)" % (st_.planned_sessions, st_.planned_duration or "?")
+            return base
+
+        st, _ = StudentTuition.objects.get_or_create(student_id=sid)
+        before = _label(st)
+        st.mode = mode
+        st.planned_sessions = _num(d.get("planned_sessions"))
+        st.planned_duration = _num(d.get("planned_duration"))
+        st.manual_amount = _num(d.get("manual_amount"))
+        st.note = (d.get("note") or "").strip()
+        st.updated_by = request.user
+        st.save()
+        after = _label(st)
+        if before != after:
+            StudentTuitionChange.objects.create(
+                student_id=sid, actor=request.user, reason=(d.get("reason") or "").strip(),
+                detail="%s → %s" % (before, after))
+        return self.success(compute(int(sid)))
+
+
+class StudentDiscountAdminAPI(APIView):
+    """학생에게 붙인 할인 — 여러 개를 겹쳐 붙일 수 있다."""
+
+    @admin_role_required
+    def post(self, request):
+        from ..models import StudentDiscount, StudentTuitionChange
+        from ..services_tuition import compute
+        d = request.data
+        sid = d.get("student_id")
+        prof = AcademyProfile.objects.filter(user_id=sid, is_deleted=False).first()
+        if not prof:
+            return self.error("학생이 없습니다.")
+        if not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        item = DiscountItem.objects.filter(id=d.get("item_id"), is_active=True).first()
+        if not item:
+            return self.error("할인 항목이 없습니다.")
+        if StudentDiscount.objects.filter(student_id=sid, item=item, is_active=True).exists():
+            return self.error("이미 붙어 있는 할인입니다.")
+        StudentDiscount.objects.create(student_id=sid, item=item, created_by=request.user,
+                                       note=(d.get("note") or "").strip())
+        StudentTuitionChange.objects.create(
+            student_id=sid, actor=request.user, detail="할인 붙임: %s" % item.name,
+            reason=(d.get("reason") or "").strip())
+        return self.success(compute(int(sid)))
+
+    @admin_role_required
+    def delete(self, request):
+        from ..models import StudentDiscount, StudentTuitionChange
+        from ..services_tuition import compute
+        row = StudentDiscount.objects.filter(id=request.GET.get("id")).select_related("item").first()
+        if not row:
+            return self.error("할인이 없습니다.")
+        prof = AcademyProfile.objects.filter(user_id=row.student_id, is_deleted=False).first()
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        sid = row.student_id
+        row.is_active = False
+        row.save(update_fields=["is_active"])
+        StudentTuitionChange.objects.create(
+            student_id=sid, actor=request.user, detail="할인 뗌: %s" % row.item.name)
+        return self.success(compute(sid))
+
+
 class MenuSettingAdminAPI(APIView):
     """메뉴 관리 — 전체 on/off, 역할 제한, 직원 예외."""
 

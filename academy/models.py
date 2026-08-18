@@ -891,6 +891,63 @@ class DiscountItem(models.Model):
         ordering = ["branch_id", "id"]
 
 
+class StudentTuition(models.Model):
+    """학생별 원비. 금액은 저장하지 않고 볼 때마다 계산한다 — 시간표를 바꾸면 원비도
+    따라가야 하기 때문이다. 사람이 직접 정한 금액만 저장된다.
+
+    mode
+      AUTO      시간표(없으면 예정 주횟수·시간)로 기준표에서 계산
+      MANUAL    manual_amount 를 그대로 쓴다
+      UNDECIDED 미정 — 청구서에서 걸러진다
+    """
+    MODE_CHOICES = (("AUTO", "자동"), ("MANUAL", "직접 지정"), ("UNDECIDED", "미정"))
+    student = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                   related_name="tuition")
+    mode = models.CharField(max_length=16, default="AUTO")
+    # 시간표를 나중에 넣을 때 미리 정해 두는 값. 시간표가 생기면 어긋나는지 견준다.
+    planned_sessions = models.PositiveSmallIntegerField(null=True, blank=True)
+    planned_duration = models.PositiveSmallIntegerField(null=True, blank=True)
+    manual_amount = models.PositiveIntegerField(null=True, blank=True)
+    note = models.CharField(max_length=255, blank=True, default="")
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_student_tuition"
+
+
+class StudentDiscount(models.Model):
+    """학생에게 붙인 할인. 여러 개를 겹쳐 붙일 수 있다."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="discounts")
+    item = models.ForeignKey(DiscountItem, on_delete=models.CASCADE, related_name="+")
+    is_active = models.BooleanField(default=True)
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_student_discount"
+        ordering = ["id"]
+
+
+class StudentTuitionChange(models.Model):
+    """학생 원비를 바꾼 이력. 돈이라 남긴다."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="tuition_changes")
+    detail = models.CharField(max_length=255)
+    reason = models.TextField(blank=True, default="")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_student_tuition_change"
+        ordering = ["-id"]
+
+
 class StudentStatusChange(models.Model):
     """학생 등록상태 변경 이력(재원↔휴원↔퇴원↔재등록). 휴원/퇴원 모아보기·재등록 관리·
     안내문자 연계의 근거 자료로 영구 보존한다."""
