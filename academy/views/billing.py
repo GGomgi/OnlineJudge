@@ -55,8 +55,20 @@ def _inv_row(inv, paid):
             "base_amount": inv.base_amount, "discount_amount": inv.discount_amount,
             "amount": inv.amount, "paid": p, "remain": max(0, inv.amount - p),
             "source": inv.source, "lines": lines, "note": inv.note,
+            "revision": inv.revision,
             "is_void": inv.is_void, "void_reason": inv.void_reason,
             "state": ("취소" if inv.is_void else ("완납" if p >= inv.amount else ("일부" if p else "미납")))}
+
+
+def live_invoices(**flt):
+    """살아 있는 청구서. 같은 학생·같은 달에 여러 차수가 있으면 마지막 것만."""
+    best = {}
+    for inv in Invoice.objects.filter(is_void=False, **flt).select_related(
+            "student", "student__userprofile", "branch"):
+        k = (inv.student_id, inv.ym)
+        if k not in best or inv.revision > best[k].revision:
+            best[k] = inv
+    return list(best.values())
 
 
 def _branch_scope(request):
@@ -72,16 +84,16 @@ class InvoiceAPI(APIView):
     def get(self, request):
         view = viewable_branch_ids(request.user)
         ym = (request.GET.get("ym") or str(_kst_today())[:7]).strip()
-        qs = Invoice.objects.filter(ym=ym).select_related("student", "student__userprofile", "branch")
+        flt = {"ym": ym}
         if view is not None:
-            qs = qs.filter(branch_id__in=view)
+            flt["branch_id__in"] = view
         bid = request.GET.get("branch_id")
         if bid:
-            qs = qs.filter(branch_id=bid)
-        rows = list(qs)
+            flt["branch_id"] = bid
+        rows = sorted(live_invoices(**flt), key=lambda x: _name_of(x.student))
         paid = _paid_map([x.id for x in rows])
         out = [_inv_row(x, paid) for x in rows]
-        live = [x for x in out if not x["is_void"]]
+        live = out
         return self.success({
             "ym": ym, "rows": out,
             "total": sum(x["amount"] for x in live),
@@ -110,8 +122,12 @@ class InvoiceAPI(APIView):
         profs = AcademyProfile.objects.filter(
             is_deleted=False, role=AcademyRole.STUDENT, branch_id=bid, user_id__in=enrolled
         ).select_related("user", "user__userprofile", "branch")
-        have = set(Invoice.objects.filter(ym=ym, student_id__in=[p.user_id for p in profs])
-                                  .values_list("student_id", flat=True))
+        # 이미 만든 것은 건너뛰지 않고 '몇 차로 나갔는지'를 함께 보여 준다.
+        # 금액을 고쳐 다시 안내할 일이 있어서다(결석 이월 등).
+        cur = {}
+        for inv in live_invoices(ym=ym, student_id__in=[p.user_id for p in profs]):
+            cur[inv.student_id] = inv
+        paid_now = _paid_map([i.id for i in cur.values()])
 
         # 금액만 봐서는 맞는지 알 수 없다. 학교·요일·시간·과목·담당까지 옆에 놓아
         # 한 줄로 확인할 수 있게 한다.
@@ -121,11 +137,11 @@ class InvoiceAPI(APIView):
             user_id__in=[p.user_id for p in profs])}
         WD = ["월", "화", "수", "목", "금", "토", "일"]
 
+        want = d.get("items")            # 고른 학생만. 없으면 전부(미리보기)
+        pick = {int(x["student_id"]): x for x in want} if want else None
+
         made, skipped, undecided, rows = 0, 0, 0, []
         for p in sorted(profs, key=lambda x: _name_of(x.user)):
-            if p.user_id in have:
-                skipped += 1
-                continue
             t = compute(p.user_id)
             slots = sorted(active_slots(p.user_id), key=lambda x: (x.weekday, x.start_time))
             sp = sprof.get(p.user_id)
@@ -141,19 +157,43 @@ class InvoiceAPI(APIView):
                    "instructors": " · ".join(sorted({_name_of(x.instructor)
                                                      for x in slots if x.instructor_id})) or "미배정",
                    "mode": t["mode"]}
+            old_inv = cur.get(p.user_id)
+            if old_inv:
+                row.update({"invoice_id": old_inv.id, "revision": old_inv.revision,
+                            "issued_amount": old_inv.amount, "issued_note": old_inv.note,
+                            "paid": paid_now.get(old_inv.id, 0)})
             rows.append(row)
             if t["amount"] is None:
                 undecided += 1
                 continue                      # 금액 미정은 만들지 않는다. 틀린 금액을 남기느니 비운다
-            if commit:
-                Invoice.objects.create(
-                    student_id=p.user_id, branch_id=p.branch_id, ym=ym,
-                    base_amount=t["base"] or 0,
-                    discount_amount=sum(x["off"] for x in t["discounts"]),
-                    amount=t["amount"], source=t["source"],
-                    lines=_json.dumps(t["discounts"], ensure_ascii=False),
-                    created_by=request.user)
-                made += 1
+            if not commit:
+                continue
+            if pick is not None and p.user_id not in pick:
+                skipped += 1
+                continue
+            it = (pick or {}).get(p.user_id) or {}
+            amt = str(it.get("amount", "")).replace(",", "").strip()
+            amount = int(amt) if amt.isdigit() else t["amount"]
+            note = (it.get("note") or "").strip()
+            if old_inv:
+                # 다시 뽑기 — 받은 돈이 붙어 있으면 막는다(먼저 납부를 취소해야 한다)
+                if paid_now.get(old_inv.id, 0):
+                    skipped += 1
+                    continue
+                rev = old_inv.revision + 1
+                old_inv.is_void = True
+                old_inv.void_reason = "%d차 수정발행으로 대체" % rev
+                old_inv.save(update_fields=["is_void", "void_reason"])
+            else:
+                rev = 1
+            Invoice.objects.create(
+                student_id=p.user_id, branch_id=p.branch_id, ym=ym, revision=rev,
+                base_amount=t["base"] or 0,
+                discount_amount=sum(x["off"] for x in t["discounts"]),
+                amount=amount, source=t["source"], note=note,
+                lines=_json.dumps(t["discounts"], ensure_ascii=False),
+                created_by=request.user)
+            made += 1
         return self.success({"ym": ym, "commit": commit, "rows": rows,
                              "made": made, "skipped": skipped, "undecided": undecided,
                              "total": sum(r["amount"] or 0 for r in rows)})

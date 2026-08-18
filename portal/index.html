@@ -6212,13 +6212,12 @@
       <!-- 미리보기 — 만들기 전에 무엇이 얼마로 잡히는지 다 보여 준다 -->
       <div v-if="ivPreview" class="bg-white rounded-xl shadow-sm p-4 mb-4 border-l-4 border-indigo-300">
         <div class="flex items-center gap-2 mb-2 flex-wrap">
-          <div class="text-sm font-bold">{{ ivPreview.ym }} 청구서 미리보기</div>
-          <span class="text-xs text-slate-500">만들 것 <b>{{ ivPreview.rows.length - ivPreview.undecided }}명</b> · 합계 <b class="font-mono">{{ Number(ivPreview.total||0).toLocaleString() }}원</b></span>
-          <span v-if="ivPreview.undecided" class="text-xs text-amber-700">금액 미정 {{ ivPreview.undecided }}명은 만들지 않습니다</span>
-          <span v-if="ivPreview.skipped" class="text-xs text-slate-400">이미 있는 {{ ivPreview.skipped }}명은 건너뜁니다</span>
+          <div class="text-sm font-bold">{{ ivPreview.ym }} 청구서 만들기</div>
+          <span class="text-xs text-slate-500">고른 <b>{{ pvPicked.length }}명</b> · 합계 <b class="font-mono">{{ Number(pvPickedTotal).toLocaleString() }}원</b></span>
+          <span v-if="ivPreview.undecided" class="text-xs text-amber-700">금액 미정 {{ ivPreview.undecided }}명은 고를 수 없습니다</span>
           <div class="ml-auto flex gap-2">
             <button @click="ivPreview=null" class="px-2.5 py-1.5 rounded border border-slate-300 text-slate-600 text-sm">닫기</button>
-            <button @click="makeInvoices" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm whitespace-nowrap">이대로 만들기</button>
+            <button @click="makeInvoices" :disabled="!pvPicked.length" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm whitespace-nowrap disabled:bg-slate-300">고른 {{ pvPicked.length }}명 만들기</button>
           </div>
         </div>
         <div class="flex items-center gap-2 mb-1 text-[11px] text-slate-400">
@@ -6230,28 +6229,47 @@
           <table class="w-full text-sm">
             <thead class="bg-slate-50 text-slate-500 text-xs sticky top-0">
               <tr>
+                <th class="px-2 py-2 w-8"><input type="checkbox" :checked="pvAllPicked" @change="pvPickAll($event.target.checked)" class="w-4 h-4" /></th>
                 <th v-for="c in pvCols" :key="c.k" @click="pvToggle(c.k)"
                     :class="['px-2 py-2 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100', c.right ? 'text-right' : 'text-left']">
                   {{ c.l }}<span v-if="pvRank(c.k)" class="ml-0.5 text-indigo-600 font-bold">{{ pvArrow(c.k) }}<sup>{{ pvRank(c.k) }}</sup></span>
                 </th>
+                <th class="px-2 py-2 text-left w-56">비고 <span class="font-normal text-slate-400">(금액이 이렇게 된 까닭)</span></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in pvRows" :key="r.student_id" class="border-t hover:bg-slate-50">
-                <td class="px-2 py-1.5 font-medium"><button @click="openStudent({ id:r.student_id })" class="hover:underline">{{ r.name }}</button></td>
+              <tr v-for="r in pvRows" :key="r.student_id"
+                  :class="['border-t hover:bg-slate-50', pvSel[r.student_id] ? 'bg-indigo-50/40' : '']">
+                <td class="px-2 py-1.5">
+                  <input type="checkbox" :disabled="r.amount===null || r.paid" :checked="!!pvSel[r.student_id]"
+                         @change="pvSel[r.student_id] = $event.target.checked" class="w-4 h-4" />
+                </td>
+                <td class="px-2 py-1.5 font-medium">
+                  <button @click="openStudent({ id:r.student_id })" class="hover:underline">{{ r.name }}</button>
+                  <span v-if="r.revision" :class="['ml-1 text-[10px] px-1 rounded', r.paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700']">{{ r.revision }}차 발행됨</span>
+                </td>
                 <td class="px-2 py-1.5 text-slate-600">{{ r.school || '-' }}</td>
                 <td class="px-2 py-1.5 text-center">{{ r.sessions ? '주'+r.sessions+'회' : '-' }}</td>
                 <td class="px-2 py-1.5">{{ r.weekdays || '-' }}</td>
                 <td class="px-2 py-1.5 font-mono text-xs">{{ r.times ? r.times+'분' : '-' }}</td>
                 <td class="px-2 py-1.5">{{ r.subjects || '-' }}</td>
                 <td class="px-2 py-1.5 text-slate-600">{{ r.instructors }}</td>
-                <td class="px-2 py-1.5 text-right font-mono">
-                  <span v-if="r.amount!==null" :class="r.discounts.length ? 'text-indigo-700 font-semibold' : ''">{{ Number(r.amount).toLocaleString() }}</span>
-                  <span v-else class="text-amber-600">미정</span>
+                <td class="px-2 py-1.5 text-right">
+                  <input v-if="r.amount!==null" :value="pvAmount(r) ? Number(pvAmount(r)).toLocaleString() : ''"
+                         @input="pvSetAmount(r, $event.target.value)" inputmode="numeric"
+                         :class="['input py-1 text-right font-mono', pvAmountChanged(r) ? 'bg-amber-50 ring-1 ring-amber-300 text-amber-800 font-semibold' : '']"
+                         style="width:7.5rem" />
+                  <span v-else class="text-amber-600 text-xs">미정</span>
+                  <div v-if="pvAmountChanged(r)" class="text-[10px] text-slate-400 font-mono">원래 {{ Number(r.amount).toLocaleString() }}</div>
                 </td>
                 <td class="px-2 py-1.5 text-xs">
                   <span v-for="dc in r.discounts" :key="dc.id" class="text-rose-500 mr-1">{{ dc.name }} -{{ Number(dc.off).toLocaleString() }}</span>
-                  <span v-for="(w,i) in r.warnings" :key="'w'+i" class="text-amber-700">⚠ {{ w }}</span>
+                  <span v-for="(w,i) in r.warnings" :key="'w'+i" class="text-amber-700 mr-1">⚠ {{ w }}</span>
+                  <span v-if="r.paid" class="text-emerald-600">받음 {{ Number(r.paid).toLocaleString() }} — 고치려면 납부부터 취소</span>
+                </td>
+                <td class="px-2 py-1.5">
+                  <input v-model="pvNote[r.student_id]" :placeholder="pvAmountChanged(r) ? '왜 이 금액인지 적어 주세요' : ''"
+                         :class="['input py-1 text-xs', pvAmountChanged(r) && !(pvNote[r.student_id]||'').trim() ? 'ring-1 ring-amber-300 bg-amber-50' : '']" />
                 </td>
               </tr>
             </tbody>
@@ -6291,7 +6309,10 @@
           </thead>
           <tbody>
             <tr v-for="r in (ivRows||[])" :key="r.id" :class="['border-t', r.is_void ? 'text-slate-300' : '']">
-              <td class="px-3 py-1.5"><button @click="openStudent({ id:r.student_id })" class="font-medium hover:underline">{{ r.name }}</button></td>
+              <td class="px-3 py-1.5">
+                <button @click="openStudent({ id:r.student_id })" class="font-medium hover:underline">{{ r.name }}</button>
+                <span v-if="r.revision>1" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">{{ r.revision }}차</span>
+              </td>
               <td class="px-3 py-1.5 text-xs text-slate-400">{{ r.branch }}</td>
               <td class="px-3 py-1.5 text-right font-mono">{{ Number(r.amount).toLocaleString() }}</td>
               <td class="px-3 py-1.5 text-right font-mono text-emerald-600">{{ r.paid ? Number(r.paid).toLocaleString() : '-' }}</td>
@@ -6302,6 +6323,7 @@
               <td class="px-3 py-1.5 text-xs text-slate-400">
                 {{ r.source }}
                 <span v-for="dc in r.lines" :key="dc.id" class="ml-1 text-rose-400">{{ dc.name }} -{{ Number(dc.off).toLocaleString() }}</span>
+                <span v-if="r.note" class="ml-1 text-slate-600">· {{ r.note }}</span>
               </td>
               <td class="px-3 py-1.5 text-right">
                 <button v-if="!r.is_void" @click="openPay(r.student_id, r.name)" class="text-xs text-indigo-500 hover:underline">납부</button>
@@ -7380,6 +7402,7 @@ const app = createApp({
       // 같은 금액끼리 묶어 안내 문자를 보내려면 주횟수·시간 순으로 봐야 한다.
       // 누른 순서가 1차·2차·3차 정렬이 된다.
       pvSort: [{k:'sessions',dir:1},{k:'dur_max',dir:1}],
+      pvSel: {}, pvAmt: {}, pvNote: {},
       unpaid: [], unpaidTotal: 0,
       payFor: null, payData: { invoices:[], payments:[] },
       payForm: { paid_on:'', amount:'', method:'TRANSFER', note:'' },
@@ -7598,6 +7621,12 @@ const app = createApp({
       return [{k:'name',l:'학생'},{k:'school',l:'학교·학년'},{k:'sessions',l:'주횟수'},
               {k:'weekdays',l:'요일'},{k:'dur_max',l:'수업시간'},{k:'subjects',l:'과목'},
               {k:'instructors',l:'담당'},{k:'amount',l:'원비',right:true},{k:'note',l:'할인·확인'}];
+    },
+    pvPicked(){ return (this.ivPreview ? this.ivPreview.rows : []).filter(r => this.pvSel[r.student_id]); },
+    pvPickedTotal(){ return this.pvPicked.reduce((a,r) => a + (this.pvAmount(r) || 0), 0); },
+    pvAllPicked(){
+      const ok = (this.ivPreview ? this.ivPreview.rows : []).filter(r => r.amount !== null && !r.paid);
+      return ok.length > 0 && ok.every(r => this.pvSel[r.student_id]);
     },
     pvRows(){
       const rows = (this.ivPreview && this.ivPreview.rows) ? this.ivPreview.rows.slice() : [];
@@ -10611,6 +10640,16 @@ const app = createApp({
     pvRank(k){ const i = this.pvSort.findIndex(s => s.k === k); return i < 0 ? 0 : i + 1; },
     pvArrow(k){ const s = this.pvSort.find(x => x.k === k); return s ? (s.dir > 0 ? '↑' : '↓') : ''; },
     pvLabel(k){ const c = this.pvCols.find(x => x.k === k); return c ? c.l : k; },
+    // 금액을 고칠 수 있어야 한다. 결석을 보강 못 하고 돈으로 이월하는 일이 있어서다.
+    pvAmount(r){ const v = this.pvAmt[r.student_id]; return v === undefined ? r.amount : v; },
+    pvSetAmount(r, v){ this.pvAmt[r.student_id] = Number(String(v).replace(/[^0-9]/g,'')) || 0; },
+    pvAmountChanged(r){ const v = this.pvAmt[r.student_id]; return v !== undefined && v !== r.amount; },
+    pvPickAll(on){
+      for (const r of (this.ivPreview ? this.ivPreview.rows : [])){
+        if (r.amount === null || r.paid) continue;
+        this.pvSel[r.student_id] = on;
+      }
+    },
     // ── 원비·수납 ──
     ivStateCls(st){
       return ({ '완납':'bg-emerald-50 text-emerald-700', '일부':'bg-amber-50 text-amber-700',
@@ -10640,20 +10679,37 @@ const app = createApp({
       const bid = this.ivBranchId();
       if (!bid) return this.notify('지점을 고르세요.', false);
       try {
-        this.ivPreview = await api('POST','/api/admin/academy/invoice',
-                                   { branch_id:bid, ym:this.ivYm, commit:false });
+        const d = await api('POST','/api/admin/academy/invoice',
+                            { branch_id:bid, ym:this.ivYm, commit:false });
+        this.pvSel = {}; this.pvAmt = {}; this.pvNote = {};
+        for (const r of d.rows){
+          // 아직 안 만든 사람만 미리 골라 둔다. 이미 나간 것은 사람이 일부러 골라야 다시 뽑힌다.
+          if (r.amount !== null && !r.revision) this.pvSel[r.student_id] = true;
+          if (r.issued_note) this.pvNote[r.student_id] = r.issued_note;
+        }
+        this.ivPreview = d;
       } catch(e){ this.notify(e.message,false); }
     },
     async makeInvoices(){
       const bid = this.ivBranchId();
       if (!bid) return;
-      const n = this.ivPreview ? (this.ivPreview.rows.length - this.ivPreview.undecided) : 0;
-      if (!await this.askConfirm(this.ivYm + ' 청구서 ' + n + '건을 만듭니다.\n이미 있는 학생은 건너뜁니다.')) return;
+      const picked = this.pvPicked;
+      if (!picked.length) return this.notify('만들 학생을 골라 주세요.', false);
+      // 금액을 고쳤으면 까닭을 적어야 한다. 나중에 왜 이 금액인지 알 길이 없어진다.
+      const noReason = picked.filter(r => this.pvAmountChanged(r) && !(this.pvNote[r.student_id]||'').trim());
+      if (noReason.length)
+        return this.notify('금액을 고친 ' + noReason.map(r=>r.name).join(', ') + ' 의 비고를 적어 주세요.', false);
+      const again = picked.filter(r => r.revision);
+      const msg = this.ivYm + ' 청구서 ' + picked.length + '건을 만듭니다.'
+                + (again.length ? '\n이 중 ' + again.length + '명은 다시 뽑는 것이라 ' + (again[0].revision+1) + '차가 되고 이전 것은 대체됩니다.' : '');
+      if (!await this.askConfirm(msg)) return;
       try {
+        const items = picked.map(r => ({ student_id:r.student_id, amount:this.pvAmount(r),
+                                         note:(this.pvNote[r.student_id]||'').trim() }));
         const d = await api('POST','/api/admin/academy/invoice',
-                            { branch_id:bid, ym:this.ivYm, commit:true });
+                            { branch_id:bid, ym:this.ivYm, commit:true, items });
         this.ivPreview = null;
-        this.notify(d.made + '건 만들었습니다.' + (d.undecided ? ' (금액 미정 '+d.undecided+'명 제외)' : ''));
+        this.notify(d.made + '건 만들었습니다.' + (d.skipped ? ' (' + d.skipped + '건은 받은 돈이 붙어 있어 건너뜀)' : ''));
         this.loadInvoices(); this.loadUnpaid();
       } catch(e){ this.notify(e.message,false); }
     },

@@ -957,11 +957,16 @@ class Invoice(models.Model):
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
                                related_name="invoices")
     ym = models.CharField(max_length=7)                   # 2026-08
+    # 같은 달에 다시 뽑을 때가 있다(금액을 고쳐 다시 안내). 1차·2차·3차로 남기고
+    # 이전 차수는 '대체됨'으로 둔다 — 지우면 무엇을 보냈는지 알 수 없다.
+    revision = models.PositiveSmallIntegerField(default=1)
     base_amount = models.PositiveIntegerField(default=0)  # 할인 전
     discount_amount = models.PositiveIntegerField(default=0)
     amount = models.PositiveIntegerField(default=0)       # 청구 금액
     source = models.CharField(max_length=255, blank=True, default="")   # 시간표 주2회 90+90분
     lines = models.TextField(blank=True, default="")      # 할인 줄 JSON
+    # 금액이 왜 이렇게 정해졌는지. 이력이 아니라 청구서에 붙는 설명이다
+    # (예: 8월 결석 1회 보강 못 함 — 다음 달로 이월).
     note = models.CharField(max_length=255, blank=True, default="")
     is_void = models.BooleanField(default=False)          # 취소(지우지 않는다)
     void_reason = models.CharField(max_length=255, blank=True, default="")
@@ -971,8 +976,8 @@ class Invoice(models.Model):
 
     class Meta:
         db_table = "academy_invoice"
-        unique_together = ("student", "ym")
-        ordering = ["-ym", "student_id"]
+        unique_together = ("student", "ym", "revision")
+        ordering = ["-ym", "student_id", "-revision"]
 
 
 class Payment(models.Model):
