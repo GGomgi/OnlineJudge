@@ -4284,6 +4284,40 @@ class DashboardAdminAPI(APIView):
                 "parent_phone": lg.parent_phone, "note": rv.note, "channel": rv.channel,
                 "branch": (lg.branch.name if lg.branch_id else "")})
 
+        # 자격증·대회 — 놓치면 못 돌이키는 일이라 미리 알린다.
+        # 접수 마감은 보름, 시험·대회 당일은 이레 앞에서부터 본다(마감이 더 급하다).
+        from ..models import ExamEntry, ExamStage
+        eq2 = ExamEntry.objects.filter(is_deleted=False).exclude(
+            stage__in=[ExamStage.JOIN_NO, ExamStage.DONE]
+        ).select_related("student", "student__userprofile", "session", "session__catalog",
+                         "catalog", "student__academy_profile", "student__academy_profile__branch")
+        exam_soon = []
+        for e in eq2:
+            ap = e.apply_until or (e.session.apply_until if e.session_id else None)
+            ex = e.exam_date or (e.session.exam_date if e.session_id else None)
+            cat = e.catalog or (e.session.catalog if e.session_id else None)
+            prof2 = getattr(e.student, "academy_profile", None)
+            bid2 = prof2.branch_id if prof2 else None
+            if view is not None and bid2 not in view:
+                continue
+            if bid and str(bid2) != str(bid):
+                continue
+            title = (cat.name if cat else "") or (e.session.title if e.session_id else "") or "시험"
+            if ap and 0 <= (ap - d).days <= 14 and not e.applied:
+                exam_soon.append({"kind": "apply", "label": "접수 마감",
+                                  "date": str(ap), "wd": _WD[ap.weekday()], "d_day": (ap - d).days,
+                                  "name": _name_of(e.student), "student_id": e.student_id,
+                                  "title": title, "detail": " ".join(x for x in (e.level, e.track) if x),
+                                  "branch": (prof2.branch.name if prof2 and prof2.branch_id else "")})
+            if ex and 0 <= (ex - d).days <= 7:
+                exam_soon.append({"kind": "exam", "label": "시험일",
+                                  "date": str(ex), "wd": _WD[ex.weekday()], "d_day": (ex - d).days,
+                                  "time": e.exam_time or (e.session.exam_time if e.session_id else ""),
+                                  "name": _name_of(e.student), "student_id": e.student_id,
+                                  "title": title, "detail": " ".join(x for x in (e.level, e.track) if x),
+                                  "branch": (prof2.branch.name if prof2 and prof2.branch_id else "")})
+        exam_soon.sort(key=lambda x: (x["d_day"], x["kind"] != "apply", x["name"]))
+
         # 학부모 등록 링크 작성 완료(등록 전환 전까지 계속 표시, 날짜와 무관)
         eq = Lead.objects.select_related("branch").filter(
             enroll_status="SUBMITTED").exclude(status=LeadStatus.CONVERTED)
@@ -4326,6 +4360,7 @@ class DashboardAdminAPI(APIView):
                              "total": len(lessons), "present": len(att), "reservations": reservations,
                              "enrolled_leads": enrolled, "temp_leaves": temp_leaves,
                              "next_reservations": next_resv,
+                             "exam_soon": exam_soon,
                              "next_open_day": (str(nxt) if nxt else ""),
                              "next_makeups": makeups,
                              "no_work_schedule": no_ws,
