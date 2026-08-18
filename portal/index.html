@@ -2471,20 +2471,28 @@
         <button @click="togglePanel('exam')" class="w-full text-left text-xs font-semibold text-teal-700 flex items-center gap-2">
           <span class="text-teal-400">{{ panelOpen('exam') ? '▾' : '▸' }}</span>
           🏅 자격증·대회
-          <span class="text-slate-400 font-normal">{{ dashData.exam_soon.length }}건</span>
+          <span class="text-slate-400 font-normal">{{ dashData.exam_soon.length }}건 · 한 달 안</span>
           <span v-if="dashExamUrgent" class="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold">접수 마감 임박 {{ dashExamUrgent }}건</span>
           <span class="ml-auto font-normal text-slate-400">{{ panelOpen('exam') ? '접기' : '펼치기' }}</span>
         </button>
-        <div v-if="panelOpen('exam')" class="mt-2 space-y-0.5 text-sm">
-          <div v-for="(e,i) in dashData.exam_soon" :key="i" class="flex items-baseline gap-2 whitespace-nowrap">
+        <!-- 같은 시험·같은 날·같은 상태면 한 줄에 이름을 늘어놓는다 -->
+        <div v-if="panelOpen('exam')" class="mt-2 space-y-1 text-sm">
+          <div v-for="(e,i) in dashData.exam_soon" :key="i" class="flex items-baseline gap-2">
             <span :class="['font-mono text-xs px-1 rounded shrink-0 w-10 text-center',
                            e.kind==='apply' ? (e.d_day<=3 ? 'bg-rose-100 text-rose-700 font-bold' : 'bg-amber-100 text-amber-700')
                                             : (e.d_day<=1 ? 'bg-teal-100 text-teal-700 font-bold' : 'text-slate-500')]">D-{{ e.d_day }}</span>
             <span :class="['text-[11px] px-1 rounded shrink-0', e.kind==='apply' ? 'bg-amber-50 text-amber-700' : 'bg-teal-50 text-teal-700']">{{ e.label }}</span>
-            <span class="text-xs text-slate-500 shrink-0">{{ e.date.slice(5) }}({{ e.wd }}){{ e.time ? ' '+e.time : '' }}</span>
-            <button @click="openStudent({ id:e.student_id })" class="font-medium hover:underline shrink-0">{{ e.name }}</button>
-            <span class="text-xs text-slate-600 truncate">{{ e.title }}<span v-if="e.detail" class="text-slate-400"> {{ e.detail }}</span></span>
+            <span class="text-xs text-slate-500 shrink-0 whitespace-nowrap">{{ e.date.slice(5) }}({{ e.wd }}){{ e.time ? ' '+e.time : '' }}</span>
+            <span class="text-xs text-slate-700 shrink-0 whitespace-nowrap">{{ e.title }}<span v-if="e.detail" class="text-slate-400"> {{ e.detail }}</span></span>
+            <span class="text-[11px] px-1 rounded bg-slate-100 text-slate-500 shrink-0">{{ e.stage }}</span>
             <span v-if="showBranchCol" class="text-xs text-slate-400 shrink-0">{{ e.branch }}</span>
+            <span class="text-xs text-slate-300 shrink-0">{{ e.people.length }}명</span>
+            <span class="flex flex-wrap items-baseline gap-x-1">
+              <template v-for="(w,k) in e.people" :key="w.student_id">
+                <span v-if="k" class="text-slate-300">·</span>
+                <button @click="openStudent({ id:w.student_id })" class="font-medium hover:underline">{{ w.name }}</button>
+              </template>
+            </span>
           </div>
         </div>
       </div>
@@ -8244,7 +8252,11 @@ const app = createApp({
     dashAllDone(){ const ls=this.dashLessons; return ls.length>0 && ls.every(l=>this.isAbsent(l) || this.isLeave(l) || l.att.out); },
     nowClock(){ const d=new Date(this.clockNow); const p=x=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); },
     dashIsToday(){ return this.dashDate===this.todayStr; },
-    dashExamUrgent(){ return (this.dashData.exam_soon||[]).filter(e => e.kind==='apply' && e.d_day <= 3).length; },
+    dashExamUrgent(){
+      return (this.dashData.exam_soon||[])
+        .filter(e => e.kind==='apply' && e.d_day <= 3)
+        .reduce((a,e) => a + e.people.length, 0);
+    },
     dashNextResvSoon(){ return (this.dashData.next_reservations||[]).filter(r => r.d_day === 1).length; },
     nowMin(){ const d=new Date(this.clockNow); return d.getHours()*60+d.getMinutes(); },
     nowLineIndex(){

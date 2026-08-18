@@ -4284,14 +4284,16 @@ class DashboardAdminAPI(APIView):
                 "parent_phone": lg.parent_phone, "note": rv.note, "channel": rv.channel,
                 "branch": (lg.branch.name if lg.branch_id else "")})
 
-        # 자격증·대회 — 놓치면 못 돌이키는 일이라 미리 알린다.
-        # 접수 마감은 보름, 시험·대회 당일은 이레 앞에서부터 본다(마감이 더 급하다).
-        from ..models import ExamEntry, ExamStage
+        # 자격증·대회 — 놓치면 못 돌이키는 일이라 미리 알린다. 한 달 앞까지 본다.
+        # 같은 시험·같은 날·같은 상태면 한 줄에 이름을 늘어놓는다. 한 명씩 줄이 생기면
+        # 여덟 명짜리 대회 하나가 화면을 다 차지한다.
+        from ..models import ExamEntry, ExamStage, EXAM_STAGE_CHOICES
         eq2 = ExamEntry.objects.filter(is_deleted=False).exclude(
             stage__in=[ExamStage.JOIN_NO, ExamStage.DONE]
         ).select_related("student", "student__userprofile", "session", "session__catalog",
                          "catalog", "student__academy_profile", "student__academy_profile__branch")
-        exam_soon = []
+        _STAGE = dict(EXAM_STAGE_CHOICES)
+        exam_grp = {}
         for e in eq2:
             ap = e.apply_until or (e.session.apply_until if e.session_id else None)
             ex = e.exam_date or (e.session.exam_date if e.session_id else None)
@@ -4303,20 +4305,28 @@ class DashboardAdminAPI(APIView):
             if bid and str(bid2) != str(bid):
                 continue
             title = (cat.name if cat else "") or (e.session.title if e.session_id else "") or "시험"
-            if ap and 0 <= (ap - d).days <= 14 and not e.applied:
-                exam_soon.append({"kind": "apply", "label": "접수 마감",
-                                  "date": str(ap), "wd": _WD[ap.weekday()], "d_day": (ap - d).days,
-                                  "name": _name_of(e.student), "student_id": e.student_id,
-                                  "title": title, "detail": " ".join(x for x in (e.level, e.track) if x),
-                                  "branch": (prof2.branch.name if prof2 and prof2.branch_id else "")})
-            if ex and 0 <= (ex - d).days <= 7:
-                exam_soon.append({"kind": "exam", "label": "시험일",
-                                  "date": str(ex), "wd": _WD[ex.weekday()], "d_day": (ex - d).days,
-                                  "time": e.exam_time or (e.session.exam_time if e.session_id else ""),
-                                  "name": _name_of(e.student), "student_id": e.student_id,
-                                  "title": title, "detail": " ".join(x for x in (e.level, e.track) if x),
-                                  "branch": (prof2.branch.name if prof2 and prof2.branch_id else "")})
-        exam_soon.sort(key=lambda x: (x["d_day"], x["kind"] != "apply", x["name"]))
+            detail = " ".join(x for x in (e.level, e.track, e.round) if x)
+            stage = _STAGE.get(e.stage, e.stage)
+            who = {"student_id": e.student_id, "name": _name_of(e.student)}
+            bn = (prof2.branch.name if prof2 and prof2.branch_id else "")
+
+            def _add(kind, label, day, extra=""):
+                key = (kind, str(day), title, detail, stage, bn)
+                g = exam_grp.setdefault(key, {
+                    "kind": kind, "label": label, "date": str(day), "wd": _WD[day.weekday()],
+                    "d_day": (day - d).days, "title": title, "detail": detail,
+                    "stage": stage, "branch": bn, "time": extra, "people": []})
+                g["people"].append(who)
+
+            if ap and 0 <= (ap - d).days <= 30 and not e.applied:
+                _add("apply", "접수 마감", ap)
+            if ex and 0 <= (ex - d).days <= 30:
+                _add("exam", "시험일", ex,
+                     e.exam_time or (e.session.exam_time if e.session_id else ""))
+        exam_soon = sorted(exam_grp.values(),
+                           key=lambda x: (x["d_day"], x["kind"] != "apply", x["title"]))
+        for g in exam_soon:
+            g["people"].sort(key=lambda w: w["name"])
 
         # 학부모 등록 링크 작성 완료(등록 전환 전까지 계속 표시, 날짜와 무관)
         eq = Lead.objects.select_related("branch").filter(
