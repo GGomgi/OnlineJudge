@@ -1133,8 +1133,8 @@
             </div>
             <table class="w-full text-xs" style="table-layout:fixed">
               <colgroup>
-                <col style="width:4%"><col style="width:10%"><col style="width:8%"><col style="width:11%"><col style="width:8%">
-                <col style="width:9%"><col style="width:9%"><col style="width:15%"><col>
+                <col style="width:4%"><col style="width:9%"><col style="width:7%"><col style="width:10%"><col style="width:7%">
+                <col style="width:8%"><col style="width:8%"><col style="width:11%"><col style="width:13%"><col>
               </colgroup>
               <thead class="text-slate-400"><tr>
                 <th class="px-2 py-1"><input v-if="stuAttBulkMode" type="checkbox" :checked="isGroupFullySelected(g)" @click="toggleStuAttGroupSel(g)" class="w-3.5 h-3.5 align-middle" title="이 달 전체 선택" /></th>
@@ -1144,6 +1144,7 @@
                 <th class="px-2 py-1 text-left">강사</th>
                 <th class="px-2 py-1 text-left">등원</th>
                 <th class="px-2 py-1 text-left">하원</th>
+                <th class="px-2 py-1 text-left">경과</th>
                 <th class="px-2 py-1 text-left">상태</th>
                 <th class="px-2 py-1 text-left">비고</th>
               </tr></thead>
@@ -1162,6 +1163,12 @@
                   </td>
                   <td class="px-2 py-1 truncate" @click.stop="openStuAttTime(row,'out')">
                     <span :class="stuCanEdit ? 'cursor-pointer hover:underline decoration-dotted' : ''">{{ row.att.out || '-' }}</span>
+                  </td>
+                  <!-- 얼마나 했는지가 안 보여 감이 안 왔다. 오늘 운영과 같은 모양으로 적는다 -->
+                  <td class="px-2 py-1 truncate font-mono text-[11px]">
+                    <span v-if="stuElapsed(row)" :class="stuElapsed(row).done ? 'text-emerald-600 font-bold' : (stuElapsed(row).over ? 'text-amber-600 font-bold' : 'text-slate-400')">{{ stuElapsed(row).mins }}분 / {{ stuElapsed(row).dur }}분</span>
+                    <span v-else-if="row.status!=='ABSENT' && row.status!=='LEAVE' && row.status!=='HOLIDAY'" class="text-slate-300">/ {{ row.duration_minutes||60 }}분</span>
+                    <span v-else class="text-slate-200">-</span>
                   </td>
                   <td class="px-2 py-1 overflow-hidden"><span :class="['px-1.5 py-0.5 rounded whitespace-nowrap text-[11px]', stuAttStatusInfo(row).cls]">{{ stuAttStatusInfo(row).label }}</span></td>
                   <td class="px-2 py-1 text-slate-500 truncate" @mouseenter="showNotePop(row,$event)" @mouseleave="hideNotePop">
@@ -11784,6 +11791,32 @@ const app = createApp({
         else if (this.tab==='timetable') this.loadTtCal();
         else this.loadDashboard();
       } catch(e){ this.notify(e.message,false); }
+    },
+    // 학생 출결기록의 경과. 오늘 운영과 셈은 같되 형제 수업을 그 화면 목록에서 찾는다.
+    stuElapsed(row){
+      if (row.status==='ABSENT' || row.status==='LEAVE' || row.status==='HOLIDAY') return null;
+      if (!row.att || !row.att.in) return null;
+      const start = this.hmMin(row.att.in);
+      let end;
+      if (row.att.out) end = this.hmMin(row.att.out);
+      else if (row.date === this.todayStr) end = this.nowMin;
+      else return null;
+      const totalMins = Math.max(0, end - start);
+      const dur = row.duration_minutes || 60;
+      // 같은 날 여러 타임이면 앞 수업부터 채워 나눠 준다 — 안 그러면 두 줄 다 전체 시간이 뜬다
+      const sib = (this.stuAttHist.rows||[]).filter(o => o.date===row.date && o.status!=='ABSENT'
+                                                    && o.att && o.att.in);
+      if (sib.length > 1){
+        sib.sort((a,b) => this.hmMin(a.start_time) - this.hmMin(b.start_time));
+        let remaining = totalMins;
+        for (let i=0; i<sib.length; i++){
+          const o = sib[i], odur = o.duration_minutes || 60;
+          const share = (i === sib.length-1) ? remaining : Math.min(remaining, odur);
+          if (o.occ_id === row.occ_id) return { mins:share, dur, over:share>dur, done:!!row.att.out };
+          remaining = Math.max(0, remaining - odur);
+        }
+      }
+      return { mins: totalMins, dur, over: totalMins > dur, done: !!row.att.out };
     },
     elapsedInfo(l){
       // 등원 후 경과(분). 하원했으면 등원~하원, 아니면 등원~현재(오늘만).
