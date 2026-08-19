@@ -500,6 +500,9 @@ class ConvertLeadSerializer(serializers.Serializer):
     # 동의·서명은 법정대리인 본인이 하는 것이라 직원이 대신 채울 수 없다.
     # 등록 시에는 비워 두고 학부모 확인 양식에서 받는다.
     consent_privacy = serializers.BooleanField(required=False, default=False)
+    # 종이로 받아 보관 중이라는 표시. 여기 없으면 화면이 보내도 입구에서 버려져
+    # 등록 뒤에 체크가 사라진다(이승현 2026-08-19).
+    consent_paper = serializers.BooleanField(required=False, default=False)
     consent_guardian_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
     consent_signature = serializers.CharField(required=False, allow_blank=True)
     consent_date = serializers.DateField(required=False, allow_null=True)
