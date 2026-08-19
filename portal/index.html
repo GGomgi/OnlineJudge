@@ -6619,7 +6619,7 @@
     </div>
 
     <!-- ============ 개발 요청 게시판 (로그인 모두) ============ -->
-    <section v-if="tab==='devboard'" class="max-w-3xl mx-auto">
+    <section v-if="tab==='devboard'">
       <!-- 목록 -->
       <div v-if="dbView==='list'">
         <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
@@ -12358,7 +12358,7 @@ const app = createApp({
     _makeDbEditor(initial){
       this._destroyDbEditors();
       this.$nextTick(()=>{ try {
-        this._dbEditor = new toastui.Editor({ el:this.$refs.dbEditorEl, height:'380px', initialEditType:'wysiwyg', previewStyle:'vertical', initialValue:initial||'', usageStatistics:false, autofocus:false });
+        this._dbEditor = new toastui.Editor({ el:this.$refs.dbEditorEl, height:'610px', initialEditType:'wysiwyg', previewStyle:'vertical', initialValue:initial||'', usageStatistics:false, autofocus:false });
       } catch(e){ this.notify('에디터 로드 실패(인터넷 확인).', false); } });
     },
     openDbWrite(){ this.dbForm={ id:null, title:'', body:'' }; this.dbView='write'; this._makeDbEditor(''); },
