@@ -830,11 +830,13 @@
                 <button @click="openGdSearch" class="text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-white">🔍 보호자 검색</button>
               </div>
               <div v-if="gdSelectedParentId" class="text-[11px] text-emerald-600">✓ 기존 보호자 선택됨 — 아래 [연결]을 누르세요.</div>
-              <div class="grid grid-cols-2 gap-2">
-                <input v-model="gdForm.parent_name" @input="gdSelectedParentId=null" placeholder="보호자 이름" class="input py-1" />
-                <input :value="gdForm.parent_phone" @input="gdForm.parent_phone=formatPhone($event.target.value); gdSelectedParentId=null" inputmode="numeric" placeholder="연락처" class="input py-1" />
-                <input v-model="gdForm.relation" list="guardianRelationList" placeholder="관계(선택·직접입력)" class="input py-1" />
-                <input v-if="!gdSelectedParentId" v-model="gdForm.password" placeholder="비밀번호(미입력 시 연락처)" class="input py-1" />
+              <!-- 네 칸이 한 줄이다. 두 칸씩 접히면 이름과 관계가 위아래로 떨어져 짝이 안 보인다.
+                   .input 이 w-full 이라 폭은 감싼 칸으로 정한다. -->
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="flex-1 min-w-[6rem]"><input v-model="gdForm.parent_name" @input="gdSelectedParentId=null" placeholder="보호자 이름" class="input py-1" /></div>
+                <div style="width:9.5rem"><input :value="gdForm.parent_phone" @input="gdForm.parent_phone=formatPhone($event.target.value); gdSelectedParentId=null" inputmode="numeric" placeholder="연락처" class="input py-1" /></div>
+                <div style="width:8rem"><input v-model="gdForm.relation" list="guardianRelationList" placeholder="관계" class="input py-1" /></div>
+                <div v-if="!gdSelectedParentId" class="flex-1 min-w-[9rem]"><input v-model="gdForm.password" placeholder="비밀번호(미입력 시 연락처)" class="input py-1" /></div>
               </div>
               <datalist id="guardianRelationList"><option value="아버지"><option value="어머니"><option value="할아버지"><option value="할머니"><option value="조부모"></datalist>
               <div class="flex justify-end">
