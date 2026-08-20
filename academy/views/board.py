@@ -104,15 +104,14 @@ def _kind_of(ext):
 
 
 def _folder_row(f, unread=0, posts=0, multi=False):
-    # 이름표는 예외에만 붙인다. 대부분이 전 지점이라 '전 지점'을 붙이면 거의 모든 줄에
-    # 이름표가 달려 뜻이 없어진다. 지점 한정만 표시한다.
-    # 지점 이름을 쓰면 "그건 나도 아는데"가 되므로, 한 지점만 보는 사람에게는
-    # '우리 지점만'이라 적는다 — 딴 지점 사람은 못 본다는 새 정보를 준다.
-    tag = ""
-    if f.scope == "BRANCH":
-        tag = (f.branch.name if (multi and f.branch_id) else "우리 지점만")
+    # 이름표를 줄마다 다는 대신 덩어리로 묶는다. 대부분이 우리 지점 폴더라 [전 지점]을
+    # 붙이든 [우리 지점만]을 붙이든 흩어져 읽기 어렵다. 묶어 두면 이름표가 필요 없다.
+    if f.scope == "BRANCH" and f.branch_id:
+        gk, gl = "b%d" % f.branch_id, f.branch.name
+    else:
+        gk, gl = "all", "전 지점"
     return {"id": f.id, "name": f.name, "parent_id": f.parent_id, "icon": f.icon,
-            "branch_tag": tag,
+            "group_key": gk, "group_label": gl,
             "scope": f.scope, "branch_id": f.branch_id, "need_read": f.need_read,
             "versioned": f.versioned, "allow_comments": f.allow_comments,
             "write_scope": f.write_scope,

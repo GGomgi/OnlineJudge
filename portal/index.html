@@ -1957,11 +1957,17 @@
               <button @click.stop="deleteStuRecFile(x)" class="text-rose-300 hover:text-rose-500 shrink-0">✕</button>
             </div>
           </div>
-          <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
-            📎 파일 붙이기
-            <input type="file" multiple class="hidden" @change="uploadStuRecFiles($event)" />
-          </label>
-          <span v-if="stuRecUp" class="ml-2 text-xs text-indigo-500">올리는 중…</span>
+          <div @dragover.prevent="bdDrag='rec'" @dragleave="bdDragOff($event,'rec')" @drop.prevent="dropBdFiles($event,'rec')"
+               :class="['rounded-lg p-3 flex items-center gap-2 flex-wrap transition-colors',
+                        bdDrag==='rec' ? 'border-2 border-dashed border-indigo-400 bg-indigo-50/60' : 'border border-dashed border-slate-200']">
+            <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 bg-white text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
+              📎 파일 붙이기
+              <input type="file" multiple class="hidden" @change="uploadStuRecFiles($event)" />
+            </label>
+            <span v-if="bdDrag==='rec'" class="text-xs text-indigo-600 font-medium">여기에 놓으세요</span>
+            <span v-else-if="stuRecUp" class="text-xs text-indigo-500">올리는 중…</span>
+            <span v-else class="text-[11px] text-slate-400">끌어다 놓아도 됩니다</span>
+          </div>
         </div>
         <p v-else class="text-[11px] text-slate-400">파일은 저장한 뒤에 붙일 수 있습니다.</p>
         <div class="flex justify-end gap-2 pt-1">
@@ -2054,7 +2060,7 @@
           <span v-if="f.versioned" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-violet-50 text-violet-600">판관리</span>
           <span v-if="f.allow_comments" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600">덧글</span>
           <span v-if="f.write_scope" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">쓰기 {{ bdScopeLabel(f.write_scope) }}</span>
-          <span v-if="f.scope!=='ALL'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ f.branch_tag || bdScopeLabel(f.scope) }}</span>
+          <span v-if="f.scope!=='ALL'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ f.scope==='BRANCH' ? f.group_label : bdScopeLabel(f.scope) }}</span>
           <span class="flex items-center gap-1 shrink-0">
             <button @click="moveBdFolder(f,-1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">◀</button>
             <button @click="moveBdFolder(f,1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▶</button>
@@ -6952,16 +6958,18 @@
       <div class="flex gap-3 items-start">
         <!-- 폴더 트리 — 꾸미지 않는다. 많아질수록 글자만 보여야 찾기 쉽다 -->
         <div class="w-52 shrink-0 bg-white rounded-xl shadow-sm py-2">
-          <div v-for="f in bdTree" :key="f.id" @click="pickBdFolder(f)"
-               :class="['flex items-center gap-1 px-2 py-1.5 text-sm cursor-pointer',
-                        bdFolderId===f.id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50']"
-               :style="{ paddingLeft: (0.5 + (f.depth-1)*0.9) + 'rem' }">
-            <span v-if="f.icon" class="shrink-0">{{ f.icon }}</span>
-            <span class="truncate">{{ f.name }}</span>
-            <span v-if="f.branch_tag" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ f.branch_tag }}</span>
-            <span v-if="f.unread" class="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[18px] text-center">{{ f.unread }}</span>
-            <span v-else-if="f.posts" class="ml-auto shrink-0 text-[11px] text-slate-300">{{ f.posts }}</span>
-          </div>
+          <template v-for="g in bdGroups" :key="g.key">
+            <div class="px-2 pt-2 pb-1 text-[11px] font-semibold text-slate-400 border-t first:border-t-0 first:pt-0">{{ g.label }}</div>
+            <div v-for="f in g.rows" :key="f.id" @click="pickBdFolder(f)"
+                 :class="['flex items-center gap-1 px-2 py-1.5 text-sm cursor-pointer',
+                          bdFolderId===f.id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50']"
+                 :style="{ paddingLeft: (0.5 + (f.depth-1)*0.9) + 'rem' }">
+              <span v-if="f.icon" class="shrink-0">{{ f.icon }}</span>
+              <span class="truncate">{{ f.name }}</span>
+              <span v-if="f.unread" class="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[18px] text-center">{{ f.unread }}</span>
+              <span v-else-if="f.posts" class="ml-auto shrink-0 text-[11px] text-slate-300">{{ f.posts }}</span>
+            </div>
+          </template>
           <div v-if="!bdTree.length" class="px-3 py-6 text-center text-xs text-slate-400">폴더가 없습니다.</div>
         </div>
 
@@ -6970,7 +6978,7 @@
           <div v-if="bdView==='list'" class="bg-white rounded-xl shadow-sm divide-y">
             <div class="px-4 py-2 text-xs text-slate-400 flex items-center gap-2">
               <b class="text-slate-600">{{ bdFolder ? bdFolder.name : '폴더를 고르세요' }}</b>
-              <span v-if="bdFolder && bdFolder.branch_tag" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdFolder.branch_tag }}</span>
+              <span v-if="bdFolder" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdFolder.group_label }}</span>
               <span v-if="bdFolder && bdFolder.need_read" class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-600">읽음 확인</span>
               <span class="ml-auto">{{ bdList.length }}건</span>
             </div>
@@ -7002,10 +7010,13 @@
             </div>
             <!-- 파일. 저장 전에 고른 것은 손에 들고 있다가 저장할 때 함께 올린다 —
                  먼저 글을 만들어 두면 취소했을 때 빈 글이 남는다 -->
-            <div class="rounded-lg border border-slate-200 p-3 space-y-2">
+            <div @dragover.prevent="bdDrag='write'" @dragleave="bdDragOff($event,'write')" @drop.prevent="dropBdFiles($event,'write')"
+                 :class="['rounded-lg border p-3 space-y-2 transition-colors',
+                          bdDrag==='write' ? 'border-2 border-dashed border-indigo-400 bg-indigo-50/60' : 'border-slate-200']">
               <div class="flex items-center gap-2">
                 <span class="text-xs font-semibold text-slate-500">파일</span>
                 <span class="text-[11px] text-slate-400">{{ bdAllFiles.length }}개 · {{ bdSizeText(bdFormBytes) }}</span>
+                <span v-if="bdDrag==='write'" class="text-[11px] text-indigo-600 font-medium">여기에 놓으세요</span>
                 <label class="ml-auto inline-flex items-center gap-2 px-2.5 py-1 rounded border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
                   📎 고르기
                   <input type="file" multiple class="hidden" @change="pickBdFiles($event)" />
@@ -7024,6 +7035,7 @@
               <p class="text-[11px] text-slate-400">
                 파일 하나 {{ bdSizeText(bdMaxFile) }}까지 · 글 합계 {{ bdSizeText(bdMaxPost) }}까지 · 개수 제한 없음.
                 <span class="text-indigo-500">테두리가 점선인 것은 저장할 때 올라갑니다.</span>
+                끌어다 놓아도 됩니다.
               </p>
             </div>
             <!-- 학생 연결. 이 글이 걸린 아이의 [연결된 글] 에 뜬다 -->
@@ -7100,11 +7112,16 @@
 
             <!-- 파일 올리기 -->
             <div v-if="bdDetail.can_edit" class="border-t pt-3">
-              <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
-                📎 파일 붙이기
-                <input type="file" multiple class="hidden" @change="uploadBdFiles($event)" />
-              </label>
-              <span class="ml-2 text-[11px] text-slate-400">파일 하나 {{ bdSizeText(bdMaxFile) }}까지 · 글 합계 {{ bdSizeText(bdMaxPost) }}까지 · 개수 제한 없음</span>
+              <div @dragover.prevent="bdDrag='detail'" @dragleave="bdDragOff($event,'detail')" @drop.prevent="dropBdFiles($event,'detail')"
+                   :class="['rounded-lg p-3 flex items-center gap-2 flex-wrap transition-colors',
+                            bdDrag==='detail' ? 'border-2 border-dashed border-indigo-400 bg-indigo-50/60' : 'border border-dashed border-slate-200']">
+                <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 bg-white text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
+                  📎 파일 붙이기
+                  <input type="file" multiple class="hidden" @change="uploadBdFiles($event)" />
+                </label>
+                <span v-if="bdDrag==='detail'" class="text-xs text-indigo-600 font-medium">여기에 놓으세요</span>
+                <span v-else class="text-[11px] text-slate-400">끌어다 놓아도 됩니다 · 파일 하나 {{ bdSizeText(bdMaxFile) }}까지 · 글 합계 {{ bdSizeText(bdMaxPost) }}까지</span>
+              </div>
               <div v-if="bdUploading" class="mt-2 text-xs text-indigo-500">올리는 중… {{ bdUpDone }}/{{ bdUpTotal }}</div>
             </div>
 
@@ -8237,7 +8254,7 @@ const app = createApp({
       bdMaxFile: 52428800, bdMaxPost: 209715200, bdFilesAll: false, bdReadOpen: false,
       bdUploading: false, bdUpDone: 0, bdUpTotal: 0,
       bdDiff: null, bdDiffA: null, bdDiffB: null, bdStuQ: '', bdStuQRaw: '',
-      bdCanWrite: true, bdCommentDraft: '', bdPending: [], _bdKey: 0,
+      bdCanWrite: true, bdCommentDraft: '', bdPending: [], _bdKey: 0, bdDrag: '',
       // 그리는 도중에 만들면 갱신이 계속 돌아 화면이 멈춘다. 시작할 때 미리 만들어 둔다.
       colState: buildAllColState(),
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
@@ -8441,6 +8458,16 @@ const app = createApp({
     // 쉼표로 여러 이름을 한 번에. 이미 담은 사람은 목록에서 뺀다.
     // 이미 붙은 것과 아직 안 올린 것을 한 줄에 늘어놓는다. 두 목록으로 나누면
     // 무엇이 들어갈지 한눈에 안 보인다.
+    // 전 지점을 위, 지점 것을 아래. 대부분이 지점 것이라 줄마다 이름표를 다는 대신
+    // 덩어리로 묶는다 — 묶어 두면 이름표가 필요 없다.
+    bdGroups(){
+      const out = [], by = {};
+      for (const f of this.bdTree){
+        if (!by[f.group_key]){ by[f.group_key] = { key:f.group_key, label:f.group_label, rows:[] }; out.push(by[f.group_key]); }
+        by[f.group_key].rows.push(f);
+      }
+      return out.sort((a,b)=> (a.key==='all'?-1:0) - (b.key==='all'?-1:0) || a.label.localeCompare(b.label,'ko'));
+    },
     bdAllFiles(){
       const saved = (this.bdForm.file_list||[]).map(f=>({ key:'s'+f.id, id:f.id, name:f.name,
                      size:f.size, kind:f.kind, url:f.url, thumb:f.thumb, by:f.by, pending:false }));
@@ -13134,6 +13161,22 @@ const app = createApp({
       if (['.zip','.7z','.rar','.tar','.gz'].includes(e)) return 'zip';
       if (['.hwp','.hwpx','.doc','.docx','.ppt','.pptx','.xls','.xlsx','.txt','.md'].includes(e)) return 'doc';
       return 'etc';
+    },
+    // 안쪽 요소를 지날 때도 dragleave 가 뜬다. 칸 밖으로 아주 나갔을 때만 끈다.
+    bdDragOff(ev, key){
+      if (this.bdDrag !== key) return;
+      if (ev.currentTarget.contains(ev.relatedTarget)) return;
+      this.bdDrag = '';
+    },
+    // 끌어다 놓기. 고르는 창을 여는 것보다 자료를 여러 개 올릴 때 훨씬 빠르다.
+    dropBdFiles(ev, key){
+      this.bdDrag = '';
+      const files = Array.from((ev.dataTransfer && ev.dataTransfer.files) || []);
+      if (!files.length) return;
+      const fake = { target: { files, value:'' } };
+      if (key === 'write') this.pickBdFiles(fake);
+      else if (key === 'detail') this.uploadBdFiles(fake);
+      else if (key === 'rec') this.uploadStuRecFiles(fake);
     },
     pickBdFiles(ev){
       const files = Array.from(ev.target.files||[]); ev.target.value='';
