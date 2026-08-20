@@ -3780,6 +3780,32 @@ class DevLogAdminAPI(APIView):
                              "has_more": start > 0, "total": total})
 
 
+def _board_unread(user):
+    """읽음 확인을 켠 폴더의 안 읽은 글. 게시판에 들어가 봐야 새 글이 있는 줄 알면
+    규정 개정이 전달되지 않는다. 하루에 꼭 한 번 여는 화면에 걸어 둔다."""
+    from ..models import BoardFolder, BoardPost, BoardRead
+    from .board import _can_see, _role_of, _is_super
+    role, bid = _role_of(user)
+    sup = _is_super(user)
+    fs = [f for f in BoardFolder.objects.filter(is_deleted=False, need_read=True)
+          if _can_see(f, role, bid, sup)]
+    if not fs:
+        return []
+    seen = set(BoardRead.objects.filter(user=user).values_list("post_id", flat=True))
+    out = {}
+    for p in BoardPost.objects.filter(is_deleted=False, folder_id__in=[f.id for f in fs]) \
+                              .select_related("folder").order_by("-id"):
+        if p.id in seen:
+            continue
+        g = out.setdefault(p.folder_id, {"folder_id": p.folder_id, "folder": p.folder.name,
+                                         "icon": p.folder.icon, "posts": []})
+        if len(g["posts"]) < 5:
+            g["posts"].append({"id": p.id, "title": p.title,
+                               "time": str(p.create_time + timedelta(hours=9))[:19]})
+        g["n"] = g.get("n", 0) + 1
+    return sorted(out.values(), key=lambda x: -x["n"])
+
+
 # ── 일일 운영 대시보드(오늘 수업 + 등원/하원 출결) ──
 
 def _hm_kst(dt):
@@ -4436,6 +4462,7 @@ class DashboardAdminAPI(APIView):
                              "enrolled_leads": enrolled, "temp_leaves": temp_leaves,
                              "next_reservations": next_resv,
                              "exam_soon": exam_soon,
+                             "board_unread": _board_unread(request.user),
                              "next_open_day": (str(nxt) if nxt else ""),
                              "next_makeups": makeups,
                              "no_work_schedule": no_ws,

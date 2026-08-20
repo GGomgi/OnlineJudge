@@ -957,6 +957,56 @@
         </div>
 
         <!-- 상태 이력 -->
+        <!-- 기록 — 학교 시험·수행평가·상장. 종류는 학원 관리의 목록이라 학년이 올라도 화면을 안 고친다 -->
+        <div v-if="stuTab==='record'" class="space-y-3">
+          <div class="flex items-center gap-2 flex-wrap">
+            <select v-model="stuRec.kind" @change="loadStuRecords" class="input py-1 px-2" style="width:9rem">
+              <option value="">종류 전부</option>
+              <option v-for="k in stuRec.kinds" :key="k.value" :value="k.value">{{ k.label }}</option>
+            </select>
+            <span class="text-xs text-slate-400">{{ stuRec.rows.length }}건</span>
+            <button v-if="stuRec.can_edit" @click="openStuRec(null)" class="ml-auto px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">+ 기록 추가</button>
+          </div>
+          <div v-if="!stuRec.rows.length" class="py-10 text-center text-sm text-slate-400">아직 기록이 없습니다.</div>
+          <div v-else class="border rounded-lg divide-y">
+            <div v-for="r in stuRec.rows" :key="r.id" class="px-3 py-2.5 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{{ optLabel('student_record', r.kind) || '기타' }}</span>
+                <span class="shrink-0 font-mono text-xs text-slate-400">{{ r.date ? dd(r.date) : '-' }}</span>
+                <span class="font-medium truncate flex-1 min-w-0">{{ r.title }}</span>
+                <span class="shrink-0 text-[11px] text-slate-400 whitespace-nowrap">{{ r.author }}</span>
+                <button v-if="stuRec.can_edit" @click="openStuRec(r)" class="shrink-0 text-xs text-indigo-500 hover:underline">수정</button>
+                <button v-if="stuRec.can_edit" @click="deleteStuRec(r)" class="shrink-0 text-xs text-rose-400 hover:underline">삭제</button>
+              </div>
+              <div v-if="r.body" class="mt-1 text-xs text-slate-600 whitespace-pre-wrap break-all">{{ r.body }}</div>
+              <div v-if="r.file_list.length" class="mt-1.5 flex flex-wrap gap-1.5">
+                <div v-for="f in r.file_list" :key="f.id"
+                     @mouseenter="showBdPrev(f,$event)" @mouseleave="hideBdPrev" @click="openBdFile(f)"
+                     class="flex items-center gap-1.5 px-2 py-1 rounded border border-slate-200 text-[11px] cursor-pointer hover:bg-slate-50 max-w-[14rem]">
+                  <span class="shrink-0">{{ bdIcon(f.kind) }}</span>
+                  <span class="truncate">{{ f.name }}</span>
+                  <span class="text-slate-400 shrink-0">{{ bdSizeText(f.size) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 연결된 글 — 게시판 글 중 이 아이가 걸린 것 -->
+        <div v-if="stuTab==='links'" class="space-y-3">
+          <div class="text-xs text-slate-400">게시판 글 가운데 이 학생이 걸린 것입니다. {{ stuLinks.length }}건</div>
+          <div v-if="!stuLinks.length" class="py-10 text-center text-sm text-slate-400">연결된 글이 없습니다.</div>
+          <div v-else class="border rounded-lg divide-y">
+            <div v-for="p in stuLinks" :key="p.id" @click="goBoardPost(p.folder_id, p.id)"
+                 class="px-3 py-2.5 flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50">
+              <span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{{ p.icon }} {{ p.folder }}</span>
+              <span class="font-medium truncate flex-1 min-w-0">{{ p.title }}</span>
+              <span v-if="p.files" class="shrink-0 text-xs text-slate-400">📎{{ p.files }}</span>
+              <span class="shrink-0 text-xs text-slate-400 whitespace-nowrap">{{ p.author }} · {{ dt(p.time) }}</span>
+            </div>
+          </div>
+        </div>
+
         <div v-if="stuTab==='status'" class="space-y-3">
           <div v-if="stuCanEdit" class="bg-slate-50 rounded-lg p-3 space-y-2">
             <div class="flex gap-2 items-center">
@@ -1878,6 +1928,50 @@
     </div>
   </div>
 
+  <!-- 학생 기록 쓰기. 파일은 저장한 뒤에 붙는다(붙일 자리가 있어야 하므로) -->
+  <div v-if="stuRecForm" class="fixed inset-0 z-[66] bg-black/40 flex items-start justify-center p-4 overflow-auto" @click.self="stuRecForm=null">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg my-4">
+      <div class="flex items-center justify-between px-4 py-3 border-b">
+        <div class="font-bold text-sm">{{ stuRecForm.id ? '기록 고치기' : '새 기록' }}<span class="font-normal text-slate-400"> — {{ stuDetail ? (stuDetail.real_name||'') : '' }}</span></div>
+        <button @click="stuRecForm=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="flex gap-2">
+          <div style="width:9rem"><label class="lbl">종류</label>
+            <select v-model="stuRecForm.kind" class="input py-1 px-2">
+              <option v-for="k in stuRec.kinds" :key="k.value" :value="k.value">{{ k.label }}</option>
+            </select>
+          </div>
+          <div class="shrink-0"><label class="lbl">날짜</label><date-box v-model="stuRecForm.date" box-class="input py-1"></date-box></div>
+          <div class="flex-1 min-w-[8rem]"><label class="lbl">제목</label><input v-model="stuRecForm.title" class="input py-1" @keyup.enter="saveStuRec" /></div>
+        </div>
+        <div><label class="lbl">내용</label><textarea v-model="stuRecForm.body" rows="4" class="input text-sm" placeholder="점수·등급·소감 등"></textarea></div>
+        <div v-if="stuRecForm.id">
+          <label class="lbl">파일</label>
+          <div class="flex flex-wrap gap-1.5 mb-1.5">
+            <div v-for="x in stuRecForm.file_list" :key="x.id"
+                 @mouseenter="showBdPrev(x,$event)" @mouseleave="hideBdPrev" @click="openBdFile(x)"
+                 class="flex items-center gap-1.5 px-2 py-1 rounded border border-slate-200 text-[11px] cursor-pointer hover:bg-slate-50 max-w-[13rem]">
+              <span class="shrink-0">{{ bdIcon(x.kind) }}</span>
+              <span class="truncate">{{ x.name }}</span>
+              <button @click.stop="deleteStuRecFile(x)" class="text-rose-300 hover:text-rose-500 shrink-0">✕</button>
+            </div>
+          </div>
+          <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
+            📎 파일 붙이기
+            <input type="file" multiple class="hidden" @change="uploadStuRecFiles($event)" />
+          </label>
+          <span v-if="stuRecUp" class="ml-2 text-xs text-indigo-500">올리는 중…</span>
+        </div>
+        <p v-else class="text-[11px] text-slate-400">파일은 저장한 뒤에 붙일 수 있습니다.</p>
+        <div class="flex justify-end gap-2 pt-1">
+          <button @click="stuRecForm=null" class="btn-secondary text-sm">닫기</button>
+          <button @click="saveStuRec" class="btn-primary text-sm">저장</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 두 판 견주기. 무엇이 늘고 줄었는지가 눈에 보여야 개정을 설명할 수 있다 -->
   <div v-if="bdDiff" class="fixed inset-0 z-[76] bg-black/40 flex items-start justify-center p-4 overflow-auto" @click.self="bdDiff=null">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl my-4">
@@ -2732,6 +2826,28 @@
             <button @click="goConvertFromDash(l)" class="ml-auto shrink-0 px-2 py-1 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-700">등록 전환</button>
           </li>
         </ul>
+      </div>
+      <!-- 안 읽은 공지·규정 — 게시판에 들어가 봐야 새 글이 있는 줄 알면 개정이 전달되지 않는다.
+           하루에 꼭 한 번 여는 화면에 걸어 둔다. 다 읽으면 저절로 사라진다. -->
+      <div v-if="(dashData.board_unread||[]).length" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-rose-300">
+        <button @click="togglePanel('bdun')" class="w-full text-left text-xs font-semibold text-rose-700 flex items-center gap-2">
+          <span class="text-rose-400">{{ panelOpen('bdun') ? '▾' : '▸' }}</span>
+          📌 안 읽은 공지·규정
+          <span class="text-slate-400 font-normal">{{ dashUnreadText }}</span>
+          <span class="ml-auto font-normal text-slate-400">{{ panelOpen('bdun') ? '접기' : '펼치기' }}</span>
+        </button>
+        <div v-if="panelOpen('bdun')" class="mt-2 space-y-1.5">
+          <div v-for="g in dashData.board_unread" :key="g.folder_id" class="text-xs">
+            <div class="text-slate-400 mb-0.5">{{ g.icon }} {{ g.folder }} · {{ g.n }}건</div>
+            <div v-for="p in g.posts" :key="p.id" @click="goBoardPost(g.folder_id, p.id)"
+                 class="flex items-center gap-2 px-2 py-1 rounded hover:bg-rose-50 cursor-pointer">
+              <span class="shrink-0 w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+              <span class="truncate">{{ p.title }}</span>
+              <span class="ml-auto shrink-0 text-slate-400 whitespace-nowrap">{{ dt(p.time) }}</span>
+            </div>
+            <div v-if="g.n > g.posts.length" class="px-2 text-[11px] text-slate-400">그 밖에 {{ g.n - g.posts.length }}건 더</div>
+          </div>
+        </div>
       </div>
       <!-- 자격증·대회 — 접수 마감을 놓치면 못 돌이킨다. 마감은 보름, 시험일은 이레 앞부터. -->
       <div v-if="(dashData.exam_soon||[]).length" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-teal-300">
@@ -6864,6 +6980,31 @@
                 <date-box v-model="bdForm.effective_date" box-class="input py-1"></date-box>
               </div>
             </div>
+            <!-- 학생 연결. 이 글이 걸린 아이의 [연결된 글] 에 뜬다 -->
+            <div class="rounded-lg border border-slate-200 p-3 space-y-2">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-slate-500">학생 연결</span>
+                <span class="text-[11px] text-slate-400">{{ bdForm.students.length }}명</span>
+                <button v-if="bdForm.students.length" @click="bdForm.students=[]" class="ml-auto text-[11px] text-slate-400 hover:underline">모두 지우기</button>
+              </div>
+              <div v-if="bdForm.students.length" class="flex flex-wrap gap-1">
+                <span v-for="st in bdPickedStudents" :key="st.id"
+                      class="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs whitespace-nowrap">
+                  {{ st.real_name || st.username }}
+                  <button @click="bdForm.students = bdForm.students.filter(id=>id!==st.id)" class="ml-0.5 text-indigo-400 hover:text-rose-500">✕</button>
+                </span>
+              </div>
+              <search-box v-model="bdStuQRaw" placeholder="학생 검색 — 쉼표로 여러 명 (예: 김유건, 박지한)"></search-box>
+              <div v-if="bdStuCandidates.length" class="border rounded-lg divide-y max-h-40 overflow-y-auto text-sm">
+                <div v-for="st in bdStuCandidates" :key="st.id" @click="bdAddStudent(st)"
+                     class="px-2 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-indigo-50">
+                  <span class="font-medium">{{ st.real_name || st.username }}</span>
+                  <span class="text-xs text-slate-400">{{ st.school_name }} {{ st.grade ? st.grade+'학년' : '' }}</span>
+                  <span class="ml-auto text-xs text-indigo-500">담기</span>
+                </div>
+              </div>
+              <div v-else-if="bdStuQ" class="text-xs text-slate-400 px-1">맞는 학생이 없습니다.</div>
+            </div>
             <label class="flex items-center gap-1.5 text-sm cursor-pointer select-none">
               <input type="checkbox" v-model="bdForm.pinned" class="w-4 h-4" /> 맨 위에 고정
             </label>
@@ -6881,8 +7022,14 @@
               <h2 class="text-lg font-bold flex-1 min-w-0 break-all">{{ bdDetail.title }}</h2>
               <button @click="bdView='list'" class="text-slate-400 hover:text-slate-600 text-sm shrink-0">← 목록</button>
             </div>
-            <div class="flex items-center gap-2 text-xs text-slate-400 border-b pb-2">
+            <div class="flex items-center gap-2 text-xs text-slate-400 border-b pb-2 flex-wrap">
               <span>{{ bdDetail.folder_name }} · {{ bdDetail.author }} · {{ dt(bdDetail.time) }}</span>
+              <span v-if="bdDetail.students.length" class="flex items-center gap-1 flex-wrap">
+                <span class="text-slate-300">|</span>
+                <span class="text-slate-400">학생</span>
+                <span v-for="st in bdDetail.students" :key="st.id" @click="openStudent({ id:st.id })"
+                      class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 cursor-pointer hover:bg-indigo-100">{{ st.name }}</span>
+              </span>
             </div>
             <div ref="bdViewerEl" class="text-sm"></div>
 
@@ -8023,7 +8170,7 @@ const app = createApp({
       bdQ: '', bdQRaw: '', bdMgr: null, bdFolderForm: null, bdDelAsk: null, bdPrev: null,
       bdMaxFile: 52428800, bdMaxPost: 209715200, bdFilesAll: false, bdReadOpen: false,
       bdUploading: false, bdUpDone: 0, bdUpTotal: 0,
-      bdDiff: null, bdDiffA: null, bdDiffB: null,
+      bdDiff: null, bdDiffA: null, bdDiffB: null, bdStuQ: '', bdStuQRaw: '',
       // 그리는 도중에 만들면 갱신이 계속 돌아 화면이 멈춘다. 시작할 때 미리 만들어 둔다.
       colState: buildAllColState(),
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
@@ -8035,7 +8182,10 @@ const app = createApp({
       stuDetail: null, stuTab: 'info', stuForm: {}, stuFormOrig: {}, stuTimetables: [],
       stuExams: [], stuExamAdd: null,
       stuProgramsEdit: [], stuProgramsEditOrig: [],
-      stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'progress',l:'수업일지'},{k:'attend',l:'출결기록'},{k:'exam',l:'자격증·대회'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
+      stuTabs: [{k:'info',l:'인적사항'},{k:'counsel',l:'상담'},{k:'progress',l:'수업일지'},{k:'attend',l:'출결기록'},{k:'exam',l:'자격증·대회'},{k:'record',l:'기록'},{k:'links',l:'연결된 글'},{k:'status',l:'상태 이력'},{k:'cred',l:'아이디 관리'}],
+      // 학생 기록 — 그 아이만의 것. 연결된 글(여럿이 보는 글에 이름이 걸린 것)과 섞지 않는다.
+      stuRec: { rows:[], kinds:[], can_edit:false, kind:'' },
+      stuRecForm: null, stuRecUp: false, stuLinks: [],
       stuAttHist: { rows:[], from:'', to:'', fwdDays:0 },
       stuVerify: null, vrModal: null, vrPick: {}, vrCustom: {}, vrAdd: {}, vrFmt: {},
       vrShowFormat: false, vrError: '',
@@ -8215,6 +8365,27 @@ const app = createApp({
     bdFilesShown(){
       const all = (this.bdDetail && this.bdDetail.file_list) || [];
       return this.bdFilesAll ? all : all.slice(0, 12);
+    },
+    dashUnreadText(){
+      const g = this.dashData.board_unread || [];
+      const n = g.reduce((a,b)=>a+b.n, 0);
+      return g.map(x => x.folder + ' ' + x.n + '건').join(' · ') || (n + '건');
+    },
+    // 쉼표로 여러 이름을 한 번에. 이미 담은 사람은 목록에서 뺀다.
+    bdStuCandidates(){
+      const q = (this.bdStuQ||'').trim().toLowerCase();
+      if (!q) return [];
+      const qs = q.split(',').map(x=>x.trim()).filter(Boolean);
+      const has = new Set(this.bdForm.students||[]);
+      return (this.students||[]).filter(st=>{
+        if (has.has(st.id)) return false;
+        const hay = ((st.real_name||'')+' '+(st.username||'')+' '+(st.school_name||'')).toLowerCase();
+        return qs.some(x => hay.includes(x));
+      }).slice(0, 40);
+    },
+    bdPickedStudents(){
+      const has = new Set(this.bdForm.students||[]);
+      return (this.students||[]).filter(st=>has.has(st.id));
     },
     bdVerRevs(){ return ((this.bdDetail && this.bdDetail.versions) || []).map(v=>v.rev); },
     bdDiffPlus(){ return this.bdDiff ? this.bdDiff.diff.filter(l=>l.t==='+').length : 0; },
@@ -12770,12 +12941,15 @@ const app = createApp({
     },
     openBdWrite(){
       if (!this.bdFolderId) return this.notify('폴더를 먼저 고르세요.', false);
-      this.bdForm={ id:null, title:'', body:'', pinned:false, note:'', effective_date:'' };
+      this.bdForm={ id:null, title:'', body:'', pinned:false, note:'', effective_date:'', students:[] };
+      this.bdStuQ=''; this.bdStuQRaw=''; this.ensureStudentsLoaded();
       this.bdView='write'; this._makeBdEditor('');
     },
     openBdEdit(d){
       // 개정 사유는 판마다 새로 적는다. 앞 판 것을 물려받으면 안 고쳤는데 고친 것처럼 남는다.
-      this.bdForm={ id:d.id, title:d.title, body:d.body, pinned:d.pinned, note:'', effective_date:'' };
+      this.bdForm={ id:d.id, title:d.title, body:d.body, pinned:d.pinned, note:'', effective_date:'',
+                    students:(d.students||[]).map(x=>x.id) };
+      this.bdStuQ=''; this.bdStuQRaw=''; this.ensureStudentsLoaded();
       this.bdView='write'; this._makeBdEditor(d.body||'');
     },
     closeBdWrite(){
@@ -12790,7 +12964,8 @@ const app = createApp({
         const r = await api('POST','/api/admin/academy/board/post',
                             { id:this.bdForm.id, folder_id:this.bdFolderId, title, body,
                               pinned:this.bdForm.pinned, note:this.bdForm.note,
-                              effective_date:this.bdForm.effective_date || null });
+                              effective_date:this.bdForm.effective_date || null,
+                              student_ids:this.bdForm.students });
         this._destroyBdEditors(); this.notify('저장되었습니다.'); this.openBdDetail(r.id);
       } catch(e){ this.notify(e.message,false); }
     },
@@ -12872,6 +13047,21 @@ const app = createApp({
         await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
         if (this.bdPrev){ this.bdPrev.drawn = true; this.bdPrev.pages = doc.numPages; }
       } catch(e){ if (this.bdPrev) this.bdPrev.drawn = true; }
+    },
+    bdAddStudent(st){
+      if (!this.bdForm.students.includes(st.id)) this.bdForm.students.push(st.id);
+    },
+    // 학생 목록이 아직 없으면 한 번만 받아 둔다(글쓰기에서 이름으로 골라야 한다)
+    async ensureStudentsLoaded(){
+      if ((this.students||[]).length) return;
+      try { await this.loadStudents(); } catch(e){}
+    },
+    // 알림 줄에서 바로 그 글로 간다. 어느 폴더인지도 함께 맞춰 준다.
+    goBoardPost(folderId, postId){
+      this.go('board');
+      this.bdFolderId = folderId;
+      this.loadBoard();
+      this.$nextTick(()=> this.openBdDetail(postId));
     },
     // ── 판 견주기 ──
     openBdDiff(a, b){
@@ -13757,6 +13947,73 @@ const app = createApp({
         }
       }
       if (k==='progress' && this.stuProgView==='cal') this.loadStuProgCal();
+      if (k==='record') this.loadStuRecords();
+      if (k==='links') this.loadStuLinks();
+    },
+    // ── 학생 기록 ──
+    async loadStuRecords(){
+      if (!this.stuDetail) return;
+      try {
+        const d = await api('GET','/api/admin/academy/student_record?student_id='+this.stuDetail.id
+                            + (this.stuRec.kind ? '&kind='+this.stuRec.kind : ''));
+        this.stuRec = Object.assign({}, this.stuRec, d);
+      } catch(e){ this.notify(e.message,false); }
+    },
+    openStuRec(r){
+      this.stuRecForm = r
+        ? { id:r.id, kind:r.kind, date:r.date, title:r.title, body:r.body, file_list:[...r.file_list] }
+        : { id:null, kind:(this.stuRec.kinds[0]||{}).value||'', date:this.todayStr, title:'', body:'', file_list:[] };
+    },
+    async saveStuRec(){
+      const f = this.stuRecForm;
+      if (!(f.title||'').trim()) return this.notify('제목을 적어 주세요.', false);
+      try {
+        const r = await api('POST','/api/admin/academy/student_record',
+                            { id:f.id, student_id:this.stuDetail.id, kind:f.kind,
+                              date:f.date || null, title:f.title, body:f.body });
+        // 파일을 붙이려면 저장된 기록이 있어야 한다. 새로 만든 뒤에도 창을 열어 둔다.
+        this.stuRecForm = Object.assign({}, f, { id:r.id, file_list:r.file_list||[] });
+        this.notify('저장되었습니다.'); this.loadStuRecords();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async deleteStuRec(r){
+      if (!await this.askConfirm(r.title+' 을 지우시겠습니까?')) return;
+      try {
+        await api('DELETE','/api/admin/academy/student_record?id='+r.id);
+        this.notify('지웠습니다.'); this.loadStuRecords();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async uploadStuRecFiles(ev){
+      const files = Array.from(ev.target.files||[]); ev.target.value='';
+      const f = this.stuRecForm;
+      if (!f || !f.id || !files.length) return;
+      this.stuRecUp = true;
+      for (const file of files){
+        const fd = new FormData();
+        fd.append('record_id', f.id); fd.append('file', file);
+        try {
+          const res = await fetch('/api/admin/academy/student_record/file', { method:'POST', body:fd,
+                        headers:{ 'X-CSRFToken': getCookie('csrftoken') }, credentials:'same-origin' });
+          const j = await res.json();
+          if (j.error) throw new Error(j.data);
+          f.file_list.push(j.data);
+        } catch(e){ this.notify(file.name+' — '+e.message, false); }
+      }
+      this.stuRecUp = false; this.loadStuRecords();
+    },
+    async deleteStuRecFile(x){
+      try {
+        await api('DELETE','/api/admin/academy/student_record/file?id='+x.id);
+        this.stuRecForm.file_list = this.stuRecForm.file_list.filter(y=>y.id!==x.id);
+        this.loadStuRecords();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async loadStuLinks(){
+      if (!this.stuDetail) return;
+      try {
+        const d = await api('GET','/api/admin/academy/student_board_links?student_id='+this.stuDetail.id);
+        this.stuLinks = d.rows;
+      } catch(e){ this.notify(e.message,false); }
     },
     toggleStuAttSel(occId){
       const i=this.stuAttSelected.indexOf(occId);
@@ -14883,7 +15140,7 @@ const app = createApp({
      ['msgStuQRaw','msgStuQ'], ['tplPreviewStuQRaw','tplPreviewStuQ'],
      ['actFilter.qRaw','actFilter.q'], ['examFilter.qRaw','examFilter.q'],
      ['examAdd.qRaw','examAdd.q'], ['phonePick.qRaw','phonePick.q'],
-     ['bdQRaw','bdQ']].forEach(([rawPath, realPath])=>{
+     ['bdQRaw','bdQ'], ['bdStuQRaw','bdStuQ']].forEach(([rawPath, realPath])=>{
       const rawParts = rawPath.split('.'), realParts = realPath.split('.');
       this.$watch(() => rawParts.reduce((o,k)=>o&&o[k], this), (v)=>{
         this._debounce(realPath, ()=>{

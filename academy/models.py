@@ -1180,6 +1180,7 @@ class OptionCategory(object):
     SCHOOL_TYPE = "school_type"            # 상담: 학교 구분
     COUNSELING_PURPOSE = "counseling_purpose"  # 상담: 상담 목적
     ATTENDANCE_NOTE = "attendance_note"    # 출결: 비고 표시(색상 태그)
+    STUDENT_RECORD = "student_record"       # 학생 기록: 종류(학교 시험·수행평가…)
 
 
 OPTION_CATEGORIES = [
@@ -1188,6 +1189,7 @@ OPTION_CATEGORIES = [
     (OptionCategory.SCHOOL_TYPE, "학교 구분"),
     (OptionCategory.COUNSELING_PURPOSE, "상담 목적"),
     (OptionCategory.ATTENDANCE_NOTE, "출결 비고"),
+    (OptionCategory.STUDENT_RECORD, "학생 기록 종류"),
 ]
 OPTION_CATEGORY_VALUES = [c[0] for c in OPTION_CATEGORIES]
 
@@ -1994,3 +1996,45 @@ class BoardPostVersion(models.Model):
         db_table = "academy_board_post_version"
         ordering = ["-rev"]
         unique_together = ("post", "rev")
+
+
+class StudentRecord(models.Model):
+    """학생 개인 기록 — 학교 시험 · 수행평가 · 상장.
+
+    학생 60명에 폴더를 파면 관리가 안 된다. 종류를 관리자가 정하는 목록으로 두고
+    줄을 쌓는다. 학년이 올라 문서가 늘어도 목록에 한 줄 더하면 끝이라 화면을
+    고칠 일이 없다([[admin-managed-dropdown-lists]]).
+    """
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="records")
+    kind = models.CharField(max_length=32, blank=True, default="")   # OptionItem(student_record)
+    date = models.DateField(null=True, blank=True)
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True, default="")
+    is_deleted = models.BooleanField(default=False)
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_student_record"
+        ordering = ["-date", "-id"]
+
+
+class StudentRecordFile(models.Model):
+    """학생 기록에 붙은 파일. 게시판 파일과 같은 짜임이다."""
+    record = models.ForeignKey(StudentRecord, on_delete=models.CASCADE, related_name="files")
+    name = models.CharField(max_length=255)
+    url = models.CharField(max_length=255)
+    thumb_url = models.CharField(max_length=255, blank=True, default="")
+    size = models.PositiveIntegerField(default=0)
+    kind = models.CharField(max_length=16, blank=True, default="")
+    order = models.PositiveSmallIntegerField(default=0)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_student_record_file"
+        ordering = ["order", "id"]

@@ -3,7 +3,8 @@ from django.conf.urls import url
 from ..views.verify import ProfileVerifyAdminAPI, ProfileVerifyResolveAPI, StudentVoiceAdminAPI
 from ..views.promotion import PromotionPreviewAPI, PromotionAPI
 from ..views.billing import InvoiceAPI, PaymentAPI
-from ..views.board import BoardFolderAPI, BoardPostAPI, BoardFileAPI, BoardVersionAPI
+from ..views.board import (BoardFolderAPI, BoardPostAPI, BoardFileAPI, BoardVersionAPI,
+                          StudentRecordAPI, StudentRecordFileAPI, StudentBoardLinkAPI)
 from ..views.exam import (SavedSearchAPI, ExamChangeAdminAPI, ExamCatalogAdminAPI, ExamSessionAdminAPI, ExamEntryAdminAPI,
                           ExamContactAdminAPI, ExamStageAdminAPI,
                           MenuSettingAdminAPI, MyMenuAPI,
@@ -150,4 +151,7 @@ urlpatterns = [
     url(r"^academy/board/post/?$", BoardPostAPI.as_view(), name="academy_board_post"),
     url(r"^academy/board/file/?$", BoardFileAPI.as_view(), name="academy_board_file"),
     url(r"^academy/board/version/?$", BoardVersionAPI.as_view(), name="academy_board_version"),
+    url(r"^academy/student_record/?$", StudentRecordAPI.as_view(), name="academy_student_record"),
+    url(r"^academy/student_record/file/?$", StudentRecordFileAPI.as_view(), name="academy_student_record_file"),
+    url(r"^academy/student_board_links/?$", StudentBoardLinkAPI.as_view(), name="academy_student_board_links"),
 ]

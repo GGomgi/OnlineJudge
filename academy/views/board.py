@@ -534,3 +534,172 @@ class BoardVersionAPI(APIView):
             "files_added": [x for x in new_files if x not in old_files],
             "files_removed": [x for x in old_files if x not in new_files],
         })
+
+
+# ── 학생 기록 · 연결된 글 (docs/82 5·6장) ──
+
+from ..models import StudentRecord, StudentRecordFile, OptionItem      # noqa: E402
+from ..services import can_manage_branch, can_view_branch              # noqa: E402
+
+
+def _rec_file_row(x):
+    return {"id": x.id, "name": x.name, "url": x.url, "thumb": x.thumb_url,
+            "size": x.size, "kind": x.kind,
+            "by": _name_of(x.uploaded_by) if x.uploaded_by_id else "",
+            "time": _kst(x.create_time)}
+
+
+def _rec_row(r, with_files=True):
+    d = {"id": r.id, "kind": r.kind, "date": str(r.date) if r.date else "",
+         "title": r.title, "body": r.body,
+         "author": _name_of(r.author) if r.author_id else "",
+         "time": _kst(r.create_time)}
+    if with_files:
+        d["file_list"] = [_rec_file_row(x) for x in r.files.all()]
+    return d
+
+
+def _student_ok(request, student_id, edit=False):
+    """그 학생을 볼(고칠) 수 있는가."""
+    prof = AcademyProfile.objects.filter(user_id=student_id, is_deleted=False).first()
+    if not prof:
+        return False
+    return (can_manage_branch(request.user, prof.branch_id) if edit
+            else can_view_branch(request.user, prof.branch_id))
+
+
+class StudentRecordAPI(APIView):
+    """학생 개인 기록. 종류는 관리자가 정하는 목록이라 학년이 올라도 화면을 안 고친다."""
+
+    @admin_role_required
+    def get(self, request):
+        sid = request.GET.get("student_id")
+        if not _student_ok(request, sid):
+            return self.error("이 학생을 볼 권한이 없습니다.")
+        qs = StudentRecord.objects.filter(student_id=sid, is_deleted=False) \
+                                  .select_related("author").prefetch_related("files")
+        kind = request.GET.get("kind")
+        if kind:
+            qs = qs.filter(kind=kind)
+        kinds = [{"value": o.value, "label": o.label}
+                 for o in OptionItem.objects.filter(category="student_record", is_active=True)
+                                            .order_by("order", "id")]
+        return self.success({"rows": [_rec_row(r) for r in qs[:300]], "kinds": kinds,
+                             "can_edit": _student_ok(request, sid, edit=True)})
+
+    @admin_role_required
+    def post(self, request):
+        d = request.data
+        sid = d.get("student_id")
+        if not _student_ok(request, sid, edit=True):
+            return self.error("이 학생을 고칠 권한이 없습니다.")
+        title = (d.get("title") or "").strip()
+        if not title:
+            return self.error("제목을 적어 주세요.")
+        dt = None
+        if d.get("date"):
+            try:
+                dt = datetime.strptime(d["date"], "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                dt = None
+        r = StudentRecord.objects.filter(id=d.get("id"), is_deleted=False).first() if d.get("id") else None
+        if r:
+            if str(r.student_id) != str(sid):
+                return self.error("학생이 다릅니다.")
+        else:
+            r = StudentRecord(student_id=sid, author=request.user)
+        r.kind = d.get("kind") or ""
+        r.date, r.title, r.body = dt, title, d.get("body") or ""
+        r.save()
+        return self.success(_rec_row(r))
+
+    @admin_role_required
+    def delete(self, request):
+        r = StudentRecord.objects.filter(id=request.GET.get("id"), is_deleted=False).first()
+        if not r:
+            return self.error("기록이 없습니다.")
+        if not _student_ok(request, r.student_id, edit=True):
+            return self.error("이 학생을 고칠 권한이 없습니다.")
+        r.is_deleted = True
+        r.save(update_fields=["is_deleted"])
+        return self.success({"deleted": True})
+
+
+class StudentRecordFileAPI(APIView):
+    """학생 기록 파일. 게시판과 같은 잣대를 쓴다."""
+    request_parsers = ()
+
+    @admin_role_required
+    def post(self, request):
+        r = StudentRecord.objects.filter(id=request.POST.get("record_id"), is_deleted=False).first()
+        if not r:
+            return self.error("기록이 없습니다.")
+        if not _student_ok(request, r.student_id, edit=True):
+            return self.error("이 학생을 고칠 권한이 없습니다.")
+        f = request.FILES.get("file")
+        if not f:
+            return self.error("파일이 없습니다.")
+        if f.size > MAX_FILE:
+            return self.error("파일 하나는 %dMB까지입니다." % (MAX_FILE // 1024 // 1024))
+        used = sum(x.size for x in r.files.all())
+        if used + f.size > MAX_POST:
+            return self.error("기록 하나에 붙일 수 있는 합계는 %dMB까지입니다."
+                              % (MAX_POST // 1024 // 1024))
+        ext = _os.path.splitext(f.name)[-1].lower()
+        if ext in BLOCKED_EXT:
+            return self.error("실행파일은 올릴 수 없습니다(%s)." % ext)
+        _os.makedirs(_settings.UPLOAD_DIR, exist_ok=True)
+        name = "rec_" + _rand_str(16) + ext
+        path = _os.path.join(_settings.UPLOAD_DIR, name)
+        with open(path, "wb") as out:
+            for chunk in f:
+                out.write(chunk)
+        thumb = ""
+        if ext in IMG_EXT:
+            try:
+                from PIL import Image
+                im = Image.open(path)
+                im.thumbnail((360, 360))
+                tname = "rec_t_" + _rand_str(16) + ".jpg"
+                im.convert("RGB").save(_os.path.join(_settings.UPLOAD_DIR, tname), quality=82)
+                thumb = "%s/%s" % (_settings.UPLOAD_PREFIX, tname)
+            except Exception:
+                thumb = ""
+        x = StudentRecordFile.objects.create(
+            record=r, name=f.name[:255], url="%s/%s" % (_settings.UPLOAD_PREFIX, name),
+            thumb_url=thumb, size=f.size, kind=_kind_of(ext),
+            order=r.files.count(), uploaded_by=request.user)
+        return self.success(_rec_file_row(x))
+
+    @admin_role_required
+    def delete(self, request):
+        x = StudentRecordFile.objects.filter(id=request.GET.get("id")) \
+                                     .select_related("record").first()
+        if not x:
+            return self.error("파일이 없습니다.")
+        if not _student_ok(request, x.record.student_id, edit=True):
+            return self.error("이 학생을 고칠 권한이 없습니다.")
+        x.delete()
+        return self.success({"deleted": True})
+
+
+class StudentBoardLinkAPI(APIView):
+    """학생에게 걸린 게시판 글. 볼 수 있는 폴더의 글만 돌려준다."""
+
+    @admin_role_required
+    def get(self, request):
+        sid = request.GET.get("student_id")
+        if not _student_ok(request, sid):
+            return self.error("이 학생을 볼 권한이 없습니다.")
+        role, bid = _role_of(request.user)
+        sup = _is_super(request.user)
+        rows = []
+        for p in BoardPost.objects.filter(students__id=sid, is_deleted=False) \
+                                  .select_related("folder", "author").order_by("-id")[:200]:
+            if not _can_see(p.folder, role, bid, sup):
+                continue
+            rows.append({"id": p.id, "folder_id": p.folder_id, "folder": p.folder.name,
+                         "icon": p.folder.icon, "title": p.title,
+                         "author": _name_of(p.author) if p.author_id else "",
+                         "files": p.files.count(), "time": _kst(p.create_time)})
+        return self.success({"rows": rows})
