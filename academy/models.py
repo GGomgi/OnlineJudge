@@ -1875,3 +1875,96 @@ class MenuOverride(models.Model):
     class Meta:
         db_table = "academy_menu_override"
         unique_together = ("staff", "key")
+
+
+# ── 게시판 (공지 · 규정 · 수업자료) — docs/82 ──
+
+class BoardFolder(models.Model):
+    """게시판 폴더. 공지사항도 원내 규정도 여기서는 폴더 하나다.
+
+    성격을 이름이 아니라 폴더의 성질로 가른다. 공지만 특별히 다루면 규정이 들어올 때
+    또 특별 취급을 만들어야 한다. '읽었는가'를 스위치로 두면 새로 무엇이 생겨도
+    폴더 하나 만들고 켜면 끝이라 화면을 고칠 일이 없다.
+
+    깊이는 3단까지. 수업자료 > Python > 3주차 면 충분하고 더 깊으면 찾다가 지친다.
+    """
+    SCOPE_CHOICES = (("ALL", "전 직원"), ("DIRECTOR", "원장 이상"),
+                     ("HQ", "본부만"), ("BRANCH", "지점 한정"))
+    ORDER_CHOICES = (("RECENT", "최신 순"), ("MANUAL", "직접 순서"))
+
+    name = models.CharField(max_length=64)
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT,
+                               related_name="children")
+    icon = models.CharField(max_length=8, blank=True, default="")     # 📌 📖 📁
+    scope = models.CharField(max_length=16, default="ALL")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="board_folders")          # scope=BRANCH 일 때
+    need_read = models.BooleanField(default=False)                    # 읽음 확인
+    sort_mode = models.CharField(max_length=16, default="RECENT")
+    order = models.PositiveSmallIntegerField(default=0)
+    is_deleted = models.BooleanField(default=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_board_folder"
+        ordering = ["order", "id"]
+
+    @property
+    def depth(self):
+        d, p = 1, self.parent
+        while p is not None:
+            d, p = d + 1, p.parent
+        return d
+
+
+class BoardPost(models.Model):
+    """게시판 글. 폴더에 담기고, 학생을 여러 명 걸 수 있다."""
+    folder = models.ForeignKey(BoardFolder, on_delete=models.PROTECT, related_name="posts")
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True, default="")
+    is_pinned = models.BooleanField(default=False)
+    order = models.PositiveSmallIntegerField(default=0)       # sort_mode=MANUAL 일 때
+    students = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True,
+                                      related_name="board_posts")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="+")
+    is_deleted = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_board_post"
+        ordering = ["-is_pinned", "order", "-id"]
+
+
+class BoardFile(models.Model):
+    """글에 붙은 파일. 개수는 막지 않고 용량으로 막는다 —
+    예제 30개를 한 번에 올리고 싶은데 10개에서 끊기면 글을 셋으로 쪼개게 된다."""
+    post = models.ForeignKey(BoardPost, on_delete=models.CASCADE, related_name="files")
+    name = models.CharField(max_length=255)                   # 올린 이름 그대로
+    url = models.CharField(max_length=255)
+    thumb_url = models.CharField(max_length=255, blank=True, default="")   # 사진만
+    size = models.PositiveIntegerField(default=0)
+    kind = models.CharField(max_length=16, blank=True, default="")         # img/pdf/doc/zip/etc
+    order = models.PositiveSmallIntegerField(default=0)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_board_file"
+        ordering = ["order", "id"]
+
+
+class BoardRead(models.Model):
+    """읽음 확인. need_read 폴더의 글만 쌓인다."""
+    post = models.ForeignKey(BoardPost, on_delete=models.CASCADE, related_name="reads")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+")
+    read_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_board_read"
+        unique_together = ("post", "user")

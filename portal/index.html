@@ -1878,6 +1878,137 @@
     </div>
   </div>
 
+  <!-- 파일 호버 미리보기. 눌러 열기 전에 무엇인지 알아보게 한다 -->
+  <div v-if="bdPrev" class="fixed z-[85] pointer-events-none rounded-lg border border-slate-200 bg-white shadow-xl p-2"
+       :style="{ left: bdPrev.x+'px', top: bdPrev.y+'px', width: '15rem' }">
+    <div v-if="bdPrev.kind==='img' && bdPrev.thumb" class="rounded overflow-hidden bg-slate-50">
+      <img :src="bdPrev.thumb" class="w-full h-auto max-h-52 object-contain" />
+    </div>
+    <!-- PDF 첫 쪽은 브라우저가 그린다. 서버에 새 프로그램을 넣지 않아도 된다 -->
+    <div v-else-if="bdPrev.kind==='pdf'" class="rounded overflow-hidden bg-slate-50 flex items-center justify-center min-h-[8rem]">
+      <canvas ref="bdPdfCanvas" class="max-w-full"></canvas>
+      <span v-if="!bdPrev.drawn" class="text-xs text-slate-400 absolute">첫 쪽 그리는 중…</span>
+    </div>
+    <div v-else class="rounded bg-slate-50 py-6 text-center text-3xl">{{ bdIcon(bdPrev.kind) }}</div>
+    <div class="mt-1 text-[11px] text-slate-500 truncate">{{ bdPrev.name }}</div>
+    <div class="text-[10px] text-slate-400">{{ bdSizeText(bdPrev.size) }}<span v-if="bdPrev.pages"> · {{ bdPrev.pages }}쪽</span> · {{ bdPrev.by }}</div>
+    <div v-if="bdPrev.kind!=='img' && bdPrev.kind!=='pdf'" class="text-[10px] text-slate-400">눌러서 내려받기</div>
+  </div>
+
+  <!-- 폴더 관리. 트리 옆에서 바로 여닫는다 — 따로 메뉴로 빼면 왔다갔다 하게 된다 -->
+  <div v-if="bdMgr" class="fixed inset-0 z-[70] bg-black/40 flex items-start justify-center p-4 overflow-auto" @click.self="bdMgr=null">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg my-4">
+      <div class="flex items-center justify-between px-4 py-3 border-b">
+        <div class="font-bold text-sm">폴더 관리</div>
+        <button @click="bdMgr=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+      </div>
+      <div class="p-3 space-y-2">
+        <div v-for="f in bdTree" :key="f.id"
+             class="flex items-center gap-1.5 px-2 py-1.5 rounded border border-slate-100 hover:bg-slate-50"
+             :style="{ marginLeft: ((f.depth-1)*1.1) + 'rem' }">
+          <span v-if="f.icon" class="shrink-0">{{ f.icon }}</span>
+          <span class="text-sm truncate flex-1 min-w-0">{{ f.name }}</span>
+          <span v-if="f.need_read" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-600">읽음확인</span>
+          <span v-if="f.scope!=='ALL'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdScopeLabel(f.scope) }}</span>
+          <span class="flex items-center gap-1 shrink-0">
+            <button @click="moveBdFolder(f,-1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">◀</button>
+            <button @click="moveBdFolder(f,1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▶</button>
+            <button @click="editBdFolder(f)" class="px-1.5 h-6 rounded border border-slate-200 text-[11px] text-slate-500 hover:bg-white">고치기</button>
+            <button @click="askDeleteBdFolder(f)" class="px-1.5 h-6 rounded border border-rose-100 text-[11px] text-rose-400 hover:bg-rose-50">지우기</button>
+          </span>
+        </div>
+        <button @click="editBdFolder(null)" class="w-full px-3 py-2 rounded border border-dashed border-slate-300 text-sm text-slate-500 hover:bg-slate-50">+ 폴더 만들기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 폴더 만들기/고치기 -->
+  <div v-if="bdFolderForm" class="fixed inset-0 z-[78] bg-black/40 flex items-start justify-center p-4 overflow-auto" @click.self="bdFolderForm=null">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm my-4">
+      <div class="flex items-center justify-between px-4 py-3 border-b">
+        <div class="font-bold text-sm">{{ bdFolderForm.id ? '폴더 고치기' : '새 폴더' }}</div>
+        <button @click="bdFolderForm=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="flex gap-2">
+          <div style="width:4.5rem"><label class="lbl">아이콘</label><input v-model="bdFolderForm.icon" maxlength="2" placeholder="📁" class="input text-center" /></div>
+          <div class="flex-1 min-w-0"><label class="lbl">이름</label><input v-model="bdFolderForm.name" class="input" @keyup.enter="saveBdFolder" /></div>
+        </div>
+        <div><label class="lbl">위 폴더</label>
+          <select v-model="bdFolderForm.parent_id" class="input px-2">
+            <option :value="null">맨 위</option>
+            <option v-for="f in bdParentChoices" :key="f.id" :value="f.id">{{ '　'.repeat(f.depth-1) }}{{ f.icon }} {{ f.name }}</option>
+          </select>
+          <p class="text-[11px] text-slate-400 mt-0.5">3단까지만 만들 수 있습니다. 더 깊으면 찾기 어렵습니다.</p>
+        </div>
+        <div class="flex gap-2">
+          <div class="flex-1 min-w-0"><label class="lbl">볼 수 있는 사람</label>
+            <select v-model="bdFolderForm.scope" class="input px-2">
+              <option value="ALL">전 직원</option><option value="DIRECTOR">원장 이상</option>
+              <option value="HQ">본부만</option><option value="BRANCH">지점 한정</option>
+            </select>
+          </div>
+          <div v-if="bdFolderForm.scope==='BRANCH'" class="flex-1 min-w-0"><label class="lbl">지점</label>
+            <select v-model="bdFolderForm.branch_id" class="input px-2">
+              <option :value="null">고르세요</option>
+              <option v-for="b in bdBranches" :key="b.id" :value="b.id">{{ b.name }}</option>
+            </select>
+          </div>
+        </div>
+        <div><label class="lbl">정렬</label>
+          <select v-model="bdFolderForm.sort_mode" class="input px-2">
+            <option value="RECENT">최신 순 (공지·규정)</option><option value="MANUAL">직접 순서 (자료)</option>
+          </select>
+        </div>
+        <label class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
+          <input type="checkbox" v-model="bdFolderForm.need_read" class="w-4 h-4 mt-0.5" />
+          <span>읽음 확인
+            <span class="block text-[11px] text-slate-400">켜면 오늘 운영에 안 읽은 글 띠가 뜨고, 누가 읽었는지 남습니다.</span>
+          </span>
+        </label>
+        <div class="flex justify-end gap-2 pt-1">
+          <button @click="bdFolderForm=null" class="btn-secondary text-sm">취소</button>
+          <button @click="saveBdFolder" class="btn-primary text-sm">저장</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 폴더를 지울 때. 비어 있으면 묻지 않고, 안에 무엇이 있으면 어떻게 할지 고르게 한다 -->
+  <div v-if="bdDelAsk" class="fixed inset-0 z-[79] bg-black/40 flex items-start justify-center p-4 overflow-auto" @click.self="bdDelAsk=null">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm my-4">
+      <div class="px-4 py-3 border-b font-bold text-sm">폴더 지우기</div>
+      <div class="p-4 space-y-3 text-sm">
+        <div><b>[{{ bdDelAsk.name }}]</b> 을 지웁니다.</div>
+        <div class="text-slate-500 text-xs">
+          안에 글 <b class="text-slate-700">{{ bdDelAsk.posts }}개</b> ·
+          하위 폴더 <b class="text-slate-700">{{ bdDelAsk.folders }}개</b> 가 있습니다.
+        </div>
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="radio" value="up" v-model="bdDelAsk.mode" class="mt-1" />
+          <span>위 폴더(<b>{{ bdDelAsk.parent_name }}</b>)로 옮기고 지우기</span>
+        </label>
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="radio" value="move" v-model="bdDelAsk.mode" class="mt-1" />
+          <span class="flex-1 min-w-0">다른 폴더로 옮기고 지우기
+            <select v-if="bdDelAsk.mode==='move'" v-model="bdDelAsk.to" class="input px-2 py-1 mt-1 text-xs">
+              <option :value="null">고르세요</option>
+              <option v-for="f in bdTree" v-if="f.id!==bdDelAsk.id" :key="f.id" :value="f.id">{{ '　'.repeat(f.depth-1) }}{{ f.icon }} {{ f.name }}</option>
+            </select>
+          </span>
+        </label>
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="radio" value="purge" v-model="bdDelAsk.mode" class="mt-1" />
+          <span class="text-rose-600">글까지 함께 지우기 <span class="text-[11px] text-rose-400">(본부 관리자만 되살릴 수 있습니다)</span></span>
+        </label>
+        <div class="flex justify-end gap-2 pt-1">
+          <button @click="bdDelAsk=null" class="btn-secondary text-sm">취소</button>
+          <button @click="doDeleteBdFolder" class="btn-primary text-sm !bg-rose-500 hover:!bg-rose-600">지우기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 서류 미리보기. 사진은 그림으로, PDF 는 브라우저가 그대로 그려 준다.
        새 창으로 나갔다 돌아오면 보던 자리를 잃어 화면 안에서 본다. -->
   <div v-if="filePrev" class="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4" @click.self="filePrev=null">
@@ -6618,6 +6749,127 @@
       </div>
     </div>
 
+    <!-- ============ 게시판 (공지 · 규정 · 수업자료) ============ -->
+    <section v-if="tab==='board'">
+      <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h2 class="text-lg font-bold">게시판 <span class="text-sm font-normal text-slate-400">(공지 · 규정 · 자료)</span></h2>
+        <div class="flex items-center gap-2">
+          <search-box v-model="bdQRaw" placeholder="제목·내용"></search-box>
+          <button v-if="bdCanEdit" @click="openBdFolderMgr" class="px-2 py-1.5 rounded border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 whitespace-nowrap">⚙ 폴더 관리</button>
+          <button v-if="bdFolder" @click="openBdWrite" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 글쓰기</button>
+        </div>
+      </div>
+      <div class="flex gap-3 items-start">
+        <!-- 폴더 트리 — 꾸미지 않는다. 많아질수록 글자만 보여야 찾기 쉽다 -->
+        <div class="w-52 shrink-0 bg-white rounded-xl shadow-sm py-2">
+          <div v-for="f in bdTree" :key="f.id" @click="pickBdFolder(f)"
+               :class="['flex items-center gap-1 px-2 py-1.5 text-sm cursor-pointer',
+                        bdFolderId===f.id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50']"
+               :style="{ paddingLeft: (0.5 + (f.depth-1)*0.9) + 'rem' }">
+            <span v-if="f.icon" class="shrink-0">{{ f.icon }}</span>
+            <span class="truncate">{{ f.name }}</span>
+            <span v-if="f.unread" class="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[18px] text-center">{{ f.unread }}</span>
+            <span v-else-if="f.posts" class="ml-auto shrink-0 text-[11px] text-slate-300">{{ f.posts }}</span>
+          </div>
+          <div v-if="!bdTree.length" class="px-3 py-6 text-center text-xs text-slate-400">폴더가 없습니다.</div>
+        </div>
+
+        <div class="flex-1 min-w-0">
+          <!-- 목록 -->
+          <div v-if="bdView==='list'" class="bg-white rounded-xl shadow-sm divide-y">
+            <div class="px-4 py-2 text-xs text-slate-400 flex items-center gap-2">
+              <b class="text-slate-600">{{ bdFolder ? bdFolder.name : '폴더를 고르세요' }}</b>
+              <span v-if="bdFolder && bdFolder.need_read" class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-600">읽음 확인</span>
+              <span class="ml-auto">{{ bdList.length }}건</span>
+            </div>
+            <div v-for="d in bdList" :key="d.id" @click="openBdDetail(d.id)" class="px-4 py-3 cursor-pointer hover:bg-slate-50 flex items-center gap-2">
+              <span v-if="d.pinned" class="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-600">고정</span>
+              <span v-if="bdFolder && bdFolder.need_read && !d.read" class="shrink-0 w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+              <span class="font-medium truncate">{{ d.title }}</span>
+              <span v-if="d.files" class="text-xs text-slate-400 shrink-0">📎{{ d.files }}</span>
+              <span v-if="d.students.length" class="text-xs text-indigo-500 shrink-0">👤{{ d.students.length }}</span>
+              <span class="ml-auto text-xs text-slate-400 shrink-0 whitespace-nowrap">{{ d.author }} · {{ dt(d.time) }}</span>
+            </div>
+            <div v-if="bdFolder && !bdList.length" class="px-4 py-10 text-center text-sm text-slate-400">아직 글이 없습니다.</div>
+          </div>
+
+          <!-- 글쓰기 -->
+          <div v-else-if="bdView==='write'" class="bg-white rounded-xl shadow-sm p-5 space-y-3">
+            <div class="font-bold">{{ bdForm.id ? '글 수정' : '새 글' }} <span class="text-xs font-normal text-slate-400">— {{ bdFolder ? bdFolder.name : '' }}</span></div>
+            <input v-model="bdForm.title" placeholder="제목" class="input" />
+            <div ref="bdEditorEl"></div>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+              <input type="checkbox" v-model="bdForm.pinned" class="w-4 h-4" /> 맨 위에 고정
+            </label>
+            <div class="flex justify-end gap-2">
+              <button @click="closeBdWrite" class="btn-secondary text-sm">취소</button>
+              <button @click="submitBd" class="btn-primary text-sm">{{ bdForm.id ? '수정' : '등록' }}</button>
+            </div>
+            <p class="text-[11px] text-slate-400">파일은 저장한 뒤에 붙일 수 있습니다.</p>
+          </div>
+
+          <!-- 상세 -->
+          <div v-else-if="bdView==='detail' && bdDetail" class="bg-white rounded-xl shadow-sm p-5 space-y-3">
+            <div class="flex items-start gap-2">
+              <span v-if="bdDetail.pinned" class="text-xs px-2 py-0.5 rounded bg-rose-50 text-rose-600 shrink-0 mt-1">고정</span>
+              <h2 class="text-lg font-bold flex-1 min-w-0 break-all">{{ bdDetail.title }}</h2>
+              <button @click="bdView='list'" class="text-slate-400 hover:text-slate-600 text-sm shrink-0">← 목록</button>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-slate-400 border-b pb-2">
+              <span>{{ bdDetail.folder_name }} · {{ bdDetail.author }} · {{ dt(bdDetail.time) }}</span>
+            </div>
+            <div ref="bdViewerEl" class="text-sm"></div>
+
+            <!-- 파일 -->
+            <div v-if="bdDetail.file_list && bdDetail.file_list.length" class="border-t pt-3">
+              <div class="text-xs font-semibold text-slate-500 mb-2">파일 {{ bdDetail.file_list.length }}개 · {{ bdSizeText(bdUsedBytes) }}</div>
+              <div class="flex flex-wrap gap-2">
+                <div v-for="f in bdFilesShown" :key="f.id"
+                     @mouseenter="showBdPrev(f,$event)" @mouseleave="hideBdPrev"
+                     @click="openBdFile(f)"
+                     class="flex items-center gap-2 px-2 py-1.5 rounded border border-slate-200 text-xs cursor-pointer hover:bg-slate-50 max-w-[16rem]">
+                  <span class="shrink-0">{{ bdIcon(f.kind) }}</span>
+                  <span class="truncate">{{ f.name }}</span>
+                  <span class="text-slate-400 shrink-0">{{ bdSizeText(f.size) }}</span>
+                  <button v-if="bdDetail.can_edit" @click.stop="deleteBdFile(f)" class="text-rose-300 hover:text-rose-500 shrink-0">✕</button>
+                </div>
+              </div>
+              <button v-if="bdDetail.file_list.length>12" @click="bdFilesAll=!bdFilesAll" class="mt-2 text-xs text-indigo-500 hover:underline">
+                {{ bdFilesAll ? '접기' : ('나머지 ' + (bdDetail.file_list.length-12) + '개 더 보기') }}
+              </button>
+            </div>
+
+            <!-- 파일 올리기 -->
+            <div v-if="bdDetail.can_edit" class="border-t pt-3">
+              <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
+                📎 파일 붙이기
+                <input type="file" multiple class="hidden" @change="uploadBdFiles($event)" />
+              </label>
+              <span class="ml-2 text-[11px] text-slate-400">파일 하나 {{ bdSizeText(bdMaxFile) }}까지 · 글 합계 {{ bdSizeText(bdMaxPost) }}까지 · 개수 제한 없음</span>
+              <div v-if="bdUploading" class="mt-2 text-xs text-indigo-500">올리는 중… {{ bdUpDone }}/{{ bdUpTotal }}</div>
+            </div>
+
+            <!-- 읽음 확인 -->
+            <div v-if="bdDetail.reads" class="border-t pt-3">
+              <button @click="bdReadOpen=!bdReadOpen" class="text-xs text-slate-500 hover:text-slate-700">
+                읽음 <b class="text-slate-700">{{ bdDetail.reads.read.length }}</b> / {{ bdDetail.reads.read.length + bdDetail.reads.unread.length }}
+                <span class="text-slate-300">{{ bdReadOpen ? '▲' : '▼' }}</span>
+              </button>
+              <div v-if="bdReadOpen" class="mt-1 text-[11px] text-slate-500 space-y-0.5">
+                <div><span class="text-emerald-600">읽음</span> — {{ bdDetail.reads.read.join(', ') || '없음' }}</div>
+                <div><span class="text-rose-500">미확인</span> — {{ bdDetail.reads.unread.join(', ') || '없음' }}</div>
+              </div>
+            </div>
+
+            <div v-if="bdDetail.can_edit" class="flex justify-end gap-2 text-xs border-t pt-2">
+              <button @click="openBdEdit(bdDetail)" class="text-indigo-500 hover:underline">수정</button>
+              <button @click="deleteBd" class="text-rose-400 hover:underline">삭제</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ 개발 요청 게시판 (로그인 모두) ============ -->
     <section v-if="tab==='devboard'">
       <!-- 목록 -->
@@ -7681,6 +7933,12 @@ const app = createApp({
                   levelsRaw:'', tracksRaw:'', homepage:'', apply_url:'', notice_url:'',
                   annual:false, check_from:'' },
       colCfg: null, colDragIdx: null, colDragOver: null, colGuard: false,
+      // ── 게시판 ──
+      bdTree: [], bdBranches: [], bdCanEdit: false, bdFolderId: null, bdFolder: null,
+      bdView: 'list', bdList: [], bdDetail: null, bdForm: { id:null, title:'', body:'', pinned:false },
+      bdQ: '', bdQRaw: '', bdMgr: null, bdFolderForm: null, bdDelAsk: null, bdPrev: null,
+      bdMaxFile: 52428800, bdMaxPost: 209715200, bdFilesAll: false, bdReadOpen: false,
+      bdUploading: false, bdUpDone: 0, bdUpTotal: 0,
       // 그리는 도중에 만들면 갱신이 계속 돌아 화면이 멈춘다. 시작할 때 미리 만들어 둔다.
       colState: buildAllColState(),
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
@@ -7868,6 +8126,24 @@ const app = createApp({
     };
   },
   computed: {
+    // 열두 개까지만 늘어놓는다. 예제 파일을 서른 개 올리면 화면이 파일로 덮인다.
+    bdFilesShown(){
+      const all = (this.bdDetail && this.bdDetail.file_list) || [];
+      return this.bdFilesAll ? all : all.slice(0, 12);
+    },
+    bdUsedBytes(){
+      return ((this.bdDetail && this.bdDetail.file_list) || []).reduce((a,b)=>a+(b.size||0), 0);
+    },
+    // 3단까지라 2단 폴더 아래로는 더 못 넣는다. 고치는 중인 폴더와 그 아래도 뺀다.
+    bdParentChoices(){
+      const f = this.bdFolderForm;
+      const banned = new Set();
+      if (f && f.id){
+        const walk = id => { banned.add(id); this.bdTree.filter(x=>x.parent_id===id).forEach(x=>walk(x.id)); };
+        walk(f.id);
+      }
+      return this.bdTree.filter(x => x.depth < 3 && !banned.has(x.id));
+    },
     // 열었을 때와 달라진 게 있는가. 되돌릴 것이 있는지 판단하는 하나의 기준이다.
     colCfgDirty(){
       if (!this.colCfg) return false;
@@ -8875,6 +9151,7 @@ const app = createApp({
         if (this.acadTabs.length) t.push({key:'options',label:'학원 관리'});
         if (this.isDirectorUp) t.push({key:'billing',label:'원비·수납'});
         t.push({key:'msgtpl',label:'문자 템플릿'});
+        t.push({key:'board',label:'게시판'});
         t.push({key:'devboard',label:'개발 요청'});
         if (this.me.user.admin_type === 'Super Admin') t.push({key:'devlog',label:'개발일지'});
         // 학원 관리 → 메뉴에서 꺼둔 것은 감춘다(아직 못 받았으면 그대로 보여준다)
@@ -9015,6 +9292,7 @@ const app = createApp({
       }
       else if (key==='devlog') this.loadDevlog(true);
       else if (key==='billing'){ this.loadInvoices(); this.loadUnpaid(); }
+      else if (key==='board') this.loadBoard();
       else if (key==='devboard') this.loadDevBoard();
       else if (key==='msgtpl') this.loadMsgtpl();
       else if (key==='messages'){ this.msgBox='inbox'; this.loadMessages(); }
@@ -12351,6 +12629,200 @@ const app = createApp({
     _autoPickTplPreviewStudent(){ this.tplPreviewStudent=(this.students||[])[0]||null; this.tplPreviewStuQ=this.tplPreviewStudent?(this.tplPreviewStudent.real_name||this.tplPreviewStudent.username):''; this.tplPreviewStuQRaw=this.tplPreviewStuQ; },
     addMsgVar(){ const k=prompt('변수 이름 (중괄호 없이, 예: 금액)'); if(!k||!k.trim()) return; const key=k.trim().replace(/[{}]/g,''); this.msgBody=(this.msgBody||'')+' {'+key+'}'; this.syncMsgVars(); },
     async copyMsg(){ const ok=await this.doCopy(this.msgPreview); this.notify(ok ? '복사되었습니다. 문자/카톡에 붙여넣으세요.' : '복사 실패 — 미리보기를 직접 선택해 복사하세요.', ok); },
+    // ── 게시판 (공지 · 규정 · 자료) ──
+    bdIcon(k){ return ({ img:'🖼', pdf:'📕', doc:'📄', zip:'🗜' })[k] || '📎'; },
+    bdScopeLabel(s){ return ({ ALL:'전 직원', DIRECTOR:'원장 이상', HQ:'본부만', BRANCH:'지점' })[s] || s; },
+    bdSizeText(n){
+      n = Number(n)||0;
+      if (n >= 1048576) return (n/1048576).toFixed(n>=10485760?0:1)+'MB';
+      if (n >= 1024) return Math.round(n/1024)+'KB';
+      return n+'B';
+    },
+    async loadBoard(){
+      try {
+        const d = await api('GET','/api/admin/academy/board/folder');
+        this.bdCanEdit = d.can_edit; this.bdBranches = d.branches || [];
+        this.bdMaxFile = d.max_file; this.bdMaxPost = d.max_post;
+        // 트리 차례대로 늘어놓는다(위 폴더 바로 아래에 그 자식이 오게)
+        const by = {}; (d.rows||[]).forEach(r=>{ (by[r.parent_id||0] = by[r.parent_id||0] || []).push(r); });
+        const out = [];
+        const walk = pid => { (by[pid]||[]).sort((a,b)=>a.order-b.order||a.id-b.id)
+                                           .forEach(r=>{ out.push(r); walk(r.id); }); };
+        walk(0);
+        this.bdTree = out;
+        const keep = out.find(x=>x.id===this.bdFolderId);
+        if (keep) { this.bdFolder = keep; }
+        else if (out.length) { this.pickBdFolder(out[0]); return; }
+        if (this.bdFolderId) this.loadBdList();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    pickBdFolder(f){
+      this.bdFolderId = f.id; this.bdFolder = f; this.bdView='list';
+      this._destroyBdEditors(); this.loadBdList();
+    },
+    async loadBdList(){
+      if (!this.bdFolderId) return;
+      try {
+        const d = await api('GET','/api/admin/academy/board/post?folder_id='+this.bdFolderId
+                            + (this.bdQ ? '&q='+encodeURIComponent(this.bdQ) : ''));
+        this.bdList = d.rows; this.bdFolder = d.folder;
+      } catch(e){ this.notify(e.message,false); }
+    },
+    _destroyBdEditors(){
+      try{ if(this._bdEditor){ this._bdEditor.destroy(); this._bdEditor=null; } }catch(e){}
+      try{ if(this._bdViewer){ this._bdViewer.destroy(); this._bdViewer=null; } }catch(e){}
+    },
+    _makeBdEditor(initial){
+      this._destroyBdEditors();
+      this.$nextTick(()=>{ try {
+        this._bdEditor = new toastui.Editor({ el:this.$refs.bdEditorEl, height:'610px',
+          initialEditType:'wysiwyg', previewStyle:'vertical', initialValue:initial||'',
+          usageStatistics:false, autofocus:false });
+      } catch(e){ this.notify('에디터 로드 실패(인터넷 확인).', false); } });
+    },
+    openBdWrite(){
+      if (!this.bdFolderId) return this.notify('폴더를 먼저 고르세요.', false);
+      this.bdForm={ id:null, title:'', body:'', pinned:false }; this.bdView='write'; this._makeBdEditor('');
+    },
+    openBdEdit(d){
+      this.bdForm={ id:d.id, title:d.title, body:d.body, pinned:d.pinned };
+      this.bdView='write'; this._makeBdEditor(d.body||'');
+    },
+    closeBdWrite(){
+      this._destroyBdEditors();
+      if (this.bdForm.id) this.openBdDetail(this.bdForm.id); else { this.bdView='list'; this.loadBdList(); }
+    },
+    async submitBd(){
+      const title=(this.bdForm.title||'').trim();
+      if(!title) return this.notify('제목을 적어 주세요.', false);
+      const body = this._bdEditor ? this._bdEditor.getMarkdown() : (this.bdForm.body||'');
+      try {
+        const r = await api('POST','/api/admin/academy/board/post',
+                            { id:this.bdForm.id, folder_id:this.bdFolderId, title, body, pinned:this.bdForm.pinned });
+        this._destroyBdEditors(); this.notify('저장되었습니다.'); this.openBdDetail(r.id);
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async openBdDetail(id){
+      this._destroyBdEditors(); this.bdFilesAll=false; this.bdReadOpen=false;
+      try {
+        this.bdDetail = await api('GET','/api/admin/academy/board/post?id='+id);
+        this.bdView='detail';
+        this.$nextTick(()=>{ try {
+          this._bdViewer = toastui.Editor.factory({ el:this.$refs.bdViewerEl, viewer:true,
+                                                    initialValue:this.bdDetail.body||'' });
+        } catch(e){} });
+        this.loadBoard();          // 안 읽은 수가 줄었을 수 있다
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async deleteBd(){
+      if (!await this.askConfirm('이 글을 지우시겠습니까?')) return;
+      try {
+        await api('DELETE','/api/admin/academy/board/post?id='+this.bdDetail.id);
+        this.notify('지웠습니다.'); this.bdView='list'; this.loadBdList(); this.loadBoard();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    // ── 파일 ──
+    async uploadBdFiles(ev){
+      const files = Array.from(ev.target.files||[]); ev.target.value='';
+      if (!files.length) return;
+      this.bdUploading=true; this.bdUpDone=0; this.bdUpTotal=files.length;
+      for (const f of files){
+        const fd = new FormData();
+        fd.append('post_id', this.bdDetail.id); fd.append('file', f);
+        try {
+          const res = await fetch('/api/admin/academy/board/file', { method:'POST', body:fd,
+                        headers:{ 'X-CSRFToken': getCookie('csrftoken') }, credentials:'same-origin' });
+          const j = await res.json();
+          if (j.error) throw new Error(j.data);
+          this.bdDetail.file_list.push(j.data);
+        } catch(e){ this.notify(f.name+' — '+e.message, false); }
+        this.bdUpDone++;
+      }
+      this.bdUploading=false;
+    },
+    async deleteBdFile(f){
+      if (!await this.askConfirm(f.name+' 을 지우시겠습니까?')) return;
+      try {
+        await api('DELETE','/api/admin/academy/board/file?id='+f.id);
+        this.bdDetail.file_list = this.bdDetail.file_list.filter(x=>x.id!==f.id);
+      } catch(e){ this.notify(e.message,false); }
+    },
+    openBdFile(f){
+      if (f.kind==='img' || f.kind==='pdf'){ this.filePrev = { url:f.url, title:f.name, kind:(f.kind==='img'?'img':'pdf') }; return; }
+      window.open(f.url, '_blank');     // 한글·PPT·압축은 브라우저가 못 그린다
+    },
+    showBdPrev(f, e){
+      this.bdPrev = { name:f.name, size:f.size, kind:f.kind, thumb:f.thumb, by:f.by, drawn:false, pages:0,
+                      x: Math.min(e.clientX+14, window.innerWidth-260),
+                      y: Math.min(e.clientY+14, window.innerHeight-300) };
+      if (f.kind==='pdf') this._drawPdfFirstPage(f.url);
+    },
+    hideBdPrev(){ this.bdPrev = null; },
+    // PDF 첫 쪽은 브라우저가 그린다. 서버에 새 프로그램을 넣지 않아도 되고
+    // 이미 쓰고 있는 방식(Vue·에디터·엑셀)과 결이 같다.
+    async _drawPdfFirstPage(url){
+      try {
+        if (!window.pdfjsLib){
+          await new Promise((ok,ng)=>{ const s=document.createElement('script');
+            s.src='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+            s.onload=ok; s.onerror=ng; document.head.appendChild(s); });
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+        }
+        const doc = await window.pdfjsLib.getDocument(url).promise;
+        if (!this.bdPrev) return;                       // 그 사이에 마우스가 떠났다
+        const page = await doc.getPage(1);
+        const vp0 = page.getViewport({ scale:1 });
+        const cv = this.$refs.bdPdfCanvas; if (!cv) return;
+        const scale = 220 / vp0.width;
+        const vp = page.getViewport({ scale });
+        cv.width = vp.width; cv.height = vp.height;
+        await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+        if (this.bdPrev){ this.bdPrev.drawn = true; this.bdPrev.pages = doc.numPages; }
+      } catch(e){ if (this.bdPrev) this.bdPrev.drawn = true; }
+    },
+    // ── 폴더 관리 ──
+    openBdFolderMgr(){ this.bdMgr = true; },
+    editBdFolder(f){
+      this.bdFolderForm = f
+        ? { id:f.id, name:f.name, icon:f.icon, parent_id:f.parent_id, scope:f.scope,
+            branch_id:f.branch_id, need_read:f.need_read, sort_mode:f.sort_mode }
+        : { id:null, name:'', icon:'📁', parent_id:null, scope:'ALL',
+            branch_id:null, need_read:false, sort_mode:'RECENT' };
+    },
+    async saveBdFolder(){
+      const f = this.bdFolderForm;
+      if (!(f.name||'').trim()) return this.notify('폴더 이름을 적어 주세요.', false);
+      if (f.scope==='BRANCH' && !f.branch_id) return this.notify('지점을 고르세요.', false);
+      try {
+        await api('POST','/api/admin/academy/board/folder', f);
+        this.bdFolderForm=null; this.notify('저장되었습니다.'); this.loadBoard();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async moveBdFolder(f, delta){
+      try { await api('PUT','/api/admin/academy/board/folder', { id:f.id, delta }); this.loadBoard(); }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async askDeleteBdFolder(f){
+      try {
+        const d = await api('DELETE','/api/admin/academy/board/folder?id='+f.id);
+        if (d.need_choice){
+          // 안에 무엇이 있다. 어떻게 할지 고르게 한다.
+          this.bdDelAsk = Object.assign({ id:f.id, name:f.name, mode:'up', to:null }, d);
+          return;
+        }
+        this.notify('지웠습니다.'); this.bdFolderId=null; this.loadBoard();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async doDeleteBdFolder(){
+      const a = this.bdDelAsk;
+      if (a.mode==='move' && !a.to) return this.notify('옮길 폴더를 고르세요.', false);
+      try {
+        await api('DELETE','/api/admin/academy/board/folder?id='+a.id+'&mode='+a.mode
+                  + (a.mode==='move' ? '&to='+a.to : ''));
+        this.bdDelAsk=null; this.notify('지웠습니다.'); this.bdFolderId=null; this.loadBoard();
+      } catch(e){ this.notify(e.message,false); }
+    },
     // ── 개발 요청 게시판 ──
     devStatus(s){ return DEV_STATUS[s] || DEV_STATUS.NONE; },
     async loadDevBoard(){ this.dbView='list'; this._destroyDbEditors(); try { this.dbList = await api('GET','/api/academy/dev_request'); } catch(e){ this.notify(e.message,false); } },
@@ -14304,7 +14776,8 @@ const app = createApp({
      ['staffFilterRaw','staffFilter'], ['msgSearchRaw','msgSearch'],
      ['msgStuQRaw','msgStuQ'], ['tplPreviewStuQRaw','tplPreviewStuQ'],
      ['actFilter.qRaw','actFilter.q'], ['examFilter.qRaw','examFilter.q'],
-     ['examAdd.qRaw','examAdd.q'], ['phonePick.qRaw','phonePick.q']].forEach(([rawPath, realPath])=>{
+     ['examAdd.qRaw','examAdd.q'], ['phonePick.qRaw','phonePick.q'],
+     ['bdQRaw','bdQ']].forEach(([rawPath, realPath])=>{
       const rawParts = rawPath.split('.'), realParts = realPath.split('.');
       this.$watch(() => rawParts.reduce((o,k)=>o&&o[k], this), (v)=>{
         this._debounce(realPath, ()=>{
@@ -14318,6 +14791,7 @@ const app = createApp({
     // 오늘 운영에서 검색을 시작하면 전체 학생 목록을 한 번만 받아 둔다
     // (화면을 열 때마다 미리 받으면 대부분 안 쓰는 낭비가 된다)
     this.$watch(() => this.dashFilter.q, (v)=>{ if ((v||'').trim()) this.ensureDashStudents(); });
+    this.$watch(() => this.bdQ, ()=>{ if (this.tab==='board') this.loadBdList(); });
     setInterval(()=>{ this.clockNow = Date.now(); }, 1000);  // 실시간 시계/경과시간
     // 오늘 운영 탭이 오늘 날짜를 보고 있을 때, 키오스크 등 다른 화면에서의 등원/하원 변경을 반영
     setInterval(()=>{ if (this.tab==='dashboard' && this.dashIsToday && !this.attModal) this.loadDashboard(); }, 5000);
