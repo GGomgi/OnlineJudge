@@ -2052,6 +2052,8 @@
           <span class="text-sm truncate flex-1 min-w-0">{{ f.name }}</span>
           <span v-if="f.need_read" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-600">읽음확인</span>
           <span v-if="f.versioned" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-violet-50 text-violet-600">판관리</span>
+          <span v-if="f.allow_comments" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600">덧글</span>
+          <span v-if="f.write_scope" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">쓰기 {{ bdScopeLabel(f.write_scope) }}</span>
           <span v-if="f.scope!=='ALL'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdScopeLabel(f.scope) }}</span>
           <span class="flex items-center gap-1 shrink-0">
             <button @click="moveBdFolder(f,-1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">◀</button>
@@ -2098,11 +2100,27 @@
             </select>
           </div>
         </div>
-        <div><label class="lbl">정렬</label>
-          <select v-model="bdFolderForm.sort_mode" class="input px-2">
-            <option value="RECENT">최신 순 (공지·규정)</option><option value="MANUAL">직접 순서 (자료)</option>
-          </select>
+        <div class="flex gap-2">
+          <div class="flex-1 min-w-0"><label class="lbl">정렬</label>
+            <select v-model="bdFolderForm.sort_mode" class="input px-2">
+              <option value="RECENT">최신 순 (공지·규정)</option><option value="MANUAL">직접 순서 (자료)</option>
+            </select>
+          </div>
+          <!-- 공지·규정은 아무나 쓰면 안 된다. 비우면 볼 수 있는 사람이 곧 쓸 수 있는 사람이다 -->
+          <div class="flex-1 min-w-0"><label class="lbl">글쓰기</label>
+            <select v-model="bdFolderForm.write_scope" class="input px-2">
+              <option value="">보는 사람 모두</option>
+              <option value="DIRECTOR">원장 이상만</option>
+              <option value="HQ">본부만</option>
+            </select>
+          </div>
         </div>
+        <label class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
+          <input type="checkbox" v-model="bdFolderForm.allow_comments" class="w-4 h-4 mt-0.5" />
+          <span>덧글 받기
+            <span class="block text-[11px] text-slate-400">자료·공지에는 물어볼 것이 생깁니다. 규정에는 오히려 어수선합니다.</span>
+          </span>
+        </label>
         <label class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
           <input type="checkbox" v-model="bdFolderForm.need_read" class="w-4 h-4 mt-0.5" />
           <span>읽음 확인
@@ -6928,7 +6946,7 @@
         <div class="flex items-center gap-2">
           <search-box v-model="bdQRaw" placeholder="제목·내용"></search-box>
           <button v-if="bdCanEdit" @click="openBdFolderMgr" class="px-2 py-1.5 rounded border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 whitespace-nowrap">⚙ 폴더 관리</button>
-          <button v-if="bdFolder" @click="openBdWrite" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 글쓰기</button>
+          <button v-if="bdFolder && bdCanWrite" @click="openBdWrite" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 글쓰기</button>
         </div>
       </div>
       <div class="flex gap-3 items-start">
@@ -7095,6 +7113,25 @@
             <div v-if="bdDetail.can_edit" class="flex justify-end gap-2 text-xs border-t pt-2">
               <button @click="openBdEdit(bdDetail)" class="text-indigo-500 hover:underline">수정</button>
               <button @click="deleteBd" class="text-rose-400 hover:underline">삭제</button>
+            </div>
+
+            <!-- 덧글 — 폴더에서 켠 곳에만 -->
+            <div v-if="bdDetail.allow_comments" class="border-t pt-3">
+              <div class="text-xs font-semibold text-slate-500 mb-2">덧글 {{ (bdDetail.comments||[]).length }}</div>
+              <ul class="space-y-2 mb-2">
+                <li v-for="c in bdDetail.comments" :key="c.id" class="rounded bg-slate-50 px-3 py-2">
+                  <div class="flex items-center gap-2 text-xs text-slate-400">
+                    <span class="font-medium text-slate-600">{{ c.author }}</span>
+                    <span>{{ dt(c.time) }}</span>
+                    <button v-if="c.mine || isDirectorUp" @click="deleteBdComment(c)" class="ml-auto text-rose-300 hover:text-rose-500">지우기</button>
+                  </div>
+                  <div class="text-sm text-slate-700 whitespace-pre-wrap break-all mt-0.5">{{ c.body }}</div>
+                </li>
+              </ul>
+              <div class="flex gap-2">
+                <textarea v-model="bdCommentDraft" rows="2" class="input text-sm flex-1" placeholder="덧글을 적어 주세요"></textarea>
+                <button @click="addBdComment" class="btn-primary text-sm shrink-0 self-end">남기기</button>
+              </div>
             </div>
           </div>
         </div>
@@ -8171,6 +8208,7 @@ const app = createApp({
       bdMaxFile: 52428800, bdMaxPost: 209715200, bdFilesAll: false, bdReadOpen: false,
       bdUploading: false, bdUpDone: 0, bdUpTotal: 0,
       bdDiff: null, bdDiffA: null, bdDiffB: null, bdStuQ: '', bdStuQRaw: '',
+      bdCanWrite: true, bdCommentDraft: '',
       // 그리는 도중에 만들면 갱신이 계속 돌아 화면이 멈춘다. 시작할 때 미리 만들어 둔다.
       colState: buildAllColState(),
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
@@ -12924,7 +12962,7 @@ const app = createApp({
       try {
         const d = await api('GET','/api/admin/academy/board/post?folder_id='+this.bdFolderId
                             + (this.bdQ ? '&q='+encodeURIComponent(this.bdQ) : ''));
-        this.bdList = d.rows; this.bdFolder = d.folder;
+        this.bdList = d.rows; this.bdFolder = d.folder; this.bdCanWrite = d.can_write;
       } catch(e){ this.notify(e.message,false); }
     },
     _destroyBdEditors(){
@@ -12970,7 +13008,7 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     async openBdDetail(id){
-      this._destroyBdEditors(); this.bdFilesAll=false; this.bdReadOpen=false;
+      this._destroyBdEditors(); this.bdFilesAll=false; this.bdReadOpen=false; this.bdCommentDraft='';
       try {
         this.bdDetail = await api('GET','/api/admin/academy/board/post?id='+id);
         this.bdView='detail';
@@ -13048,6 +13086,22 @@ const app = createApp({
         if (this.bdPrev){ this.bdPrev.drawn = true; this.bdPrev.pages = doc.numPages; }
       } catch(e){ if (this.bdPrev) this.bdPrev.drawn = true; }
     },
+    async addBdComment(){
+      const body = (this.bdCommentDraft||'').trim();
+      if (!body) return this.notify('덧글을 적어 주세요.', false);
+      try {
+        const c = await api('POST','/api/admin/academy/board/comment', { post_id:this.bdDetail.id, body });
+        (this.bdDetail.comments = this.bdDetail.comments || []).push(c);
+        this.bdCommentDraft = '';
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async deleteBdComment(c){
+      if (!await this.askConfirm('이 덧글을 지우시겠습니까?')) return;
+      try {
+        await api('DELETE','/api/admin/academy/board/comment?id='+c.id);
+        this.bdDetail.comments = this.bdDetail.comments.filter(x=>x.id!==c.id);
+      } catch(e){ this.notify(e.message,false); }
+    },
     bdAddStudent(st){
       if (!this.bdForm.students.includes(st.id)) this.bdForm.students.push(st.id);
     },
@@ -13082,9 +13136,10 @@ const app = createApp({
     editBdFolder(f){
       this.bdFolderForm = f
         ? { id:f.id, name:f.name, icon:f.icon, parent_id:f.parent_id, scope:f.scope,
-            branch_id:f.branch_id, need_read:f.need_read, versioned:f.versioned, sort_mode:f.sort_mode }
-        : { id:null, name:'', icon:'📁', parent_id:null, scope:'ALL',
-            branch_id:null, need_read:false, versioned:false, sort_mode:'RECENT' };
+            branch_id:f.branch_id, need_read:f.need_read, versioned:f.versioned,
+            allow_comments:f.allow_comments, write_scope:f.write_scope||'', sort_mode:f.sort_mode }
+        : { id:null, name:'', icon:'📁', parent_id:null, scope:'ALL', branch_id:null,
+            need_read:false, versioned:false, allow_comments:false, write_scope:'', sort_mode:'RECENT' };
     },
     async saveBdFolder(){
       const f = this.bdFolderForm;

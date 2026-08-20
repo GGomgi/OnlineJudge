@@ -21,7 +21,7 @@ from utils.shortcuts import rand_str as _rand_str
 from account.decorators import admin_role_required
 
 from ..models import (BoardFolder, BoardPost, BoardFile, BoardRead, BoardPostVersion,
-                      Branch, AcademyProfile, AcademyRole, STAFF_ROLES)
+                      BoardComment, Branch, AcademyProfile, AcademyRole, STAFF_ROLES)
 from ..services import viewable_branch_ids
 from .exam import menu_denied
 
@@ -70,6 +70,22 @@ def _can_see(folder, role, branch_id, is_super):
     return False
 
 
+def _can_write(folder, role, branch_id, is_super):
+    """글을 쓸 수 있는가. 폴더에 따로 정해 두지 않았으면 볼 수 있으면 쓸 수 있다."""
+    if not _can_see(folder, role, branch_id, is_super):
+        return False
+    ws = folder.write_scope or ""
+    if not ws:
+        return True
+    if is_super:
+        return True
+    if ws == "DIRECTOR":
+        return role in _DIRECTOR_UP
+    if ws == "HQ":
+        return role in _HQ
+    return True
+
+
 def _can_edit_folders(user):
     """폴더를 만들고 고치고 지우는 것은 원장 이상."""
     return _is_super(user) or _role_of(user)[0] in _DIRECTOR_UP
@@ -90,7 +106,8 @@ def _kind_of(ext):
 def _folder_row(f, unread=0, posts=0):
     return {"id": f.id, "name": f.name, "parent_id": f.parent_id, "icon": f.icon,
             "scope": f.scope, "branch_id": f.branch_id, "need_read": f.need_read,
-            "versioned": f.versioned,
+            "versioned": f.versioned, "allow_comments": f.allow_comments,
+            "write_scope": f.write_scope,
             "sort_mode": f.sort_mode, "order": f.order, "depth": f.depth,
             "posts": posts, "unread": unread}
 
@@ -187,6 +204,8 @@ class BoardFolderAPI(APIView):
         f.branch_id = d.get("branch_id") if f.scope == "BRANCH" else None
         f.need_read = bool(d.get("need_read"))
         f.versioned = bool(d.get("versioned"))
+        f.allow_comments = bool(d.get("allow_comments"))
+        f.write_scope = d.get("write_scope") or ""
         f.sort_mode = d.get("sort_mode") or "RECENT"
         f.save()
         return self.success({"id": f.id})
@@ -294,6 +313,14 @@ class BoardPostAPI(APIView):
             d["folder_name"] = p.folder.name
             d["can_edit"] = sup or p.author_id == me.id or role in _DIRECTOR_UP
             d["versioned"] = p.folder.versioned
+            d["can_write"] = _can_write(p.folder, role, bid, sup)
+            d["allow_comments"] = p.folder.allow_comments
+            if p.folder.allow_comments:
+                d["comments"] = [
+                    {"id": c.id, "body": c.body,
+                     "author": _name_of(c.author) if c.author_id else "",
+                     "mine": c.author_id == me.id, "time": _kst(c.create_time)}
+                    for c in p.comments.filter(is_deleted=False).select_related("author")]
             if p.folder.versioned:
                 d["versions"] = [_ver_row(v) for v in
                                  BoardPostVersion.objects.filter(post=p)
@@ -328,7 +355,8 @@ class BoardPostAPI(APIView):
             for r in rows:
                 r["read"] = r["id"] in seen
         return self.success({"rows": rows, "folder": _folder_row(f),
-                             "folder_name": f.name, "need_read": f.need_read})
+                             "folder_name": f.name, "need_read": f.need_read,
+                             "can_write": _can_write(f, role, bid, sup)})
 
     @admin_role_required
     def post(self, request):
@@ -342,7 +370,7 @@ class BoardPostAPI(APIView):
         f = BoardFolder.objects.filter(id=d.get("folder_id"), is_deleted=False).first()
         if not f:
             return self.error("폴더를 고르세요.")
-        if not _can_see(f, role, bid, sup):
+        if not _can_write(f, role, bid, sup):
             return self.error("이 폴더에 글을 쓸 권한이 없습니다.")
         title = (d.get("title") or "").strip()
         if not title:
@@ -703,3 +731,44 @@ class StudentBoardLinkAPI(APIView):
                          "author": _name_of(p.author) if p.author_id else "",
                          "files": p.files.count(), "time": _kst(p.create_time)})
         return self.success({"rows": rows})
+
+
+class BoardCommentAPI(APIView):
+    """덧글. 폴더에서 켠 곳에만 달린다."""
+
+    @admin_role_required
+    def post(self, request):
+        _d = menu_denied(request.user, "board")
+        if _d:
+            return self.error(_d)
+        p = BoardPost.objects.filter(id=request.data.get("post_id"), is_deleted=False) \
+                             .select_related("folder").first()
+        if not p:
+            return self.error("글이 없습니다.")
+        role, bid = _role_of(request.user)
+        if not _can_see(p.folder, role, bid, _is_super(request.user)):
+            return self.error("이 폴더를 볼 권한이 없습니다.")
+        if not p.folder.allow_comments:
+            return self.error("이 폴더는 덧글을 받지 않습니다.")
+        body = (request.data.get("body") or "").strip()
+        if not body:
+            return self.error("덧글을 적어 주세요.")
+        c = BoardComment.objects.create(post=p, body=body, author=request.user)
+        return self.success({"id": c.id, "body": c.body, "author": _name_of(request.user),
+                             "mine": True, "time": _kst(c.create_time)})
+
+    @admin_role_required
+    def delete(self, request):
+        _d = menu_denied(request.user, "board")
+        if _d:
+            return self.error(_d)
+        c = BoardComment.objects.filter(id=request.GET.get("id"), is_deleted=False).first()
+        if not c:
+            return self.error("덧글이 없습니다.")
+        me = request.user
+        role, _ = _role_of(me)
+        if not (_is_super(me) or c.author_id == me.id or role in _DIRECTOR_UP):
+            return self.error("이 덧글을 지울 권한이 없습니다.")
+        c.is_deleted = True
+        c.save(update_fields=["is_deleted"])
+        return self.success({"deleted": True})

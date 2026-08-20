@@ -4,7 +4,8 @@ from ..views.verify import ProfileVerifyAdminAPI, ProfileVerifyResolveAPI, Stude
 from ..views.promotion import PromotionPreviewAPI, PromotionAPI
 from ..views.billing import InvoiceAPI, PaymentAPI
 from ..views.board import (BoardFolderAPI, BoardPostAPI, BoardFileAPI, BoardVersionAPI,
-                          StudentRecordAPI, StudentRecordFileAPI, StudentBoardLinkAPI)
+                          StudentRecordAPI, StudentRecordFileAPI, StudentBoardLinkAPI,
+                          BoardCommentAPI)
 from ..views.exam import (SavedSearchAPI, ExamChangeAdminAPI, ExamCatalogAdminAPI, ExamSessionAdminAPI, ExamEntryAdminAPI,
                           ExamContactAdminAPI, ExamStageAdminAPI,
                           MenuSettingAdminAPI, MyMenuAPI,
@@ -151,6 +152,7 @@ urlpatterns = [
     url(r"^academy/board/post/?$", BoardPostAPI.as_view(), name="academy_board_post"),
     url(r"^academy/board/file/?$", BoardFileAPI.as_view(), name="academy_board_file"),
     url(r"^academy/board/version/?$", BoardVersionAPI.as_view(), name="academy_board_version"),
+    url(r"^academy/board/comment/?$", BoardCommentAPI.as_view(), name="academy_board_comment"),
     url(r"^academy/student_record/?$", StudentRecordAPI.as_view(), name="academy_student_record"),
     url(r"^academy/student_record/file/?$", StudentRecordFileAPI.as_view(), name="academy_student_record_file"),
     url(r"^academy/student_board_links/?$", StudentBoardLinkAPI.as_view(), name="academy_student_board_links"),

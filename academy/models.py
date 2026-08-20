@@ -1905,6 +1905,10 @@ class BoardFolder(models.Model):
     # 판 관리. 켜면 고칠 때마다 판이 쌓이고 무엇이 늘고 줄었는지 견줘 볼 수 있다.
     # 사규처럼 '언제 무엇이 바뀌었나'를 대야 하는 글에 쓴다. 수업자료에는 성가시다.
     versioned = models.BooleanField(default=False)
+    # 덧글. 자료·공지에는 물어볼 것이 생기지만, 규정에는 오히려 어수선하다.
+    allow_comments = models.BooleanField(default=False)
+    # 글을 쓸 수 있는 사람. 비면 볼 수 있는 사람과 같다 — 공지·규정은 아무나 쓰면 안 된다.
+    write_scope = models.CharField(max_length=16, blank=True, default="")
     sort_mode = models.CharField(max_length=16, default="RECENT")
     order = models.PositiveSmallIntegerField(default=0)
     is_deleted = models.BooleanField(default=False)
@@ -2038,3 +2042,17 @@ class StudentRecordFile(models.Model):
     class Meta:
         db_table = "academy_student_record_file"
         ordering = ["order", "id"]
+
+
+class BoardComment(models.Model):
+    """게시판 덧글. 폴더에서 켠 곳에만 달린다."""
+    post = models.ForeignKey(BoardPost, on_delete=models.CASCADE, related_name="comments")
+    body = models.TextField()
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="+")
+    is_deleted = models.BooleanField(default=False)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_board_comment"
+        ordering = ["id"]
