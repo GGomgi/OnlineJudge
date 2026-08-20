@@ -9,6 +9,12 @@ class Branch(models.Model):
     is_active = models.BooleanField(default=True)
     kiosk_token = models.CharField(max_length=32, blank=True, default="")  # 출결 키오스크 접속 토큰(무로그인)
     kiosk_pin = models.CharField(max_length=6, blank=True, default="")      # 키오스크 진입 PIN(6자리, 포털 첫 화면에서 지점 자동 선택)
+    # 겹쳐 붙은 할인의 상한. 0 이면 상한 없음. 상한 제외로 표시한 항목(소개 할인)은 세지 않는다.
+    # 비율로 두는 것은 원비가 낮은 학생에게도 같은 잣대가 되기 때문이다.
+    discount_cap_percent = models.PositiveSmallIntegerField(default=0)
+    discount_cap_amount = models.PositiveIntegerField(default=0)   # 함께 걸면 둘 중 작은 쪽
+    # 4주 회수제 지점(김포). 달력 달이 아니라 마지막 회차를 채운 날로 끊는다.
+    is_session_based = models.BooleanField(default=False)
     create_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -445,6 +451,13 @@ class StudentProfile(models.Model):
     # 포털 전에 종이로 받아 둔 동의. 서명 그림은 없지만 동의는 실제로 존재한다.
     # (온라인 서명이 없다고 '안 받음'으로 두면 정보 미완료가 영영 안 지워진다)
     consent_paper = models.BooleanField(default=False)
+    # 누구 소개로 왔는가. 소개 할인을 붙여도 누가 소개했는지가 아무 데도 안 남아
+    # 자주 소개해 주는 분을 알아볼 수 없었다. 재원생이 아닐 수도 있어(졸업생·지인)
+    # 학생 연결과 이름 적기를 함께 둔다.
+    referrer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                 on_delete=models.SET_NULL, related_name="referred_students")
+    referrer_name = models.CharField(max_length=64, blank=True, default="")
+    referred_on = models.DateField(null=True, blank=True)
     create_time = models.DateTimeField(auto_now_add=True)
     update_time = models.DateTimeField(auto_now=True)
 
@@ -884,6 +897,12 @@ class DiscountItem(models.Model):
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
                                related_name="discount_items")    # 비면 전 지점
     is_active = models.BooleanField(default=True)                # 끄면 새로 못 붙임
+    # 겹친 할인에 상한을 걸 때 이 항목은 세지 않는다. 소개 할인은 원비를 깎아 주는 것이
+    # 아니라 소개해 준 데 대한 답례라, 상한에 밀려 사라지면 뜻이 없어진다.
+    exclude_from_cap = models.BooleanField(default=False)
+    # 한 달 청구서에 이 항목은 한 줄만 붙인다. 남은 것은 다음 달로 밀린다.
+    # 같은 달에 셋을 소개해도 그 달 원비가 무너지지 않고, 소개한 만큼 다 받는다.
+    once_per_month = models.BooleanField(default=False)
     note = models.CharField(max_length=255, blank=True, default="")
     create_time = models.DateTimeField(auto_now_add=True)
 
@@ -928,6 +947,9 @@ class StudentDiscount(models.Model):
                                 related_name="discounts")
     item = models.ForeignKey(DiscountItem, on_delete=models.CASCADE, related_name="+")
     used_ym = models.CharField(max_length=7, blank=True, default="")   # 한 번만 할인이 쓰인 달
+    # 같은 항목인데 사람마다 값이 다른 경우(진학 할인은 다닌 기간에 따라 1만~4만).
+    # 비면 항목의 값을 그대로 쓴다.
+    value_override = models.PositiveIntegerField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     note = models.CharField(max_length=255, blank=True, default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,

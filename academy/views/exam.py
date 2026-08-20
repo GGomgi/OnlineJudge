@@ -836,8 +836,20 @@ TUITION_TIERS = [
 TUITION_STD = [c for _lb, cs in TUITION_TIERS for c in cs]
 TUITION_WEEKS = [1, 2]
 
+# 4주 회수제 지점(김포)은 '4주에 몇 회 · 한 번에 몇 분'으로 판다. 주3·4회도 파는 물건이라
+# 표에서 금액을 직접 받아야 한다 — 회당 단가로 흩어 셈하면 실제와 어긋난다.
+TUITION_SESSION_WEEKS = [1, 2, 3, 4]
+TUITION_SESSION_MINS = [60, 90, 120]
+TUITION_SESSION_STD = [(w, d) for w in TUITION_SESSION_WEEKS for d in TUITION_SESSION_MINS]
 
-def _tuition_tier(wk, du):
+
+def tuition_std_for(branch):
+    return TUITION_SESSION_STD if getattr(branch, "is_session_based", False) else TUITION_STD
+
+
+def _tuition_tier(wk, du, branch=None):
+    if branch is not None and getattr(branch, "is_session_based", False):
+        return "4주 %d회" % (wk * 4)
     for lb, cs in TUITION_TIERS:
         if (wk, du) in cs:
             return lb
@@ -866,16 +878,19 @@ class TuitionRateAdminAPI(APIView):
         rows = []
         for b in branches:
             # 기본 구간을 사람이 보는 순서대로 먼저, 그 밖의 시간을 뒤에.
+            std = tuition_std_for(b)
             saved = {(k[1], k[2]) for k in have if k[0] == b.id}
+            # 기간제 지점은 주3회 이상을 회당 단가로 셈하므로 표에 칸이 필요 없다.
+            # 회수제 지점은 주3·4회도 파는 물건이라 표에 담는다.
+            top = 4 if getattr(b, "is_session_based", False) else 2
             extra = sorted({c for c in list(used.get(b.id, [])) + list(saved)
-                            if c not in TUITION_STD and c[0] <= 2})
-            # 주3회 이상은 회당 단가로 계산하므로 표에 금액 칸이 필요 없다(아래 목록으로 따로 본다)
-            for group, combos in (("std", TUITION_STD), ("extra", extra)):
+                            if c not in std and c[0] <= top})
+            for group, combos in (("std", std), ("extra", extra)):
                 for wk, du in combos:
                     r = have.get((b.id, wk, du))
                     rows.append({
                         "branch_id": b.id, "branch": b.name, "group": group,
-                        "tier": _tuition_tier(wk, du),
+                        "tier": _tuition_tier(wk, du, b),
                         "sessions_per_week": wk, "duration_minutes": du,
                         "amount": (r.amount if r else 0),
                         "note": (r.note if r else ""),
