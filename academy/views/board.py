@@ -103,8 +103,16 @@ def _kind_of(ext):
     return "etc"
 
 
-def _folder_row(f, unread=0, posts=0):
+def _folder_row(f, unread=0, posts=0, multi=False):
+    # 이름표는 예외에만 붙인다. 대부분이 전 지점이라 '전 지점'을 붙이면 거의 모든 줄에
+    # 이름표가 달려 뜻이 없어진다. 지점 한정만 표시한다.
+    # 지점 이름을 쓰면 "그건 나도 아는데"가 되므로, 한 지점만 보는 사람에게는
+    # '우리 지점만'이라 적는다 — 딴 지점 사람은 못 본다는 새 정보를 준다.
+    tag = ""
+    if f.scope == "BRANCH":
+        tag = (f.branch.name if (multi and f.branch_id) else "우리 지점만")
     return {"id": f.id, "name": f.name, "parent_id": f.parent_id, "icon": f.icon,
+            "branch_tag": tag,
             "scope": f.scope, "branch_id": f.branch_id, "need_read": f.need_read,
             "versioned": f.versioned, "allow_comments": f.allow_comments,
             "write_scope": f.write_scope,
@@ -159,7 +167,9 @@ class BoardFolderAPI(APIView):
                                              .values_list("id", "folder_id"):
                 if pid not in seen:
                     unread[fid] = unread.get(fid, 0) + 1
-        rows = [_folder_row(f, unread.get(f.id, 0), counts.get(f.id, 0)) for f in folders]
+        view = viewable_branch_ids(me)
+        multi = (view is None or len(view) > 1)
+        rows = [_folder_row(f, unread.get(f.id, 0), counts.get(f.id, 0), multi) for f in folders]
         return self.success({
             "rows": rows, "can_edit": _can_edit_folders(me),
             "max_depth": MAX_DEPTH, "max_file": MAX_FILE, "max_post": MAX_POST,
@@ -326,12 +336,17 @@ class BoardPostAPI(APIView):
                                  BoardPostVersion.objects.filter(post=p)
                                  .select_related("author")[:100]]
             if p.folder.need_read:
-                seen = {r.user_id: r for r in BoardRead.objects.filter(post=p)
-                                                              .select_related("user")}
-                staff = AcademyProfile.objects.filter(is_deleted=False, role__in=STAFF_ROLES) \
-                                              .select_related("user", "user__userprofile")
+                seen = set(BoardRead.objects.filter(post=p).values_list("user_id", flat=True))
+                # 인천 원장이 김포 직원의 읽음까지 볼 까닭이 없다. 챙길 수 있는 사람만 센다.
+                view = viewable_branch_ids(me)
+                sq = AcademyProfile.objects.filter(is_deleted=False, role__in=STAFF_ROLES)
+                if view is not None:
+                    sq = sq.filter(branch_id__in=view)
+                staff = sq.select_related("user", "user__userprofile", "branch")
                 d["reads"] = {"read": [_name_of(x.user) for x in staff if x.user_id in seen],
-                              "unread": [_name_of(x.user) for x in staff if x.user_id not in seen]}
+                              "unread": [_name_of(x.user) for x in staff if x.user_id not in seen],
+                              "scope": ("전 지점" if view is None else
+                                        " · ".join(sorted({x.branch.name for x in staff if x.branch_id})))}
             return self.success(d)
 
         f = BoardFolder.objects.filter(id=request.GET.get("folder_id"), is_deleted=False).first()

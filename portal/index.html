@@ -2054,7 +2054,7 @@
           <span v-if="f.versioned" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-violet-50 text-violet-600">판관리</span>
           <span v-if="f.allow_comments" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600">덧글</span>
           <span v-if="f.write_scope" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">쓰기 {{ bdScopeLabel(f.write_scope) }}</span>
-          <span v-if="f.scope!=='ALL'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdScopeLabel(f.scope) }}</span>
+          <span v-if="f.scope!=='ALL'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ f.branch_tag || bdScopeLabel(f.scope) }}</span>
           <span class="flex items-center gap-1 shrink-0">
             <button @click="moveBdFolder(f,-1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">◀</button>
             <button @click="moveBdFolder(f,1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▶</button>
@@ -6958,6 +6958,7 @@
                :style="{ paddingLeft: (0.5 + (f.depth-1)*0.9) + 'rem' }">
             <span v-if="f.icon" class="shrink-0">{{ f.icon }}</span>
             <span class="truncate">{{ f.name }}</span>
+            <span v-if="f.branch_tag" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ f.branch_tag }}</span>
             <span v-if="f.unread" class="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[18px] text-center">{{ f.unread }}</span>
             <span v-else-if="f.posts" class="ml-auto shrink-0 text-[11px] text-slate-300">{{ f.posts }}</span>
           </div>
@@ -6969,6 +6970,7 @@
           <div v-if="bdView==='list'" class="bg-white rounded-xl shadow-sm divide-y">
             <div class="px-4 py-2 text-xs text-slate-400 flex items-center gap-2">
               <b class="text-slate-600">{{ bdFolder ? bdFolder.name : '폴더를 고르세요' }}</b>
+              <span v-if="bdFolder && bdFolder.branch_tag" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdFolder.branch_tag }}</span>
               <span v-if="bdFolder && bdFolder.need_read" class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-600">읽음 확인</span>
               <span class="ml-auto">{{ bdList.length }}건</span>
             </div>
@@ -6997,6 +6999,32 @@
               <div class="shrink-0"><label class="lbl">시행일</label>
                 <date-box v-model="bdForm.effective_date" box-class="input py-1"></date-box>
               </div>
+            </div>
+            <!-- 파일. 저장 전에 고른 것은 손에 들고 있다가 저장할 때 함께 올린다 —
+                 먼저 글을 만들어 두면 취소했을 때 빈 글이 남는다 -->
+            <div class="rounded-lg border border-slate-200 p-3 space-y-2">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-slate-500">파일</span>
+                <span class="text-[11px] text-slate-400">{{ bdAllFiles.length }}개 · {{ bdSizeText(bdFormBytes) }}</span>
+                <label class="ml-auto inline-flex items-center gap-2 px-2.5 py-1 rounded border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
+                  📎 고르기
+                  <input type="file" multiple class="hidden" @change="pickBdFiles($event)" />
+                </label>
+              </div>
+              <div v-if="bdAllFiles.length" class="flex flex-wrap gap-1.5">
+                <div v-for="(f,i) in bdAllFiles" :key="f.key"
+                     class="flex items-center gap-1.5 px-2 py-1 rounded border text-[11px] max-w-[14rem]"
+                     :class="f.pending ? 'border-dashed border-indigo-300 bg-indigo-50/50' : 'border-slate-200'">
+                  <span class="shrink-0">{{ bdIcon(f.kind) }}</span>
+                  <span class="truncate" :class="f.pending ? 'text-indigo-700' : ''">{{ f.name }}</span>
+                  <span class="text-slate-400 shrink-0">{{ bdSizeText(f.size) }}</span>
+                  <button @click="removeBdFormFile(f)" class="text-rose-300 hover:text-rose-500 shrink-0">✕</button>
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-400">
+                파일 하나 {{ bdSizeText(bdMaxFile) }}까지 · 글 합계 {{ bdSizeText(bdMaxPost) }}까지 · 개수 제한 없음.
+                <span class="text-indigo-500">테두리가 점선인 것은 저장할 때 올라갑니다.</span>
+              </p>
             </div>
             <!-- 학생 연결. 이 글이 걸린 아이의 [연결된 글] 에 뜬다 -->
             <div class="rounded-lg border border-slate-200 p-3 space-y-2">
@@ -7030,7 +7058,7 @@
               <button @click="closeBdWrite" class="btn-secondary text-sm">취소</button>
               <button @click="submitBd" class="btn-primary text-sm">{{ bdForm.id ? '수정' : '등록' }}</button>
             </div>
-            <p class="text-[11px] text-slate-400">파일은 저장한 뒤에 붙일 수 있습니다.</p>
+
           </div>
 
           <!-- 상세 -->
@@ -7102,6 +7130,7 @@
             <div v-if="bdDetail.reads" class="border-t pt-3">
               <button @click="bdReadOpen=!bdReadOpen" class="text-xs text-slate-500 hover:text-slate-700">
                 읽음 <b class="text-slate-700">{{ bdDetail.reads.read.length }}</b> / {{ bdDetail.reads.read.length + bdDetail.reads.unread.length }}
+                <span class="text-slate-300">{{ bdDetail.reads.scope }}</span>
                 <span class="text-slate-300">{{ bdReadOpen ? '▲' : '▼' }}</span>
               </button>
               <div v-if="bdReadOpen" class="mt-1 text-[11px] text-slate-500 space-y-0.5">
@@ -8208,7 +8237,7 @@ const app = createApp({
       bdMaxFile: 52428800, bdMaxPost: 209715200, bdFilesAll: false, bdReadOpen: false,
       bdUploading: false, bdUpDone: 0, bdUpTotal: 0,
       bdDiff: null, bdDiffA: null, bdDiffB: null, bdStuQ: '', bdStuQRaw: '',
-      bdCanWrite: true, bdCommentDraft: '',
+      bdCanWrite: true, bdCommentDraft: '', bdPending: [], _bdKey: 0,
       // 그리는 도중에 만들면 갱신이 계속 돌아 화면이 멈춘다. 시작할 때 미리 만들어 둔다.
       colState: buildAllColState(),
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
@@ -8410,6 +8439,16 @@ const app = createApp({
       return g.map(x => x.folder + ' ' + x.n + '건').join(' · ') || (n + '건');
     },
     // 쉼표로 여러 이름을 한 번에. 이미 담은 사람은 목록에서 뺀다.
+    // 이미 붙은 것과 아직 안 올린 것을 한 줄에 늘어놓는다. 두 목록으로 나누면
+    // 무엇이 들어갈지 한눈에 안 보인다.
+    bdAllFiles(){
+      const saved = (this.bdForm.file_list||[]).map(f=>({ key:'s'+f.id, id:f.id, name:f.name,
+                     size:f.size, kind:f.kind, url:f.url, thumb:f.thumb, by:f.by, pending:false }));
+      const pend = (this.bdPending||[]).map(p=>({ key:'p'+p.key, name:p.file.name, size:p.file.size,
+                     kind:p.kind, pending:true, _p:p }));
+      return saved.concat(pend);
+    },
+    bdFormBytes(){ return this.bdAllFiles.reduce((a,b)=>a+(b.size||0), 0); },
     bdStuCandidates(){
       const q = (this.bdStuQ||'').trim().toLowerCase();
       if (!q) return [];
@@ -12979,15 +13018,15 @@ const app = createApp({
     },
     openBdWrite(){
       if (!this.bdFolderId) return this.notify('폴더를 먼저 고르세요.', false);
-      this.bdForm={ id:null, title:'', body:'', pinned:false, note:'', effective_date:'', students:[] };
-      this.bdStuQ=''; this.bdStuQRaw=''; this.ensureStudentsLoaded();
+      this.bdForm={ id:null, title:'', body:'', pinned:false, note:'', effective_date:'', students:[], file_list:[] };
+      this.bdPending=[]; this.bdStuQ=''; this.bdStuQRaw=''; this.ensureStudentsLoaded();
       this.bdView='write'; this._makeBdEditor('');
     },
     openBdEdit(d){
       // 개정 사유는 판마다 새로 적는다. 앞 판 것을 물려받으면 안 고쳤는데 고친 것처럼 남는다.
       this.bdForm={ id:d.id, title:d.title, body:d.body, pinned:d.pinned, note:'', effective_date:'',
-                    students:(d.students||[]).map(x=>x.id) };
-      this.bdStuQ=''; this.bdStuQRaw=''; this.ensureStudentsLoaded();
+                    students:(d.students||[]).map(x=>x.id), file_list:[...(d.file_list||[])] };
+      this.bdPending=[]; this.bdStuQ=''; this.bdStuQRaw=''; this.ensureStudentsLoaded();
       this.bdView='write'; this._makeBdEditor(d.body||'');
     },
     closeBdWrite(){
@@ -13004,6 +13043,7 @@ const app = createApp({
                               pinned:this.bdForm.pinned, note:this.bdForm.note,
                               effective_date:this.bdForm.effective_date || null,
                               student_ids:this.bdForm.students });
+        await this._flushBdPending(r.id);
         this._destroyBdEditors(); this.notify('저장되었습니다.'); this.openBdDetail(r.id);
       } catch(e){ this.notify(e.message,false); }
     },
@@ -13085,6 +13125,48 @@ const app = createApp({
         await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
         if (this.bdPrev){ this.bdPrev.drawn = true; this.bdPrev.pages = doc.numPages; }
       } catch(e){ if (this.bdPrev) this.bdPrev.drawn = true; }
+    },
+    // 이름 끝만 보고 종류를 가른다. 서버가 다시 제대로 가르므로 여기선 아이콘용이다.
+    bdKindOf(name){
+      const e = (String(name).match(/\.[^.]+$/)||[''])[0].toLowerCase();
+      if (['.jpg','.jpeg','.png','.gif','.bmp','.webp'].includes(e)) return 'img';
+      if (e==='.pdf') return 'pdf';
+      if (['.zip','.7z','.rar','.tar','.gz'].includes(e)) return 'zip';
+      if (['.hwp','.hwpx','.doc','.docx','.ppt','.pptx','.xls','.xlsx','.txt','.md'].includes(e)) return 'doc';
+      return 'etc';
+    },
+    pickBdFiles(ev){
+      const files = Array.from(ev.target.files||[]); ev.target.value='';
+      for (const f of files){
+        if (f.size > this.bdMaxFile){ this.notify(f.name+' — 파일 하나는 '+this.bdSizeText(this.bdMaxFile)+'까지입니다.', false); continue; }
+        if (this.bdFormBytes + f.size > this.bdMaxPost){ this.notify(f.name+' — 글 합계 '+this.bdSizeText(this.bdMaxPost)+'를 넘습니다.', false); continue; }
+        this.bdPending.push({ key: ++this._bdKey, file:f, kind:this.bdKindOf(f.name) });
+      }
+    },
+    async removeBdFormFile(f){
+      if (f.pending){ this.bdPending = this.bdPending.filter(p=>p.key!==f._p.key); return; }
+      if (!await this.askConfirm(f.name+' 을 지우시겠습니까?')) return;
+      try {
+        await api('DELETE','/api/admin/academy/board/file?id='+f.id);
+        this.bdForm.file_list = this.bdForm.file_list.filter(x=>x.id!==f.id);
+      } catch(e){ this.notify(e.message,false); }
+    },
+    // 저장한 뒤에 손에 든 파일을 올린다. 붙일 자리가 생긴 다음이라야 한다.
+    async _flushBdPending(postId){
+      if (!this.bdPending.length) return;
+      this.bdUploading=true; this.bdUpDone=0; this.bdUpTotal=this.bdPending.length;
+      for (const p of this.bdPending){
+        const fd = new FormData();
+        fd.append('post_id', postId); fd.append('file', p.file);
+        try {
+          const res = await fetch('/api/admin/academy/board/file', { method:'POST', body:fd,
+                        headers:{ 'X-CSRFToken': getCookie('csrftoken') }, credentials:'same-origin' });
+          const j = await res.json();
+          if (j.error) throw new Error(j.data);
+        } catch(e){ this.notify(p.file.name+' — '+e.message, false); }
+        this.bdUpDone++;
+      }
+      this.bdPending=[]; this.bdUploading=false;
     },
     async addBdComment(){
       const body = (this.bdCommentDraft||'').trim();
