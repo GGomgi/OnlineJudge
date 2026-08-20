@@ -6,8 +6,10 @@
 파일은 개수로 막지 않고 용량으로 막는다 — 예제 30개를 한 번에 올리고 싶은데
 10개에서 끊기면 글을 셋으로 쪼개게 되고 그게 더 나쁘다.
 """
+import difflib
+import json as _json
 import os as _os
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.conf import settings as _settings
 from django.db import transaction
@@ -18,8 +20,8 @@ from utils.api import APIView
 from utils.shortcuts import rand_str as _rand_str
 from account.decorators import admin_role_required
 
-from ..models import (BoardFolder, BoardPost, BoardFile, BoardRead, Branch,
-                      AcademyProfile, AcademyRole, STAFF_ROLES)
+from ..models import (BoardFolder, BoardPost, BoardFile, BoardRead, BoardPostVersion,
+                      Branch, AcademyProfile, AcademyRole, STAFF_ROLES)
 from ..services import viewable_branch_ids
 from .exam import menu_denied
 
@@ -88,6 +90,7 @@ def _kind_of(ext):
 def _folder_row(f, unread=0, posts=0):
     return {"id": f.id, "name": f.name, "parent_id": f.parent_id, "icon": f.icon,
             "scope": f.scope, "branch_id": f.branch_id, "need_read": f.need_read,
+            "versioned": f.versioned,
             "sort_mode": f.sort_mode, "order": f.order, "depth": f.depth,
             "posts": posts, "unread": unread}
 
@@ -183,6 +186,7 @@ class BoardFolderAPI(APIView):
         f.scope = d.get("scope") or "ALL"
         f.branch_id = d.get("branch_id") if f.scope == "BRANCH" else None
         f.need_read = bool(d.get("need_read"))
+        f.versioned = bool(d.get("versioned"))
         f.sort_mode = d.get("sort_mode") or "RECENT"
         f.save()
         return self.success({"id": f.id})
@@ -289,6 +293,11 @@ class BoardPostAPI(APIView):
             d = _post_row(p, me, with_body=True)
             d["folder_name"] = p.folder.name
             d["can_edit"] = sup or p.author_id == me.id or role in _DIRECTOR_UP
+            d["versioned"] = p.folder.versioned
+            if p.folder.versioned:
+                d["versions"] = [_ver_row(v) for v in
+                                 BoardPostVersion.objects.filter(post=p)
+                                 .select_related("author")[:100]]
             if p.folder.need_read:
                 seen = {r.user_id: r for r in BoardRead.objects.filter(post=p)
                                                               .select_related("user")}
@@ -350,6 +359,24 @@ class BoardPostAPI(APIView):
         p.save()
         if "student_ids" in d:
             p.students.set([int(x) for x in (d.get("student_ids") or [])])
+        # 판 관리 폴더면 고칠 때마다 판이 쌓인다. 바뀐 뒤의 모습을 통째로 담는다 —
+        # 차이만 저장하면 중간 판 하나가 깨질 때 뒤가 다 어긋난다.
+        if f.versioned:
+            eff = None
+            if d.get("effective_date"):
+                try:
+                    eff = datetime.strptime(d["effective_date"], "%Y-%m-%d").date()
+                except (TypeError, ValueError):
+                    eff = None
+            last = BoardPostVersion.objects.filter(post=p).order_by("-rev").first()
+            names = _json.dumps([x.name for x in p.files.all()], ensure_ascii=False)
+            same = (last and last.title == p.title and last.body == p.body
+                    and last.files == names and not (d.get("note") or "").strip())
+            if not same:
+                BoardPostVersion.objects.create(
+                    post=p, rev=((last.rev + 1) if last else 1), title=p.title, body=p.body,
+                    files=names, note=(d.get("note") or "").strip()[:255],
+                    effective_date=eff, author=request.user)
         return self.success({"id": p.id})
 
     @admin_role_required
@@ -435,3 +462,75 @@ class BoardFileAPI(APIView):
             return self.error("이 파일을 지울 권한이 없습니다.")
         x.delete()
         return self.success({"deleted": True})
+
+
+def _ver_row(v):
+    try:
+        files = _json.loads(v.files) if v.files else []
+    except (ValueError, TypeError):
+        files = []
+    return {"id": v.id, "rev": v.rev, "title": v.title, "note": v.note,
+            "effective_date": str(v.effective_date) if v.effective_date else "",
+            "files": files, "by": _name_of(v.author) if v.author_id else "",
+            "time": _kst(v.create_time)}
+
+
+def _diff_lines(old_text, new_text):
+    """줄 단위로 견준다. 무엇이 늘고 줄었는지가 눈에 보여야 개정을 설명할 수 있다."""
+    a = (old_text or "").splitlines()
+    b = (new_text or "").splitlines()
+    out = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b).get_opcodes():
+        if tag == "equal":
+            for k in range(i1, i2):
+                out.append({"t": "=", "s": a[k]})
+        else:
+            for k in range(i1, i2):
+                out.append({"t": "-", "s": a[k]})
+            for k in range(j1, j2):
+                out.append({"t": "+", "s": b[k]})
+    return out
+
+
+class BoardVersionAPI(APIView):
+    """판 하나 보기 · 두 판 견주기. {post_id, rev} 또는 {post_id, a, b}."""
+
+    @admin_role_required
+    def get(self, request):
+        _d = menu_denied(request.user, "board")
+        if _d:
+            return self.error(_d)
+        p = BoardPost.objects.filter(id=request.GET.get("post_id"), is_deleted=False) \
+                             .select_related("folder").first()
+        if not p:
+            return self.error("글이 없습니다.")
+        role, bid = _role_of(request.user)
+        if not _can_see(p.folder, role, bid, _is_super(request.user)):
+            return self.error("이 폴더를 볼 권한이 없습니다.")
+        vs = {v.rev: v for v in BoardPostVersion.objects.filter(post=p).select_related("author")}
+        if not vs:
+            return self.success({"rows": [], "diff": []})
+        if request.GET.get("rev"):
+            v = vs.get(int(request.GET["rev"]))
+            if not v:
+                return self.error("그 판이 없습니다.")
+            return self.success({"one": _ver_row(v), "body": v.body})
+        try:
+            rb = int(request.GET.get("b") or max(vs))
+            ra = int(request.GET.get("a") or (rb - 1))
+        except (TypeError, ValueError):
+            return self.error("판 번호가 올바르지 않습니다.")
+        vb = vs.get(rb)
+        if not vb:
+            return self.error("그 판이 없습니다.")
+        va = vs.get(ra)
+        old_body, old_files = (va.body if va else ""), (_ver_row(va)["files"] if va else [])
+        new_files = _ver_row(vb)["files"]
+        return self.success({
+            "a": (_ver_row(va) if va else None), "b": _ver_row(vb),
+            "title_changed": bool(va and va.title != vb.title),
+            "old_title": (va.title if va else ""), "new_title": vb.title,
+            "diff": _diff_lines(old_body, vb.body),
+            "files_added": [x for x in new_files if x not in old_files],
+            "files_removed": [x for x in old_files if x not in new_files],
+        })

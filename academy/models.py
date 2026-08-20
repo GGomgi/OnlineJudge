@@ -1900,6 +1900,9 @@ class BoardFolder(models.Model):
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
                                related_name="board_folders")          # scope=BRANCH 일 때
     need_read = models.BooleanField(default=False)                    # 읽음 확인
+    # 판 관리. 켜면 고칠 때마다 판이 쌓이고 무엇이 늘고 줄었는지 견줘 볼 수 있다.
+    # 사규처럼 '언제 무엇이 바뀌었나'를 대야 하는 글에 쓴다. 수업자료에는 성가시다.
+    versioned = models.BooleanField(default=False)
     sort_mode = models.CharField(max_length=16, default="RECENT")
     order = models.PositiveSmallIntegerField(default=0)
     is_deleted = models.BooleanField(default=False)
@@ -1968,3 +1971,26 @@ class BoardRead(models.Model):
     class Meta:
         db_table = "academy_board_read"
         unique_together = ("post", "user")
+
+
+class BoardPostVersion(models.Model):
+    """글의 한 판. versioned 폴더의 글만 쌓인다.
+
+    바뀐 뒤의 모습을 통째로 담는다. 앞 판과 줄 단위로 견주면 무엇이 늘고 줄었는지
+    저절로 나온다 — 차이만 저장하면 중간 판 하나가 깨질 때 뒤가 다 어긋난다.
+    """
+    post = models.ForeignKey(BoardPost, on_delete=models.CASCADE, related_name="versions")
+    rev = models.PositiveSmallIntegerField()                  # 1부터
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True, default="")
+    files = models.TextField(blank=True, default="")          # 그때 붙어 있던 파일 이름(JSON)
+    note = models.CharField(max_length=255, blank=True, default="")   # 무엇을 왜 고쳤는가
+    effective_date = models.DateField(null=True, blank=True)  # 시행일(규정)
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_board_post_version"
+        ordering = ["-rev"]
+        unique_together = ("post", "rev")

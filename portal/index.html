@@ -1878,6 +1878,54 @@
     </div>
   </div>
 
+  <!-- 두 판 견주기. 무엇이 늘고 줄었는지가 눈에 보여야 개정을 설명할 수 있다 -->
+  <div v-if="bdDiff" class="fixed inset-0 z-[76] bg-black/40 flex items-start justify-center p-4 overflow-auto" @click.self="bdDiff=null">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl my-4">
+      <div class="flex items-center justify-between px-4 py-3 border-b gap-2 flex-wrap">
+        <div class="font-bold text-sm">판 견주기</div>
+        <div class="flex items-center gap-1.5 text-xs">
+          <select v-model="bdDiffA" @change="loadBdDiff" class="input py-1 px-2" style="width:5rem">
+            <option v-for="v in bdVerRevs" :key="v" :value="v">v{{ v }}</option>
+          </select>
+          <span class="text-slate-400">→</span>
+          <select v-model="bdDiffB" @change="loadBdDiff" class="input py-1 px-2" style="width:5rem">
+            <option v-for="v in bdVerRevs" :key="v" :value="v">v{{ v }}</option>
+          </select>
+          <button @click="bdDiff=null" class="ml-2 text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+        </div>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+          <span v-if="bdDiff.b.note" class="px-2 py-1 rounded bg-violet-50 text-violet-700">{{ bdDiff.b.note }}</span>
+          <span v-if="bdDiff.b.effective_date" class="text-emerald-600">시행 {{ dd(bdDiff.b.effective_date) }}</span>
+          <span class="ml-auto">{{ bdDiff.b.by }} · {{ dt(bdDiff.b.time) }}</span>
+        </div>
+        <div v-if="bdDiff.title_changed" class="text-sm rounded-lg border border-slate-200 p-2">
+          <div class="text-[11px] text-slate-400 mb-1">제목</div>
+          <div class="text-rose-600 line-through">{{ bdDiff.old_title }}</div>
+          <div class="text-emerald-700 font-medium">{{ bdDiff.new_title }}</div>
+        </div>
+        <div class="flex items-center gap-3 text-[11px]">
+          <span class="text-emerald-700">＋ 늘어난 줄 {{ bdDiffPlus }}</span>
+          <span class="text-rose-600">－ 줄어든 줄 {{ bdDiffMinus }}</span>
+          <span v-if="!bdDiffPlus && !bdDiffMinus" class="text-slate-400">글 내용은 그대로입니다.</span>
+        </div>
+        <div class="border rounded-lg overflow-hidden font-mono text-xs leading-relaxed max-h-[55vh] overflow-y-auto">
+          <div v-for="(l,i) in bdDiff.diff" :key="i"
+               :class="['px-3 py-0.5 whitespace-pre-wrap break-all',
+                        l.t==='+' ? 'bg-emerald-50 text-emerald-800' : (l.t==='-' ? 'bg-rose-50 text-rose-700 line-through' : 'text-slate-500')]">
+            <span class="inline-block w-3 select-none opacity-60">{{ l.t==='=' ? '' : l.t }}</span>{{ l.s || ' ' }}
+          </div>
+          <div v-if="!bdDiff.diff.length" class="px-3 py-6 text-center text-slate-400">글 내용이 비어 있습니다.</div>
+        </div>
+        <div v-if="bdDiff.files_added.length || bdDiff.files_removed.length" class="text-xs space-y-1">
+          <div v-if="bdDiff.files_added.length" class="text-emerald-700">＋ 붙은 파일 — {{ bdDiff.files_added.join(', ') }}</div>
+          <div v-if="bdDiff.files_removed.length" class="text-rose-600">－ 뗀 파일 — {{ bdDiff.files_removed.join(', ') }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 파일 호버 미리보기. 눌러 열기 전에 무엇인지 알아보게 한다 -->
   <div v-if="bdPrev" class="fixed z-[85] pointer-events-none rounded-lg border border-slate-200 bg-white shadow-xl p-2"
        :style="{ left: bdPrev.x+'px', top: bdPrev.y+'px', width: '15rem' }">
@@ -1909,6 +1957,7 @@
           <span v-if="f.icon" class="shrink-0">{{ f.icon }}</span>
           <span class="text-sm truncate flex-1 min-w-0">{{ f.name }}</span>
           <span v-if="f.need_read" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-600">읽음확인</span>
+          <span v-if="f.versioned" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-violet-50 text-violet-600">판관리</span>
           <span v-if="f.scope!=='ALL'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdScopeLabel(f.scope) }}</span>
           <span class="flex items-center gap-1 shrink-0">
             <button @click="moveBdFolder(f,-1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">◀</button>
@@ -1964,6 +2013,13 @@
           <input type="checkbox" v-model="bdFolderForm.need_read" class="w-4 h-4 mt-0.5" />
           <span>읽음 확인
             <span class="block text-[11px] text-slate-400">켜면 오늘 운영에 안 읽은 글 띠가 뜨고, 누가 읽었는지 남습니다.</span>
+          </span>
+        </label>
+        <!-- 사규처럼 '언제 무엇이 바뀌었나'를 대야 하는 글에만 켠다. 수업자료에는 성가시다 -->
+        <label class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
+          <input type="checkbox" v-model="bdFolderForm.versioned" class="w-4 h-4 mt-0.5" />
+          <span>판 관리
+            <span class="block text-[11px] text-slate-400">고칠 때마다 판이 쌓이고, 무엇이 늘고 줄었는지 견줘 볼 수 있습니다. 개정 사유·시행일도 남습니다.</span>
           </span>
         </label>
         <div class="flex justify-end gap-2 pt-1">
@@ -6798,6 +6854,16 @@
             <div class="font-bold">{{ bdForm.id ? '글 수정' : '새 글' }} <span class="text-xs font-normal text-slate-400">— {{ bdFolder ? bdFolder.name : '' }}</span></div>
             <input v-model="bdForm.title" placeholder="제목" class="input" />
             <div ref="bdEditorEl"></div>
+            <!-- 판 관리 폴더에서만. 무엇을 왜 고쳤는지 그때 안 적으면 나중에 못 대준다 -->
+            <div v-if="bdFolder && bdFolder.versioned" class="flex items-end gap-2 bg-violet-50/60 rounded-lg p-3">
+              <div class="flex-1 min-w-[8rem]">
+                <label class="lbl">개정 사유 <span class="text-slate-400 font-normal">(무엇을 왜 고쳤나)</span></label>
+                <input v-model="bdForm.note" class="input py-1 text-sm" placeholder="근무시간 조정 · 재택 조항 신설" />
+              </div>
+              <div class="shrink-0"><label class="lbl">시행일</label>
+                <date-box v-model="bdForm.effective_date" box-class="input py-1"></date-box>
+              </div>
+            </div>
             <label class="flex items-center gap-1.5 text-sm cursor-pointer select-none">
               <input type="checkbox" v-model="bdForm.pinned" class="w-4 h-4" /> 맨 위에 고정
             </label>
@@ -6847,6 +6913,24 @@
               </label>
               <span class="ml-2 text-[11px] text-slate-400">파일 하나 {{ bdSizeText(bdMaxFile) }}까지 · 글 합계 {{ bdSizeText(bdMaxPost) }}까지 · 개수 제한 없음</span>
               <div v-if="bdUploading" class="mt-2 text-xs text-indigo-500">올리는 중… {{ bdUpDone }}/{{ bdUpTotal }}</div>
+            </div>
+
+            <!-- 판 이력 -->
+            <div v-if="bdDetail.versioned && bdDetail.versions && bdDetail.versions.length" class="border-t pt-3">
+              <div class="flex items-center gap-2 mb-1">
+                <div class="text-xs font-semibold text-slate-500">판 이력 {{ bdDetail.versions.length }}개</div>
+                <button v-if="bdDetail.versions.length>1" @click="openBdDiff()" class="ml-auto text-xs text-violet-600 hover:underline">↔ 바로 앞 판과 견주기</button>
+              </div>
+              <div class="border rounded-lg divide-y text-xs">
+                <div v-for="v in bdDetail.versions" :key="v.rev" class="px-3 py-2 flex items-center gap-2">
+                  <span class="shrink-0 font-mono px-1.5 py-0.5 rounded"
+                        :class="v.rev===bdDetail.versions[0].rev ? 'bg-violet-100 text-violet-700 font-bold' : 'bg-slate-100 text-slate-500'">v{{ v.rev }}</span>
+                  <span class="truncate flex-1 min-w-0">{{ v.note || v.title }}</span>
+                  <span v-if="v.effective_date" class="shrink-0 text-emerald-600">시행 {{ dd(v.effective_date) }}</span>
+                  <span class="shrink-0 text-slate-400 whitespace-nowrap">{{ v.by }} · {{ dt(v.time) }}</span>
+                  <button v-if="v.rev>1" @click="openBdDiff(v.rev-1, v.rev)" class="shrink-0 text-violet-500 hover:underline">견주기</button>
+                </div>
+              </div>
             </div>
 
             <!-- 읽음 확인 -->
@@ -7939,6 +8023,7 @@ const app = createApp({
       bdQ: '', bdQRaw: '', bdMgr: null, bdFolderForm: null, bdDelAsk: null, bdPrev: null,
       bdMaxFile: 52428800, bdMaxPost: 209715200, bdFilesAll: false, bdReadOpen: false,
       bdUploading: false, bdUpDone: 0, bdUpTotal: 0,
+      bdDiff: null, bdDiffA: null, bdDiffB: null,
       // 그리는 도중에 만들면 갱신이 계속 돌아 화면이 멈춘다. 시작할 때 미리 만들어 둔다.
       colState: buildAllColState(),
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
@@ -8131,6 +8216,9 @@ const app = createApp({
       const all = (this.bdDetail && this.bdDetail.file_list) || [];
       return this.bdFilesAll ? all : all.slice(0, 12);
     },
+    bdVerRevs(){ return ((this.bdDetail && this.bdDetail.versions) || []).map(v=>v.rev); },
+    bdDiffPlus(){ return this.bdDiff ? this.bdDiff.diff.filter(l=>l.t==='+').length : 0; },
+    bdDiffMinus(){ return this.bdDiff ? this.bdDiff.diff.filter(l=>l.t==='-').length : 0; },
     bdUsedBytes(){
       return ((this.bdDetail && this.bdDetail.file_list) || []).reduce((a,b)=>a+(b.size||0), 0);
     },
@@ -12682,10 +12770,12 @@ const app = createApp({
     },
     openBdWrite(){
       if (!this.bdFolderId) return this.notify('폴더를 먼저 고르세요.', false);
-      this.bdForm={ id:null, title:'', body:'', pinned:false }; this.bdView='write'; this._makeBdEditor('');
+      this.bdForm={ id:null, title:'', body:'', pinned:false, note:'', effective_date:'' };
+      this.bdView='write'; this._makeBdEditor('');
     },
     openBdEdit(d){
-      this.bdForm={ id:d.id, title:d.title, body:d.body, pinned:d.pinned };
+      // 개정 사유는 판마다 새로 적는다. 앞 판 것을 물려받으면 안 고쳤는데 고친 것처럼 남는다.
+      this.bdForm={ id:d.id, title:d.title, body:d.body, pinned:d.pinned, note:'', effective_date:'' };
       this.bdView='write'; this._makeBdEditor(d.body||'');
     },
     closeBdWrite(){
@@ -12698,7 +12788,9 @@ const app = createApp({
       const body = this._bdEditor ? this._bdEditor.getMarkdown() : (this.bdForm.body||'');
       try {
         const r = await api('POST','/api/admin/academy/board/post',
-                            { id:this.bdForm.id, folder_id:this.bdFolderId, title, body, pinned:this.bdForm.pinned });
+                            { id:this.bdForm.id, folder_id:this.bdFolderId, title, body,
+                              pinned:this.bdForm.pinned, note:this.bdForm.note,
+                              effective_date:this.bdForm.effective_date || null });
         this._destroyBdEditors(); this.notify('저장되었습니다.'); this.openBdDetail(r.id);
       } catch(e){ this.notify(e.message,false); }
     },
@@ -12781,14 +12873,28 @@ const app = createApp({
         if (this.bdPrev){ this.bdPrev.drawn = true; this.bdPrev.pages = doc.numPages; }
       } catch(e){ if (this.bdPrev) this.bdPrev.drawn = true; }
     },
+    // ── 판 견주기 ──
+    openBdDiff(a, b){
+      const revs = this.bdVerRevs;
+      if (revs.length < 2) return this.notify('견줄 앞 판이 없습니다.', false);
+      this.bdDiffB = b || revs[0];
+      this.bdDiffA = a || (this.bdDiffB - 1);
+      this.loadBdDiff();
+    },
+    async loadBdDiff(){
+      try {
+        this.bdDiff = await api('GET','/api/admin/academy/board/version?post_id='+this.bdDetail.id
+                                + '&a='+this.bdDiffA + '&b='+this.bdDiffB);
+      } catch(e){ this.notify(e.message,false); this.bdDiff=null; }
+    },
     // ── 폴더 관리 ──
     openBdFolderMgr(){ this.bdMgr = true; },
     editBdFolder(f){
       this.bdFolderForm = f
         ? { id:f.id, name:f.name, icon:f.icon, parent_id:f.parent_id, scope:f.scope,
-            branch_id:f.branch_id, need_read:f.need_read, sort_mode:f.sort_mode }
+            branch_id:f.branch_id, need_read:f.need_read, versioned:f.versioned, sort_mode:f.sort_mode }
         : { id:null, name:'', icon:'📁', parent_id:null, scope:'ALL',
-            branch_id:null, need_read:false, sort_mode:'RECENT' };
+            branch_id:null, need_read:false, versioned:false, sort_mode:'RECENT' };
     },
     async saveBdFolder(){
       const f = this.bdFolderForm;
