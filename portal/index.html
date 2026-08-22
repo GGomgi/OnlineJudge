@@ -14737,8 +14737,7 @@ const app = createApp({
       if (!(e.reason||'').trim()) return this.notify('사유를 적어 주세요.', false);
       if (!e.date) return this.notify('적용일을 정해 주세요.', false);
       try {
-        await api('DELETE','/api/admin/academy/student_status?student_id='+this.stuDetail.id);
-        await api('POST','/api/admin/academy/student_status',
+        await api('PUT','/api/admin/academy/student_status',
                   { student_id:this.stuDetail.id, status:e.status, reason:e.reason, effective_date:e.date });
         this.stuPendEdit = null; this.notify('예약을 고쳤습니다.');
         await this.refreshStuDetail(); this.buildStuTimetables(this.stuDetail); this.loadStuFee();

@@ -3146,6 +3146,36 @@ class StudentStatusAdminAPI(APIView):
         return self.success({"timetable": tt_msg})
 
     @admin_role_required
+    @admin_role_required
+    def put(self, request):
+        """잡아 둔 예약을 고친다. 취소하고 다시 잡으면 이력에 두 줄이 남아 어수선하다."""
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        sp = StudentProfile.objects.filter(user=u).first()
+        if not sp or not sp.pending_status:
+            return self.error("잡아 둔 예약이 없습니다.")
+        to_status = data.get("status") or sp.pending_status
+        reason = (data.get("reason") or "").strip()
+        if not reason:
+            return self.error("사유를 적어 주세요.")
+        try:
+            eff = datetime.strptime(data.get("effective_date"), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            return self.error("적용일이 올바르지 않습니다.")
+        today = (now() + timedelta(hours=9)).date()
+        if eff <= today:
+            return self.error("앞날로만 잡을 수 있습니다. 오늘부터 바꾸려면 [상태 변경]을 쓰세요.")
+        sp.pending_status = to_status
+        sp.pending_date = eff
+        sp.pending_reason = reason
+        sp.save(update_fields=["pending_status", "pending_date", "pending_reason"])
+        tt_msg = self._sync_timetables(u, to_status, request.user, reason, str(eff))
+        return self.success({"date": str(eff), "timetable": tt_msg})
     def delete(self, request):
         """예약해 둔 상태 변경 취소. 시간표는 그대로 두고 예약만 푼다(되돌리려면 다시 잡는다)."""
         u = User.objects.filter(id=request.GET.get("student_id")).first()
