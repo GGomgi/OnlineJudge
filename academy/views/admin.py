@@ -2602,9 +2602,9 @@ class StudentTimetableAdminAPI(APIView):
             subject=data.get("subject") or resolve_program_label(prog),
             frequency=data.get("frequency") or "WEEKLY",
             room=data.get("room", "") or "",
-            # 적용 시작일을 남겨야 나중에 같은 요일·시각으로 되돌릴 때 지난 행과 구분된다
-            active_from=(_to_date(data["active_from"]) if data.get("active_from") else None),
-            active_until=(_to_date(data["active_until"]) if data.get("active_until") else None))
+            # 적용 시작일을 남겨야 나중에 같은 요일·시각으로 되돌릴 때 지난 행과 구분된다.
+            # 비워 두면 과거 무한대가 되어 2022년 수업까지 만들어진다 — 오늘부터로 본다.
+            active_from=af_new, active_until=au_new)
         sync_program_to_profile(student, prog, data.get("language") or "")
         slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=slot.pk)
         TimetableChange.objects.create(
@@ -2633,6 +2633,12 @@ class StudentTimetableAdminAPI(APIView):
         for f in ("weekday", "start_time", "duration_minutes", "subject", "room", "status", "frequency"):
             if f in data:
                 setattr(slot, f, data[f])
+        # 끝나는 날은 기간 그 자체라 이력을 나눌 것이 없다. 늘 이 자리에서 바로 고친다.
+        if "active_until" in data:
+            au = data.get("active_until")
+            if au and slot.active_from and au < slot.active_from:
+                return self.error("끝나는 날이 시작일(%s)보다 앞설 수 없습니다." % slot.active_from)
+            slot.active_until = au
         if "program" in data:
             slot.program = data["program"] or ""
             # subject를 명시적으로 함께 보냈으면 그 값을 존중(언어 과정 등 자동 라벨로는 표현 못하는 값 보존).
@@ -3218,12 +3224,18 @@ class StudentStatusAdminAPI(APIView):
             return ""
 
         until = eff - timedelta(days=1)
+        today = (now() + timedelta(hours=9)).date()
+        # 앞날 예약이면 상태를 미리 바꾸지 않는다. 아직 오지 않은 일인데 '휴원 중지'라고
+        # 적히면 지금 멈춘 것으로 읽힌다. 기간만 끊어 두고, 적용일이 오면 apply_due_status 가
+        # 상태를 바꾼다.
+        later = eff > today
         changed = 0
         for s0 in qs:
-            s0.status = new_status
+            if not later:
+                s0.status = new_status
             # 적용일 이전부터 쓰던 시간표만 기간을 끊는다(적용일 이후 시작 예정이면 통째로 끝난 것으로 본다)
             s0.active_until = until if (not s0.active_from or s0.active_from <= until) else s0.active_from
-            s0.save(update_fields=["status", "active_until"])
+            s0.save(update_fields=(["active_until"] if later else ["status", "active_until"]))
             changed += 1
 
         # 적용일 이후로 이미 만들어져 있던 수업 정리 — 실제 기록이 있는 건 사실이므로 남긴다
@@ -4495,6 +4507,17 @@ def apply_due_status(branch_ids=None):
             StudentStatusChange.objects.create(
                 student_id=sp.user_id, from_status=frm, to_status=to,
                 reason=(rsn + " (예약 적용)").strip(), effective_date=eff, actor=None)
+            # 예약할 때는 기간만 끊어 뒀다. 오늘이 그날이므로 이제 상태를 바꾼다.
+            from ..models import TimetableStatus
+            if to == EnrollmentStatus.ON_LEAVE:
+                StudentTimetable.objects.filter(student_id=sp.user_id,
+                                                status=TimetableStatus.ACTIVE,
+                                                active_until__lt=eff).update(status=TimetableStatus.PAUSED)
+            elif to == EnrollmentStatus.WITHDRAWN:
+                StudentTimetable.objects.filter(student_id=sp.user_id,
+                                                active_until__lt=eff) \
+                                        .exclude(status=TimetableStatus.ENDED) \
+                                        .update(status=TimetableStatus.ENDED)
             done += 1
     return done
 

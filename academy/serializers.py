@@ -629,6 +629,10 @@ class CreateStudentTimetableSerializer(serializers.Serializer):
     frequency = serializers.ChoiceField(choices=["WEEKLY", "BIWEEKLY"], required=False)
     room = serializers.CharField(max_length=64, required=False, allow_blank=True)
     class_type = serializers.ChoiceField(choices=[LessonType.PRIVATE, LessonType.GROUP], required=False)
+    # 언제부터 언제까지 쓰는 시간표인가. 여기 없으면 화면이 보내도 입구에서 버려져
+    # 적용 기간이 통째로 비고, 과거 무한대가 된다.
+    active_from = serializers.DateField(required=False, allow_null=True)
+    active_until = serializers.DateField(required=False, allow_null=True)
     reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
 
@@ -643,5 +647,7 @@ class EditStudentTimetableSerializer(serializers.Serializer):
     frequency = serializers.ChoiceField(choices=["WEEKLY", "BIWEEKLY"], required=False)
     room = serializers.CharField(max_length=64, required=False, allow_blank=True)
     status = serializers.ChoiceField(choices=["ACTIVE", "PAUSED", "ENDED"], required=False)
+    # 끝나는 날만 따로 고칠 수 있어야 한다(휴원 예정일이 바뀌면 여기도 바뀐다)
+    active_until = serializers.DateField(required=False, allow_null=True)
     reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
     effective_date = serializers.DateField(required=False, allow_null=True)

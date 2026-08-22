@@ -684,7 +684,7 @@
             <div v-if="stuTimetables.length" class="space-y-2">
               <div v-for="s in stuTtVisibleRows()" :key="s.id || s._tmpId" :class="['rounded-lg border px-2 py-1.5 overflow-x-auto', s.status==='PAUSED' ? 'bg-amber-50' : '', stuTtPhase(s)==='past' ? 'opacity-60' : '', (s.id && ttRowDirty(s)) ? 'ring-1 ring-amber-300' : '', !s.id ? 'ring-1 ring-indigo-300 bg-indigo-50/30' : '']">
                 <div v-if="s.id" class="text-[10px] mb-0.5" :class="{'text-emerald-600':stuTtPhase(s)==='current','text-indigo-500':stuTtPhase(s)==='upcoming','text-slate-400':stuTtPhase(s)==='past'}">
-                  <template v-if="stuTtPhase(s)==='current'">✓ 적용중{{ s.active_from ? ' · '+s.active_from : '' }} ~ {{ s.active_until ? s.active_until+'까지 (이후 아래 예정 시간표로 변경)' : '' }}</template>
+                  <template v-if="stuTtPhase(s)==='current'">✓ 적용중{{ s.active_from ? ' · '+dd(s.active_from) : '' }}<template v-if="s.active_until"> ~ <b>{{ dd(s.active_until) }}</b>까지</template></template>
                   <template v-else-if="stuTtPhase(s)==='upcoming'">🕓 예정 · {{ s.active_from }}부터 적용</template>
                   <template v-else>지난 시간표 · {{ s.active_from||'~' }} ~ {{ s.active_until }}</template>
                 </div>
@@ -696,7 +696,21 @@
                   <div v-if="s.program==='LANG'" class="w-12 shrink-0"><select v-model="s.language" :disabled="!stuTtEditMode" :class="ttCls(s,'language','py-1 !pl-1 !pr-0')"><option value="">언어</option><option v-for="o in (options.program_language||[])" :key="o.value" :value="o.value">{{ langAbbr(o.value) }}</option></select></div>
                   <div class="w-20 shrink-0"><select v-model.number="s._instructor_id" :disabled="!stuTtEditMode" :class="[ttCls(s,'instr','py-1 !pl-1 !pr-0'), !s._instructor_id ? 'ring-2 ring-rose-400 border-rose-400' : '']"><option :value="null">미배정</option><option v-for="t in ttInstructors" :key="t.user_id" :value="t.user_id">{{ t.real_name || t.staff_no }}</option></select></div>
                   <div class="w-14 shrink-0"><select v-model="s.frequency" :disabled="!stuTtEditMode" :class="ttCls(s,'frequency','py-1 !pl-1 !pr-0')"><option value="WEEKLY">매주</option><option value="BIWEEKLY">격주</option></select></div>
-                  <span v-if="s.status==='PAUSED'" class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 shrink-0">휴원중지</span>
+                  <!-- 새 줄은 언제부터 쓰는지 반드시 정해야 한다. 비워 두면 과거 무한대가 되어
+                       2022년 수업까지 만들어진다. 끝나는 날은 비우면 '계속'이다. -->
+                  <template v-if="!s.id">
+                    <span class="text-[10px] text-slate-400 shrink-0 pl-1">적용</span>
+                    <div class="shrink-0"><date-box v-model="s.active_from" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
+                    <span class="text-[10px] text-slate-400 shrink-0">~</span>
+                    <div class="shrink-0"><date-box v-model="s.active_until" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
+                  </template>
+                  <!-- 이미 있는 줄은 끝나는 날만 여기서 고친다. 기간 그 자체라 이력을 나눌 것이 없다 -->
+                  <template v-else-if="stuCanEdit && stuTtEditMode">
+                    <span class="text-[10px] text-slate-400 shrink-0 pl-1">~</span>
+                    <div class="shrink-0"><date-box v-model="s.active_until" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
+                  </template>
+                  <span v-if="s.status==='PAUSED'" class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 shrink-0" title="휴원 처리로 지금 멈춰 있는 시간표">휴원중</span>
+                  <span v-else-if="ttPendingText(s)" class="text-[10px] px-1 rounded bg-indigo-100 text-indigo-700 shrink-0" title="아직 오지 않은 일입니다. 그날이 되면 실제로 바뀝니다.">{{ ttPendingText(s) }}</span>
                   <span class="ml-auto flex gap-2 shrink-0 pl-1 items-center">
                     <template v-if="!s.id">
                       <button v-if="stuCanEdit && stuTtEditMode" @click="createStuTt(s)" class="text-emerald-600 font-bold hover:underline">저장</button>
@@ -1026,7 +1040,22 @@
               <span class="text-violet-700">📌 <b>{{ dd(stuPending.date) }}부터 {{ stuStatusBadge(stuPending.status).label }}</b> 로 잡혀 있습니다</span>
               <span class="text-xs text-violet-500">D-{{ stuPendingDday }}</span>
               <span v-if="stuPending.reason" class="text-xs text-slate-500 truncate">· {{ stuPending.reason }}</span>
-              <button @click="cancelStuPending" class="ml-auto shrink-0 text-xs text-rose-500 hover:underline">예약 취소</button>
+              <button @click="editStuPending" class="ml-auto shrink-0 text-xs text-violet-700 hover:underline">고치기</button>
+              <button @click="cancelStuPending" class="shrink-0 text-xs text-rose-500 hover:underline">예약 취소</button>
+            </div>
+            <!-- 날짜가 밀리는 일이 잦다. 취소하고 다시 잡으면 이력에 두 줄이 남아 어수선하다 -->
+            <div v-if="stuPendEdit" class="rounded-lg border border-violet-300 bg-white px-3 py-2 space-y-2">
+              <div class="text-xs font-semibold text-violet-700">예약 고치기</div>
+              <div class="flex gap-2 items-center">
+                <div class="shrink-0 w-28"><select v-model="stuPendEdit.status" class="input py-1">
+                  <option value="ENROLLED">재원(재등록)</option><option value="ON_LEAVE">휴원</option><option value="WITHDRAWN">퇴원</option>
+                </select></div>
+                <div class="shrink-0"><date-box v-model="stuPendEdit.date" box-class="input py-1"></date-box></div>
+                <input v-model="stuPendEdit.reason" placeholder="사유 (필수)" class="input flex-1 min-w-0 py-1" />
+                <button @click="stuPendEdit=null" class="btn-secondary text-xs shrink-0">취소</button>
+                <button @click="saveStuPending" class="btn-primary text-xs shrink-0">저장</button>
+              </div>
+              <p class="text-[11px] text-slate-400">날짜를 바꾸면 <b>시간표 끝나는 날도 함께</b> 옮겨집니다.</p>
             </div>
 
             <!-- 날짜 칸이 무슨 뜻인지 몰라 볼 때마다 헷갈렸다. 그 자리에서 알 수 있게 적어 둔다 -->
@@ -4521,7 +4550,7 @@
           </thead>
           <tbody>
             <tr v-for="s in filteredTt" :key="s.id" :class="['border-t align-middle', s.status==='ENDED' ? 'bg-rose-50 opacity-70' : (ttSlotEnded(s) ? 'bg-slate-50 opacity-60' : (ttRowDirty(s) ? 'bg-amber-50 ring-1 ring-amber-200' : ''))]">
-              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> <button @click="openStudent({ id:s.student.id }, { history:true })" :class="['hover:underline', s.status==='ENDED' ? 'line-through text-rose-400' : 'text-indigo-700']">{{ s.student.real_name || s.student.username }}</button> <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700" title="휴원 처리로 멈춘 시간표 — 재등록하면 되살아납니다">휴원 중지</span><span v-if="ttSlotEnded(s)" class="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-600" title="적용 기간이 지난 줄(요일·시각을 바꾸면 옛 줄이 이렇게 남습니다)">기간 지남 {{ (s.active_until||'').slice(5) }}</span><span v-if="s.status==='ENDED'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600">종료({{ ttEndKind(s) }})</span></td>
+              <td class="px-3 py-2 whitespace-nowrap"><span v-if="ttRowDirty(s)" title="저장되지 않은 수정">✏️</span> <button @click="openStudent({ id:s.student.id }, { history:true })" :class="['hover:underline', s.status==='ENDED' ? 'line-through text-rose-400' : 'text-indigo-700']">{{ s.student.real_name || s.student.username }}</button> <span class="text-xs text-slate-400">{{ s.branch ? s.branch.name : '' }}</span><span v-if="s.status==='PAUSED'" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700" title="휴원 처리로 지금 멈춰 있는 시간표 — 재등록하면 되살아납니다">휴원중</span><span v-else-if="ttPendingText(s)" class="ml-1 text-[10px] px-1 rounded bg-indigo-100 text-indigo-700" title="아직 오지 않은 일입니다. 그날이 되면 실제로 바뀝니다.">{{ ttPendingText(s) }}</span><span v-if="ttSlotEnded(s)" class="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-600" title="적용 기간이 지난 줄(요일·시각을 바꾸면 옛 줄이 이렇게 남습니다)">기간 지남 {{ (s.active_until||'').slice(5) }}</span><span v-if="s.status==='ENDED'" class="ml-1 text-[10px] px-1 rounded bg-rose-100 text-rose-600">종료({{ ttEndKind(s) }})</span></td>
               <td class="px-3 py-2"><select v-model.number="s.weekday" :disabled="s.status==='ENDED'" style="width:4rem" :class="ttCls(s,'weekday','py-1 px-1')"><option v-for="(d,i) in days" :key="i" :value="i">{{ d }}</option></select></td>
               <td class="px-3 py-2"><input :value="s.start_time" @input="s.start_time = hmTyped($event.target.value)" :disabled="s.status==='ENDED'" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" style="width:5rem" :class="ttCls(s,'start_time','py-1 px-1 text-center font-mono')" /></td>
               <td class="px-3 py-2"><select v-model.number="s.duration_minutes" :disabled="s.status==='ENDED'" style="width:5.5rem" :class="ttCls(s,'duration_minutes','py-1 px-1')"><option v-for="m in durations" :key="m" :value="m">{{ m }}분</option></select></td>
@@ -8271,6 +8300,7 @@ const app = createApp({
       stuRec: { rows:[], kinds:[], can_edit:false, kind:'' },
       stuRecForm: null, stuRecUp: false, stuLinks: [],
       stuAttHist: { rows:[], from:'', to:'', fwdDays:0 },
+      stuPendEdit: null,
       stuVerify: null, vrModal: null, vrPick: {}, vrCustom: {}, vrAdd: {}, vrFmt: {},
       vrShowFormat: false, vrError: '',
       stuMkAll: [], stuMkShowPending: true, stuMkShowFixed: true,
@@ -9607,7 +9637,30 @@ const app = createApp({
       const o = s && s._orig; if (!o) return false;
       return s.weekday!==o.weekday || s.start_time!==o.start_time || s.duration_minutes!==o.duration_minutes
         || (s.program||'')!==(o.program||'') || (s._instructor_id||null)!==(o.instr||null) || s.frequency!==o.frequency
-        || (s.language||'')!==(o.language||'');
+        || (s.language||'')!==(o.language||'') || (s.active_until||'')!==(o.active_until||'');
+    },
+    // 끝나는 날만 바꿨는가. 기간 그 자체라 이력을 나눌 것이 없어 바로 고친다.
+    ttOnlyUntilChanged(s){
+      const o = s && s._orig; if (!o) return false;
+      return (s.active_until||'')!==(o.active_until||'')
+        && s.weekday===o.weekday && s.start_time===o.start_time && s.duration_minutes===o.duration_minutes
+        && (s.program||'')===(o.program||'') && (s._instructor_id||null)===(o.instr||null)
+        && s.frequency===o.frequency && (s.language||'')===(o.language||'');
+    },
+    // 앞으로 이렇게 될 예정이라는 표시. 아직 오지 않은 일을 '휴원중지'라 적으면
+    // 지금 멈춘 것으로 읽힌다.
+    ttPendingText(s){
+      if (!s || !s.id || !s.active_until) return '';
+      const today = this.todayStr;
+      if (s.active_until < today) return '';
+      const d = this.daysBetween(today, s.active_until);
+      const p = (this.stuDetail && this.stuDetail.pending) || null;
+      const what = p ? ({ ON_LEAVE:'휴원', WITHDRAWN:'퇴원' })[p.status] : '';
+      return (what ? what+' 예정' : '종료 예정') + (d > 0 ? ' D-'+d : ' 오늘까지');
+    },
+    daysBetween(a, b){
+      const t = x => { const [y,m,d]=String(x).split('-').map(Number); return Date.UTC(y,m-1,d); };
+      return Math.round((t(b)-t(a)) / 86400000);
     },
     ttDirty(){ return this.ttAll.some(s=>this.ttRowDirty(s)) || (this.showTtAdd && this.ttAddRows.length>0); },
     isDirty(){
@@ -9866,7 +9919,8 @@ const app = createApp({
           const row = { ...s, start_time: this.hm(s.start_time), _instructor_id: s.instructor ? s.instructor.id : null,
                         language: (s.program==='LANG') ? this.parseRowLanguage(s.subject) : '', effective_date: this.todayStr };
           row._orig = { weekday: row.weekday, start_time: row.start_time, duration_minutes: row.duration_minutes,
-                        program: row.program||'', instr: row._instructor_id||null, frequency: row.frequency, language: row.language };
+                        program: row.program||'', instr: row._instructor_id||null, frequency: row.frequency,
+                        language: row.language, active_until: row.active_until||'' };
           return row;
         });
       }
@@ -10766,14 +10820,14 @@ const app = createApp({
     sortArrow(key){ if (this.staffSort.key!==key) return ' ↕'; return this.staffSort.dir>0 ? ' ▲' : ' ▼'; },
     async saveTt(s){
       if (!this.ttRowDirty(s)) return this.notify('변경된 내용이 없습니다.', false);
-      if (!s._fullEdit && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
+      if (!s._fullEdit && !this.ttOnlyUntilChanged(s) && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
       const reason = await this.askInput(s._fullEdit
         ? '전체 수정 이유 (요청자 + 사유까지 적어주세요)\n예) 처음부터 요일이 잘못 입력됨'
         : '시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침');
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
       try {
-        const body = { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, subject:this.rowSubject(s), frequency:s.frequency, reason };
-        if (!s._fullEdit) body.effective_date = s.effective_date;
+        const body = { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, subject:this.rowSubject(s), frequency:s.frequency, active_until:(s.active_until || null), reason };
+        if (!s._fullEdit && !this.ttOnlyUntilChanged(s)) body.effective_date = s.effective_date;
         await api('PUT','/api/admin/academy/student_timetable', body);
         this.notify(s._fullEdit ? '저장되었습니다(전체 수정).' : '저장되었습니다('+s.effective_date+'부터 적용).'); this.loadAllTt();
       } catch(e){ this.notify(e.message,false); }
@@ -14519,14 +14573,18 @@ const app = createApp({
       this._stuTtTmpSeq = (this._stuTtTmpSeq||0) + 1;
       this.stuTimetables.push({ _tmpId:'new'+this._stuTtTmpSeq, id:null, weekday:0, start_time:'', duration_minutes:60,
         program:'', language:'', subject:'', _instructor_id:null, frequency:'WEEKLY', status:'ACTIVE',
+        active_from:this.todayStr, active_until:'',
         student:{ id:this.stuDetail.id, real_name:this.stuDetail.real_name, username:this.stuDetail.username } });
     },
     removeStuTtRow(s){ this.stuTimetables = this.stuTimetables.filter(r=>r!==s); },
     async createStuTt(s){
       if (!s.start_time) return this.notify('시작 시간을 입력하세요.', false);
       try {
+        if (!s.active_from) return this.notify('언제부터 쓰는 시간표인지 정해 주세요.', false);
+        if (s.active_until && s.active_until < s.active_from) return this.notify('끝나는 날이 시작일보다 앞섭니다.', false);
         await api('POST','/api/admin/academy/student_timetable', { student_id:this.stuDetail.id, weekday:s.weekday, start_time:s.start_time,
-          duration_minutes:s.duration_minutes, instructor_id:s._instructor_id||null, program:s.program, subject:this.rowSubject(s), frequency:s.frequency });
+          duration_minutes:s.duration_minutes, instructor_id:s._instructor_id||null, program:s.program, subject:this.rowSubject(s),
+          frequency:s.frequency, active_from:s.active_from, active_until:s.active_until || null });
         this.notify('시간표가 추가되었습니다.');
         await this.refreshStuDetail(); this.buildStuTimetables(this.stuDetail); this.loadStudents();
         this.loadStuFee();       // 시간표가 바뀌면 원비도 따라간다
@@ -14547,13 +14605,13 @@ const app = createApp({
     async saveAllStuTt(){
       const rows = this.stuTimetables.filter(s=>s.id && this.ttRowDirty(s));
       if (!rows.length) return this.notify('변경된 내용이 없습니다.', false);
-      for (const s of rows){ if (!s._fullEdit && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false); }
+      for (const s of rows){ if (!s._fullEdit && !this.ttOnlyUntilChanged(s) && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false); }
       const reason = await this.askInput('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침'+(rows.length>1 ? '\n(변경된 '+rows.length+'건에 함께 기록됩니다)' : ''));
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
       const bodies = rows.map(s=>{
         const b = { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes,
-                    instructor_id:s._instructor_id||null, program:s.program, subject:this.rowSubject(s), frequency:s.frequency, reason };
-        if (!s._fullEdit) b.effective_date = s.effective_date;
+                    instructor_id:s._instructor_id||null, program:s.program, subject:this.rowSubject(s), frequency:s.frequency, active_until:(s.active_until || null), reason };
+        if (!s._fullEdit && !this.ttOnlyUntilChanged(s)) b.effective_date = s.effective_date;
         return b;
       });
       try {
@@ -14564,14 +14622,14 @@ const app = createApp({
     },
     async saveStuTt(s){
       if (!this.ttRowDirty(s)) return this.notify('변경된 내용이 없습니다.', false);
-      if (!s._fullEdit && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
+      if (!s._fullEdit && !this.ttOnlyUntilChanged(s) && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
       const reason = await this.askInput(s._fullEdit
         ? '전체 수정 이유 (요청자 + 사유까지 적어주세요)\n예) 처음부터 요일이 잘못 입력됨'
         : '시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침');
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
       try {
-        const body = { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, subject:this.rowSubject(s), frequency:s.frequency, reason };
-        if (!s._fullEdit) body.effective_date = s.effective_date;
+        const body = { id:s.id, weekday:s.weekday, start_time:s.start_time, duration_minutes:s.duration_minutes, instructor_id: s._instructor_id || null, program:s.program, subject:this.rowSubject(s), frequency:s.frequency, active_until:(s.active_until || null), reason };
+        if (!s._fullEdit && !this.ttOnlyUntilChanged(s)) body.effective_date = s.effective_date;
         await api('PUT','/api/admin/academy/student_timetable', body);
         this.notify(s._fullEdit ? '수정되었습니다(전체 수정).' : '수정되었습니다('+s.effective_date+'부터 적용).');
         await this.refreshStuDetail(); this.buildStuTimetables(this.stuDetail); this.loadStudents();
@@ -14668,6 +14726,23 @@ const app = createApp({
     async restoreStuLog(g){
       try { const lead = await api('DELETE','/api/admin/academy/lead/note?log_id='+g.id+'&hidden=0'); this.stuDetail.lead = lead; this.notify('복원되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
+    },
+    editStuPending(){
+      const p = this.stuPending;
+      this.stuPendEdit = { status:p.status, date:p.date, reason:p.reason||'' };
+    },
+    // 취소하고 다시 잡으면 이력에 두 줄이 남아 어수선하다. 한 번에 고쳐 준다.
+    async saveStuPending(){
+      const e = this.stuPendEdit;
+      if (!(e.reason||'').trim()) return this.notify('사유를 적어 주세요.', false);
+      if (!e.date) return this.notify('적용일을 정해 주세요.', false);
+      try {
+        await api('DELETE','/api/admin/academy/student_status?student_id='+this.stuDetail.id);
+        await api('POST','/api/admin/academy/student_status',
+                  { student_id:this.stuDetail.id, status:e.status, reason:e.reason, effective_date:e.date });
+        this.stuPendEdit = null; this.notify('예약을 고쳤습니다.');
+        await this.refreshStuDetail(); this.buildStuTimetables(this.stuDetail); this.loadStuFee();
+      } catch(err){ this.notify(err.message,false); }
     },
     async cancelStuPending(){
       if (!await this.askConfirm('잡아 둔 상태 변경을 취소합니다.\n시간표는 그대로 두므로, 되돌리려면 시간표를 다시 확인해 주세요.')) return;
