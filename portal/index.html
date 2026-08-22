@@ -2090,14 +2090,17 @@
           <span v-if="f.allow_comments" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600">덧글</span>
           <span v-if="f.write_scope" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">쓰기 {{ bdScopeLabel(f.write_scope) }}</span>
           <span v-if="f.scope!=='ALL'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ f.scope==='BRANCH' ? f.group_label : bdScopeLabel(f.scope) }}</span>
-          <span class="flex items-center gap-1 shrink-0">
+          <span v-if="bdFolderEditable(f)" class="flex items-center gap-1 shrink-0">
             <button @click="moveBdFolder(f,-1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">◀</button>
             <button @click="moveBdFolder(f,1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▶</button>
             <button @click="editBdFolder(f)" class="px-1.5 h-6 rounded border border-slate-200 text-[11px] text-slate-500 hover:bg-white">고치기</button>
             <button @click="askDeleteBdFolder(f)" class="px-1.5 h-6 rounded border border-rose-100 text-[11px] text-rose-400 hover:bg-rose-50">지우기</button>
           </span>
         </div>
-        <button @click="editBdFolder(null)" class="w-full px-3 py-2 rounded border border-dashed border-slate-300 text-sm text-slate-500 hover:bg-slate-50">+ 폴더 만들기</button>
+        <div class="flex gap-2">
+          <button v-if="bdCanEdit" @click="editBdFolder(null)" class="flex-1 px-3 py-2 rounded border border-dashed border-slate-300 text-sm text-slate-500 hover:bg-slate-50">+ 함께 쓰는 폴더</button>
+          <button @click="editBdFolder(null,'PRIVATE')" class="flex-1 px-3 py-2 rounded border border-dashed border-violet-300 text-sm text-violet-600 hover:bg-violet-50">+ 내 폴더</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2126,6 +2129,7 @@
             <select v-model="bdFolderForm.scope" class="input px-2">
               <option value="ALL">전 직원</option><option value="DIRECTOR">원장 이상</option>
               <option value="HQ">본부만</option><option value="BRANCH">지점 한정</option>
+              <option value="PRIVATE">나만 (개인 폴더)</option>
             </select>
           </div>
           <div v-if="bdFolderForm.scope==='BRANCH'" class="flex-1 min-w-0"><label class="lbl">지점</label>
@@ -2135,7 +2139,10 @@
             </select>
           </div>
         </div>
-        <div class="flex gap-2">
+        <p v-if="bdFolderForm.scope==='PRIVATE'" class="text-[11px] text-violet-600 bg-violet-50 rounded px-2 py-1.5 leading-snug">
+          나만 보는 서랍입니다. <b>원장도 본부도 못 봅니다.</b> 아래 설정은 뜻이 없어 감춥니다.
+        </p>
+        <div v-if="bdFolderForm.scope!=='PRIVATE'" class="flex gap-2">
           <div class="flex-1 min-w-0"><label class="lbl">정렬</label>
             <select v-model="bdFolderForm.sort_mode" class="input px-2">
               <option value="RECENT">최신 순 (공지·규정)</option><option value="MANUAL">직접 순서 (자료)</option>
@@ -2150,20 +2157,20 @@
             </select>
           </div>
         </div>
-        <label class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
+        <label v-if="bdFolderForm.scope!=='PRIVATE'" class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
           <input type="checkbox" v-model="bdFolderForm.allow_comments" class="w-4 h-4 mt-0.5" />
           <span>덧글 받기
             <span class="block text-[11px] text-slate-400">자료·공지에는 물어볼 것이 생깁니다. 규정에는 오히려 어수선합니다.</span>
           </span>
         </label>
-        <label class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
+        <label v-if="bdFolderForm.scope!=='PRIVATE'" class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
           <input type="checkbox" v-model="bdFolderForm.need_read" class="w-4 h-4 mt-0.5" />
           <span>읽음 확인
             <span class="block text-[11px] text-slate-400">켜면 오늘 운영에 안 읽은 글 띠가 뜨고, 누가 읽었는지 남습니다.</span>
           </span>
         </label>
         <!-- 사규처럼 '언제 무엇이 바뀌었나'를 대야 하는 글에만 켠다. 수업자료에는 성가시다 -->
-        <label class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
+        <label v-if="bdFolderForm.scope!=='PRIVATE'" class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
           <input type="checkbox" v-model="bdFolderForm.versioned" class="w-4 h-4 mt-0.5" />
           <span>판 관리
             <span class="block text-[11px] text-slate-400">고칠 때마다 판이 쌓이고, 무엇이 늘고 줄었는지 견줘 볼 수 있습니다. 개정 사유·시행일도 남습니다.</span>
@@ -6980,7 +6987,6 @@
         <h2 class="text-lg font-bold">게시판 <span class="text-sm font-normal text-slate-400">(공지 · 규정 · 자료)</span></h2>
         <div class="flex items-center gap-2">
           <search-box v-model="bdQRaw" placeholder="제목·내용"></search-box>
-          <button v-if="bdCanEdit" @click="openBdFolderMgr" class="px-2 py-1.5 rounded border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 whitespace-nowrap">⚙ 폴더 관리</button>
           <button v-if="bdFolder && bdCanWrite" @click="openBdWrite" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 글쓰기</button>
         </div>
       </div>
@@ -7000,6 +7006,9 @@
             </div>
           </template>
           <div v-if="!bdTree.length" class="px-3 py-6 text-center text-xs text-slate-400">폴더가 없습니다.</div>
+          <div class="border-t mt-2 pt-2 px-2">
+            <button @click="openBdFolderMgr" class="w-full text-left px-1 py-1 text-[11px] text-slate-400 hover:text-slate-600">⚙ 폴더 관리</button>
+          </div>
         </div>
 
         <div class="flex-1 min-w-0">
@@ -8496,7 +8505,8 @@ const app = createApp({
         if (!by[f.group_key]){ by[f.group_key] = { key:f.group_key, label:f.group_label, rows:[] }; out.push(by[f.group_key]); }
         by[f.group_key].rows.push(f);
       }
-      return out.sort((a,b)=> (a.key==='all'?-1:0) - (b.key==='all'?-1:0) || a.label.localeCompare(b.label,'ko'));
+      const rank = k => (k==='all' ? 0 : (k==='mine' ? 2 : 1));   // 전 지점 · 지점 · 내 폴더
+      return out.sort((a,b)=> rank(a.key)-rank(b.key) || a.label.localeCompare(b.label,'ko'));
     },
     bdAllFiles(){
       const saved = (this.bdForm.file_list||[]).map(f=>({ key:'s'+f.id, id:f.id, name:f.name,
@@ -13312,7 +13322,17 @@ const app = createApp({
     },
     // ── 폴더 관리 ──
     openBdFolderMgr(){ this.bdMgr = true; },
-    editBdFolder(f){
+    bdFolderEditable(f){
+      // 개인 폴더는 만든 사람만, 나머지는 원장 이상
+      return f.scope==='PRIVATE' ? f.mine : this.bdCanEdit;
+    },
+    editBdFolder(f, scope){
+      if (!f && scope==='PRIVATE'){
+        this.bdFolderForm = { id:null, name:'', icon:'🗂', parent_id:null, scope:'PRIVATE',
+                              branch_id:null, need_read:false, versioned:false,
+                              allow_comments:false, write_scope:'', sort_mode:'RECENT' };
+        return;
+      }
       this.bdFolderForm = f
         ? { id:f.id, name:f.name, icon:f.icon, parent_id:f.parent_id, scope:f.scope,
             branch_id:f.branch_id, need_read:f.need_read, versioned:f.versioned,

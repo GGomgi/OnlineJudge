@@ -56,7 +56,10 @@ def _is_super(user):
     return getattr(user, "admin_type", "") == "Super Admin"
 
 
-def _can_see(folder, role, branch_id, is_super):
+def _can_see(folder, role, branch_id, is_super, user=None):
+    # 개인 폴더는 만든 사람만. 원장도 본부도 못 본다 — 그래야 개인 전용이다.
+    if folder.scope == "PRIVATE":
+        return bool(user) and folder.created_by_id == user.id
     if is_super:
         return True
     if folder.scope == "ALL":
@@ -70,10 +73,12 @@ def _can_see(folder, role, branch_id, is_super):
     return False
 
 
-def _can_write(folder, role, branch_id, is_super):
+def _can_write(folder, role, branch_id, is_super, user=None):
     """글을 쓸 수 있는가. 폴더에 따로 정해 두지 않았으면 볼 수 있으면 쓸 수 있다."""
-    if not _can_see(folder, role, branch_id, is_super):
+    if not _can_see(folder, role, branch_id, is_super, user):
         return False
+    if folder.scope == "PRIVATE":
+        return True
     ws = folder.write_scope or ""
     if not ws:
         return True
@@ -91,6 +96,13 @@ def _can_edit_folders(user):
     return _is_super(user) or _role_of(user)[0] in _DIRECTOR_UP
 
 
+def _folder_editable(f, user):
+    """이 폴더를 고치고 지울 수 있는가. 개인 폴더는 만든 사람, 나머지는 원장 이상."""
+    if f.scope == "PRIVATE":
+        return f.created_by_id == user.id
+    return _can_edit_folders(user)
+
+
 def _kind_of(ext):
     if ext in IMG_EXT:
         return "img"
@@ -103,15 +115,18 @@ def _kind_of(ext):
     return "etc"
 
 
-def _folder_row(f, unread=0, posts=0, multi=False):
+def _folder_row(f, unread=0, posts=0, multi=False, me=None):
     # 이름표를 줄마다 다는 대신 덩어리로 묶는다. 대부분이 우리 지점 폴더라 [전 지점]을
     # 붙이든 [우리 지점만]을 붙이든 흩어져 읽기 어렵다. 묶어 두면 이름표가 필요 없다.
-    if f.scope == "BRANCH" and f.branch_id:
+    mine = bool(me and f.created_by_id == me.id)
+    if f.scope == "PRIVATE":
+        gk, gl = "mine", "내 폴더"
+    elif f.scope == "BRANCH" and f.branch_id:
         gk, gl = "b%d" % f.branch_id, f.branch.name
     else:
         gk, gl = "all", "전 지점"
     return {"id": f.id, "name": f.name, "parent_id": f.parent_id, "icon": f.icon,
-            "group_key": gk, "group_label": gl,
+            "group_key": gk, "group_label": gl, "mine": mine,
             "scope": f.scope, "branch_id": f.branch_id, "need_read": f.need_read,
             "versioned": f.versioned, "allow_comments": f.allow_comments,
             "write_scope": f.write_scope,
@@ -151,7 +166,7 @@ class BoardFolderAPI(APIView):
         sup = _is_super(me)
         folders = [f for f in BoardFolder.objects.filter(is_deleted=False)
                    .select_related("parent", "branch")
-                   if _can_see(f, role, bid, sup)]
+                   if _can_see(f, role, bid, sup, me)]
         ids = [f.id for f in folders]
         counts, unread = {}, {}
         for p in BoardPost.objects.filter(is_deleted=False, folder_id__in=ids) \
@@ -168,9 +183,9 @@ class BoardFolderAPI(APIView):
                     unread[fid] = unread.get(fid, 0) + 1
         view = viewable_branch_ids(me)
         multi = (view is None or len(view) > 1)
-        rows = [_folder_row(f, unread.get(f.id, 0), counts.get(f.id, 0), multi) for f in folders]
+        rows = [_folder_row(f, unread.get(f.id, 0), counts.get(f.id, 0), multi, me) for f in folders]
         return self.success({
-            "rows": rows, "can_edit": _can_edit_folders(me),
+            "rows": rows, "can_edit": _can_edit_folders(me), "can_private": True,
             "max_depth": MAX_DEPTH, "max_file": MAX_FILE, "max_post": MAX_POST,
             "branches": [{"id": b.id, "name": b.name}
                          for b in Branch.objects.filter(is_active=True)],
@@ -181,9 +196,10 @@ class BoardFolderAPI(APIView):
         _d = menu_denied(request.user, "board")
         if _d:
             return self.error(_d)
-        if not _can_edit_folders(request.user):
-            return self.error("폴더는 원장 이상만 만들 수 있습니다.")
         d = request.data
+        # 개인 폴더는 누구나 만든다. 남이 못 보는 자기 서랍이라 막을 까닭이 없다.
+        if (d.get("scope") or "ALL") != "PRIVATE" and not _can_edit_folders(request.user):
+            return self.error("함께 쓰는 폴더는 원장 이상만 만들 수 있습니다.")
         name = (d.get("name") or "").strip()
         if not name:
             return self.error("폴더 이름을 적어 주세요.")
@@ -204,6 +220,10 @@ class BoardFolderAPI(APIView):
                     if x.id == f.id:
                         return self.error("폴더를 자기 아래로 옮길 수 없습니다.")
                     x = x.parent
+            if f.scope == "PRIVATE" and f.created_by_id != request.user.id:
+                return self.error("남의 개인 폴더는 고칠 수 없습니다.")
+            if f.scope != "PRIVATE" and not _can_edit_folders(request.user):
+                return self.error("함께 쓰는 폴더는 원장 이상만 고칠 수 있습니다.")
             f.name, f.parent = name, parent
         else:
             sib = BoardFolder.objects.filter(parent=parent, is_deleted=False).count()
@@ -211,6 +231,8 @@ class BoardFolderAPI(APIView):
         f.icon = (d.get("icon") or "")[:8]
         f.scope = d.get("scope") or "ALL"
         f.branch_id = d.get("branch_id") if f.scope == "BRANCH" else None
+        if f.scope == "PRIVATE" and not f.created_by_id:
+            f.created_by = request.user
         f.need_read = bool(d.get("need_read"))
         f.versioned = bool(d.get("versioned"))
         f.allow_comments = bool(d.get("allow_comments"))
@@ -225,11 +247,11 @@ class BoardFolderAPI(APIView):
         _d = menu_denied(request.user, "board")
         if _d:
             return self.error(_d)
-        if not _can_edit_folders(request.user):
-            return self.error("폴더는 원장 이상만 고칠 수 있습니다.")
         f = BoardFolder.objects.filter(id=request.data.get("id"), is_deleted=False).first()
         if not f:
             return self.error("폴더가 없습니다.")
+        if not _folder_editable(f, request.user):
+            return self.error("이 폴더를 고칠 권한이 없습니다.")
         sibs = list(BoardFolder.objects.filter(parent_id=f.parent_id, is_deleted=False)
                     .order_by("order", "id"))
         i = [x.id for x in sibs].index(f.id)
@@ -250,11 +272,11 @@ class BoardFolderAPI(APIView):
         _d = menu_denied(request.user, "board")
         if _d:
             return self.error(_d)
-        if not _can_edit_folders(request.user):
-            return self.error("폴더는 원장 이상만 지울 수 있습니다.")
         f = BoardFolder.objects.filter(id=request.GET.get("id"), is_deleted=False).first()
         if not f:
             return self.error("폴더가 없습니다.")
+        if not _folder_editable(f, request.user):
+            return self.error("이 폴더를 지울 권한이 없습니다.")
         kids = list(BoardFolder.objects.filter(parent=f, is_deleted=False))
         posts = BoardPost.objects.filter(folder=f, is_deleted=False)
         n_posts = posts.count()
@@ -314,7 +336,7 @@ class BoardPostAPI(APIView):
                                  .select_related("folder", "author").first()
             if not p:
                 return self.error("글이 없습니다.")
-            if not _can_see(p.folder, role, bid, sup):
+            if not _can_see(p.folder, role, bid, sup, me):
                 return self.error("이 폴더를 볼 권한이 없습니다.")
             if p.folder.need_read:
                 BoardRead.objects.get_or_create(post=p, user=me)
@@ -322,7 +344,7 @@ class BoardPostAPI(APIView):
             d["folder_name"] = p.folder.name
             d["can_edit"] = sup or p.author_id == me.id or role in _DIRECTOR_UP
             d["versioned"] = p.folder.versioned
-            d["can_write"] = _can_write(p.folder, role, bid, sup)
+            d["can_write"] = _can_write(p.folder, role, bid, sup, me)
             d["allow_comments"] = p.folder.allow_comments
             if p.folder.allow_comments:
                 d["comments"] = [
@@ -351,7 +373,7 @@ class BoardPostAPI(APIView):
         f = BoardFolder.objects.filter(id=request.GET.get("folder_id"), is_deleted=False).first()
         if not f:
             return self.error("폴더를 고르세요.")
-        if not _can_see(f, role, bid, sup):
+        if not _can_see(f, role, bid, sup, me):
             return self.error("이 폴더를 볼 권한이 없습니다.")
         qs = BoardPost.objects.filter(folder=f, is_deleted=False) \
                               .select_related("author").prefetch_related("students", "files")
@@ -370,7 +392,7 @@ class BoardPostAPI(APIView):
                 r["read"] = r["id"] in seen
         return self.success({"rows": rows, "folder": _folder_row(f),
                              "folder_name": f.name, "need_read": f.need_read,
-                             "can_write": _can_write(f, role, bid, sup)})
+                             "can_write": _can_write(f, role, bid, sup, me)})
 
     @admin_role_required
     def post(self, request):
@@ -384,7 +406,7 @@ class BoardPostAPI(APIView):
         f = BoardFolder.objects.filter(id=d.get("folder_id"), is_deleted=False).first()
         if not f:
             return self.error("폴더를 고르세요.")
-        if not _can_write(f, role, bid, sup):
+        if not _can_write(f, role, bid, sup, me):
             return self.error("이 폴더에 글을 쓸 권한이 없습니다.")
         title = (d.get("title") or "").strip()
         if not title:
@@ -547,7 +569,7 @@ class BoardVersionAPI(APIView):
         if not p:
             return self.error("글이 없습니다.")
         role, bid = _role_of(request.user)
-        if not _can_see(p.folder, role, bid, _is_super(request.user)):
+        if not _can_see(p.folder, role, bid, _is_super(request.user), request.user):
             return self.error("이 폴더를 볼 권한이 없습니다.")
         vs = {v.rev: v for v in BoardPostVersion.objects.filter(post=p).select_related("author")}
         if not vs:
@@ -738,7 +760,7 @@ class StudentBoardLinkAPI(APIView):
         rows = []
         for p in BoardPost.objects.filter(students__id=sid, is_deleted=False) \
                                   .select_related("folder", "author").order_by("-id")[:200]:
-            if not _can_see(p.folder, role, bid, sup):
+            if not _can_see(p.folder, role, bid, sup, me):
                 continue
             rows.append({"id": p.id, "folder_id": p.folder_id, "folder": p.folder.name,
                          "icon": p.folder.icon, "title": p.title,
@@ -760,7 +782,7 @@ class BoardCommentAPI(APIView):
         if not p:
             return self.error("글이 없습니다.")
         role, bid = _role_of(request.user)
-        if not _can_see(p.folder, role, bid, _is_super(request.user)):
+        if not _can_see(p.folder, role, bid, _is_super(request.user), request.user):
             return self.error("이 폴더를 볼 권한이 없습니다.")
         if not p.folder.allow_comments:
             return self.error("이 폴더는 덧글을 받지 않습니다.")

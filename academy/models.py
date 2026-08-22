@@ -1891,7 +1891,9 @@ class BoardFolder(models.Model):
     깊이는 3단까지. 수업자료 > Python > 3주차 면 충분하고 더 깊으면 찾다가 지친다.
     """
     SCOPE_CHOICES = (("ALL", "전 직원"), ("DIRECTOR", "원장 이상"),
-                     ("HQ", "본부만"), ("BRANCH", "지점 한정"))
+                     ("HQ", "본부만"), ("BRANCH", "지점 한정"),
+                     # 만든 사람만. 원장도 본부도 못 본다 — 그래야 개인 전용이다.
+                     ("PRIVATE", "나만"))
     ORDER_CHOICES = (("RECENT", "최신 순"), ("MANUAL", "직접 순서"))
 
     name = models.CharField(max_length=64)
