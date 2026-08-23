@@ -9582,11 +9582,12 @@ const app = createApp({
         {v:'HQ_ADMIN', l:'본부 관리자', allBranch:true},
         {v:'HR_ADMIN', l:'인사 관리자', allBranch:true},
         {v:'REGIONAL_MANAGER', l:'지부장', allBranch:true, regional:true},
-        {v:'EXTERNAL_INSTRUCTOR_ADMIN', l:'외부 강사', allBranch:true},
         {v:'BRANCH_MANAGER', l:'원장'},
         {v:'VICE_PRINCIPAL', l:'부원장'},
         {v:'INSTRUCTOR', l:'강사'},
         {v:'TA', l:'조교'},
+        // 외부 강사는 지점에 붙는다. 본부로 두면 네 지점 학생이 전부 열린다.
+        {v:'EXTERNAL_INSTRUCTOR_ADMIN', l:'외부 강사'},
       ];
       // 본부(전지점)만 전지점 역할(본부·인사·지부장·외부강사)을 부여할 수 있음.
       return this.isActorAllBranch ? all : all.filter(r=>!r.allBranch);

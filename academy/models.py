@@ -77,9 +77,11 @@ ACADEMY_ROLE_CHOICES = [
 ]
 
 # 전(全) 지점 범위 역할 (단일 지점에 묶이지 않음 → branch null 허용)
-# 외부 강사는 특정 지점 소속이 아니라 본부 소속으로 둔다.
-ALL_BRANCH_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN,
-                    AcademyRole.EXTERNAL_INSTRUCTOR_ADMIN}
+#
+# 외부 강사는 여기 넣지 않는다. 본부 소속으로 두면 네 지점 학생 명단과 연락처가
+# 전부 열린다 — 가장 좁아야 할 자리가 가장 넓어진다. 실제로도 한 지점에 와서
+# 수업하므로 그 지점에 붙인다. 여러 지점을 도는 사람은 managed_branches 로 더한다.
+ALL_BRANCH_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN}
 
 # 교직원(관리자측) 역할
 STAFF_ROLES = {

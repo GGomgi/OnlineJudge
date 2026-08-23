@@ -25,7 +25,7 @@ ROLE_PROBLEM_PERMISSION = {
     AcademyRole.VICE_PRINCIPAL: ProblemPermission.OWN,
     AcademyRole.INSTRUCTOR: ProblemPermission.OWN,
     AcademyRole.TA: ProblemPermission.OWN,
-    AcademyRole.EXTERNAL_INSTRUCTOR_ADMIN: ProblemPermission.OWN,
+    AcademyRole.EXTERNAL_INSTRUCTOR_ADMIN: ProblemPermission.OWN,   # 자기가 낸 문제만
     AcademyRole.STUDENT: ProblemPermission.NONE,
     AcademyRole.PARENT: ProblemPermission.NONE,
 }
