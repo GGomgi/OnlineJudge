@@ -2088,11 +2088,12 @@
           <span v-if="f.need_read" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-600">읽음확인</span>
           <span v-if="f.versioned" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-violet-50 text-violet-600">판관리</span>
           <span v-if="f.allow_comments" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600">덧글</span>
+          <span v-if="f.pin" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-emerald-50 text-emerald-600">접어도</span>
           <span v-if="f.write_scope" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">쓰기 {{ bdScopeLabel(f.write_scope) }}</span>
           <span v-if="f.scope!=='ALL'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ f.scope==='BRANCH' ? f.group_label : bdScopeLabel(f.scope) }}</span>
           <span v-if="bdFolderEditable(f)" class="flex items-center gap-1 shrink-0">
-            <button @click="moveBdFolder(f,-1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">◀</button>
-            <button @click="moveBdFolder(f,1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▶</button>
+            <button @click="moveBdFolder(f,-1)" title="위로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▲</button>
+            <button @click="moveBdFolder(f,1)" title="아래로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▼</button>
             <button @click="editBdFolder(f)" class="px-1.5 h-6 rounded border border-slate-200 text-[11px] text-slate-500 hover:bg-white">고치기</button>
             <button @click="askDeleteBdFolder(f)" class="px-1.5 h-6 rounded border border-rose-100 text-[11px] text-rose-400 hover:bg-rose-50">지우기</button>
           </span>
@@ -2129,7 +2130,7 @@
             <select v-model="bdFolderForm.scope" class="input px-2">
               <option value="ALL">전 직원</option><option value="DIRECTOR">원장 이상</option>
               <option value="HQ">본부만</option><option value="BRANCH">지점 한정</option>
-              <option value="PRIVATE">나만 (개인 폴더)</option>
+              <option value="PRIVATE">개인 (내 서랍)</option>
             </select>
           </div>
           <div v-if="bdFolderForm.scope==='BRANCH'" class="flex-1 min-w-0"><label class="lbl">지점</label>
@@ -2139,8 +2140,8 @@
             </select>
           </div>
         </div>
-        <p v-if="bdFolderForm.scope==='PRIVATE'" class="text-[11px] text-violet-600 bg-violet-50 rounded px-2 py-1.5 leading-snug">
-          나만 보는 서랍입니다. <b>원장도 본부도 못 봅니다.</b> 아래 설정은 뜻이 없어 감춥니다.
+        <p v-if="bdFolderForm.scope==='PRIVATE'" class="text-[11px] text-slate-400 leading-snug">
+          내가 쓰는 서랍입니다. 아래 설정은 뜻이 없어 감춥니다.
         </p>
         <div v-if="bdFolderForm.scope!=='PRIVATE'" class="flex gap-2">
           <div class="flex-1 min-w-0"><label class="lbl">정렬</label>
@@ -2161,6 +2162,12 @@
           <input type="checkbox" v-model="bdFolderForm.allow_comments" class="w-4 h-4 mt-0.5" />
           <span>덧글 받기
             <span class="block text-[11px] text-slate-400">자료·공지에는 물어볼 것이 생깁니다. 규정에는 오히려 어수선합니다.</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
+          <input type="checkbox" v-model="bdFolderForm.pin" class="w-4 h-4 mt-0.5" />
+          <span>접어도 보임
+            <span class="block text-[11px] text-slate-400">덩어리를 접어도 이 폴더만은 남습니다. 공지처럼 늘 눈에 있어야 하는 것에 켭니다.</span>
           </span>
         </label>
         <label v-if="bdFolderForm.scope!=='PRIVATE'" class="flex items-start gap-1.5 text-sm cursor-pointer select-none">
@@ -6994,8 +7001,15 @@
         <!-- 폴더 트리 — 꾸미지 않는다. 많아질수록 글자만 보여야 찾기 쉽다 -->
         <div class="w-52 shrink-0 bg-white rounded-xl shadow-sm py-2">
           <template v-for="g in bdGroups" :key="g.key">
-            <div class="px-2 pt-2 pb-1 text-[11px] font-semibold text-slate-400 border-t first:border-t-0 first:pt-0">{{ g.label }}</div>
-            <div v-for="f in g.rows" :key="f.id" @click="pickBdFolder(f)"
+            <button @click="toggleBdGroup(g.key)"
+                    class="w-full flex items-center gap-1 px-2 pt-2 pb-1 text-[11px] font-semibold text-slate-400 border-t first:border-t-0 first:pt-0 hover:text-slate-600">
+              <span class="text-slate-300">{{ bdGroupOpen(g.key) ? '▾' : '▸' }}</span>
+              <span class="truncate">{{ g.label }}</span>
+              <span v-if="!bdGroupOpen(g.key) && g.hiddenUnread" class="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[18px] text-center">{{ g.hiddenUnread }}</span>
+              <span v-else-if="!bdGroupOpen(g.key)" class="ml-auto shrink-0 text-[10px] text-slate-300">{{ g.rows.length }}</span>
+            </button>
+            <!-- 접어도 [접어도 보임]을 켠 폴더는 남는다. 공지는 늘 눈에 있어야 한다 -->
+            <div v-for="f in bdGroupRows(g)" :key="f.id" @click="pickBdFolder(f)"
                  :class="['flex items-center gap-1 px-2 py-1.5 text-sm cursor-pointer',
                           bdFolderId===f.id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50']"
                  :style="{ paddingLeft: (0.5 + (f.depth-1)*0.9) + 'rem' }">
@@ -8293,6 +8307,7 @@ const app = createApp({
       bdUploading: false, bdUpDone: 0, bdUpTotal: 0,
       bdDiff: null, bdDiffA: null, bdDiffB: null, bdStuQ: '', bdStuQRaw: '',
       bdCanWrite: true, bdCommentDraft: '', bdPending: [], _bdKey: 0, bdDrag: '',
+      bdClosed: (()=>{ try { return JSON.parse(localStorage.getItem('portal_board_closed')||'[]'); } catch(e){ return []; } })(),
       // 그리는 도중에 만들면 갱신이 계속 돌아 화면이 멈춘다. 시작할 때 미리 만들어 둔다.
       colState: buildAllColState(),
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
@@ -8505,7 +8520,9 @@ const app = createApp({
         if (!by[f.group_key]){ by[f.group_key] = { key:f.group_key, label:f.group_label, rows:[] }; out.push(by[f.group_key]); }
         by[f.group_key].rows.push(f);
       }
-      const rank = k => (k==='all' ? 0 : (k==='mine' ? 2 : 1));   // 전 지점 · 지점 · 내 폴더
+      // 전 지점 · 지점 · 내 폴더 · 남의 서랍(원장·본부만 보임)
+      const rank = k => (k==='all' ? 0 : (k==='mine' ? 2 : (k.charAt(0)==='u' ? 3 : 1)));
+      out.forEach(g=>{ g.hiddenUnread = g.rows.filter(f=>!f.pin).reduce((a,b)=>a+(b.unread||0), 0); });
       return out.sort((a,b)=> rank(a.key)-rank(b.key) || a.label.localeCompare(b.label,'ko'));
     },
     bdAllFiles(){
@@ -13322,6 +13339,13 @@ const app = createApp({
     },
     // ── 폴더 관리 ──
     openBdFolderMgr(){ this.bdMgr = true; },
+    bdGroupOpen(k){ return !this.bdClosed.includes(k); },
+    toggleBdGroup(k){
+      this.bdClosed = this.bdGroupOpen(k) ? this.bdClosed.concat([k]) : this.bdClosed.filter(x=>x!==k);
+      try { localStorage.setItem('portal_board_closed', JSON.stringify(this.bdClosed)); } catch(e){}
+    },
+    // 접어도 [접어도 보임]을 켠 폴더는 남는다. 공지는 늘 눈에 있어야 한다.
+    bdGroupRows(g){ return this.bdGroupOpen(g.key) ? g.rows : g.rows.filter(f=>f.pin); },
     bdFolderEditable(f){
       // 개인 폴더는 만든 사람만, 나머지는 원장 이상
       return f.scope==='PRIVATE' ? f.mine : this.bdCanEdit;
@@ -13330,15 +13354,15 @@ const app = createApp({
       if (!f && scope==='PRIVATE'){
         this.bdFolderForm = { id:null, name:'', icon:'🗂', parent_id:null, scope:'PRIVATE',
                               branch_id:null, need_read:false, versioned:false,
-                              allow_comments:false, write_scope:'', sort_mode:'RECENT' };
+                              allow_comments:false, write_scope:'', sort_mode:'RECENT', pin:false };
         return;
       }
       this.bdFolderForm = f
         ? { id:f.id, name:f.name, icon:f.icon, parent_id:f.parent_id, scope:f.scope,
             branch_id:f.branch_id, need_read:f.need_read, versioned:f.versioned,
-            allow_comments:f.allow_comments, write_scope:f.write_scope||'', sort_mode:f.sort_mode }
+            allow_comments:f.allow_comments, write_scope:f.write_scope||'', sort_mode:f.sort_mode, pin:f.pin }
         : { id:null, name:'', icon:'📁', parent_id:null, scope:'ALL', branch_id:null,
-            need_read:false, versioned:false, allow_comments:false, write_scope:'', sort_mode:'RECENT' };
+            need_read:false, versioned:false, allow_comments:false, write_scope:'', sort_mode:'RECENT', pin:false };
     },
     async saveBdFolder(){
       const f = this.bdFolderForm;

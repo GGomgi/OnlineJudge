@@ -1892,8 +1892,9 @@ class BoardFolder(models.Model):
     """
     SCOPE_CHOICES = (("ALL", "전 직원"), ("DIRECTOR", "원장 이상"),
                      ("HQ", "본부만"), ("BRANCH", "지점 한정"),
-                     # 만든 사람만. 원장도 본부도 못 본다 — 그래야 개인 전용이다.
-                     ("PRIVATE", "나만"))
+                     # 만든 사람이 쓰는 서랍. 다른 직원은 못 보고, 원장·본부는 본다
+                     # (회사 안에서 쓰는 것이라 관리 밖에 두지 않는다).
+                     ("PRIVATE", "개인"))
     ORDER_CHOICES = (("RECENT", "최신 순"), ("MANUAL", "직접 순서"))
 
     name = models.CharField(max_length=64)
@@ -1912,6 +1913,8 @@ class BoardFolder(models.Model):
     # 글을 쓸 수 있는 사람. 비면 볼 수 있는 사람과 같다 — 공지·규정은 아무나 쓰면 안 된다.
     write_scope = models.CharField(max_length=16, blank=True, default="")
     sort_mode = models.CharField(max_length=16, default="RECENT")
+    # 덩어리를 접어도 이 폴더만은 보인다. 공지처럼 늘 눈에 있어야 하는 것에 켠다.
+    pin_when_collapsed = models.BooleanField(default=False)
     order = models.PositiveSmallIntegerField(default=0)
     is_deleted = models.BooleanField(default=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
