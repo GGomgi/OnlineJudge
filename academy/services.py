@@ -34,6 +34,21 @@ ROLE_PROBLEM_PERMISSION = {
 STAFF_MGMT_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN, AcademyRole.BRANCH_MANAGER}
 
 
+def ensure_private_folder(user):
+    """직원에게 개인 폴더를 하나 만들어 준다.
+
+    없으면 그런 기능이 있는지조차 모른다. 한 번이라도 있었으면 다시 만들지 않는다 —
+    지운 사람에게 자꾸 되살아나면 성가시다."""
+    from .models import BoardFolder, STAFF_ROLES, AcademyProfile
+    p = AcademyProfile.objects.filter(user=user, is_deleted=False).first()
+    if not p or p.role not in STAFF_ROLES:
+        return None
+    if BoardFolder.objects.filter(scope="PRIVATE", created_by=user).exists():
+        return None
+    return BoardFolder.objects.create(name="개인 폴더", icon="🗂", scope="PRIVATE",
+                                      parent=None, order=0, created_by=user)
+
+
 def apply_role(user, role, branch=None):
     """사용자에게 학원 역할/지점을 부여하고 admin_type·problem_permission 을 동기화한다.
     AcademyProfile 이 없으면 생성한다. 전지점 역할이면 branch 는 무시되어 null 로 저장된다."""
@@ -46,6 +61,11 @@ def apply_role(user, role, branch=None):
     user.admin_type = ROLE_ADMIN_TYPE.get(role, AdminType.REGULAR_USER)
     user.problem_permission = ROLE_PROBLEM_PERMISSION.get(role, ProblemPermission.NONE)
     user.save()
+    # 직원이 되면 개인 폴더를 하나 만들어 준다. 없으면 그런 기능이 있는지조차 모른다.
+    try:
+        ensure_private_folder(user)
+    except Exception:
+        pass
     return profile
 
 
