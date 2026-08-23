@@ -2083,11 +2083,11 @@
         <template v-for="g in bdGroups" :key="g.key">
         <div class="text-[11px] font-semibold text-slate-400 pt-1">{{ g.label }}</div>
         <template v-for="it in g.items" :key="it.key">
-        <div v-if="it.t==='b'" class="text-[10px] font-semibold text-slate-500 pl-1 pt-1">{{ it.label }}</div>
-        <div v-else-if="it.t==='p'" class="text-[10px] text-slate-400 pl-1">{{ it.label }} <span class="text-slate-300">{{ roleLabel(it.role) }}</span></div>
+        <div v-if="it.t==='b'" class="text-[10px] font-semibold text-slate-500 pt-1" :style="{ marginLeft: bdRail(it.lvl) }">{{ it.label }}</div>
+        <div v-else-if="it.t==='p'" class="text-[10px] text-slate-400" :style="{ marginLeft: bdRail(it.lvl) }">{{ it.label }} <span class="text-slate-300">{{ roleLabel(it.role) }}</span></div>
         <div v-else-if="it.t==='f'"
              class="flex items-center gap-1.5 px-2 py-1.5 rounded border border-slate-100 hover:bg-slate-50"
-             :style="{ marginLeft: ((it.f.depth-1)*1.1) + 'rem' }">
+             :style="{ marginLeft: bdRail(it.lvl) }">
           <span v-if="it.f.icon" class="shrink-0">{{ it.f.icon }}</span>
           <span class="text-sm truncate flex-1 min-w-0">{{ it.f.name }}</span>
           <span v-if="it.f.need_read" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-600">읽음확인</span>
@@ -7019,15 +7019,17 @@
                  개인 폴더는 사람별로 나눠 머리에 이름을 한 번만 적는다 —
                  줄마다 붙이면 지저분하다. -->
             <template v-for="it in bdGroupItems(g)" :key="it.key">
-              <div v-if="it.t==='b'" class="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold text-slate-500 truncate">{{ it.label }}</div>
-              <div v-else-if="it.t==='p'" class="px-2 pt-1 pb-0.5 text-[10px] text-slate-400 truncate flex items-center gap-1">
+              <div v-if="it.t==='b'" class="pt-1.5 pb-0.5 pr-2 text-[10px] font-semibold text-slate-500 truncate"
+                   :style="{ paddingLeft: bdIndent(it.lvl) }">{{ it.label }}</div>
+              <div v-else-if="it.t==='p'" class="pt-1 pb-0.5 pr-2 text-[10px] text-slate-400 truncate flex items-center gap-1"
+                   :style="{ paddingLeft: bdIndent(it.lvl) }">
                 <span class="truncate">{{ it.label }}</span>
                 <span class="text-slate-300 shrink-0">{{ roleLabel(it.role) }}</span>
               </div>
               <div v-else @click="pickBdFolder(it.f)"
-                   :class="['flex items-center gap-1 px-2 py-1.5 text-sm cursor-pointer',
-                            bdFolderId===it.f.id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50']"
-                   :style="{ paddingLeft: (0.5 + (it.f.depth-1)*0.9) + 'rem' }">
+                   :class="['flex items-center gap-1 pr-2 py-1.5 text-sm cursor-pointer border-l-2',
+                            bdFolderId===it.f.id ? 'bg-indigo-50 text-indigo-700 font-semibold border-indigo-400' : 'text-slate-600 hover:bg-slate-50 border-slate-100']"
+                   :style="{ paddingLeft: bdIndent(it.lvl), marginLeft: bdRail(it.lvl) }">
                 <span v-if="it.f.icon" class="shrink-0">{{ it.f.icon }}</span>
                 <span class="truncate">{{ it.f.name }}</span>
                 <span v-if="it.f.unread" class="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[18px] text-center">{{ it.f.unread }}</span>
@@ -8545,7 +8547,7 @@ const app = createApp({
       const rank = k => (k==='all' ? 0 : (k==='private' ? 2 : 1));
       out.forEach(g=>{
         g.hiddenUnread = g.rows.filter(f=>!f.pin).reduce((a,b)=>a+(b.unread||0), 0);
-        if (g.key!=='private'){ g.items = g.rows.map(f=>({ t:'f', key:'f'+f.id, f })); return; }
+        if (g.key!=='private'){ g.items = g.rows.map(f=>({ t:'f', key:'f'+f.id, f, lvl:f.depth })); return; }
         // 줄마다 이름을 붙이면 지저분하다. 사람별로 나눠 머리에 한 번만 적는다.
         // 차례는 원장 > 부원장 > 강사 > 조교 — 계정 만들 때 고르는 역할 순서 그대로다.
         const by = {}, people = [];
@@ -8565,13 +8567,15 @@ const app = createApp({
         // 여러 지점을 함께 보는 사람에게는 지점으로도 크게 묶어 준다
         const items = [];
         let curBranch = null;
+        const deep = this.bdMultiBranch ? 1 : 0;     // 지점 머리가 한 층을 더 먹는다
         for (const p of people){
           if (this.bdMultiBranch && !p.mine && p.branch !== curBranch){
             curBranch = p.branch;
-            items.push({ t:'b', key:'b'+curBranch, label:curBranch });
+            items.push({ t:'b', key:'b'+curBranch, label:curBranch, lvl:1 });
           }
-          if (p.label) items.push({ t:'p', key:p.key, label:p.label, role:p.role });
-          p.rows.forEach(f=> items.push({ t:'f', key:'f'+f.id, f }));
+          if (p.label) items.push({ t:'p', key:p.key, label:p.label, role:p.role, lvl:1+deep });
+          const base = p.label ? 2+deep : 1;          // 내 것은 머리가 없어 한 층 위
+          p.rows.forEach(f=> items.push({ t:'f', key:'f'+f.id, f, lvl:base+(f.depth-1) }));
         }
         g.items = items;
       });
@@ -13402,6 +13406,9 @@ const app = createApp({
       try { localStorage.setItem('portal_board_closed', JSON.stringify(this.bdClosed)); } catch(e){}
     },
     // 접어도 [접어도 보임]을 켠 폴더는 남는다. 공지는 늘 눈에 있어야 한다.
+    // 층마다 한 칸씩 들여쓴다. 폴더 줄은 왼쪽에 세로선을 두어 계단이 보이게 한다.
+    bdRail(lvl){ return (0.45 + Math.max(0, (lvl||1)-1) * 0.7) + 'rem'; },
+    bdIndent(lvl){ return '0.4rem'; },
     bdGroupItems(g){
       if (this.bdGroupOpen(g.key)) return g.items;
       // 접으면 [접어도 보임]을 켠 폴더만 남는다. 그 폴더가 없는 머리도 함께 사라진다.
