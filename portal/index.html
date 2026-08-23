@@ -7014,6 +7014,7 @@
                           bdFolderId===f.id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50']"
                  :style="{ paddingLeft: (0.5 + (f.depth-1)*0.9) + 'rem' }">
               <span v-if="f.icon" class="shrink-0">{{ f.icon }}</span>
+              <span v-if="f.owner" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ f.owner }}</span>
               <span class="truncate">{{ f.name }}</span>
               <span v-if="f.unread" class="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[18px] text-center">{{ f.unread }}</span>
               <span v-else-if="f.posts" class="ml-auto shrink-0 text-[11px] text-slate-300">{{ f.posts }}</span>
@@ -8520,9 +8521,13 @@ const app = createApp({
         if (!by[f.group_key]){ by[f.group_key] = { key:f.group_key, label:f.group_label, rows:[] }; out.push(by[f.group_key]); }
         by[f.group_key].rows.push(f);
       }
-      // 전 지점 · 지점 · 내 폴더 · 남의 서랍(원장·본부만 보임)
-      const rank = k => (k==='all' ? 0 : (k==='mine' ? 2 : (k.charAt(0)==='u' ? 3 : 1)));
-      out.forEach(g=>{ g.hiddenUnread = g.rows.filter(f=>!f.pin).reduce((a,b)=>a+(b.unread||0), 0); });
+      // 전 지점 · 지점 · 개인 폴더
+      const rank = k => (k==='all' ? 0 : (k==='private' ? 2 : 1));
+      out.forEach(g=>{
+        g.hiddenUnread = g.rows.filter(f=>!f.pin).reduce((a,b)=>a+(b.unread||0), 0);
+        // 개인 폴더 안에서는 내 것이 맨 위, 나머지는 이름 순
+        if (g.key==='private') g.rows.sort((a,b)=> (b.mine?1:0)-(a.mine?1:0) || (a.owner||'').localeCompare(b.owner||'','ko'));
+      });
       return out.sort((a,b)=> rank(a.key)-rank(b.key) || a.label.localeCompare(b.label,'ko'));
     },
     bdAllFiles(){
