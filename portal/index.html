@@ -2082,24 +2082,25 @@
       <div class="p-3 space-y-2">
         <template v-for="g in bdGroups" :key="g.key">
         <div class="text-[11px] font-semibold text-slate-400 pt-1">{{ g.label }}</div>
-        <template v-for="b in g.blocks" :key="b.key">
-        <div v-if="b.label" class="text-[10px] text-slate-400 pl-1">{{ b.label }}</div>
-        <div v-for="f in b.rows" :key="f.id"
+        <template v-for="it in g.items" :key="it.key">
+        <div v-if="it.t==='b'" class="text-[10px] font-semibold text-slate-500 pl-1 pt-1">{{ it.label }}</div>
+        <div v-else-if="it.t==='p'" class="text-[10px] text-slate-400 pl-1">{{ it.label }} <span class="text-slate-300">{{ roleLabel(it.role) }}</span></div>
+        <div v-else-if="it.t==='f'"
              class="flex items-center gap-1.5 px-2 py-1.5 rounded border border-slate-100 hover:bg-slate-50"
-             :style="{ marginLeft: ((f.depth-1)*1.1) + 'rem' }">
-          <span v-if="f.icon" class="shrink-0">{{ f.icon }}</span>
-          <span class="text-sm truncate flex-1 min-w-0">{{ f.name }}</span>
-          <span v-if="f.need_read" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-600">읽음확인</span>
-          <span v-if="f.versioned" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-violet-50 text-violet-600">판관리</span>
-          <span v-if="f.allow_comments" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600">덧글</span>
-          <span v-if="f.pin" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-emerald-50 text-emerald-600">접어도</span>
-          <span v-if="f.write_scope" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">쓰기 {{ bdScopeLabel(f.write_scope) }}</span>
-          <span v-if="f.scope!=='ALL' && f.scope!=='BRANCH' && f.scope!=='PRIVATE'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdScopeLabel(f.scope) }}</span>
-          <span v-if="bdFolderEditable(f)" class="flex items-center gap-1 shrink-0">
-            <button @click="moveBdFolder(f,-1)" title="위로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▲</button>
-            <button @click="moveBdFolder(f,1)" title="아래로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▼</button>
-            <button @click="editBdFolder(f)" class="px-1.5 h-6 rounded border border-slate-200 text-[11px] text-slate-500 hover:bg-white">고치기</button>
-            <button @click="askDeleteBdFolder(f)" class="px-1.5 h-6 rounded border border-rose-100 text-[11px] text-rose-400 hover:bg-rose-50">지우기</button>
+             :style="{ marginLeft: ((it.f.depth-1)*1.1) + 'rem' }">
+          <span v-if="it.f.icon" class="shrink-0">{{ it.f.icon }}</span>
+          <span class="text-sm truncate flex-1 min-w-0">{{ it.f.name }}</span>
+          <span v-if="it.f.need_read" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-600">읽음확인</span>
+          <span v-if="it.f.versioned" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-violet-50 text-violet-600">판관리</span>
+          <span v-if="it.f.allow_comments" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600">덧글</span>
+          <span v-if="it.f.pin" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-emerald-50 text-emerald-600">접어도</span>
+          <span v-if="it.f.write_scope" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">쓰기 {{ bdScopeLabel(it.f.write_scope) }}</span>
+          <span v-if="it.f.scope!=='ALL' && it.f.scope!=='BRANCH' && it.f.scope!=='PRIVATE'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdScopeLabel(it.f.scope) }}</span>
+          <span v-if="bdFolderEditable(it.f)" class="flex items-center gap-1 shrink-0">
+            <button @click="moveBdFolder(it.f,-1)" title="위로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▲</button>
+            <button @click="moveBdFolder(it.f,1)" title="아래로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▼</button>
+            <button @click="editBdFolder(it.f)" class="px-1.5 h-6 rounded border border-slate-200 text-[11px] text-slate-500 hover:bg-white">고치기</button>
+            <button @click="askDeleteBdFolder(it.f)" class="px-1.5 h-6 rounded border border-rose-100 text-[11px] text-rose-400 hover:bg-rose-50">지우기</button>
           </span>
         </div>
         </template>
@@ -7017,16 +7018,20 @@
             <!-- 접어도 [접어도 보임]을 켠 폴더는 남는다. 공지는 늘 눈에 있어야 한다.
                  개인 폴더는 사람별로 나눠 머리에 이름을 한 번만 적는다 —
                  줄마다 붙이면 지저분하다. -->
-            <template v-for="b in bdGroupBlocks(g)" :key="b.key">
-              <div v-if="b.label" class="px-2 pt-1 pb-0.5 text-[10px] text-slate-400 truncate">{{ b.label }}</div>
-              <div v-for="f in b.rows" :key="f.id" @click="pickBdFolder(f)"
+            <template v-for="it in bdGroupItems(g)" :key="it.key">
+              <div v-if="it.t==='b'" class="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold text-slate-500 truncate">{{ it.label }}</div>
+              <div v-else-if="it.t==='p'" class="px-2 pt-1 pb-0.5 text-[10px] text-slate-400 truncate flex items-center gap-1">
+                <span class="truncate">{{ it.label }}</span>
+                <span class="text-slate-300 shrink-0">{{ roleLabel(it.role) }}</span>
+              </div>
+              <div v-else @click="pickBdFolder(it.f)"
                    :class="['flex items-center gap-1 px-2 py-1.5 text-sm cursor-pointer',
-                            bdFolderId===f.id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50']"
-                   :style="{ paddingLeft: (0.5 + (f.depth-1)*0.9) + 'rem' }">
-                <span v-if="f.icon" class="shrink-0">{{ f.icon }}</span>
-                <span class="truncate">{{ f.name }}</span>
-                <span v-if="f.unread" class="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[18px] text-center">{{ f.unread }}</span>
-                <span v-else-if="f.posts" class="ml-auto shrink-0 text-[11px] text-slate-300">{{ f.posts }}</span>
+                            bdFolderId===it.f.id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50']"
+                   :style="{ paddingLeft: (0.5 + (it.f.depth-1)*0.9) + 'rem' }">
+                <span v-if="it.f.icon" class="shrink-0">{{ it.f.icon }}</span>
+                <span class="truncate">{{ it.f.name }}</span>
+                <span v-if="it.f.unread" class="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[18px] text-center">{{ it.f.unread }}</span>
+                <span v-else-if="it.f.posts" class="ml-auto shrink-0 text-[11px] text-slate-300">{{ it.f.posts }}</span>
               </div>
             </template>
           </template>
@@ -8525,6 +8530,11 @@ const app = createApp({
     // 무엇이 들어갈지 한눈에 안 보인다.
     // 전 지점을 위, 지점 것을 아래. 대부분이 지점 것이라 줄마다 이름표를 다는 대신
     // 덩어리로 묶는다 — 묶어 두면 이름표가 필요 없다.
+    // 지점 덩어리가 둘 이상이면 개인 폴더도 지점으로 크게 묶는다
+    bdMultiBranch(){
+      return this.bdTree.filter(f=>String(f.group_key).charAt(0)==='b')
+                        .map(f=>f.group_key).filter((v,i,a)=>a.indexOf(v)===i).length > 1;
+    },
     bdGroups(){
       const out = [], by = {};
       for (const f of this.bdTree){
@@ -8535,16 +8545,35 @@ const app = createApp({
       const rank = k => (k==='all' ? 0 : (k==='private' ? 2 : 1));
       out.forEach(g=>{
         g.hiddenUnread = g.rows.filter(f=>!f.pin).reduce((a,b)=>a+(b.unread||0), 0);
-        if (g.key!=='private'){ g.blocks = [{ key:g.key, label:'', rows:g.rows }]; return; }
+        if (g.key!=='private'){ g.items = g.rows.map(f=>({ t:'f', key:'f'+f.id, f })); return; }
         // 줄마다 이름을 붙이면 지저분하다. 사람별로 나눠 머리에 한 번만 적는다.
-        const by = {}, blocks = [];
+        // 차례는 원장 > 부원장 > 강사 > 조교 — 계정 만들 때 고르는 역할 순서 그대로다.
+        const by = {}, people = [];
         for (const f of g.rows){
-          const k = f.mine ? '' : (f.owner || '?');
-          if (!by[k]){ by[k] = { key:'p:'+k, label:k, rows:[], mine:f.mine }; blocks.push(by[k]); }
+          const k = f.mine ? '' : ('u'+f.owner_id);
+          if (!by[k]){
+            by[k] = { key:'p'+k, label:f.owner, role:f.owner_role||'', branch:f.owner_branch||'',
+                      mine:f.mine, rows:[] };
+            people.push(by[k]);
+          }
           by[k].rows.push(f);
         }
-        // 내 것이 맨 위, 나머지는 이름 순
-        g.blocks = blocks.sort((a,b)=> (b.mine?1:0)-(a.mine?1:0) || a.label.localeCompare(b.label,'ko'));
+        people.sort((a,b)=> (b.mine?1:0)-(a.mine?1:0)
+          || a.branch.localeCompare(b.branch,'ko')
+          || this.roleRank(a.role)-this.roleRank(b.role)
+          || (a.label||'').localeCompare(b.label||'','ko'));
+        // 여러 지점을 함께 보는 사람에게는 지점으로도 크게 묶어 준다
+        const items = [];
+        let curBranch = null;
+        for (const p of people){
+          if (this.bdMultiBranch && !p.mine && p.branch !== curBranch){
+            curBranch = p.branch;
+            items.push({ t:'b', key:'b'+curBranch, label:curBranch });
+          }
+          if (p.label) items.push({ t:'p', key:p.key, label:p.label, role:p.role });
+          p.rows.forEach(f=> items.push({ t:'f', key:'f'+f.id, f }));
+        }
+        g.items = items;
       });
       return out.sort((a,b)=> rank(a.key)-rank(b.key) || a.label.localeCompare(b.label,'ko'));
     },
@@ -13372,9 +13401,16 @@ const app = createApp({
       try { localStorage.setItem('portal_board_closed', JSON.stringify(this.bdClosed)); } catch(e){}
     },
     // 접어도 [접어도 보임]을 켠 폴더는 남는다. 공지는 늘 눈에 있어야 한다.
-    bdGroupBlocks(g){
-      if (this.bdGroupOpen(g.key)) return g.blocks;
-      return g.blocks.map(b=>({ ...b, rows:b.rows.filter(f=>f.pin) })).filter(b=>b.rows.length);
+    bdGroupItems(g){
+      if (this.bdGroupOpen(g.key)) return g.items;
+      // 접으면 [접어도 보임]을 켠 폴더만 남는다. 그 폴더가 없는 머리도 함께 사라진다.
+      return g.items.filter(it=> it.t==='f' && it.f.pin);
+    },
+    // 계정 만들 때 고르는 역할 차례 그대로. 목록에 없는 것은 뒤로 보낸다.
+    roleRank(r){
+      const i = ['HQ_ADMIN','HR_ADMIN','REGIONAL_MANAGER','BRANCH_MANAGER','VICE_PRINCIPAL',
+                 'INSTRUCTOR','TA','EXTERNAL_INSTRUCTOR_ADMIN'].indexOf(r);
+      return i < 0 ? 99 : i;
     },
     bdFolderEditable(f){
       // 개인 폴더는 만든 사람만, 나머지는 원장 이상

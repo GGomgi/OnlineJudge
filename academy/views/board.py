@@ -133,28 +133,26 @@ def _kind_of(ext):
     return "etc"
 
 
-def _folder_row(f, unread=0, posts=0, multi=False, me=None):
+def _folder_row(f, unread=0, posts=0, multi=False, me=None, owners_meta=None):
     # 이름표를 줄마다 다는 대신 덩어리로 묶는다. 대부분이 우리 지점 폴더라 [전 지점]을
     # 붙이든 [우리 지점만]을 붙이든 흩어져 읽기 어렵다. 묶어 두면 이름표가 필요 없다.
     mine = bool(me and f.created_by_id == me.id)
-    owner = ""
+    owner, orole, obranch = "", "", ""
+    if f.scope == "PRIVATE" and f.created_by_id and owners_meta:
+        orole, obranch = owners_meta.get(f.created_by_id, ("", ""))
     if f.scope == "PRIVATE":
         # 사람 이름을 덩어리로 세우면 '전 지점·인천청라' 와 같은 층에 섞여 무엇인지
         # 헷갈린다. 개인 폴더는 한 덩어리로 묶고, 누구 것인지는 줄에 적는다.
         gk, gl = "private", "개인 폴더"
         if not mine:
             owner = _name_of(f.created_by) or "이름 없음"
-            if multi:      # 여러 지점을 함께 보는 사람에게는 지점도 적어 준다
-                bp = AcademyProfile.objects.filter(user_id=f.created_by_id,
-                                                   is_deleted=False).select_related("branch").first()
-                if bp and bp.branch_id:
-                    owner += " · " + bp.branch.name
     elif f.scope == "BRANCH" and f.branch_id:
         gk, gl = "b%d" % f.branch_id, f.branch.name
     else:
         gk, gl = "all", "전 지점"
     return {"id": f.id, "name": f.name, "parent_id": f.parent_id, "icon": f.icon,
             "group_key": gk, "group_label": gl, "mine": mine, "owner": owner,
+            "owner_id": f.created_by_id, "owner_role": orole, "owner_branch": obranch,
             "scope": f.scope, "branch_id": f.branch_id, "need_read": f.need_read,
             "versioned": f.versioned, "allow_comments": f.allow_comments,
             "write_scope": f.write_scope,
@@ -218,7 +216,13 @@ class BoardFolderAPI(APIView):
                 if pid not in seen:
                     unread[fid] = unread.get(fid, 0) + 1
         multi = (view is None or len(view) > 1)
-        rows = [_folder_row(f, unread.get(f.id, 0), counts.get(f.id, 0), multi, me) for f in folders]
+        # 개인 폴더 주인의 역할·지점 — 원장 > 강사 > 조교 차례로 늘어놓으려면 있어야 한다
+        oids = {f.created_by_id for f in folders if f.scope == "PRIVATE" and f.created_by_id}
+        ometa = {p.user_id: (p.role, p.branch.name if p.branch_id else "본부")
+                 for p in AcademyProfile.objects.filter(user_id__in=oids, is_deleted=False)
+                                                .select_related("branch")} if oids else {}
+        rows = [_folder_row(f, unread.get(f.id, 0), counts.get(f.id, 0), multi, me, ometa)
+                for f in folders]
         return self.success({
             "rows": rows, "can_edit": _can_edit_folders(me), "can_private": True,
             "max_depth": MAX_DEPTH, "max_file": MAX_FILE, "max_post": MAX_POST,
