@@ -2080,17 +2080,20 @@
         <button @click="bdMgr=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
       </div>
       <div class="p-3 space-y-2">
-        <div v-for="f in bdTree" :key="f.id"
+        <template v-for="g in bdGroups" :key="g.key">
+        <div class="text-[11px] font-semibold text-slate-400 pt-1">{{ g.label }}</div>
+        <div v-for="f in g.rows" :key="f.id"
              class="flex items-center gap-1.5 px-2 py-1.5 rounded border border-slate-100 hover:bg-slate-50"
              :style="{ marginLeft: ((f.depth-1)*1.1) + 'rem' }">
           <span v-if="f.icon" class="shrink-0">{{ f.icon }}</span>
+          <span v-if="f.owner" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ f.owner }}</span>
           <span class="text-sm truncate flex-1 min-w-0">{{ f.name }}</span>
           <span v-if="f.need_read" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-600">읽음확인</span>
           <span v-if="f.versioned" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-violet-50 text-violet-600">판관리</span>
           <span v-if="f.allow_comments" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600">덧글</span>
           <span v-if="f.pin" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-emerald-50 text-emerald-600">접어도</span>
           <span v-if="f.write_scope" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">쓰기 {{ bdScopeLabel(f.write_scope) }}</span>
-          <span v-if="f.scope!=='ALL'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ f.scope==='BRANCH' ? f.group_label : bdScopeLabel(f.scope) }}</span>
+          <span v-if="f.scope!=='ALL' && f.scope!=='BRANCH' && f.scope!=='PRIVATE'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdScopeLabel(f.scope) }}</span>
           <span v-if="bdFolderEditable(f)" class="flex items-center gap-1 shrink-0">
             <button @click="moveBdFolder(f,-1)" title="위로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▲</button>
             <button @click="moveBdFolder(f,1)" title="아래로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▼</button>
@@ -2098,8 +2101,9 @@
             <button @click="askDeleteBdFolder(f)" class="px-1.5 h-6 rounded border border-rose-100 text-[11px] text-rose-400 hover:bg-rose-50">지우기</button>
           </span>
         </div>
+        </template>
         <div class="flex gap-2">
-          <button v-if="bdCanEdit" @click="editBdFolder(null)" class="flex-1 px-3 py-2 rounded border border-dashed border-slate-300 text-sm text-slate-500 hover:bg-slate-50">+ 함께 쓰는 폴더</button>
+          <button v-if="bdCanEdit" @click="editBdFolder(null)" class="flex-1 px-3 py-2 rounded border border-dashed border-slate-300 text-sm text-slate-500 hover:bg-slate-50">+ 학원 지점 폴더</button>
           <button @click="editBdFolder(null,'PRIVATE')" class="flex-1 px-3 py-2 rounded border border-dashed border-violet-300 text-sm text-violet-600 hover:bg-violet-50">+ 내 폴더</button>
         </div>
       </div>
@@ -2127,7 +2131,7 @@
         </div>
         <div class="flex gap-2">
           <div class="flex-1 min-w-0"><label class="lbl">볼 수 있는 사람</label>
-            <select v-model="bdFolderForm.scope" class="input px-2">
+            <select v-model="bdFolderForm.scope" @change="bdFolderForm.parent_id=null" class="input px-2">
               <option value="ALL">전 직원</option><option value="DIRECTOR">원장 이상</option>
               <option value="HQ">본부만</option><option value="BRANCH">지점 한정</option>
               <option value="PRIVATE">개인 (내 서랍)</option>
@@ -8562,12 +8566,16 @@ const app = createApp({
     // 3단까지라 2단 폴더 아래로는 더 못 넣는다. 고치는 중인 폴더와 그 아래도 뺀다.
     bdParentChoices(){
       const f = this.bdFolderForm;
+      if (!f) return [];
       const banned = new Set();
-      if (f && f.id){
+      if (f.id){
         const walk = id => { banned.add(id); this.bdTree.filter(x=>x.parent_id===id).forEach(x=>walk(x.id)); };
         walk(f.id);
       }
-      return this.bdTree.filter(x => x.depth < 3 && !banned.has(x.id));
+      // 개인 폴더는 개인 폴더 아래로만. 공용 폴더를 골라 봐야 어차피 개인으로 들어가
+      // 고른 자리와 실제 자리가 달라진다.
+      return this.bdTree.filter(x => x.depth < 3 && !banned.has(x.id)
+        && (f.scope==='PRIVATE' ? (x.group_key==='private' && x.mine) : x.group_key!=='private'));
     },
     // 열었을 때와 달라진 게 있는가. 되돌릴 것이 있는지 판단하는 하나의 기준이다.
     colCfgDirty(){

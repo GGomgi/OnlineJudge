@@ -144,6 +144,11 @@ def _folder_row(f, unread=0, posts=0, multi=False, me=None):
         gk, gl = "private", "개인 폴더"
         if not mine:
             owner = _name_of(f.created_by) or "이름 없음"
+            if multi:      # 여러 지점을 함께 보는 사람에게는 지점도 적어 준다
+                bp = AcademyProfile.objects.filter(user_id=f.created_by_id,
+                                                   is_deleted=False).select_related("branch").first()
+                if bp and bp.branch_id:
+                    owner += " · " + bp.branch.name
     elif f.scope == "BRANCH" and f.branch_id:
         gk, gl = "b%d" % f.branch_id, f.branch.name
     else:
