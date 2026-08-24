@@ -2073,23 +2073,41 @@
   </div>
 
   <!-- 폴더 관리. 트리 옆에서 바로 여닫는다 — 따로 메뉴로 빼면 왔다갔다 하게 된다 -->
-  <div v-if="bdMgr" class="fixed inset-0 z-[70] bg-black/40 flex items-start justify-center p-4 overflow-auto" @click.self="bdMgr=null">
+  <div v-if="bdMgr" class="fixed inset-0 z-[70] bg-black/40 flex items-start justify-center p-4 overflow-auto" @click.self="askCloseBdMgr">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-lg my-4">
       <div class="flex items-center justify-between px-4 py-3 border-b">
-        <div class="font-bold text-sm">폴더 관리</div>
-        <button @click="bdMgr=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+        <div class="font-bold text-sm">폴더 관리<span v-if="bdMgrDirty" class="ml-1.5 text-[11px] font-normal text-amber-600">고치는 중</span></div>
+        <button @click="askCloseBdMgr" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+      </div>
+      <!-- 지우거나 옮긴 것을 되돌릴 길이 없었다. 여기서는 미리 보여 주기만 하고
+           [저장]을 눌러야 실제로 바뀐다. -->
+      <div class="px-4 py-2 text-[11px] text-slate-400 border-b">
+        만들고 · 고치고 · 옮기고 · 지운 것을 <b class="text-slate-500">미리 보여 줍니다.</b>
+        <b class="text-slate-500">[저장]</b>을 눌러야 실제로 바뀝니다.
+      </div>
+      <div v-if="bdMgrGuard" class="mx-4 mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 flex items-center gap-2 flex-wrap">
+        <div class="text-sm text-amber-800">바꾼 것이 있습니다. <b>저장하지 않으면 없던 일이 됩니다.</b></div>
+        <button @click="bdMgrGuard=false" class="ml-auto px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 고치기</button>
+        <button @click="bdMgr=null; bdMgrGuard=false" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+        <button @click="saveBdMgr" class="px-2.5 py-1 rounded bg-indigo-600 text-white text-xs whitespace-nowrap">저장하고 닫기</button>
       </div>
       <div class="p-3 space-y-2">
-        <template v-for="g in bdGroups" :key="g.key">
+        <template v-for="g in bdDraftGroups" :key="g.key">
         <div class="text-[11px] font-semibold text-slate-400 pt-1">{{ g.label }}</div>
         <template v-for="it in g.items" :key="it.key">
         <div v-if="it.t==='b'" class="text-[10px] font-semibold text-slate-500 pt-1" :style="{ marginLeft: bdRail(it.lvl) }">{{ it.label }}</div>
         <div v-else-if="it.t==='p'" class="text-[10px] text-slate-400" :style="{ marginLeft: bdRail(it.lvl) }">{{ it.label }} <span class="text-slate-300">{{ roleLabel(it.role) }}</span></div>
         <div v-else-if="it.t==='f'"
-             class="flex items-center gap-1.5 px-2 py-1.5 rounded border border-slate-100 hover:bg-slate-50"
+             :class="['flex items-center gap-1.5 px-2 py-1.5 rounded border',
+                      it.f._del ? 'border-rose-200 bg-rose-50/60' :
+                      (it.f._new ? 'border-emerald-200 bg-emerald-50/60' :
+                      (it.f._chg ? 'border-amber-200 bg-amber-50/60' : 'border-slate-100 hover:bg-slate-50'))]"
              :style="{ marginLeft: bdRail(it.lvl) }">
           <span v-if="it.f.icon" class="shrink-0">{{ it.f.icon }}</span>
-          <span class="text-sm truncate flex-1 min-w-0">{{ it.f.name }}</span>
+          <span :class="['text-sm truncate flex-1 min-w-0', it.f._del ? 'line-through text-rose-500' : '']">{{ it.f.name }}</span>
+          <span v-if="it.f._new" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700">새로</span>
+          <span v-else-if="it.f._del" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700">{{ bdDelText(it.f) }}</span>
+          <span v-else-if="it.f._chg" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-700">고침</span>
           <span v-if="it.f.need_read" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-600">읽음확인</span>
           <span v-if="it.f.versioned" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-violet-50 text-violet-600">판관리</span>
           <span v-if="it.f.allow_comments" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600">덧글</span>
@@ -2097,10 +2115,15 @@
           <span v-if="it.f.write_scope" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">쓰기 {{ bdScopeLabel(it.f.write_scope) }}</span>
           <span v-if="it.f.scope!=='ALL' && it.f.scope!=='BRANCH' && it.f.scope!=='PRIVATE'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdScopeLabel(it.f.scope) }}</span>
           <span v-if="bdFolderEditable(it.f)" class="flex items-center gap-1 shrink-0">
-            <button @click="moveBdFolder(it.f,-1)" title="위로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▲</button>
-            <button @click="moveBdFolder(it.f,1)" title="아래로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▼</button>
-            <button @click="editBdFolder(it.f)" class="px-1.5 h-6 rounded border border-slate-200 text-[11px] text-slate-500 hover:bg-white">고치기</button>
-            <button @click="askDeleteBdFolder(it.f)" class="px-1.5 h-6 rounded border border-rose-100 text-[11px] text-rose-400 hover:bg-rose-50">지우기</button>
+            <template v-if="it.f._del">
+              <button @click="undoBdDelete(it.f)" class="px-1.5 h-6 rounded border border-slate-200 text-[11px] text-slate-600 hover:bg-white">되살리기</button>
+            </template>
+            <template v-else>
+              <button @click="moveBdFolder(it.f,-1)" title="위로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▲</button>
+              <button @click="moveBdFolder(it.f,1)" title="아래로" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300">▼</button>
+              <button @click="editBdFolder(it.f)" class="px-1.5 h-6 rounded border border-slate-200 text-[11px] text-slate-500 hover:bg-white">고치기</button>
+              <button @click="askDeleteBdFolder(it.f)" class="px-1.5 h-6 rounded border border-rose-100 text-[11px] text-rose-400 hover:bg-rose-50">지우기</button>
+            </template>
           </span>
         </div>
         </template>
@@ -2109,6 +2132,14 @@
           <button v-if="bdCanEdit" @click="editBdFolder(null)" class="flex-1 px-3 py-2 rounded border border-dashed border-slate-300 text-sm text-slate-500 hover:bg-slate-50">+ 학원 지점 폴더</button>
           <button @click="editBdFolder(null,'PRIVATE')" class="flex-1 px-3 py-2 rounded border border-dashed border-violet-300 text-sm text-violet-600 hover:bg-violet-50">+ 내 폴더</button>
         </div>
+      </div>
+      <div class="px-4 py-3 border-t flex items-center gap-2">
+        <span v-if="bdMgrDirty" class="text-[11px] text-amber-600">{{ bdMgrSummary }}</span>
+        <span v-else class="text-[11px] text-slate-400">바꾼 것이 없습니다.</span>
+        <button @click="revertBdMgr" :disabled="!bdMgrDirty"
+                class="ml-auto px-3 py-1.5 rounded border border-slate-200 text-slate-600 text-xs hover:bg-slate-50 disabled:opacity-40">되돌리기</button>
+        <button @click="saveBdMgr" :disabled="!bdMgrDirty || bdMgrSaving"
+                class="px-4 py-1.5 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-700 disabled:opacity-40">{{ bdMgrSaving ? '저장 중…' : '저장' }}</button>
       </div>
     </div>
   </div>
@@ -2217,7 +2248,7 @@
           <span class="flex-1 min-w-0">다른 폴더로 옮기고 지우기
             <select v-if="bdDelAsk.mode==='move'" v-model="bdDelAsk.to" class="input px-2 py-1 mt-1 text-xs">
               <option :value="null">고르세요</option>
-              <option v-for="f in bdTree" v-if="f.id!==bdDelAsk.id" :key="f.id" :value="f.id">{{ '　'.repeat(f.depth-1) }}{{ f.icon }} {{ f.name }}</option>
+              <option v-for="f in bdDraft" v-if="f.id!==bdDelAsk.id && !f._del" :key="f.id" :value="f.id">{{ '　'.repeat(f.depth-1) }}{{ f.icon }} {{ f.name }}</option>
             </select>
           </span>
         </label>
@@ -7013,14 +7044,19 @@
               <span class="text-slate-300">{{ bdGroupOpen(g.key) ? '▾' : '▸' }}</span>
               <span class="truncate">{{ g.label }}</span>
               <span v-if="!bdGroupOpen(g.key) && g.hiddenUnread" class="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[18px] text-center">{{ g.hiddenUnread }}</span>
-              <span v-else-if="!bdGroupOpen(g.key)" class="ml-auto shrink-0 text-[10px] text-slate-300">{{ g.rows.length }}</span>
+              <span v-else-if="!bdGroupOpen(g.key)" class="ml-auto shrink-0 text-[10px] text-slate-300">{{ g.key==='staff' ? g.people+'명' : g.rows.length }}</span>
             </button>
             <!-- 접어도 [접어도 보임]을 켠 폴더는 남는다. 공지는 늘 눈에 있어야 한다.
                  개인 폴더는 사람별로 나눠 머리에 이름을 한 번만 적는다 —
                  줄마다 붙이면 지저분하다. -->
             <template v-for="it in bdGroupItems(g)" :key="it.key">
-              <div v-if="it.t==='b'" class="pt-1.5 pb-0.5 pr-2 text-[10px] font-semibold text-slate-500 truncate"
-                   :style="{ paddingLeft: bdIndent(it.lvl) }">{{ it.label }}</div>
+              <button v-if="it.t==='b'" @click="toggleBdGroup(it.fold)"
+                      class="w-full flex items-center gap-1 pt-1.5 pb-0.5 pr-2 text-[10px] font-semibold text-slate-500 hover:text-slate-700"
+                      :style="{ paddingLeft: bdRail(it.lvl) }">
+                <span class="text-slate-300">{{ bdGroupOpen(it.fold) ? '▾' : '▸' }}</span>
+                <span class="truncate">{{ it.label }}</span>
+                <span v-if="!bdGroupOpen(it.fold)" class="ml-auto shrink-0 text-[10px] text-slate-300">{{ it.n }}명</span>
+              </button>
               <div v-else-if="it.t==='p'" class="pt-1 pb-0.5 pr-2 text-[10px] text-slate-400 truncate flex items-center gap-1"
                    :style="{ paddingLeft: bdIndent(it.lvl) }">
                 <span class="truncate">{{ it.label }}</span>
@@ -8325,7 +8361,9 @@ const app = createApp({
       bdUploading: false, bdUpDone: 0, bdUpTotal: 0,
       bdDiff: null, bdDiffA: null, bdDiffB: null, bdStuQ: '', bdStuQRaw: '',
       bdCanWrite: true, bdCommentDraft: '', bdPending: [], _bdKey: 0, bdDrag: '',
-      bdClosed: (()=>{ try { return JSON.parse(localStorage.getItem('portal_board_closed')||'[]'); } catch(e){ return []; } })(),
+      bdFold: (()=>{ try { return JSON.parse(localStorage.getItem('portal_board_fold')||'{}'); } catch(e){ return {}; } })(),
+      // 폴더 관리 초안 — 저장을 눌러야 실제로 바뀐다
+      bdDraft: [], bdMgrGuard: false, bdMgrSaving: false, _bdTmp: 0,
       // 그리는 도중에 만들면 갱신이 계속 돌아 화면이 멈춘다. 시작할 때 미리 만들어 둔다.
       colState: buildAllColState(),
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
@@ -8537,50 +8575,21 @@ const app = createApp({
       return this.bdTree.filter(f=>String(f.group_key).charAt(0)==='b')
                         .map(f=>f.group_key).filter((v,i,a)=>a.indexOf(v)===i).length > 1;
     },
-    bdGroups(){
-      const out = [], by = {};
-      for (const f of this.bdTree){
-        if (!by[f.group_key]){ by[f.group_key] = { key:f.group_key, label:f.group_label, rows:[] }; out.push(by[f.group_key]); }
-        by[f.group_key].rows.push(f);
-      }
-      // 전 지점 · 지점 · 개인 폴더
-      const rank = k => (k==='all' ? 0 : (k==='private' ? 2 : 1));
-      out.forEach(g=>{
-        g.hiddenUnread = g.rows.filter(f=>!f.pin).reduce((a,b)=>a+(b.unread||0), 0);
-        if (g.key!=='private'){ g.items = g.rows.map(f=>({ t:'f', key:'f'+f.id, f, lvl:f.depth })); return; }
-        // 줄마다 이름을 붙이면 지저분하다. 사람별로 나눠 머리에 한 번만 적는다.
-        // 차례는 원장 > 부원장 > 강사 > 조교 — 계정 만들 때 고르는 역할 순서 그대로다.
-        const by = {}, people = [];
-        for (const f of g.rows){
-          const k = f.mine ? '' : ('u'+f.owner_id);
-          if (!by[k]){
-            by[k] = { key:'p'+k, label:f.owner, role:f.owner_role||'', branch:f.owner_branch||'',
-                      mine:f.mine, rows:[] };
-            people.push(by[k]);
-          }
-          by[k].rows.push(f);
-        }
-        people.sort((a,b)=> (b.mine?1:0)-(a.mine?1:0)
-          || a.branch.localeCompare(b.branch,'ko')
-          || this.roleRank(a.role)-this.roleRank(b.role)
-          || (a.label||'').localeCompare(b.label||'','ko'));
-        // 여러 지점을 함께 보는 사람에게는 지점으로도 크게 묶어 준다
-        const items = [];
-        let curBranch = null;
-        const deep = this.bdMultiBranch ? 1 : 0;     // 지점 머리가 한 층을 더 먹는다
-        for (const p of people){
-          if (this.bdMultiBranch && !p.mine && p.branch !== curBranch){
-            curBranch = p.branch;
-            items.push({ t:'b', key:'b'+curBranch, label:curBranch, lvl:1 });
-          }
-          if (p.label) items.push({ t:'p', key:p.key, label:p.label, role:p.role, lvl:1+deep });
-          const base = p.label ? 2+deep : 1;          // 내 것은 머리가 없어 한 층 위
-          p.rows.forEach(f=> items.push({ t:'f', key:'f'+f.id, f, lvl:base+(f.depth-1) }));
-        }
-        g.items = items;
-      });
-      return out.sort((a,b)=> rank(a.key)-rank(b.key) || a.label.localeCompare(b.label,'ko'));
+    // 초안을 트리와 같은 모양으로 묶는다(같은 셈을 두 번 적지 않게 하나로 뽑아 쓴다)
+    bdDraftGroups(){ return this.bdBuildGroups(this.bdDraft); },
+    bdMgrDirty(){
+      return this.bdDraft.some(f => f._new || f._del || f._chg || f._moved);
     },
+    bdMgrSummary(){
+      const n = k => this.bdDraft.filter(f=>f[k]).length;
+      const p = [];
+      if (n('_new')) p.push('새로 '+n('_new'));
+      if (n('_chg')) p.push('고침 '+n('_chg'));
+      if (n('_moved')) p.push('자리 옮김 '+n('_moved'));
+      if (n('_del')) p.push('지움 '+n('_del'));
+      return p.join(' · ');
+    },
+    bdGroups(){ return this.bdBuildGroups(this.bdTree); },
     bdAllFiles(){
       const saved = (this.bdForm.file_list||[]).map(f=>({ key:'s'+f.id, id:f.id, name:f.name,
                      size:f.size, kind:f.kind, url:f.url, thumb:f.thumb, by:f.by, pending:false }));
@@ -8616,12 +8625,13 @@ const app = createApp({
       if (!f) return [];
       const banned = new Set();
       if (f.id){
-        const walk = id => { banned.add(id); this.bdTree.filter(x=>x.parent_id===id).forEach(x=>walk(x.id)); };
+        const src = this.bdMgr ? this.bdDraft : this.bdTree;
+        const walk = id => { banned.add(id); src.filter(x=>x.parent_id===id).forEach(x=>walk(x.id)); };
         walk(f.id);
       }
       // 개인 폴더는 개인 폴더 아래로만. 공용 폴더를 골라 봐야 어차피 개인으로 들어가
       // 고른 자리와 실제 자리가 달라진다.
-      return this.bdTree.filter(x => x.depth < 3 && !banned.has(x.id)
+      return (this.bdMgr ? this.bdDraft.filter(x=>!x._del) : this.bdTree).filter(x => x.depth < 3 && !banned.has(x.id)
         && (f.scope==='PRIVATE' ? (x.group_key==='private' && x.mine) : x.group_key!=='private'));
     },
     // 열었을 때와 달라진 게 있는가. 되돌릴 것이 있는지 판단하는 하나의 기준이다.
@@ -13399,14 +13409,123 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); this.bdDiff=null; }
     },
     // ── 폴더 관리 ──
-    openBdFolderMgr(){ this.bdMgr = true; },
-    bdGroupOpen(k){ return !this.bdClosed.includes(k); },
+    // ── 폴더 관리: 초안으로 만들고 저장할 때 한 번에 반영한다 ──
+    openBdFolderMgr(){
+      this.bdDraft = this.bdTree.map(f=>({ ...f }));
+      this.bdMgr = true; this.bdMgrGuard = false;
+    },
+    askCloseBdMgr(){
+      if (this.bdMgrDirty){ this.bdMgrGuard = true; return; }
+      this.bdMgr = null; this.bdMgrGuard = false;
+    },
+    revertBdMgr(){ this.bdDraft = this.bdTree.map(f=>({ ...f })); this.bdMgrGuard = false; },
+    bdDelText(f){
+      const m = f._del;
+      if (m.mode==='purge') return '글까지 지움';
+      if (m.mode==='move'){ const t = this.bdDraft.find(x=>x.id===m.to); return '→ '+((t&&t.name)||'다른 폴더'); }
+      return '→ '+(m.parent_name||'위 폴더');
+    },
+    undoBdDelete(f){
+      const i = this.bdDraft.findIndex(x=>x.id===f.id);
+      if (i>=0) this.bdDraft[i] = { ...this.bdDraft[i], _del:null };
+    },
+    // 저장 — 만들기 → 고치기 → 자리 → 지우기 차례로. 지우기를 마지막에 해야
+    // 글을 옮길 곳(새로 만든 폴더일 수도 있다)이 이미 있다.
+    async saveBdMgr(){
+      this.bdMgrSaving = true;
+      const idMap = {};
+      try {
+        for (const f of this.bdDraft.filter(x=>x._new && !x._del)){
+          const r = await api('POST','/api/admin/academy/board/folder', this.bdFolderBody(f, idMap));
+          idMap[f.id] = r.id;
+        }
+        for (const f of this.bdDraft.filter(x=>!x._new && x._chg && !x._del)){
+          await api('POST','/api/admin/academy/board/folder', this.bdFolderBody(f, idMap));
+        }
+        // 자리는 서버가 형제끼리 order 를 다시 매기므로, 바뀐 차례대로 한 번씩 올린다
+        for (const f of this.bdDraft.filter(x=>x._moved && !x._del)){
+          const real = f._new ? idMap[f.id] : f.id;
+          if (real) await api('POST','/api/admin/academy/board/folder',
+                              { ...this.bdFolderBody(f, idMap), id:real, order:f.order });
+        }
+        for (const f of this.bdDraft.filter(x=>x._del)){
+          if (f._new) continue;                       // 만들었다 지운 것은 서버에 없다
+          const m = f._del;
+          const to = (m.mode==='move') ? (idMap[m.to] || m.to) : null;
+          await api('DELETE','/api/admin/academy/board/folder?id='+f.id+'&mode='+(m.mode||'up')
+                    + (to ? '&to='+to : ''));
+        }
+        this.notify('폴더를 저장했습니다.');
+        this.bdMgr = null; this.bdMgrGuard = false; this.loadBoard();
+      } catch(e){ this.notify(e.message,false); }
+      this.bdMgrSaving = false;
+    },
+    bdFolderBody(f, idMap){
+      const pid = f.parent_id;
+      return { id:(f._new ? null : f.id), name:f.name, icon:f.icon,
+               parent_id:(pid && idMap && idMap[pid] !== undefined ? idMap[pid] : pid) || null,
+               scope:f.scope, branch_id:f.branch_id, need_read:f.need_read,
+               versioned:f.versioned, allow_comments:f.allow_comments,
+               write_scope:f.write_scope, sort_mode:f.sort_mode, pin:f.pin };
+    },
+    // 남의 서랍은 볼 일이 있을 때만 여는 것이라 기본이 접힘이다.
+    bdFoldDefault(k){ return String(k)==='staff' || String(k).indexOf('staff:')===0; },
+    bdGroupOpen(k){
+      const v = this.bdFold[k];
+      return v === undefined ? !this.bdFoldDefault(k) : !v;
+    },
     toggleBdGroup(k){
-      this.bdClosed = this.bdGroupOpen(k) ? this.bdClosed.concat([k]) : this.bdClosed.filter(x=>x!==k);
-      try { localStorage.setItem('portal_board_closed', JSON.stringify(this.bdClosed)); } catch(e){}
+      this.bdFold = { ...this.bdFold, [k]: this.bdGroupOpen(k) };
+      try { localStorage.setItem('portal_board_fold', JSON.stringify(this.bdFold)); } catch(e){}
     },
     // 접어도 [접어도 보임]을 켠 폴더는 남는다. 공지는 늘 눈에 있어야 한다.
     // 층마다 한 칸씩 들여쓴다. 폴더 줄은 왼쪽에 세로선을 두어 계단이 보이게 한다.
+    bdBuildGroups(list){
+      const out = [], by = {};
+      for (const f of list){
+        if (!by[f.group_key]){ by[f.group_key] = { key:f.group_key, label:f.group_label, rows:[] }; out.push(by[f.group_key]); }
+        by[f.group_key].rows.push(f);
+      }
+      // 전 지점 · 지점 · 개인 폴더
+      const rank = k => (k==='all' ? 0 : (k==='private' ? 2 : (k==='staff' ? 3 : 1)));
+      out.forEach(g=>{
+        g.hiddenUnread = g.rows.filter(f=>!f.pin).reduce((a,b)=>a+(b.unread||0), 0);
+        if (g.key==='staff') g.people = g.rows.map(f=>f.owner_id).filter((v,i,a)=>a.indexOf(v)===i).length;
+        if (g.key!=='staff'){ g.items = g.rows.map(f=>({ t:'f', key:'f'+f.id, f, lvl:f.depth })); return; }
+        // 줄마다 이름을 붙이면 지저분하다. 사람별로 나눠 머리에 한 번만 적는다.
+        // 차례는 원장 > 부원장 > 강사 > 조교 — 계정 만들 때 고르는 역할 순서 그대로다.
+        const by = {}, people = [];
+        for (const f of g.rows){
+          const k = 'u'+f.owner_id;
+          if (!by[k]){
+            by[k] = { key:'p'+k, label:f.owner, role:f.owner_role||'', branch:f.owner_branch||'', rows:[] };
+            people.push(by[k]);
+          }
+          by[k].rows.push(f);
+        }
+        people.sort((a,b)=> a.branch.localeCompare(b.branch,'ko')
+          || this.roleRank(a.role)-this.roleRank(b.role)
+          || (a.label||'').localeCompare(b.label||'','ko'));
+        // 여러 지점을 함께 보는 사람에게는 지점으로도 크게 묶고, 지점마다 접고 편다
+        const items = [];
+        let curBranch = null, hide = false;
+        const deep = this.bdMultiBranch ? 1 : 0;     // 지점 머리가 한 층을 더 먹는다
+        for (const p of people){
+          if (this.bdMultiBranch && p.branch !== curBranch){
+            curBranch = p.branch;
+            const bk = 'staff:'+curBranch;
+            hide = !this.bdGroupOpen(bk);
+            items.push({ t:'b', key:'b'+curBranch, label:curBranch, lvl:1, fold:bk,
+                         n:people.filter(x=>x.branch===curBranch).length });
+          }
+          if (hide) continue;
+          items.push({ t:'p', key:p.key, label:p.label, role:p.role, lvl:1+deep });
+          p.rows.forEach(f=> items.push({ t:'f', key:'f'+f.id, f, lvl:2+deep+(f.depth-1) }));
+        }
+        g.items = items;
+      });
+      return out.sort((a,b)=> rank(a.key)-rank(b.key) || a.label.localeCompare(b.label,'ko'));
+    },
     bdRail(lvl){ return (0.45 + Math.max(0, (lvl||1)-1) * 0.7) + 'rem'; },
     bdIndent(lvl){ return '0.4rem'; },
     bdGroupItems(g){
@@ -13438,38 +13557,60 @@ const app = createApp({
         : { id:null, name:'', icon:'📁', parent_id:null, scope:'ALL', branch_id:null,
             need_read:false, versioned:false, allow_comments:false, write_scope:'', sort_mode:'RECENT', pin:false };
     },
-    async saveBdFolder(){
+    saveBdFolder(){
       const f = this.bdFolderForm;
       if (!(f.name||'').trim()) return this.notify('폴더 이름을 적어 주세요.', false);
       if (f.scope==='BRANCH' && !f.branch_id) return this.notify('지점을 고르세요.', false);
-      try {
-        await api('POST','/api/admin/academy/board/folder', f);
-        this.bdFolderForm=null; this.notify('저장되었습니다.'); this.loadBoard();
-      } catch(e){ this.notify(e.message,false); }
+      const gk = f.scope==='PRIVATE' ? 'private'
+               : (f.scope==='BRANCH' && f.branch_id ? 'b'+f.branch_id : 'all');
+      const gl = f.scope==='PRIVATE' ? '개인 폴더'
+               : (f.scope==='BRANCH' ? ((this.bdBranches.find(b=>b.id===f.branch_id)||{}).name||'지점') : '전 지점');
+      const par = f.parent_id ? this.bdDraft.find(x=>x.id===f.parent_id) : null;
+      const depth = par ? par.depth+1 : 1;
+      if (f.id){
+        const i = this.bdDraft.findIndex(x=>x.id===f.id);
+        if (i>=0) this.bdDraft[i] = { ...this.bdDraft[i], ...f, group_key:gk, group_label:gl,
+                                      depth, _chg:!this.bdDraft[i]._new };
+      } else {
+        const id = 'tmp'+(++this._bdTmp);
+        const sib = this.bdDraft.filter(x=>(x.parent_id||null)===(f.parent_id||null) && !x._del).length;
+        this.bdDraft.push({ ...f, id, group_key:gk, group_label:gl, depth, order:sib,
+                            mine:true, owner:'', owner_id:(this.me?this.me.user.id:null),
+                            posts:0, unread:0, _new:true });
+      }
+      this.bdFolderForm = null;
     },
-    async moveBdFolder(f, delta){
-      try { await api('PUT','/api/admin/academy/board/folder', { id:f.id, delta }); this.loadBoard(); }
-      catch(e){ this.notify(e.message,false); }
+    moveBdFolder(f, delta){
+      const sibs = this.bdDraft.filter(x=>(x.parent_id||null)===(f.parent_id||null) && !x._del)
+                               .sort((a,b)=>a.order-b.order);
+      const i = sibs.findIndex(x=>x.id===f.id), j = i+delta;
+      if (i<0 || j<0 || j>=sibs.length) return;
+      sibs.splice(j, 0, sibs.splice(i,1)[0]);
+      sibs.forEach((x,n)=>{ if (x.order!==n){ x.order = n; x._moved = true; } });
     },
-    async askDeleteBdFolder(f){
-      try {
-        const d = await api('DELETE','/api/admin/academy/board/folder?id='+f.id);
-        if (d.need_choice){
-          // 안에 무엇이 있다. 어떻게 할지 고르게 한다.
-          this.bdDelAsk = Object.assign({ id:f.id, name:f.name, mode:'up', to:null }, d);
-          return;
-        }
-        this.notify('지웠습니다.'); this.bdFolderId=null; this.loadBoard();
-      } catch(e){ this.notify(e.message,false); }
+    askDeleteBdFolder(f){
+      // 안에 무엇이 있으면 어떻게 할지 먼저 고르게 한다(저장할 때 그대로 실행)
+      const kids = this.bdDraft.filter(x=>x.parent_id===f.id && !x._del).length;
+      const posts = f.posts || 0;
+      if (!kids && !posts){ this.bdMarkDelete(f, { mode:'up' }); return; }
+      const par = f.parent_id ? this.bdDraft.find(x=>x.id===f.parent_id) : null;
+      this.bdDelAsk = { id:f.id, name:f.name, posts, folders:kids, mode:'up', to:null,
+                        parent_id:f.parent_id, parent_name:(par?par.name:'맨 위') };
     },
-    async doDeleteBdFolder(){
+    bdMarkDelete(f, m){
+      const mark = id => {
+        const i = this.bdDraft.findIndex(x=>x.id===id);
+        if (i>=0) this.bdDraft[i] = { ...this.bdDraft[i], _del:m };
+      };
+      mark(f.id);
+      if (m.mode==='purge') this.bdDraft.filter(x=>x.parent_id===f.id).forEach(x=>mark(x.id));
+    },
+    doDeleteBdFolder(){
       const a = this.bdDelAsk;
       if (a.mode==='move' && !a.to) return this.notify('옮길 폴더를 고르세요.', false);
-      try {
-        await api('DELETE','/api/admin/academy/board/folder?id='+a.id+'&mode='+a.mode
-                  + (a.mode==='move' ? '&to='+a.to : ''));
-        this.bdDelAsk=null; this.notify('지웠습니다.'); this.bdFolderId=null; this.loadBoard();
-      } catch(e){ this.notify(e.message,false); }
+      const f = this.bdDraft.find(x=>x.id===a.id);
+      this.bdMarkDelete(f, { mode:a.mode, to:a.to, parent_name:a.parent_name });
+      this.bdDelAsk = null;
     },
     // ── 개발 요청 게시판 ──
     devStatus(s){ return DEV_STATUS[s] || DEV_STATUS.NONE; },

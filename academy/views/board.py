@@ -143,8 +143,12 @@ def _folder_row(f, unread=0, posts=0, multi=False, me=None, owners_meta=None):
     if f.scope == "PRIVATE":
         # 사람 이름을 덩어리로 세우면 '전 지점·인천청라' 와 같은 층에 섞여 무엇인지
         # 헷갈린다. 개인 폴더는 한 덩어리로 묶고, 누구 것인지는 줄에 적는다.
-        gk, gl = "private", "개인 폴더"
-        if not mine:
+        # 내 서랍과 남의 서랍은 성질이 다르다. 내 것은 늘 쓰는 것이고, 남의 것은
+        # 볼 일이 있을 때만 여는 것이다. 덩어리를 갈라 남의 것은 접어 둔다.
+        if mine:
+            gk, gl = "private", "개인 폴더"
+        else:
+            gk, gl = "staff", "직원 폴더"
             owner = _name_of(f.created_by) or "이름 없음"
     elif f.scope == "BRANCH" and f.branch_id:
         gk, gl = "b%d" % f.branch_id, f.branch.name
@@ -278,6 +282,11 @@ class BoardFolderAPI(APIView):
         f.write_scope = d.get("write_scope") or ""
         f.sort_mode = d.get("sort_mode") or "RECENT"
         f.pin_when_collapsed = bool(d.get("pin"))
+        if d.get("order") is not None:
+            try:
+                f.order = max(0, int(d["order"]))
+            except (TypeError, ValueError):
+                pass
         f.save()
         return self.success({"id": f.id})
 
