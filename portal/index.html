@@ -2093,7 +2093,13 @@
       </div>
       <div class="p-3 space-y-2">
         <template v-for="g in bdDraftGroups" :key="g.key">
-        <div class="text-[11px] font-semibold text-slate-400 pt-1">{{ g.label }}</div>
+        <button @click="toggleBdMgrGroup(g.key)"
+                class="w-full flex items-center gap-1 text-[11px] font-semibold text-slate-400 pt-1 hover:text-slate-600">
+          <span class="text-slate-300">{{ bdMgrOpen(g.key) ? '▾' : '▸' }}</span>
+          <span>{{ g.label }}</span>
+          <span v-if="!bdMgrOpen(g.key)" class="ml-auto text-[10px] text-slate-300">{{ g.key==='staff' ? g.people+'명' : g.rows.length }}</span>
+        </button>
+        <template v-if="bdMgrOpen(g.key)">
         <template v-for="it in g.items" :key="it.key">
         <div v-if="it.t==='b'" class="text-[10px] font-semibold text-slate-500 pt-1" :style="{ marginLeft: bdRail(it.lvl) }">{{ it.label }}</div>
         <div v-else-if="it.t==='p'" class="text-[10px] text-slate-400" :style="{ marginLeft: bdRail(it.lvl) }">{{ it.label }} <span class="text-slate-300">{{ roleLabel(it.role) }}</span></div>
@@ -2126,6 +2132,7 @@
             </template>
           </span>
         </div>
+        </template>
         </template>
         </template>
         <div class="flex gap-2">
@@ -2178,7 +2185,8 @@
           </select>
           <p class="text-[11px] text-slate-400 mt-0.5">3단까지만 만들 수 있습니다. 더 깊으면 찾기 어렵습니다.</p>
         </div>
-        <div class="flex gap-2">
+        <p v-if="!bdCanEdit" class="text-[11px] text-slate-400">내 폴더입니다.</p>
+        <div v-if="bdCanEdit" class="flex gap-2">
           <div class="flex-1 min-w-0"><label class="lbl">볼 수 있는 사람</label>
             <select v-model="bdFolderForm.scope" @change="bdFolderForm.parent_id=null" class="input px-2">
               <option value="ALL">전 직원</option><option value="DIRECTOR">원장 이상</option>
@@ -8386,6 +8394,8 @@ const app = createApp({
       // 폴더 관리 초안 — 저장을 눌러야 실제로 바뀐다
       bdDraft: [], bdMgrGuard: false, bdMgrSaving: false, _bdTmp: 0, bdIconPick: false,
       _bdWas: { title:'', body:'' },
+      // 폴더 관리 창의 접기는 트리와 따로 기억한다(한쪽을 접었다고 다른 쪽이 접히면 헷갈린다)
+      bdMgrFold: {},
       // 자주 쓸 만한 것만. 더 필요하면 [직접 넣기]로 무엇이든 넣을 수 있다.
       bdIcons: ['📁','🗂','📂','📌','📖','📕','📗','📘','📝','📄','📊','🗓',
                 '🏆','🎓','💡','🔔','⭐','✅','❗','🔒','💻','🧩','🎨','🔧'],
@@ -13457,7 +13467,7 @@ const app = createApp({
     // ── 폴더 관리: 초안으로 만들고 저장할 때 한 번에 반영한다 ──
     openBdFolderMgr(){
       this.bdDraft = this.bdTree.map(f=>({ ...f }));
-      this.bdMgr = true; this.bdMgrGuard = false;
+      this.bdMgr = true; this.bdMgrGuard = false; this.bdMgrFold = {};
     },
     askCloseBdMgr(){
       if (this.bdMgrDirty){ this.bdMgrGuard = true; return; }
@@ -13584,6 +13594,12 @@ const app = createApp({
                  'INSTRUCTOR','TA','EXTERNAL_INSTRUCTOR_ADMIN'].indexOf(r);
       return i < 0 ? 99 : i;
     },
+    // 남의 폴더는 고칠 수도 없다. 늘 펼쳐져 있을 까닭이 없어 기본을 접힘으로 둔다.
+    bdMgrOpen(k){
+      const v = this.bdMgrFold[k];
+      return v === undefined ? (String(k)!=='staff') : !v;
+    },
+    toggleBdMgrGroup(k){ this.bdMgrFold = { ...this.bdMgrFold, [k]: this.bdMgrOpen(k) }; },
     bdFolderEditable(f){
       // 개인 폴더는 만든 사람만, 나머지는 원장 이상
       return f.scope==='PRIVATE' ? f.mine : this.bdCanEdit;
