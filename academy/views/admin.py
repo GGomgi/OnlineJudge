@@ -2634,8 +2634,12 @@ class StudentTimetableAdminAPI(APIView):
             if f in data:
                 setattr(slot, f, data[f])
         # 끝나는 날은 기간 그 자체라 이력을 나눌 것이 없다. 늘 이 자리에서 바로 고친다.
+        # 직렬화기를 거치지 않고 들어오는 길도 있어(EditStudentTimetableSerializer 밖의 호출)
+        # 글자로 올 수 있다. 날짜로 맞춘 뒤에 견준다.
         if "active_until" in data:
             au = data.get("active_until")
+            if isinstance(au, str):
+                au = _to_date(au) if au.strip() else None
             if au and slot.active_from and au < slot.active_from:
                 return self.error("끝나는 날이 시작일(%s)보다 앞설 수 없습니다." % slot.active_from)
             slot.active_until = au
@@ -2718,27 +2722,45 @@ class StudentTimetableAdminAPI(APIView):
         if conf:
             return self.error(_conflict_msg(_name_of(slot.student), "%s요일" % _WD[conf.weekday],
                                             conf.start_time, conf.duration_minutes, "정규수업"))
-        # 기존 시간표는 그 전날까지만 유효
-        slot.active_until = eff - timedelta(days=1)
-        slot.save(update_fields=["active_until"])
+        # 기존 시간표는 그 전날까지만 유효.
+        # 같은 날 두 번 고치면 옛 줄의 시작일이 이미 eff 이라, 끝나는 날이 시작일보다
+        # 앞서는 죽은 줄이 남는다. 하루도 안 쓴 줄이므로 새 줄이 그 자리를 잇게 지운다.
+        until = eff - timedelta(days=1)
+        # 같은 날 두 번 고치면 옛 줄의 시작일이 이미 eff 이라, 끝나는 날이 시작일보다
+        # 앞서는 죽은 줄이 남는다. 하루도 안 쓴 줄이라 끝난 것으로 접어 둔다 —
+        # 살려 두면 주 교육 회수에 끼어 원비가 부풀어 오른다(김준수 주2회→주3회 44만원).
+        from ..models import TimetableStatus
+        never_ran = bool(slot.active_from) and slot.active_from > until
+        if never_ran:
+            slot.active_until = slot.active_from
+            slot.status = TimetableStatus.ENDED
+            slot.save(update_fields=["active_until", "status"])
+            TimetableChange.objects.create(
+                student=slot.student, actor=request.user, action="DELETE", reason=reason,
+                detail=("%s %s 접음 — 같은 날 다시 고쳐 하루도 쓰지 않은 줄"
+                        % (_WD[slot.weekday], str(slot.start_time)[:5]))[:255])
+        else:
+            slot.active_until = until
+            slot.save(update_fields=["active_until"])
         # 새 시간표: 넘어온 값으로 덮어쓰고, 안 넘어온 값은 기존 것 유지
+        base = slot
         new_kwargs = dict(
-            student=slot.student, branch=slot.branch, class_type=slot.class_type,
-            weekday=data.get("weekday", slot.weekday), start_time=data.get("start_time", slot.start_time),
-            duration_minutes=data.get("duration_minutes", slot.duration_minutes),
-            frequency=data.get("frequency", slot.frequency),
-            room=data.get("room", slot.room), status=slot.status,
+            student=base.student, branch=base.branch, class_type=base.class_type,
+            weekday=data.get("weekday", base.weekday), start_time=data.get("start_time", base.start_time),
+            duration_minutes=data.get("duration_minutes", base.duration_minutes),
+            frequency=data.get("frequency", base.frequency),
+            room=data.get("room", base.room), status=base.status,
             active_from=eff, active_until=None)
         if "program" in data:
             new_kwargs["program"] = data.get("program") or ""
             new_kwargs["subject"] = (data.get("subject") or "").strip() or resolve_program_label(new_kwargs["program"]) or ""
         else:
-            new_kwargs["program"] = slot.program
-            new_kwargs["subject"] = data.get("subject") or slot.subject
+            new_kwargs["program"] = base.program
+            new_kwargs["subject"] = data.get("subject") or base.subject
         if "instructor_id" in data:
             new_kwargs["instructor"] = User.objects.filter(id=data["instructor_id"]).first() if data["instructor_id"] else None
         else:
-            new_kwargs["instructor"] = slot.instructor
+            new_kwargs["instructor"] = base.instructor
         new_slot = StudentTimetable.objects.create(**new_kwargs)
         sync_program_to_profile(new_slot.student, new_slot.program, data.get("language") or "")
 
@@ -2748,15 +2770,15 @@ class StudentTimetableAdminAPI(APIView):
 
         labels = {"weekday": "요일", "start_time": "시각", "duration_minutes": "수업길이",
                   "program": "과정", "frequency": "반복"}
-        old_vals = {"weekday": _WD[old_weekday], "start_time": str(slot.start_time)[:5],
-                    "duration_minutes": slot.duration_minutes, "program": resolve_program_label(slot.program) or "미지정",
-                    "frequency": {"WEEKLY": "매주", "BIWEEKLY": "격주"}.get(slot.frequency, slot.frequency)}
+        old_vals = {"weekday": _WD[old_weekday], "start_time": str(base.start_time)[:5],
+                    "duration_minutes": base.duration_minutes, "program": resolve_program_label(base.program) or "미지정",
+                    "frequency": {"WEEKLY": "매주", "BIWEEKLY": "격주"}.get(base.frequency, base.frequency)}
         new_vals = {"weekday": _WD[new_slot.weekday], "start_time": str(new_slot.start_time)[:5],
                     "duration_minutes": new_slot.duration_minutes, "program": resolve_program_label(new_slot.program) or "미지정",
                     "frequency": {"WEEKLY": "매주", "BIWEEKLY": "격주"}.get(new_slot.frequency, new_slot.frequency)}
         parts = [f"{labels[k]} {old_vals[k]} → {new_vals[k]}" for k in labels if old_vals[k] != new_vals[k]]
         TimetableChange.objects.create(
-            student=slot.student, actor=request.user, action="UPDATE", reason=reason,
+            student=base.student, actor=request.user, action="UPDATE", reason=reason,
             detail=("%s부터 시간표 변경: %s" % (str(eff), "; ".join(parts) if parts else "수정"))[:255])
         new_slot = StudentTimetable.objects.select_related("student", "branch", "instructor").get(pk=new_slot.pk)
         return self.success(StudentTimetableSerializer(new_slot).data)
