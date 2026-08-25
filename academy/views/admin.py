@@ -3117,6 +3117,34 @@ class StudentDetailAdminAPI(APIView):
 
 class StudentStatusAdminAPI(APIView):
     @admin_role_required
+    def get(self, request):
+        """적용일 뒤에 남은 수업을 미리 보여 준다.
+
+        퇴원 적용일은 '그날부터 안 온다'는 뜻이다. 그런데 그 뒤에 잡힌 수업이 있으면
+        어긋난다 — 오늘 퇴원인데 목요일 보강이 남는 식이다(이준영 8/25). 고르기 전에
+        몇 건이 걸리는지 보여 줘야 날짜를 바로 잡을 수 있다."""
+        u = User.objects.filter(id=request.GET.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_view_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        try:
+            eff = datetime.strptime(request.GET.get("after"), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            eff = (now() + timedelta(hours=9)).date()
+        rows = []
+        for o in LessonOccurrence.objects.filter(student=u, date__gte=eff) \
+                                         .exclude(status__in=["CANCELLED", "HOLIDAY"]) \
+                                         .select_related("makeup_for").order_by("date")[:50]:
+            att = DailyAttendance.objects.filter(student=u, date=o.date).first()
+            rows.append({"date": str(o.date), "time": str(o.start_time)[:5],
+                         "status": o.status, "is_makeup": o.is_makeup,
+                         "checked": bool(att and (att.check_in_at or att.check_out_at))})
+        return self.success({"after": str(eff), "rows": rows,
+                             "last": (rows[-1]["date"] if rows else "")})
+
+    @admin_role_required
     def post(self, request):
         """등록상태 변경(재원/휴원/퇴원/재등록) + 이력 영구 기록."""
         data = request.data

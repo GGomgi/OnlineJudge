@@ -1039,6 +1039,27 @@
               <input v-model="stuStatusReason" placeholder="사유 (필수)" class="input flex-1 min-w-0 py-1" />
               <button @click="changeStuStatus" class="btn-secondary text-sm whitespace-nowrap shrink-0">상태 변경</button>
             </div>
+            <!-- 적용일은 '그날부터 안 온다'는 뜻이다. 그 뒤에 잡힌 수업이 있으면 어긋난다 —
+                 오늘 퇴원인데 목요일 보강이 남는 식이다. 고르기 전에 보여 준다. -->
+            <div v-if="stuStatusAfter && stuStatusAfter.rows.length && stuStatusNew!=='ENROLLED'"
+                 class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs space-y-1">
+              <div class="text-amber-800">
+                <b>{{ dd(stuStatusAfter.after) }}부터</b> 잡혀 있는 수업이 <b>{{ stuStatusAfter.rows.length }}건</b> 있습니다.
+                이 날짜로 {{ stuStatusNew==='WITHDRAWN' ? '퇴원' : '휴원' }}하면 <b>안 오는 것으로 봅니다.</b>
+              </div>
+              <div class="flex flex-wrap gap-1">
+                <span v-for="(r,i) in stuStatusAfter.rows.slice(0,8)" :key="i"
+                      :class="['px-1.5 py-0.5 rounded whitespace-nowrap', r.checked ? 'bg-emerald-100 text-emerald-700' : 'bg-white border border-amber-200 text-amber-700']">
+                  {{ dd(r.date) }} {{ r.time }}<span v-if="r.is_makeup"> 보강</span><span v-if="r.checked"> · 다녀감</span>
+                </span>
+                <span v-if="stuStatusAfter.rows.length>8" class="text-amber-600">외 {{ stuStatusAfter.rows.length-8 }}건</span>
+              </div>
+              <div class="text-amber-700">
+                마지막 수업이 <b>{{ dd(stuStatusAfter.last) }}</b> 입니다.
+                끝까지 다니고 그만두는 것이면 적용일을 <b>{{ dd(nextDay(stuStatusAfter.last)) }}</b> 로 잡으세요.
+                <button @click="stuStatusDate = nextDay(stuStatusAfter.last)" class="ml-1 underline font-semibold">그 날짜로</button>
+              </div>
+            </div>
             <!-- 앞날로 잡아 둔 것이 있으면 맨 위에. 잊고 또 누르면 안 된다 -->
             <div v-if="stuPending" class="rounded-lg bg-violet-50 border border-violet-200 px-3 py-2 flex items-center gap-2 text-sm">
               <span class="text-violet-700">📌 <b>{{ dd(stuPending.date) }}부터 {{ stuStatusBadge(stuPending.status).label }}</b> 로 잡혀 있습니다</span>
@@ -8419,7 +8440,7 @@ const app = createApp({
       stuRec: { rows:[], kinds:[], can_edit:false, kind:'' },
       stuRecForm: null, stuRecUp: false, stuLinks: [],
       stuAttHist: { rows:[], from:'', to:'', fwdDays:0 },
-      stuPendEdit: null,
+      stuPendEdit: null, stuStatusAfter: null,
       stuVerify: null, vrModal: null, vrPick: {}, vrCustom: {}, vrAdd: {}, vrFmt: {},
       vrShowFormat: false, vrError: '',
       stuMkAll: [], stuMkShowPending: true, stuMkShowFixed: true,
@@ -14510,6 +14531,7 @@ const app = createApp({
         }
       }
       if (k==='progress' && this.stuProgView==='cal') this.loadStuProgCal();
+      if (k==='status') this.loadStuStatusAfter();
       if (k==='record') this.loadStuRecords();
       if (k==='links') this.loadStuLinks();
     },
@@ -15059,6 +15081,20 @@ const app = createApp({
     async restoreStuLog(g){
       try { const lead = await api('DELETE','/api/admin/academy/lead/note?log_id='+g.id+'&hidden=0'); this.stuDetail.lead = lead; this.notify('복원되었습니다.'); }
       catch(e){ this.notify(e.message,false); }
+    },
+    // 적용일을 고를 때마다 그 뒤에 남은 수업을 받아 온다
+    async loadStuStatusAfter(){
+      if (!this.stuDetail || !this.stuStatusDate){ this.stuStatusAfter = null; return; }
+      try {
+        this.stuStatusAfter = await api('GET','/api/admin/academy/student_status?student_id='
+                                        + this.stuDetail.id + '&after=' + this.stuStatusDate);
+      } catch(e){ this.stuStatusAfter = null; }
+    },
+    nextDay(d){
+      if (!d) return '';
+      const [y,m,dd0] = String(d).split('-').map(Number);
+      const t = new Date(Date.UTC(y, m-1, dd0+1)); const p = x=>String(x).padStart(2,'0');
+      return t.getUTCFullYear()+'-'+p(t.getUTCMonth()+1)+'-'+p(t.getUTCDate());
     },
     editStuPending(){
       const p = this.stuPending;
@@ -15742,6 +15778,10 @@ const app = createApp({
     // (화면을 열 때마다 미리 받으면 대부분 안 쓰는 낭비가 된다)
     this.$watch(() => this.dashFilter.q, (v)=>{ if ((v||'').trim()) this.ensureDashStudents(); });
     this.$watch(() => this.bdQ, ()=>{ if (this.tab==='board') this.loadBdList(); });
+    // 적용일을 바꾸면 그 뒤에 남은 수업을 다시 센다
+    this.$watch(() => [this.stuStatusDate, this.stuStatusNew].join('|'), ()=>{
+      if (this.stuDetail && this.stuTab==='status') this.loadStuStatusAfter();
+    });
     setInterval(()=>{ this.clockNow = Date.now(); }, 1000);  // 실시간 시계/경과시간
     // 오늘 운영 탭이 오늘 날짜를 보고 있을 때, 키오스크 등 다른 화면에서의 등원/하원 변경을 반영
     setInterval(()=>{ if (this.tab==='dashboard' && this.dashIsToday && !this.attModal) this.loadDashboard(); }, 5000);
