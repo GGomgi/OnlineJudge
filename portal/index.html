@@ -2156,6 +2156,21 @@
           <div style="width:4.5rem"><label class="lbl">아이콘</label><input v-model="bdFolderForm.icon" maxlength="2" placeholder="📁" class="input text-center" /></div>
           <div class="flex-1 min-w-0"><label class="lbl">이름</label><input v-model="bdFolderForm.name" class="input" @keyup.enter="saveBdFolder" /></div>
         </div>
+        <!-- 직접 쳐 넣어도 되지만, 고를 것이 없으면 그런 칸인 줄도 모른다 -->
+        <div>
+          <div class="flex flex-wrap gap-1">
+            <button v-for="ic in bdIcons" :key="ic" @click="bdFolderForm.icon = ic"
+                    :class="['w-7 h-7 rounded border text-base leading-none',
+                             bdFolderForm.icon===ic ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50']">{{ ic }}</button>
+            <button @click="bdIconPick = !bdIconPick"
+                    class="h-7 px-2 rounded border border-dashed border-slate-300 text-[11px] text-slate-500 hover:bg-slate-50">직접 넣기</button>
+          </div>
+          <p v-if="bdIconPick" class="text-[11px] text-slate-400 mt-1 leading-snug">
+            위 <b>아이콘</b> 칸에 이모지를 붙여 넣으면 됩니다.
+            윈도우는 <b class="text-slate-600">⊞ + .</b>, 맥은 <b class="text-slate-600">⌃ + ⌘ + 스페이스</b> 로 이모지 창이 열립니다.
+            비워 두면 아이콘 없이 이름만 나옵니다.
+          </p>
+        </div>
         <div><label class="lbl">위 폴더</label>
           <select v-model="bdFolderForm.parent_id" class="input px-2">
             <option :value="null">맨 위</option>
@@ -8363,7 +8378,10 @@ const app = createApp({
       bdCanWrite: true, bdCommentDraft: '', bdPending: [], _bdKey: 0, bdDrag: '',
       bdFold: (()=>{ try { return JSON.parse(localStorage.getItem('portal_board_fold')||'{}'); } catch(e){ return {}; } })(),
       // 폴더 관리 초안 — 저장을 눌러야 실제로 바뀐다
-      bdDraft: [], bdMgrGuard: false, bdMgrSaving: false, _bdTmp: 0,
+      bdDraft: [], bdMgrGuard: false, bdMgrSaving: false, _bdTmp: 0, bdIconPick: false,
+      // 자주 쓸 만한 것만. 더 필요하면 [직접 넣기]로 무엇이든 넣을 수 있다.
+      bdIcons: ['📁','🗂','📂','📌','📖','📕','📗','📘','📝','📄','📊','🗓',
+                '🏆','🎓','💡','🔔','⭐','✅','❗','🔒','💻','🧩','🎨','🔧'],
       // 그리는 도중에 만들면 갱신이 계속 돌아 화면이 멈춘다. 시작할 때 미리 만들어 둔다.
       colState: buildAllColState(),
       wdPop: { show:false, x:0, y:0, name:'', wd:'', times:[] },
