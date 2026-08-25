@@ -2582,6 +2582,8 @@ class StudentTimetableAdminAPI(APIView):
         # 이미 끝난 지난 시간표와도 겹친다고 나온다.
         af_new = _to_date(data["active_from"]) if data.get("active_from") else (now() + timedelta(hours=9)).date()
         au_new = _to_date(data["active_until"]) if data.get("active_until") else None
+        if au_new and au_new < af_new:
+            return self.error("끝나는 날(%s)이 시작일(%s)보다 앞설 수 없습니다." % (au_new, af_new))
         dup = [x for x in StudentTimetable.objects.filter(
                    student=student, weekday=data["weekday"],
                    start_time=data["start_time"], program=prog).exclude(status="ENDED")

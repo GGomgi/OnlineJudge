@@ -683,6 +683,9 @@
             </div>
             <div v-if="stuTimetables.length" class="space-y-2">
               <div v-for="s in stuTtVisibleRows()" :key="s.id || s._tmpId" :class="['rounded-lg border px-2 py-1.5 overflow-x-auto', s.status==='PAUSED' ? 'bg-amber-50' : '', stuTtPhase(s)==='past' ? 'opacity-60' : '', (s.id && ttRowDirty(s)) ? 'ring-1 ring-amber-300' : '', !s.id ? 'ring-1 ring-indigo-300 bg-indigo-50/30' : '']">
+                <div v-if="ttBadPeriod(s)" class="text-[10px] mb-0.5 text-rose-600 font-medium">
+                  ⚠ 끝나는 날({{ dd(s.active_until) }})이 시작일({{ dd(s.active_from) }})보다 앞섭니다. 하루도 쓰이지 않습니다.
+                </div>
                 <div v-if="s.id" class="text-[10px] mb-0.5" :class="{'text-emerald-600':stuTtPhase(s)==='current','text-indigo-500':stuTtPhase(s)==='upcoming','text-slate-400':stuTtPhase(s)==='past'}">
                   <template v-if="stuTtPhase(s)==='current'">✓ 적용중{{ s.active_from ? ' · '+dd(s.active_from) : '' }}<template v-if="s.active_until"> ~ <b>{{ dd(s.active_until) }}</b>까지</template></template>
                   <template v-else-if="stuTtPhase(s)==='upcoming'">🕓 예정 · {{ s.active_from }}부터 적용</template>
@@ -700,14 +703,15 @@
                        2022년 수업까지 만들어진다. 끝나는 날은 비우면 '계속'이다. -->
                   <template v-if="!s.id">
                     <span class="text-[10px] text-slate-400 shrink-0 pl-1">적용</span>
-                    <div class="shrink-0"><date-box v-model="s.active_from" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
+                    <div class="shrink-0"><date-box v-model="s.active_from" :max="s.active_until || null" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
                     <span class="text-[10px] text-slate-400 shrink-0">~</span>
-                    <div class="shrink-0"><date-box v-model="s.active_until" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
+                    <div class="shrink-0"><date-box v-model="s.active_until" :min="s.active_from || null" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
                   </template>
-                  <!-- 이미 있는 줄은 끝나는 날만 여기서 고친다. 기간 그 자체라 이력을 나눌 것이 없다 -->
+                  <!-- 이미 있는 줄은 끝나는 날만 여기서 고친다. 기간 그 자체라 이력을 나눌 것이 없다.
+                       달력에서 시작일보다 앞선 날은 아예 못 고르게 한다 -->
                   <template v-else-if="stuCanEdit && stuTtEditMode">
                     <span class="text-[10px] text-slate-400 shrink-0 pl-1">~</span>
-                    <div class="shrink-0"><date-box v-model="s.active_until" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
+                    <div class="shrink-0"><date-box v-model="s.active_until" :min="s.active_from || null" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
                   </template>
                   <span v-if="s.status==='PAUSED'" class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 shrink-0" title="휴원 처리로 지금 멈춰 있는 시간표">휴원중</span>
                   <span v-else-if="ttPendingText(s)" class="text-[10px] px-1 rounded bg-indigo-100 text-indigo-700 shrink-0" title="아직 오지 않은 일입니다. 그날이 되면 실제로 바뀝니다.">{{ ttPendingText(s) }}</span>
@@ -9773,6 +9777,10 @@ const app = createApp({
         || (s.language||'')!==(o.language||'') || (s.active_until||'')!==(o.active_until||'');
     },
     // 끝나는 날만 바꿨는가. 기간 그 자체라 이력을 나눌 것이 없어 바로 고친다.
+    // 끝나는 날이 시작일보다 앞서면 하루도 쓰이지 않는 줄이 된다. 만들지도 저장하지도 않는다.
+    ttBadPeriod(s){
+      return !!(s && s.active_from && s.active_until && s.active_until < s.active_from);
+    },
     ttOnlyUntilChanged(s){
       const o = s && s._orig; if (!o) return false;
       return (s.active_until||'')!==(o.active_until||'')
@@ -10962,6 +10970,7 @@ const app = createApp({
     sortArrow(key){ if (this.staffSort.key!==key) return ' ↕'; return this.staffSort.dir>0 ? ' ▲' : ' ▼'; },
     async saveTt(s){
       if (!this.ttRowDirty(s)) return this.notify('변경된 내용이 없습니다.', false);
+      if (this.ttBadPeriod(s)) return this.notify('끝나는 날이 시작일보다 앞섭니다. 날짜를 고쳐 주세요.', false);
       if (!s._fullEdit && !this.ttOnlyUntilChanged(s) && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
       const reason = await this.askInput(s._fullEdit
         ? '전체 수정 이유 (요청자 + 사유까지 적어주세요)\n예) 처음부터 요일이 잘못 입력됨'
@@ -14901,7 +14910,7 @@ const app = createApp({
       if (!s.start_time) return this.notify('시작 시간을 입력하세요.', false);
       try {
         if (!s.active_from) return this.notify('언제부터 쓰는 시간표인지 정해 주세요.', false);
-        if (s.active_until && s.active_until < s.active_from) return this.notify('끝나는 날이 시작일보다 앞섭니다.', false);
+        if (this.ttBadPeriod(s)) return this.notify('끝나는 날이 시작일보다 앞섭니다. 날짜를 고쳐 주세요.', false);
         await api('POST','/api/admin/academy/student_timetable', { student_id:this.stuDetail.id, weekday:s.weekday, start_time:s.start_time,
           duration_minutes:s.duration_minutes, instructor_id:s._instructor_id||null, program:s.program, subject:this.rowSubject(s),
           frequency:s.frequency, active_from:s.active_from, active_until:s.active_until || null });
@@ -14925,7 +14934,10 @@ const app = createApp({
     async saveAllStuTt(){
       const rows = this.stuTimetables.filter(s=>s.id && this.ttRowDirty(s));
       if (!rows.length) return this.notify('변경된 내용이 없습니다.', false);
-      for (const s of rows){ if (!s._fullEdit && !this.ttOnlyUntilChanged(s) && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false); }
+      for (const s of rows){
+        if (this.ttBadPeriod(s)) return this.notify('끝나는 날이 시작일보다 앞섭니다. 날짜를 고쳐 주세요.', false);
+        if (!s._fullEdit && !this.ttOnlyUntilChanged(s) && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
+      }
       const reason = await this.askInput('시간표 변경 이유 (요청자 + 사유까지 적어주세요)\n예) 학부모 요청 - 다른 학원과 시간 겹침'+(rows.length>1 ? '\n(변경된 '+rows.length+'건에 함께 기록됩니다)' : ''));
       if (reason===null) return; if (!reason.trim()) return this.notify('변경 이유가 필요합니다.', false);
       const bodies = rows.map(s=>{
@@ -14942,6 +14954,7 @@ const app = createApp({
     },
     async saveStuTt(s){
       if (!this.ttRowDirty(s)) return this.notify('변경된 내용이 없습니다.', false);
+      if (this.ttBadPeriod(s)) return this.notify('끝나는 날이 시작일보다 앞섭니다. 날짜를 고쳐 주세요.', false);
       if (!s._fullEdit && !this.ttOnlyUntilChanged(s) && !s.effective_date) return this.notify('적용 시작일을 선택하세요.', false);
       const reason = await this.askInput(s._fullEdit
         ? '전체 수정 이유 (요청자 + 사유까지 적어주세요)\n예) 처음부터 요일이 잘못 입력됨'
