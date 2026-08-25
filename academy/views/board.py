@@ -405,7 +405,9 @@ class BoardPostAPI(APIView):
                 d["versions"] = [_ver_row(v) for v in
                                  BoardPostVersion.objects.filter(post=p)
                                  .select_related("author")[:100]]
-            if p.folder.need_read:
+            # 누가 읽었는지는 챙겨야 하는 사람만 본다. 강사가 동료의 읽음 여부를 알
+            # 까닭이 없다 — 읽었는지는 그대로 기록되지만 명단은 안 내려간다.
+            if p.folder.need_read and (sup or role in _DIRECTOR_UP):
                 seen = set(BoardRead.objects.filter(post=p).values_list("user_id", flat=True))
                 # 인천 원장이 김포 직원의 읽음까지 볼 까닭이 없다. 챙길 수 있는 사람만 센다.
                 view = viewable_branch_ids(me)
