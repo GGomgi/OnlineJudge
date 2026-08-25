@@ -7116,7 +7116,13 @@
 
           <!-- 글쓰기 -->
           <div v-else-if="bdView==='write'" class="bg-white rounded-xl shadow-sm p-5 space-y-3">
-            <div class="font-bold">{{ bdForm.id ? '글 수정' : '새 글' }} <span class="text-xs font-normal text-slate-400">— {{ bdFolder ? bdFolder.name : '' }}</span></div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="font-bold">{{ bdForm.id ? '글 수정' : '새 글' }} <span class="text-xs font-normal text-slate-400">— {{ bdFolder ? bdFolder.name : '' }}</span></div>
+              <div class="ml-auto flex gap-2">
+                <button @click="closeBdWrite" class="btn-secondary text-sm">취소</button>
+                <button @click="submitBd" class="btn-primary text-sm">{{ bdForm.id ? '수정' : '등록' }}</button>
+              </div>
+            </div>
             <input v-model="bdForm.title" placeholder="제목" class="input" />
             <div ref="bdEditorEl"></div>
             <!-- 판 관리 폴더에서만. 무엇을 왜 고쳤는지 그때 안 적으면 나중에 못 대준다 -->
@@ -8379,6 +8385,7 @@ const app = createApp({
       bdFold: (()=>{ try { return JSON.parse(localStorage.getItem('portal_board_fold')||'{}'); } catch(e){ return {}; } })(),
       // 폴더 관리 초안 — 저장을 눌러야 실제로 바뀐다
       bdDraft: [], bdMgrGuard: false, bdMgrSaving: false, _bdTmp: 0, bdIconPick: false,
+      _bdWas: { title:'', body:'' },
       // 자주 쓸 만한 것만. 더 필요하면 [직접 넣기]로 무엇이든 넣을 수 있다.
       bdIcons: ['📁','🗂','📂','📌','📖','📕','📗','📘','📝','📄','📊','🗓',
                 '🏆','🎓','💡','🔔','⭐','✅','❗','🔒','💻','🧩','🎨','🔧'],
@@ -9785,7 +9792,16 @@ const app = createApp({
       if (this.tab==='leadmgr') return this.noteDirty();
       if (this.tab==='staff') return this.staffFormDirty();
       if (this.tab==='indtt') return this.ttDirty();
+      if (this.tab==='board') return this.bdWriteDirty();
       return false;
+    },
+    // 글을 쓰다 다른 데로 가면 통째로 날아간다. 제목·본문·붙인 파일 중 하나라도 있으면 막는다.
+    bdWriteDirty(){
+      if (this.bdView!=='write') return false;
+      const f = this.bdForm;
+      const body = this._bdEditor ? (this._bdEditor.getMarkdown()||'') : (f.body||'');
+      if (f.id) return (f.title||'')!==(this._bdWas.title||'') || body!==(this._bdWas.body||'') || this.bdPending.length>0;
+      return !!((f.title||'').trim() || body.trim() || this.bdPending.length);
     },
     // 브라우저 기본 확인창은 우리 화면과 생김새가 따로 논다. 화면 안 띠로 물어본다.
     askLeave(run){ this.leavePrompt = { run }; },
@@ -13190,8 +13206,12 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     pickBdFolder(f){
+      if (this.bdWriteDirty()){ this.askLeave(()=> this._pickBdFolderNow(f)); return; }
+      this._pickBdFolderNow(f);
+    },
+    _pickBdFolderNow(f){
       this.bdFolderId = f.id; this.bdFolder = f; this.bdView='list';
-      this._destroyBdEditors(); this.loadBdList();
+      this._destroyBdEditors(); this.bdPending=[]; this.loadBdList();
     },
     async loadBdList(){
       if (!this.bdFolderId) return;
@@ -13217,6 +13237,7 @@ const app = createApp({
       if (!this.bdFolderId) return this.notify('폴더를 먼저 고르세요.', false);
       this.bdForm={ id:null, title:'', body:'', pinned:false, note:'', effective_date:'', students:[], file_list:[] };
       this.bdPending=[]; this.bdStuQ=''; this.bdStuQRaw=''; this.ensureStudentsLoaded();
+      this._bdWas = { title:'', body:'' };
       this.bdView='write'; this._makeBdEditor('');
     },
     openBdEdit(d){
@@ -13224,9 +13245,15 @@ const app = createApp({
       this.bdForm={ id:d.id, title:d.title, body:d.body, pinned:d.pinned, note:'', effective_date:'',
                     students:(d.students||[]).map(x=>x.id), file_list:[...(d.file_list||[])] };
       this.bdPending=[]; this.bdStuQ=''; this.bdStuQRaw=''; this.ensureStudentsLoaded();
+      this._bdWas = { title:d.title||'', body:d.body||'' };
       this.bdView='write'; this._makeBdEditor(d.body||'');
     },
     closeBdWrite(){
+      if (this.bdWriteDirty()){ this.askLeave(()=> this._closeBdWriteNow()); return; }
+      this._closeBdWriteNow();
+    },
+    _closeBdWriteNow(){
+      this.bdPending = [];
       this._destroyBdEditors();
       if (this.bdForm.id) this.openBdDetail(this.bdForm.id); else { this.bdView='list'; this.loadBdList(); }
     },
