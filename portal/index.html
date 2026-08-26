@@ -2124,20 +2124,26 @@
             <span v-if="bdDrag==='ex'" class="text-[11px] text-indigo-600 font-medium">여기에 놓으세요</span>
             <label class="ml-auto inline-flex items-center gap-2 px-2.5 py-1 rounded border border-slate-200 bg-white text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
               📎 고르기
-              <input type="file" multiple class="hidden" @change="uploadExFiles($event)" />
+              <input type="file" multiple class="hidden" @change="pickExFiles($event)" />
             </label>
           </div>
-          <div v-if="exResult.files.length" class="flex flex-wrap gap-1.5">
-            <div v-for="f in exResult.files" :key="f.id"
-                 @mouseenter="showBdPrev(f,$event)" @mouseleave="hideBdPrev" @click="openBdFile(f)"
-                 class="flex items-center gap-1.5 px-2 py-1 rounded border border-slate-200 text-[11px] cursor-pointer hover:bg-slate-50 max-w-[14rem]">
+          <div v-if="exAllFiles.length" class="flex flex-wrap gap-1.5">
+            <div v-for="f in exAllFiles" :key="f.key"
+                 @mouseenter="!f.pending && showBdPrev(f,$event)" @mouseleave="hideBdPrev"
+                 @click="!f.pending && openBdFile(f)"
+                 :class="['flex items-center gap-1.5 px-2 py-1 rounded border text-[11px] max-w-[14rem]',
+                          f.pending ? 'border-dashed border-indigo-300 bg-indigo-50/50 text-indigo-700'
+                                    : 'border-slate-200 cursor-pointer hover:bg-slate-50']">
               <span class="shrink-0">{{ bdIcon(f.kind) }}</span>
               <span class="truncate">{{ f.name }}</span>
-              <button @click.stop="deleteExFile(f)" class="text-rose-300 hover:text-rose-500 shrink-0">✕</button>
+              <button @click.stop="removeExFile(f)" class="text-rose-300 hover:text-rose-500 shrink-0">✕</button>
             </div>
           </div>
-          <p class="text-[11px] text-slate-400">성적표 · 자격증 · 시험 보는 사진. 끌어다 놓아도 됩니다. 올린 파일은 바로 저장됩니다.</p>
-          <div v-if="exUploading" class="text-xs text-indigo-500">올리는 중…</div>
+          <p class="text-[11px] text-slate-400">
+            성적표 · 자격증 · 시험 보는 사진. 끌어다 놓아도 됩니다.
+            <span class="text-indigo-500">테두리가 점선인 것은 [저장]을 눌러야 올라갑니다.</span>
+          </p>
+          <div v-if="exUploading" class="text-xs text-indigo-500">올리는 중… {{ exUpDone }}/{{ exUpTotal }}</div>
         </div>
 
         <div class="flex justify-end gap-2 pt-1">
@@ -7601,7 +7607,7 @@
           <option value="me">개발자</option>
         </select>
         <div class="relative flex-1 min-w-0 max-w-md">
-          <input v-model="devlogQRaw" @keydown.enter.prevent="devlogFind(false)" @input="onDevlogQ"
+          <input v-model="devlogQRaw" @keydown.enter.prevent="devlogFind(false)" @keydown.esc="devlogStop" @input="onDevlogQ"
                  placeholder="대화 안에서 찾기 (엔터로 다음)" class="input py-1.5 pr-8 w-full text-sm" />
           <button v-if="devlogQRaw" @click="devlogClearFind"
                   class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm leading-none">✕</button>
@@ -7616,7 +7622,11 @@
         </span>
         <!-- 지금 화면에 깔린 대화가 어디서부터인지. 이전 기록을 더 불러오면 앞당겨진다 -->
         <span class="shrink-0 text-xs font-mono text-slate-400 whitespace-nowrap">{{ devlogFromTs }} ~</span>
-        <span v-if="devlogFinding" class="shrink-0 text-xs text-indigo-500 whitespace-nowrap">불러오며 찾는 중…</span>
+        <span v-if="devlogFinding" class="shrink-0 flex items-center gap-1.5 whitespace-nowrap">
+          <span class="text-xs text-indigo-500">불러오며 찾는 중… {{ devlogFindSeen }}건</span>
+          <button @click="devlogStop" class="px-2 py-0.5 rounded border border-rose-200 text-[11px] text-rose-500 hover:bg-rose-50">중지</button>
+          <span class="text-[11px] text-slate-400">(ESC)</span>
+        </span>
         <span v-else-if="devlogFindMsg" class="shrink-0 text-xs text-slate-400 whitespace-nowrap">{{ devlogFindMsg }}</span>
         <button @click="devlogToBottom" class="ml-auto shrink-0 px-3 py-1.5 rounded text-sm border border-slate-200 text-slate-500 whitespace-nowrap">↓ 맨 아래로</button>
       </div>
@@ -8264,7 +8274,8 @@ const GUARD_FORMS = {
   examAdd:       { get: vm => vm.examAdd,       close: vm => { vm.examAdd = null; } },
   stuExamAdd:    { get: vm => vm.stuExamAdd,    close: vm => { vm.stuExamAdd = null; } },
   examContactForm: { get: vm => vm.examContactForm, close: vm => { vm.examContactForm = null; } },
-  exResult:      { get: vm => (vm.exResult ? { result: vm.exResult.result, score: vm.exResult.score, note: vm.exResult.note } : null),
+  exResult:      { get: vm => (vm.exResult ? { result: vm.exResult.result, score: vm.exResult.score, note: vm.exResult.note,
+                                                pending: (vm.exResult.pending||[]).map(p=>p.file.name).join('|') } : null),
                    close: vm => { vm.exResult = null; } },
   // 창은 껍데기이고 실제로 적는 곳은 따로인 경우 — 적는 쪽을 지킨다
   attModal:      { get: vm => vm.attForm,       close: vm => { vm.attModal = null; } },
@@ -8513,7 +8524,7 @@ const app = createApp({
       bdFold: (()=>{ try { return JSON.parse(localStorage.getItem('portal_board_fold')||'{}'); } catch(e){ return {}; } })(),
       // 폴더 관리 초안 — 저장을 눌러야 실제로 바뀐다
       bdDraft: [], bdMgrGuard: false, bdMgrSaving: false, _bdTmp: 0, bdIconPick: false,
-      exResult: null, exUploading: false,
+      exResult: null, exUploading: false, exUpDone: 0, exUpTotal: 0, _exKey: 0,
       _bdWas: { title:'', body:'' },
       // 폴더 관리 창의 접기는 트리와 따로 기억한다(한쪽을 접었다고 다른 쪽이 접히면 헷갈린다)
       bdMgrFold: {},
@@ -8681,6 +8692,7 @@ const app = createApp({
       branchAdmin: [], branchNewName: '',
       devlogItems: [], devlogMode: 'full', devlogStart: 0, devlogHasMore: false, devlogLoading: false, devlogTotal: 0,
       devlogQ: '', devlogQRaw: '', devlogWho: 'all', devlogHitI: null, devlogFinding: false, devlogFindMsg: '',
+      devlogAbort: false, devlogFindSeen: 0,
       options: {},
       optionCategories: [
         {v:'program', l:'등록 과정 (입회원)'},
@@ -8756,6 +8768,14 @@ const app = createApp({
       return p.join(' · ');
     },
     bdGroups(){ return this.bdBuildGroups(this.bdTree); },
+    // 이미 올린 것과 아직 안 올린 것을 한 줄에. 두 목록으로 나누면 무엇이 들어갈지 안 보인다.
+    exAllFiles(){
+      if (!this.exResult) return [];
+      const saved = (this.exResult.files||[]).map(f=>({ ...f, key:'s'+f.id, pending:false }));
+      const pend = (this.exResult.pending||[]).map(p=>({ key:'p'+p.key, name:p.file.name,
+                     size:p.file.size, kind:p.kind, pending:true, _p:p }));
+      return saved.concat(pend);
+    },
     bdAllFiles(){
       const saved = (this.bdForm.file_list||[]).map(f=>({ key:'s'+f.id, id:f.id, name:f.name,
                      size:f.size, kind:f.kind, url:f.url, thumb:f.thumb, by:f.by, pending:false }));
@@ -11333,6 +11353,11 @@ const app = createApp({
             this.$nextTick(()=> this.devlogScrollToHit());
             return;
           }
+          // 없으면 있을 때까지 이전 기록을 받는다. 오래 걸릴 수 있어 멈출 길을 둔다.
+          if (this.devlogAbort){
+            this.devlogFindMsg = '멈췄습니다. ' + this.devlogItems.length + '건까지 봤습니다.';
+            return;
+          }
           if (!this.devlogHasMore){
             this.devlogFindMsg = this.devlogHits.length
               ? '더 없습니다. [찾기]를 누르면 최근 것부터 다시 봅니다.'
@@ -11341,12 +11366,15 @@ const app = createApp({
             return;
           }
           const before = this.devlogItems.length;
+          this.devlogFindSeen = this.devlogItems.length;
           await this.loadDevlog(false);
           if (this.devlogItems.length <= before){ this.devlogFindMsg = '더 없습니다.'; return; }
         }
-        this.devlogFindMsg = '너무 멀리 왔습니다. 다시 눌러 주세요.';
-      } finally { this.devlogFinding = false; }
+        this.devlogFindMsg = '너무 멀리 왔습니다(400번). 다시 눌러 주세요.';
+      } finally { this.devlogFinding = false; this.devlogAbort = false; }
     },
+    // 찾는 말이 오래된 기록에 있으면 한참 거슬러 올라간다. 언제든 멈출 수 있어야 한다.
+    devlogStop(){ if (this.devlogFinding) this.devlogAbort = true; },
     // 다음은 위(더 오래된 쪽), 이전은 아래(더 최근 쪽)
     devlogPrev(){
       if (this.devlogFinding) return;
@@ -13889,7 +13917,7 @@ const app = createApp({
         what: e.what || e.label || '', exam_date: e.exam_date || '', exam_time: e.exam_time || '',
         result: e.result || '', score: e.score || '', note: e.note || '',
         result_done: !!e.result_done, result_at: e.result_at || '', result_by: e.result_by || '',
-        files: [...(e.files || [])],
+        files: [...(e.files || [])], pending: [],
       };
       this.$nextTick(()=> this.openGuard('exResult'));
     },
@@ -13898,6 +13926,7 @@ const app = createApp({
       try {
         await api('POST','/api/admin/academy/exam_result',
                   { entry_id:r.entry_id, result:r.result, score:r.score, note:r.note });
+        await this._flushExPending();
         this.notify('결과를 등록했습니다.');
         this.exResult = null; this.guardAsk = '';
         this.refreshAfterExResult();
@@ -13910,35 +13939,50 @@ const app = createApp({
       if (this.stuDetail && this.stuTab==='exam') this.loadStuExams();
       if (this.stuDetail && this.stuTab==='record') this.loadStuRecords();
     },
-    async uploadExFiles(ev){
+    // 고른 파일은 손에 들고 있다가 [저장]을 눌러야 올라간다. 바로 올리면 닫기를
+    // 눌렀을 때 결과는 안 들어가고 파일만 남는다.
+    pickExFiles(ev){
       const files = Array.from(ev.target.files||[]); ev.target.value='';
-      if (!files.length || !this.exResult) return;
-      this.exUploading = true;
-      for (const file of files){
-        const fd = new FormData();
-        fd.append('entry_id', this.exResult.entry_id); fd.append('file', file);
-        try {
-          const res = await fetch('/api/admin/academy/exam_result/file', { method:'POST', body:fd,
-                        headers:{ 'X-CSRFToken': getCookie('csrftoken') }, credentials:'same-origin' });
-          const j = await res.json();
-          if (j.error) throw new Error(j.data);
-          this.exResult.files.push(j.data);
-        } catch(e){ this.notify(file.name+' — '+e.message, false); }
+      if (!this.exResult) return;
+      this.exResult.pending = this.exResult.pending || [];
+      for (const f of files){
+        if (f.size > this.bdMaxFile){ this.notify(f.name+' — 파일 하나는 '+this.bdSizeText(this.bdMaxFile)+'까지입니다.', false); continue; }
+        this.exResult.pending.push({ key: ++this._exKey, file:f, kind:this.bdKindOf(f.name) });
       }
-      this.exUploading = false; this.refreshAfterExResult();
     },
     dropExFiles(ev){
       this.bdDrag = '';
       const files = Array.from((ev.dataTransfer && ev.dataTransfer.files) || []);
-      if (files.length) this.uploadExFiles({ target:{ files, value:'' } });
+      if (files.length) this.pickExFiles({ target:{ files, value:'' } });
     },
-    async deleteExFile(f){
+    async removeExFile(f){
+      if (f.pending){
+        this.exResult.pending = this.exResult.pending.filter(p=>p.key!==f._p.key);
+        return;
+      }
       if (!await this.askConfirm(f.name+' 을 지우시겠습니까?')) return;
       try {
         await api('DELETE','/api/admin/academy/exam_result/file?id='+f.id);
         this.exResult.files = this.exResult.files.filter(x=>x.id!==f.id);
         this.refreshAfterExResult();
       } catch(e){ this.notify(e.message,false); }
+    },
+    async _flushExPending(){
+      const list = (this.exResult && this.exResult.pending) || [];
+      if (!list.length) return;
+      this.exUploading = true; this.exUpDone = 0; this.exUpTotal = list.length;
+      for (const p of list){
+        const fd = new FormData();
+        fd.append('entry_id', this.exResult.entry_id); fd.append('file', p.file);
+        try {
+          const res = await fetch('/api/admin/academy/exam_result/file', { method:'POST', body:fd,
+                        headers:{ 'X-CSRFToken': getCookie('csrftoken') }, credentials:'same-origin' });
+          const j = await res.json();
+          if (j.error) throw new Error(j.data);
+        } catch(e){ this.notify(p.file.name+' — '+e.message, false); }
+        this.exUpDone++;
+      }
+      this.exResult.pending = []; this.exUploading = false;
     },
     // ── 개발 요청 게시판 ──
     devStatus(s){ return DEV_STATUS[s] || DEV_STATUS.NONE; },
@@ -16025,6 +16069,10 @@ const app = createApp({
     // 브라우저 이탈(새로고침·뒤로가기·앞으로가기·창 닫기) 시 작성 중 내용 있으면 경고
     window.addEventListener('beforeunload', (e)=>{
       if (this.isDirty()){ e.preventDefault(); e.returnValue=''; return ''; }
+    });
+    // 개발일지에서 오래된 기록까지 거슬러 찾는 중이면 ESC 로 멈춘다
+    window.addEventListener('keydown', (e)=>{
+      if (e.key === 'Escape' && this.devlogFinding) this.devlogStop();
     });
   },
 });
