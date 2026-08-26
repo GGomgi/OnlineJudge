@@ -3135,7 +3135,7 @@
                 
                   </template>
                   <template v-else-if="c.k==='subject'">
-                    <span class="inline-block max-w-[84px] truncate align-bottom">{{ l.subject }}</span><span v-if="l.progress && l.progress.content" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help">📝</span>
+                    <span class="inline-block max-w-[84px] truncate align-bottom">{{ l.subject }}</span><span v-if="l.progress && l.progress.content && !colOn('dash','log')" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop" class="ml-1 cursor-help">📝</span>
                 
                   </template>
                   <template v-else-if="c.k==='instructor'">
@@ -3187,6 +3187,15 @@
                           @mouseenter="showTextPop('아직 없는 것', dashMissing(l).join(', '), $event)" @mouseleave="hideNotePop"
                           class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-amber-100 text-amber-700 hover:bg-amber-200">{{ dashMissing(l).length }}개</span>
                     <span v-else class="text-[11px] text-emerald-500">완료</span>
+                  </template>
+                  <!-- 수업일지 네 칸이 적혔는지. 이름을 다 쓰면 자리만 먹어 첫 글자만 쓴다 -->
+                  <template v-else-if="c.k==='log'">
+                    <span class="inline-flex gap-0.5 font-mono text-[11px] cursor-pointer"
+                          @click="openAtt(l)" @mouseenter="showProgPop(l,$event)" @mouseleave="hideProgPop">
+                      <span v-for="p in logMarks(l)" :key="p.k"
+                            :class="['w-4 h-4 leading-4 text-center rounded', p.on ? p.cls : 'bg-slate-100 text-slate-300']"
+                            :title="p.label">{{ p.t }}</span>
+                    </span>
                   </template>
                   <template v-else-if="c.k==='note'">
                     <button v-if="l.adhoc" @click="openAdhocLink(l)" class="px-1.5 py-0.5 rounded text-[11px] bg-amber-100 text-amber-700 hover:bg-amber-200">보강 연결</button>
@@ -3410,9 +3419,19 @@
         <button @click="closeGuard('attModal')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
       </div>
       <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4">
-        <div class="flex items-center justify-between px-5 py-3 border-b">
-          <div class="font-bold">{{ attModal.student_name }} <span class="text-xs font-normal text-slate-400">{{ attModal.date || dashDate }} · {{ attModal.subject }}</span></div>
-          <button @click="attModal=null" class="text-slate-400 hover:text-slate-600">✕</button>
+        <div class="flex items-center gap-2 px-5 py-3 border-b">
+          <!-- 한 명씩 닫았다 열었다 하기 번거롭다. 그 자리에서 옆 학생으로 넘어간다 -->
+          <button @click="attStep(-1)" :disabled="attNeighbor(-1)===null"
+                  class="shrink-0 px-2 py-1 rounded border border-slate-200 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-30"
+                  :title="attNeighbor(-1) ? attNeighbor(-1).student_name : ''">‹ 이전</button>
+          <div class="font-bold flex-1 min-w-0 truncate">{{ attModal.student_name }}
+            <span class="text-xs font-normal text-slate-400">{{ dd(attModal.date || dashDate) }} · {{ attModal.subject }}</span>
+            <span v-if="attIdx>=0" class="text-xs font-normal text-slate-300">{{ attIdx+1 }} / {{ attSiblings.length }}</span>
+          </div>
+          <button @click="attStep(1)" :disabled="attNeighbor(1)===null"
+                  class="shrink-0 px-2 py-1 rounded border border-slate-200 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-30"
+                  :title="attNeighbor(1) ? attNeighbor(1).student_name : ''">다음 ›</button>
+          <button @click="askClose('attModal')" class="shrink-0 text-slate-400 hover:text-slate-600 pl-1">✕</button>
         </div>
         <div class="p-5 space-y-3">
           <!-- 보강 건에만 나오는 두 항목 — 세로로 쌓으면 창이 길어져서 한 줄로 묶음 -->
@@ -8253,6 +8272,8 @@ const COLDEFS = {
     { k:'month',      l:'이번 달 결석·지각', d:'올리면 날짜와 지각 분수' },
     { k:'next',       l:'다음 수업', d:'앞으로 한 달' },
     { k:'missing',    l:'정보 미완료', d:'빠진 항목 수 — 올리면 무엇이 없는지, 누르면 학생 정보' },
+    // 수업일지 네 칸이 적혔는지 — 요일처럼 첫 글자만 색으로 가른다
+    { k:'log',        l:'수숙피고', d:'수업·숙제·피드백·비고 — 적힌 것만 색이 듭니다' },
     { k:'note',       l:'비고', always:true },
   ],
   // 학생 상세 → 출결기록. 날짜·시간·상태·비고만 늘 보이고 나머지는 골라서 켠다.
@@ -8297,7 +8318,7 @@ const COLDEFS = {
 };
 // 처음엔 지금까지 보이던 열만 켠다(다 켜져 있으면 첫인상이 복잡하다)
 const COL_DEFAULT_OFF = {
-  dash: ['school','weekdays','mk','month','next','missing'],
+  dash: ['school','weekdays','mk','month','next','missing'],   // log 는 켜 둔다
   stuatt: [],           // 출결기록은 처음엔 다 켜 둔다(지금까지 보이던 그대로)
   stu: ['age','schoolshort','programs','weekly','weekdays','instructor','parent_phone',
         'student_phone','sibling','month','mk','last_attend','verify','missing',
@@ -8619,6 +8640,16 @@ const app = createApp({
     bdFilesShown(){
       const all = (this.bdDetail && this.bdDetail.file_list) || [];
       return this.bdFilesAll ? all : all.slice(0, 12);
+    },
+    // 지금 보고 있는 목록 그대로. 걸러 놓은 채로 넘기면 화면과 다른 학생이 나온다.
+    attSiblings(){
+      if (!this.attModal) return [];
+      if (this.attModal.from === 'stu' || this.stuDetail && this.attModal._fromStu) return [];
+      return this.dashLessonsOrdered || [];
+    },
+    attIdx(){
+      if (!this.attModal) return -1;
+      return this.attSiblings.findIndex(x => x.occ_id === this.attModal.occ_id);
     },
     dashUnreadText(){
       const g = this.dashData.board_unread || [];
@@ -12613,7 +12644,7 @@ const app = createApp({
                 mk:'보강', month:'이번달', next:'다음 수업', missing:'정보', note:'비고' })[k] || k;
     },
     dashColAlign(k){
-      if (k==='att' || k==='mk' || k==='month' || k==='missing') return 'text-center';
+      if (k==='att' || k==='mk' || k==='month' || k==='missing' || k==='log') return 'text-center';
       if (k==='elapsed') return 'text-right';
       return 'text-left';
     },
@@ -12627,6 +12658,7 @@ const app = createApp({
                 weekdays:'min-w-[6rem]', subject:'min-w-[4rem]', instructor:'min-w-[4rem]',
                 att:'min-w-[13rem]', elapsed:'min-w-[6rem]', mk:'min-w-[4rem]',
                 month:'min-w-[5rem]', next:'min-w-[10rem]', missing:'min-w-[4.5rem]',
+                log:'min-w-[5rem]',
                 note:'min-w-[6rem]' })[k] || '';
     },
     // ── 오늘 운영 부가 열 ──
@@ -13702,6 +13734,28 @@ const app = createApp({
       const f = this.bdDraft.find(x=>x.id===a.id);
       this.bdMarkDelete(f, { mode:a.mode, to:a.to, parent_name:a.parent_name });
       this.bdDelAsk = null;
+    },
+    // 수업일지 네 칸이 적혔는지. 요일 배지처럼 적힌 것만 색이 들어 한눈에 들어온다.
+    logMarks(l){
+      const p = (l && l.progress) || {};
+      const note = (l && (l.lesson_note || (l.att && l.att.note))) || '';
+      return [
+        { k:'c', t:'수', label:'수업 내용',  on:!!(p.content||'').trim(),  cls:'bg-indigo-100 text-indigo-700' },
+        { k:'h', t:'숙', label:'숙제',       on:!!(p.homework||'').trim(), cls:'bg-emerald-100 text-emerald-700' },
+        { k:'f', t:'피', label:'피드백',     on:!!(p.feedback||'').trim(), cls:'bg-amber-100 text-amber-700' },
+        { k:'m', t:'고', label:'비고',       on:!!String(note).trim(),     cls:'bg-slate-200 text-slate-600' },
+      ];
+    },
+    // ── 비고 창에서 옆 학생으로 ──
+    attStep(d){
+      const n = this.attNeighbor(d);
+      if (n) this.openAtt(n);
+    },
+    attNeighbor(d){
+      const list = this.attSiblings, i = this.attIdx;
+      if (i < 0) return null;
+      const j = i + d;
+      return (j >= 0 && j < list.length) ? list[j] : null;
     },
     // ── 개발 요청 게시판 ──
     devStatus(s){ return DEV_STATUS[s] || DEV_STATUS.NONE; },
