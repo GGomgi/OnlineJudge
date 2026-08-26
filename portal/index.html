@@ -371,7 +371,7 @@
   </div>
 
   <!-- 비고 호버 팝오버 -->
-  <div v-if="notePop.show" class="fixed z-[60] bg-slate-800 text-white rounded-lg shadow-xl px-3 py-2 text-xs max-w-xs pointer-events-none" :style="{ left: notePop.x+'px', top: notePop.y+'px' }">
+  <div v-if="notePop.show" class="fixed z-[60] bg-slate-800 text-white rounded-lg shadow-xl px-3 py-2 text-xs max-w-xs pointer-events-none overflow-y-auto" :style="popStyle(notePop)">
     <span class="px-1.5 py-0.5 rounded mr-1" :style="notePop.tagStyle">{{ notePop.tag }}</span>
     <span v-if="notePop.note">{{ notePop.note }}</span><span v-else class="text-slate-400">사유 없음</span>
   </div>
@@ -461,7 +461,8 @@
   </div>
 
   <!-- 진도 호버(즉시) -->
-  <div v-if="progPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none" :style="{ left: progPop.x+'px', top: progPop.y+'px' }">
+  <div v-if="progPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none overflow-y-auto"
+       :style="popStyle(progPop)">
     <div class="font-semibold text-indigo-600">📝 수업일지</div>
     <div class="mt-1 whitespace-pre-wrap text-slate-700">{{ progPop.content }}</div>
     <div v-if="progPop.homework" class="mt-1 pt-1 border-t text-slate-500">숙제: {{ progPop.homework }}</div>
@@ -2081,8 +2082,8 @@
   </div>
 
   <!-- 파일 호버 미리보기. 눌러 열기 전에 무엇인지 알아보게 한다 -->
-  <div v-if="bdPrev" class="fixed z-[85] pointer-events-none rounded-lg border border-slate-200 bg-white shadow-xl p-2"
-       :style="{ left: bdPrev.x+'px', top: bdPrev.y+'px', width: '15rem' }">
+  <div v-if="bdPrev" class="fixed z-[85] pointer-events-none rounded-lg border border-slate-200 bg-white shadow-xl p-2 overflow-y-auto"
+       :style="{ ...popStyle(bdPrev), width: '15rem' }">
     <div v-if="bdPrev.kind==='img' && bdPrev.thumb" class="rounded overflow-hidden bg-slate-50">
       <img :src="bdPrev.thumb" class="w-full h-auto max-h-52 object-contain" />
     </div>
@@ -11707,11 +11708,31 @@ const app = createApp({
         note:((this.isAbsent(l)||this.isLeave(l)) ? (l.lesson_note||'') : (l.att.note||'')),
         tagStyle:(this.isLeave(l) ? {backgroundColor:'#ede9fe',color:'#7c3aed'}
                  : (bare ? {backgroundColor:'#334155',color:'#fff'} : this.attTagStyle(l.att.note_tag))),
-        x:Math.min(e.clientX+10,window.innerWidth-260), y:Math.min(e.clientY+10,window.innerHeight-80) };
+        ...this.popAt(e, 260) };
     },
     showTcPop(l,e){ this.tcPop={ show:true, orig:l.orig_time||'', now:l.start_time, reason:l.time_change_reason||'', x:Math.min(e.clientX+12,window.innerWidth-240), y:Math.min(e.clientY+12,window.innerHeight-120) }; },
     hideTcPop(){ this.tcPop.show=false; },
-    showProgPop(l,e){ const p=l.progress||{}; if(!p.content && !p.homework && !p.feedback && !p.memo) return; this.progPop={ show:true, content:p.content||'', homework:p.homework||'', feedback:p.feedback||'', memo:p.memo||'', x:Math.min(e.clientX+12,window.innerWidth-280), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
+    showProgPop(l,e){
+      const p=l.progress||{};
+      if(!p.content && !p.homework && !p.feedback && !p.memo) return;
+      this.progPop = Object.assign({ show:true, content:p.content||'', homework:p.homework||'',
+                                     feedback:p.feedback||'', memo:p.memo||'' }, this.popAt(e, 280));
+    },
+    // 아래쪽 줄에서는 창이 화면 밖으로 나가 스크롤로도 못 봤다. 자리가 모자라면 위로
+    // 띄우고, 그래도 길면 창 안에서 굴린다.
+    popAt(e, w){
+      const gapB = window.innerHeight - e.clientY, gapT = e.clientY;
+      const up = gapB < 220 && gapT > gapB;      // 아래가 좁고 위가 넓으면 위로
+      return { x: Math.min(e.clientX + 12, window.innerWidth - (w||280)),
+               y: up ? null : (e.clientY + 12),
+               b: up ? (window.innerHeight - e.clientY + 12) : null,
+               maxH: Math.max(140, (up ? gapT : gapB) - 24) };
+    },
+    popStyle(p){
+      const st = { left: p.x + 'px', maxHeight: (p.maxH || 320) + 'px' };
+      if (p.b != null) st.bottom = p.b + 'px'; else st.top = (p.y || 0) + 'px';
+      return st;
+    },
     hideProgPop(){ this.progPop.show=false; },
     // 줄여 보여준 글의 전체 내용을 올려다볼 때 띄운다(비고 팝오버를 그대로 재사용)
     showTextPop(tag, text, e){ this.notePop={ show:true, tag:tag, note:text||'', tagStyle:{backgroundColor:'#ede9fe',color:'#7c3aed'},
@@ -13405,8 +13426,7 @@ const app = createApp({
     },
     showBdPrev(f, e){
       this.bdPrev = { name:f.name, size:f.size, kind:f.kind, thumb:f.thumb, by:f.by, drawn:false, pages:0,
-                      x: Math.min(e.clientX+14, window.innerWidth-260),
-                      y: Math.min(e.clientY+14, window.innerHeight-300) };
+                      ...this.popAt(e, 260) };
       if (f.kind==='pdf') this._drawPdfFirstPage(f.url);
     },
     hideBdPrev(){ this.bdPrev = null; },
