@@ -371,7 +371,8 @@
   </div>
 
   <!-- 비고 호버 팝오버 -->
-  <div v-if="notePop.show" class="fixed z-[60] bg-slate-800 text-white rounded-lg shadow-xl px-3 py-2 text-xs max-w-xs pointer-events-none overflow-y-auto" :style="popStyle(notePop)">
+  <div v-if="notePop.show" class="fixed z-[60] bg-slate-800 text-white rounded-lg shadow-xl px-3 py-2 text-xs max-w-xs overflow-y-auto"
+       @mouseenter="popStay('notePop')" @mouseleave="popGo('notePop')" :style="popStyle(notePop)">
     <span class="px-1.5 py-0.5 rounded mr-1" :style="notePop.tagStyle">{{ notePop.tag }}</span>
     <span v-if="notePop.note">{{ notePop.note }}</span><span v-else class="text-slate-400">사유 없음</span>
   </div>
@@ -461,8 +462,8 @@
   </div>
 
   <!-- 진도 호버(즉시) -->
-  <div v-if="progPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none overflow-y-auto"
-       :style="popStyle(progPop)">
+  <div v-if="progPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 overflow-y-auto"
+       @mouseenter="popStay('progPop')" @mouseleave="popGo('progPop')" :style="popStyle(progPop)">
     <div class="font-semibold text-indigo-600">📝 수업일지</div>
     <div class="mt-1 whitespace-pre-wrap text-slate-700">{{ progPop.content }}</div>
     <div v-if="progPop.homework" class="mt-1 pt-1 border-t text-slate-500">숙제: {{ progPop.homework }}</div>
@@ -1390,6 +1391,8 @@
                   <span v-else-if="e.result" class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[11px] font-semibold">{{ e.result }}<span v-if="e.score"> · {{ e.score }}</span></span>
                   <span v-else-if="e.applied" class="text-[11px] text-emerald-600">접수완료</span>
                   <span v-else class="text-[11px] text-rose-600 font-semibold">미접수</span>
+                  <button v-if="stuCanEdit && !e.cancelled" @click="openExResult(Object.assign({}, e, { name:(stuDetail.real_name||'') }))"
+                          :class="['text-[11px] hover:underline', e.result_done ? 'text-slate-400' : 'text-emerald-600 font-semibold']">{{ e.result_done ? '결과 수정' : '결과 등록' }}</button>
                   <button v-if="stuCanEdit && !e.cancelled" @click="openExamEntry(e)" class="text-[11px] text-indigo-600 hover:underline">수정</button>
                 </span>
               </div>
@@ -2081,9 +2084,73 @@
     </div>
   </div>
 
+  <!-- 자격증·대회 결과 등록. 시험이 끝나면 바로 넣는 것이라 보고 있는 자리에서 끝나야 한다 -->
+  <div v-if="exResult" class="fixed inset-0 z-[68] bg-black/40 flex items-start justify-center p-4 overflow-auto" @click.self="askClose('exResult')">
+    <div v-if="guardAsk==='exResult'" class="fixed left-1/2 -translate-x-1/2 top-3 z-[80] rounded-lg border border-amber-300 bg-amber-50 shadow-lg px-3 py-2 flex items-center gap-3">
+      <div class="text-sm text-amber-800">쓰던 내용이 있습니다. 닫으면 <b>지금 적은 것이 사라집니다.</b></div>
+      <button @click="guardAsk=''" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs whitespace-nowrap">계속 쓰기</button>
+      <button @click="closeGuard('exResult')" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs whitespace-nowrap">버리고 닫기</button>
+    </div>
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg my-4">
+      <div class="flex items-center justify-between px-4 py-3 border-b">
+        <div class="font-bold text-sm">🏅 결과 등록
+          <span class="font-normal text-slate-400">— {{ exResult.name }} · {{ exResult.what }}</span>
+        </div>
+        <button @click="askClose('exResult')" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="text-[11px] text-slate-400">
+          {{ exResult.exam_date ? dd(exResult.exam_date) : '일정 미정' }}<span v-if="exResult.exam_time"> {{ exResult.exam_time }}</span>
+          <span v-if="exResult.result_done" class="ml-2 text-emerald-600">이미 등록됨 · {{ exResult.result_at }} {{ exResult.result_by }}</span>
+        </div>
+        <div class="flex gap-2">
+          <div style="width:9rem"><label class="lbl">결과</label>
+            <input v-model="exResult.result" list="examResultList" :class="['input py-1', guardCls('exResult','result')]" placeholder="합격 / 불합격 / 대상" />
+            <datalist id="examResultList"><option value="합격"><option value="불합격"><option value="대상"><option value="최우수상"><option value="우수상"><option value="장려상"><option value="참가"></datalist>
+          </div>
+          <div style="width:7rem"><label class="lbl">점수·등급</label>
+            <input v-model="exResult.score" :class="['input py-1', guardCls('exResult','score')]" placeholder="82" /></div>
+        </div>
+        <div><label class="lbl">메모</label>
+          <textarea v-model="exResult.note" rows="2" :class="['input text-sm', guardCls('exResult','note')]" placeholder="특이사항"></textarea></div>
+
+        <!-- 성적표·자격증·시험 보는 사진. 게시판과 같은 잣대를 쓴다 -->
+        <div @dragover.prevent="bdDrag='ex'" @dragleave="bdDragOff($event,'ex')" @drop.prevent="dropExFiles($event)"
+             :class="['rounded-lg p-3 space-y-2 transition-colors',
+                      bdDrag==='ex' ? 'border-2 border-dashed border-indigo-400 bg-indigo-50/60' : 'border border-dashed border-slate-200']">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-semibold text-slate-500">파일</span>
+            <span class="text-[11px] text-slate-400">{{ exResult.files.length }}개</span>
+            <span v-if="bdDrag==='ex'" class="text-[11px] text-indigo-600 font-medium">여기에 놓으세요</span>
+            <label class="ml-auto inline-flex items-center gap-2 px-2.5 py-1 rounded border border-slate-200 bg-white text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
+              📎 고르기
+              <input type="file" multiple class="hidden" @change="uploadExFiles($event)" />
+            </label>
+          </div>
+          <div v-if="exResult.files.length" class="flex flex-wrap gap-1.5">
+            <div v-for="f in exResult.files" :key="f.id"
+                 @mouseenter="showBdPrev(f,$event)" @mouseleave="hideBdPrev" @click="openBdFile(f)"
+                 class="flex items-center gap-1.5 px-2 py-1 rounded border border-slate-200 text-[11px] cursor-pointer hover:bg-slate-50 max-w-[14rem]">
+              <span class="shrink-0">{{ bdIcon(f.kind) }}</span>
+              <span class="truncate">{{ f.name }}</span>
+              <button @click.stop="deleteExFile(f)" class="text-rose-300 hover:text-rose-500 shrink-0">✕</button>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-400">성적표 · 자격증 · 시험 보는 사진. 끌어다 놓아도 됩니다. 올린 파일은 바로 저장됩니다.</p>
+          <div v-if="exUploading" class="text-xs text-indigo-500">올리는 중…</div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-1">
+          <button @click="askClose('exResult')" class="btn-secondary text-sm">닫기</button>
+          <button @click="saveExResult" class="btn-primary text-sm">저장</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 파일 호버 미리보기. 눌러 열기 전에 무엇인지 알아보게 한다 -->
-  <div v-if="bdPrev" class="fixed z-[85] pointer-events-none rounded-lg border border-slate-200 bg-white shadow-xl p-2 overflow-y-auto"
-       :style="{ ...popStyle(bdPrev), width: '15rem' }">
+  <div v-if="bdPrev" class="fixed z-[85] rounded-lg border border-slate-200 bg-white shadow-xl p-2 overflow-y-auto"
+       @mouseenter="popStay('bdPrev')" @mouseleave="popGo('bdPrev')" :style="{ ...popStyle(bdPrev), width: '15rem' }">
     <div v-if="bdPrev.kind==='img' && bdPrev.thumb" class="rounded overflow-hidden bg-slate-50">
       <img :src="bdPrev.thumb" class="w-full h-auto max-h-52 object-contain" />
     </div>
@@ -5911,7 +5978,8 @@
                 <span v-else class="text-slate-300">-</span>
               </td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
-                <button @click="openExamEntry(e)" class="text-xs text-indigo-600 hover:underline">수정</button>
+                <button @click="openExResult(e)" :class="['text-xs hover:underline', e.result_done ? 'text-slate-400' : 'text-emerald-600 font-semibold']">{{ e.result_done ? '결과 수정' : '결과 등록' }}</button>
+                <button @click="openExamEntry(e)" class="ml-2 text-xs text-indigo-600 hover:underline">수정</button>
                 <button @click="deleteExamEntry(e)" class="ml-2 text-xs text-rose-400 hover:underline">삭제</button>
               </td>
             </tr>
@@ -5993,7 +6061,8 @@
                 </td>
                 <td class="px-3 py-2 whitespace-nowrap text-xs text-slate-500">{{ e.last_contact || '-' }}</td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
-                  <button @click="openExamEntry(e)" class="text-xs text-indigo-600 hover:underline">수정</button>
+                  <button @click="openExResult(e)" :class="['text-xs hover:underline', e.result_done ? 'text-slate-400' : 'text-emerald-600 font-semibold']">{{ e.result_done ? '결과 수정' : '결과 등록' }}</button>
+                  <button @click="openExamEntry(e)" class="ml-2 text-xs text-indigo-600 hover:underline">수정</button>
                   <button @click="deleteExamEntry(e)" class="ml-2 text-xs text-rose-400 hover:underline">삭제</button>
                 </td>
               </tr>
@@ -8195,6 +8264,8 @@ const GUARD_FORMS = {
   examAdd:       { get: vm => vm.examAdd,       close: vm => { vm.examAdd = null; } },
   stuExamAdd:    { get: vm => vm.stuExamAdd,    close: vm => { vm.stuExamAdd = null; } },
   examContactForm: { get: vm => vm.examContactForm, close: vm => { vm.examContactForm = null; } },
+  exResult:      { get: vm => (vm.exResult ? { result: vm.exResult.result, score: vm.exResult.score, note: vm.exResult.note } : null),
+                   close: vm => { vm.exResult = null; } },
   // 창은 껍데기이고 실제로 적는 곳은 따로인 경우 — 적는 쪽을 지킨다
   attModal:      { get: vm => vm.attForm,       close: vm => { vm.attModal = null; } },
   attEditPop:    { get: vm => ({ time: vm.attEditPop.time, cancelReason: vm.attEditPop.cancelReason }),
@@ -8442,6 +8513,7 @@ const app = createApp({
       bdFold: (()=>{ try { return JSON.parse(localStorage.getItem('portal_board_fold')||'{}'); } catch(e){ return {}; } })(),
       // 폴더 관리 초안 — 저장을 눌러야 실제로 바뀐다
       bdDraft: [], bdMgrGuard: false, bdMgrSaving: false, _bdTmp: 0, bdIconPick: false,
+      exResult: null, exUploading: false,
       _bdWas: { title:'', body:'' },
       // 폴더 관리 창의 접기는 트리와 따로 기억한다(한쪽을 접었다고 다른 쪽이 접히면 헷갈린다)
       bdMgrFold: {},
@@ -11703,6 +11775,7 @@ const app = createApp({
     showNotePop(l,e){
       // 태그를 '없음'으로 두고 사유만 적은 경우에도 무엇인지는 보여야 한다
       const bare = this.hasBareNote(l);
+      this.popStay('notePop');
       this.notePop = { show:true,
         tag:(this.isAbsent(l) ? '결석' : (this.isLeave(l) ? '임시휴원' : (bare ? '비고' : this.attTagLabel(l.att.note_tag)))),
         note:((this.isAbsent(l)||this.isLeave(l)) ? (l.lesson_note||'') : (l.att.note||'')),
@@ -11715,6 +11788,7 @@ const app = createApp({
     showProgPop(l,e){
       const p=l.progress||{};
       if(!p.content && !p.homework && !p.feedback && !p.memo) return;
+      this.popStay('progPop');
       this.progPop = Object.assign({ show:true, content:p.content||'', homework:p.homework||'',
                                      feedback:p.feedback||'', memo:p.memo||'' }, this.popAt(e, 280));
     },
@@ -11728,12 +11802,24 @@ const app = createApp({
                b: up ? (window.innerHeight - e.clientY + 12) : null,
                maxH: Math.max(140, (up ? gapT : gapB) - 24) };
     },
+    // 창 위로 마우스를 옮기는 사이에 사라지면 스크롤을 할 수가 없다. 잠깐 기다린다.
+    _popLater(key){
+      clearTimeout(this._popT && this._popT[key]);
+      this._popT = this._popT || {};
+      this._popT[key] = setTimeout(()=>{
+        if (key === 'bdPrev') this.bdPrev = null; else this[key].show = false;
+      }, 220);
+    },
+    popStay(key){ clearTimeout(this._popT && this._popT[key]); },
+    popGo(key){
+      if (key === 'bdPrev') this.bdPrev = null; else this[key].show = false;
+    },
     popStyle(p){
       const st = { left: p.x + 'px', maxHeight: (p.maxH || 320) + 'px' };
       if (p.b != null) st.bottom = p.b + 'px'; else st.top = (p.y || 0) + 'px';
       return st;
     },
-    hideProgPop(){ this.progPop.show=false; },
+    hideProgPop(){ this._popLater('progPop'); },
     // 줄여 보여준 글의 전체 내용을 올려다볼 때 띄운다(비고 팝오버를 그대로 재사용)
     showTextPop(tag, text, e){ this.notePop={ show:true, tag:tag, note:text||'', tagStyle:{backgroundColor:'#ede9fe',color:'#7c3aed'},
       x:Math.min(e.clientX+10, window.innerWidth-260), y:Math.min(e.clientY+10, window.innerHeight-80) }; },
@@ -11769,7 +11855,7 @@ const app = createApp({
         this.brandOk = true; this.brandMsg = '지웠습니다.';
       } catch(e){ this.brandOk=false; this.brandMsg = e.message || '지우지 못했습니다.'; }
     },
-    hideNotePop(){ this.notePop.show=false; },
+    hideNotePop(){ this._popLater('notePop'); },
     async saveAtt(){
       const l=this.attModal;
       const tagChk = this.attForm.note_tag, wasAbsentChk = l.status==='ABSENT', wasLeaveChk = l.status==='LEAVE';
@@ -13425,11 +13511,12 @@ const app = createApp({
       window.open(f.url, '_blank');     // 한글·PPT·압축은 브라우저가 못 그린다
     },
     showBdPrev(f, e){
+      this.popStay('bdPrev');
       this.bdPrev = { name:f.name, size:f.size, kind:f.kind, thumb:f.thumb, by:f.by, drawn:false, pages:0,
                       ...this.popAt(e, 260) };
       if (f.kind==='pdf') this._drawPdfFirstPage(f.url);
     },
-    hideBdPrev(){ this.bdPrev = null; },
+    hideBdPrev(){ this._popLater('bdPrev'); },
     // PDF 첫 쪽은 브라우저가 그린다. 서버에 새 프로그램을 넣지 않아도 되고
     // 이미 쓰고 있는 방식(Vue·에디터·엑셀)과 결이 같다.
     async _drawPdfFirstPage(url){
@@ -13793,6 +13880,65 @@ const app = createApp({
       if (i < 0) return null;
       const j = i + d;
       return (j >= 0 && j < list.length) ? list[j] : null;
+    },
+    // ── 자격증·대회 결과 등록 ──
+    // 목록 → 수정 → 점수 로 세 번 옮기지 않고, 보고 있는 자리에서 끝낸다.
+    openExResult(e){
+      this.exResult = {
+        entry_id: e.entry_id || e.id, name: e.name || e.student_name || '',
+        what: e.what || e.label || '', exam_date: e.exam_date || '', exam_time: e.exam_time || '',
+        result: e.result || '', score: e.score || '', note: e.note || '',
+        result_done: !!e.result_done, result_at: e.result_at || '', result_by: e.result_by || '',
+        files: [...(e.files || [])],
+      };
+      this.$nextTick(()=> this.openGuard('exResult'));
+    },
+    async saveExResult(){
+      const r = this.exResult;
+      try {
+        await api('POST','/api/admin/academy/exam_result',
+                  { entry_id:r.entry_id, result:r.result, score:r.score, note:r.note });
+        this.notify('결과를 등록했습니다.');
+        this.exResult = null; this.guardAsk = '';
+        this.refreshAfterExResult();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    // 어디서 열었든 그 화면만 다시 받는다
+    refreshAfterExResult(){
+      if (this.tab==='exam') this.loadExamAll();
+      if (this.tab==='dashboard') this.loadDashboard();
+      if (this.stuDetail && this.stuTab==='exam') this.loadStuExams();
+      if (this.stuDetail && this.stuTab==='record') this.loadStuRecords();
+    },
+    async uploadExFiles(ev){
+      const files = Array.from(ev.target.files||[]); ev.target.value='';
+      if (!files.length || !this.exResult) return;
+      this.exUploading = true;
+      for (const file of files){
+        const fd = new FormData();
+        fd.append('entry_id', this.exResult.entry_id); fd.append('file', file);
+        try {
+          const res = await fetch('/api/admin/academy/exam_result/file', { method:'POST', body:fd,
+                        headers:{ 'X-CSRFToken': getCookie('csrftoken') }, credentials:'same-origin' });
+          const j = await res.json();
+          if (j.error) throw new Error(j.data);
+          this.exResult.files.push(j.data);
+        } catch(e){ this.notify(file.name+' — '+e.message, false); }
+      }
+      this.exUploading = false; this.refreshAfterExResult();
+    },
+    dropExFiles(ev){
+      this.bdDrag = '';
+      const files = Array.from((ev.dataTransfer && ev.dataTransfer.files) || []);
+      if (files.length) this.uploadExFiles({ target:{ files, value:'' } });
+    },
+    async deleteExFile(f){
+      if (!await this.askConfirm(f.name+' 을 지우시겠습니까?')) return;
+      try {
+        await api('DELETE','/api/admin/academy/exam_result/file?id='+f.id);
+        this.exResult.files = this.exResult.files.filter(x=>x.id!==f.id);
+        this.refreshAfterExResult();
+      } catch(e){ this.notify(e.message,false); }
     },
     // ── 개발 요청 게시판 ──
     devStatus(s){ return DEV_STATUS[s] || DEV_STATUS.NONE; },

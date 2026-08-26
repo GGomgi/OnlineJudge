@@ -446,6 +446,12 @@ def entry_row(e):
         "credential": ((e.credential.site + " / " + e.credential.login_id) if e.credential_id else ""),
         "fee": entry_fee(e, cat, sn),
         "result": e.result, "score": e.score, "note": e.note,
+        # 결과를 넣었는가. 불합격도 결과이고 점수만 넣기도 해서 result 만으로는 안 갈린다.
+        "result_done": bool(e.result_at),
+        "result_at": (str(e.result_at + timedelta(hours=9))[:16] if e.result_at else ""),
+        "result_by": name_of(e.result_by) if e.result_by_id else "",
+        "files": [{"id": x.id, "name": x.name, "url": x.url, "thumb": x.thumb_url,
+                   "size": x.size, "kind": x.kind} for x in e.files.all()],
         "instructor": name_of(e.instructor) if e.instructor_id else "",
         "phone": _entry_phone(e),
     }
@@ -1413,3 +1419,101 @@ class SavedSearchAPI(APIView):
     def delete(self, request):
         SavedSearch.objects.filter(id=request.GET.get("id"), user=request.user).delete()
         return self.success("ok")
+
+
+# ── 결과 등록 (docs: 오늘 운영·목록·학생 화면 어디서든) ──
+
+class ExamResultAdminAPI(APIView):
+    """자격증·대회 결과를 넣는다.
+
+    지금까지는 목록 → 수정 → 점수 로 세 번 옮겨야 했다. 결과는 시험이 끝나면 바로
+    넣는 것이라, 보고 있는 자리에서 끝나야 한다."""
+
+    @admin_role_required
+    def post(self, request):
+        from ..models import ExamEntry
+        d = request.data
+        e = ExamEntry.objects.filter(id=d.get("entry_id"), is_deleted=False) \
+                             .select_related("student", "session").first()
+        if not e:
+            return self.error("참가 기록이 없습니다.")
+        prof = getattr(e.student, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        e.result = (d.get("result") or "").strip()[:32]
+        e.score = (d.get("score") or "").strip()[:32]
+        if "note" in d:
+            e.note = d.get("note") or ""
+        # 결과를 지우면 '아직 안 넣음'으로 되돌린다
+        if not e.result and not e.score:
+            e.result_at, e.result_by = None, None
+        else:
+            e.result_at, e.result_by = now(), request.user
+        e.save(update_fields=["result", "score", "note", "result_at", "result_by"])
+        return self.success({"id": e.id, "result_done": bool(e.result_at)})
+
+
+class ExamResultFileAdminAPI(APIView):
+    """결과에 붙는 파일 — 성적표 · 자격증 · 시험 보는 사진."""
+    request_parsers = ()
+
+    @admin_role_required
+    def post(self, request):
+        import os as _os
+        from django.conf import settings as _st
+        from utils.shortcuts import rand_str as _rs
+        from ..models import ExamEntry, ExamEntryFile
+        from .board import MAX_FILE, MAX_POST, BLOCKED_EXT, IMG_EXT, _kind_of
+        e = ExamEntry.objects.filter(id=request.POST.get("entry_id"), is_deleted=False) \
+                             .select_related("student").first()
+        if not e:
+            return self.error("참가 기록이 없습니다.")
+        prof = getattr(e.student, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        f = request.FILES.get("file")
+        if not f:
+            return self.error("파일이 없습니다.")
+        if f.size > MAX_FILE:
+            return self.error("파일 하나는 %dMB까지입니다." % (MAX_FILE // 1024 // 1024))
+        if sum(x.size for x in e.files.all()) + f.size > MAX_POST:
+            return self.error("합계는 %dMB까지입니다." % (MAX_POST // 1024 // 1024))
+        ext = _os.path.splitext(f.name)[-1].lower()
+        if ext in BLOCKED_EXT:
+            return self.error("실행파일은 올릴 수 없습니다(%s)." % ext)
+        _os.makedirs(_st.UPLOAD_DIR, exist_ok=True)
+        name = "exam_" + _rs(16) + ext
+        path = _os.path.join(_st.UPLOAD_DIR, name)
+        with open(path, "wb") as out:
+            for chunk in f:
+                out.write(chunk)
+        thumb = ""
+        if ext in IMG_EXT:
+            try:
+                from PIL import Image
+                im = Image.open(path)
+                im.thumbnail((360, 360))
+                tn = "exam_t_" + _rs(16) + ".jpg"
+                im.convert("RGB").save(_os.path.join(_st.UPLOAD_DIR, tn), quality=82)
+                thumb = "%s/%s" % (_st.UPLOAD_PREFIX, tn)
+            except Exception:
+                thumb = ""
+        x = ExamEntryFile.objects.create(
+            entry=e, name=f.name[:255], url="%s/%s" % (_st.UPLOAD_PREFIX, name),
+            thumb_url=thumb, size=f.size, kind=_kind_of(ext),
+            order=e.files.count(), uploaded_by=request.user)
+        return self.success({"id": x.id, "name": x.name, "url": x.url, "thumb": x.thumb_url,
+                             "size": x.size, "kind": x.kind})
+
+    @admin_role_required
+    def delete(self, request):
+        from ..models import ExamEntryFile
+        x = ExamEntryFile.objects.filter(id=request.GET.get("id")) \
+                                 .select_related("entry__student").first()
+        if not x:
+            return self.error("파일이 없습니다.")
+        prof = getattr(x.entry.student, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        x.delete()
+        return self.success({"deleted": True})

@@ -8,6 +8,7 @@ from ..views.board import (BoardFolderAPI, BoardPostAPI, BoardFileAPI, BoardVers
                           BoardCommentAPI)
 from ..views.exam import (SavedSearchAPI, ExamChangeAdminAPI, ExamCatalogAdminAPI, ExamSessionAdminAPI, ExamEntryAdminAPI,
                           ExamContactAdminAPI, ExamStageAdminAPI,
+                          ExamResultAdminAPI, ExamResultFileAdminAPI,
                           MenuSettingAdminAPI, MyMenuAPI,
                           TuitionRateAdminAPI, DiscountItemAdminAPI,
                           StudentTuitionAdminAPI, StudentDiscountAdminAPI, TuitionPreviewAPI)
@@ -139,6 +140,8 @@ urlpatterns = [
     url(r"^academy/exam_change/?$", ExamChangeAdminAPI.as_view(), name="academy_exam_change"),
     url(r"^academy/exam_contact/?$", ExamContactAdminAPI.as_view(), name="academy_exam_contact"),
     url(r"^academy/exam_stage/?$", ExamStageAdminAPI.as_view(), name="academy_exam_stage"),
+    url(r"^academy/exam_result/?$", ExamResultAdminAPI.as_view(), name="academy_exam_result"),
+    url(r"^academy/exam_result/file/?$", ExamResultFileAdminAPI.as_view(), name="academy_exam_result_file"),
     url(r"^academy/menu_setting/?$", MenuSettingAdminAPI.as_view(), name="academy_menu_setting"),
     url(r"^academy/my_menus/?$", MyMenuAPI.as_view(), name="academy_my_menus"),
     url(r"^academy/tuition_rate/?$", TuitionRateAdminAPI.as_view(), name="academy_tuition_rate"),

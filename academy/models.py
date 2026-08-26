@@ -1831,6 +1831,11 @@ class ExamEntry(models.Model):
     fee_paid = models.BooleanField(default=False)     # 단체 접수일 때만 쓴다
     result = models.CharField(max_length=32, blank=True, default="")   # 합격/불합격/수상
     score = models.CharField(max_length=32, blank=True, default="")
+    # 결과를 넣은 때. 불합격도 결과이고 점수만 넣는 경우도 있어 result 만으로는
+    # '아직 안 넣음'과 가려지지 않는다. 이것이 있으면 등록을 마친 것이다.
+    result_at = models.DateTimeField(null=True, blank=True)
+    result_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="+")
     note = models.TextField(blank=True, default="")
     instructor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
@@ -2063,3 +2068,23 @@ class BoardComment(models.Model):
     class Meta:
         db_table = "academy_board_comment"
         ordering = ["id"]
+
+
+class ExamEntryFile(models.Model):
+    """자격증·대회 결과에 붙은 파일 — 성적표 · 자격증 · 시험 보는 사진.
+
+    게시판·학생 기록과 같은 짜임이다(50MB, 호버 미리보기, 끌어다 놓기)."""
+    entry = models.ForeignKey(ExamEntry, on_delete=models.CASCADE, related_name="files")
+    name = models.CharField(max_length=255)
+    url = models.CharField(max_length=255)
+    thumb_url = models.CharField(max_length=255, blank=True, default="")
+    size = models.PositiveIntegerField(default=0)
+    kind = models.CharField(max_length=16, blank=True, default="")
+    order = models.PositiveSmallIntegerField(default=0)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_exam_entry_file"
+        ordering = ["order", "id"]
