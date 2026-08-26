@@ -674,6 +674,36 @@ def _rec_row(r, with_files=True):
     return d
 
 
+def _exam_records(student_id):
+    """자격증·대회 결과를 학생 기록 모양으로 바꿔 준다. 여기서는 고칠 수 없고,
+    누르면 자격증 화면으로 간다 — 원본이 하나로 남아야 한다."""
+    from ..models import ExamEntry
+    out = []
+    for e in ExamEntry.objects.filter(student_id=student_id, is_deleted=False,
+                                      result_at__isnull=False) \
+                              .select_related("session", "catalog", "result_by") \
+                              .prefetch_related("files"):
+        sn = e.session
+        what = " ".join(x for x in [(e.catalog.name if e.catalog_id else (sn.title if sn else "")),
+                                    e.level, e.track, e.round] if x).strip()
+        title = what + ((" · " + e.result) if e.result else "")
+        if e.score:
+            title += " (%s)" % e.score
+        out.append({
+            "id": -e.id,                       # 학생 기록과 섞이지 않게 음수로
+            "kind": "EXAM_RESULT", "kind_label": "자격증·대회",
+            "date": str(e.exam_date or (sn.exam_date if sn else "") or ""),
+            "title": title, "body": e.note or "",
+            "author": _name_of(e.result_by) if e.result_by_id else "",
+            "time": _kst(e.result_at),
+            "linked": "exam", "entry_id": e.id,
+            "file_list": [{"id": x.id, "name": x.name, "url": x.url, "thumb": x.thumb_url,
+                           "size": x.size, "kind": x.kind, "by": "", "time": ""}
+                          for x in e.files.all()],
+        })
+    return out
+
+
 def _student_ok(request, student_id, edit=False):
     """그 학생을 볼(고칠) 수 있는가."""
     prof = AcademyProfile.objects.filter(user_id=student_id, is_deleted=False).first()
@@ -699,7 +729,13 @@ class StudentRecordAPI(APIView):
         kinds = [{"value": o.value, "label": o.label}
                  for o in OptionItem.objects.filter(category="student_record", is_active=True)
                                             .order_by("order", "id")]
-        return self.success({"rows": [_rec_row(r) for r in qs[:300]], "kinds": kinds,
+        rows = [_rec_row(r) for r in qs[:300]]
+        # 자격증·대회 결과는 여기 옮겨 적지 않는다. 두 벌이 되면 점수를 고쳤을 때
+        # 어긋난다. 원본은 그대로 두고 끌어와 섞어 보여 준다(고치려면 그쪽으로 간다).
+        if not kind or kind == "EXAM_RESULT":
+            rows += _exam_records(sid)
+        rows.sort(key=lambda r: (r["date"] or "", r["id"]), reverse=True)
+        return self.success({"rows": rows, "kinds": kinds,
                              "can_edit": _student_ok(request, sid, edit=True)})
 
     @admin_role_required

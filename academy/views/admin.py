@@ -4512,6 +4512,39 @@ class DashboardAdminAPI(APIView):
                            key=lambda x: (x["d_day"], x["kind"] != "apply", x["title"]))
         for g in exam_soon:
             g["people"].sort(key=lambda w: w["name"])
+        # 그날 보는 시험 — 아래 수업 목록에 시각 순으로 끼워 넣는다. 시험도 시각이 있으니
+        # 수업과 같은 줄에 섞여야 그날 흐름이 한눈에 보인다.
+        exam_today = []
+        for e in eq2:
+            ex = e.exam_date or (e.session.exam_date if e.session_id else None)
+            if ex != d:
+                continue
+            prof2 = getattr(e.student, "academy_profile", None)
+            bid2 = prof2.branch_id if prof2 else None
+            if view is not None and bid2 not in view:
+                continue
+            if bid and str(bid2) != str(bid):
+                continue
+            cat = e.catalog or (e.session.catalog if e.session_id else None)
+            title = (cat.name if cat else "") or (e.session.title if e.session_id else "") or "시험"
+            tm = e.exam_time or (e.session.exam_time if e.session_id else "") or ""
+            key = (tm, title, e.level, e.track, e.round)
+            g = next((x for x in exam_today if x["_k"] == key), None)
+            if not g:
+                g = {"_k": key, "time": tm, "title": title,
+                     "detail": " ".join(x for x in (e.level, e.track, e.round) if x),
+                     "kind": (e.session.kind if e.session_id else "CERT"),
+                     "place": e.place or (e.session.place if e.session_id else ""),
+                     "people": []}
+                exam_today.append(g)
+            g["people"].append({"student_id": e.student_id, "name": _name_of(e.student),
+                                "entry_id": e.id, "result_done": bool(e.result_at),
+                                "result": e.result, "score": e.score})
+        for g in exam_today:
+            g.pop("_k", None)
+            g["people"].sort(key=lambda w: w["name"])
+            g["left"] = sum(1 for w in g["people"] if not w["result_done"])
+        exam_today.sort(key=lambda x: (x["time"] or "99:99", x["title"]))
 
         # 학부모 등록 링크 작성 완료(등록 전환 전까지 계속 표시, 날짜와 무관)
         eq = Lead.objects.select_related("branch").filter(
@@ -4555,7 +4588,7 @@ class DashboardAdminAPI(APIView):
                              "total": len(lessons), "present": len(att), "reservations": reservations,
                              "enrolled_leads": enrolled, "temp_leaves": temp_leaves,
                              "next_reservations": next_resv,
-                             "exam_soon": exam_soon,
+                             "exam_soon": exam_soon, "exam_today": exam_today,
                              "board_unread": _board_unread(request.user),
                              "next_open_day": (str(nxt) if nxt else ""),
                              "next_makeups": makeups,

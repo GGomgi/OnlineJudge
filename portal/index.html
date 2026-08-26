@@ -991,12 +991,16 @@
           <div v-else class="border rounded-lg divide-y">
             <div v-for="r in stuRec.rows" :key="r.id" class="px-3 py-2.5 text-sm">
               <div class="flex items-center gap-2">
-                <span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{{ optLabel('student_record', r.kind) || '기타' }}</span>
+                <span :class="['shrink-0 text-[11px] px-1.5 py-0.5 rounded', r.linked==='exam' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600']">{{ r.kind_label || optLabel('student_record', r.kind) || '기타' }}</span>
                 <span class="shrink-0 font-mono text-xs text-slate-400">{{ r.date ? dd(r.date) : '-' }}</span>
                 <span class="font-medium truncate flex-1 min-w-0">{{ r.title }}</span>
                 <span class="shrink-0 text-[11px] text-slate-400 whitespace-nowrap">{{ r.author }}</span>
-                <button v-if="stuRec.can_edit" @click="openStuRec(r)" class="shrink-0 text-xs text-indigo-500 hover:underline">수정</button>
-                <button v-if="stuRec.can_edit" @click="deleteStuRec(r)" class="shrink-0 text-xs text-rose-400 hover:underline">삭제</button>
+                <!-- 자격증 결과는 여기 옮겨 적은 게 아니라 끌어온 것이라 그쪽에서 고친다 -->
+                <button v-if="r.linked==='exam'" @click="selectStuTab('exam')" class="shrink-0 text-xs text-amber-600 hover:underline">자격증에서 보기</button>
+                <template v-else>
+                  <button v-if="stuRec.can_edit" @click="openStuRec(r)" class="shrink-0 text-xs text-indigo-500 hover:underline">수정</button>
+                  <button v-if="stuRec.can_edit" @click="deleteStuRec(r)" class="shrink-0 text-xs text-rose-400 hover:underline">삭제</button>
+                </template>
               </div>
               <div v-if="r.body" class="mt-1 text-xs text-slate-600 whitespace-pre-wrap break-all">{{ r.body }}</div>
               <div v-if="r.file_list.length" class="mt-1.5 flex flex-wrap gap-1.5">
@@ -2953,6 +2957,9 @@
         <span class="text-emerald-600">등원 <b>{{ dashCheckedIn }}</b>명</span>
         <span class="text-indigo-600">하원 <b>{{ dashCheckedOut }}</b>명</span>
         <span class="text-amber-600">수업중 <b>{{ dashInClass }}</b>명</span>
+        <label v-if="(dashData.exam_today||[]).length" class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer select-none shrink-0">
+          <input type="checkbox" v-model="dashShowExam" class="w-3.5 h-3.5" /> 시험도 함께
+        </label>
         <button @click="openColCfg('dash','오늘 운영 — 화면 표시', $event)" class="ml-auto px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs hover:bg-white shrink-0">⚙ 화면표시</button>
       </div>
       <!-- 그날이 휴무일이면 맨 위에 사유를 띄운다 -->
@@ -3183,6 +3190,27 @@
           <tbody>
             <template v-for="(l,i) in dashLessonsOrdered" :key="i">
               <tr v-if="dashIsToday && i===nowLineIndex" class="bg-rose-50"><td :colspan="dashColSpan" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }}</td></tr>
+              <!-- 시험도 시각이 있으니 수업과 같은 줄에 섞여야 그날 흐름이 보인다 -->
+              <tr v-for="g in examBefore(i)" :key="'ex'+g.time+g.title" class="bg-amber-50/70 border-t border-amber-200">
+                <td :colspan="dashColSpan" class="px-3 py-1.5">
+                  <div class="flex items-center gap-2 flex-wrap text-xs">
+                    <span class="font-mono text-amber-700 font-semibold">{{ g.time || '시각 미정' }}</span>
+                    <span :class="['px-1.5 py-0.5 rounded text-[11px]', g.kind==='CERT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700']">{{ g.kind==='CERT' ? '자격증' : '대회' }}</span>
+                    <b class="text-slate-700">{{ g.title }}</b>
+                    <span v-if="g.detail" class="text-slate-500">{{ g.detail }}</span>
+                    <span v-if="g.place" class="text-slate-400">· {{ g.place }}</span>
+                    <span class="text-slate-400">{{ g.people.length }}명</span>
+                    <span class="flex flex-wrap gap-1">
+                      <button v-for="w in g.people" :key="w.entry_id" @click="openExResult({ entry_id:w.entry_id, name:w.name, what:g.title+' '+g.detail, exam_date:dashDate, exam_time:g.time, result:w.result, score:w.score, result_done:w.result_done, files:[] })"
+                              :class="['px-1.5 py-0.5 rounded text-[11px] border', w.result_done ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-amber-300 text-amber-700 hover:bg-amber-100']">
+                        {{ w.name }}<span v-if="w.result_done"> ✓</span>
+                      </button>
+                    </span>
+                    <span v-if="g.left" class="ml-auto text-rose-600 font-semibold">결과 대기 {{ g.left }}명</span>
+                    <span v-else class="ml-auto text-emerald-600">결과 등록 끝</span>
+                  </div>
+                </td>
+              </tr>
               <tr class="border-t align-middle hover:bg-slate-50" :class="isAbsent(l) ? 'bg-rose-50/50' : (isLeave(l) ? 'bg-violet-50/50' : (l.adhoc ? 'bg-amber-50/50' : ''))">
                 <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다 -->
                 <td v-for="c in dashColsView" :key="c.k" :class="['px-3 py-2 whitespace-nowrap align-middle', dashColAlign(c.k), dashColWidth(c.k), dashColFont(c.k)]">
@@ -3288,6 +3316,25 @@
                 </td>
               </tr>
             </template>
+            <tr v-for="g in examBefore(dashLessonsOrdered.length)" :key="'exl'+g.time+g.title" class="bg-amber-50/70 border-t border-amber-200">
+              <td :colspan="dashColSpan" class="px-3 py-1.5">
+                <div class="flex items-center gap-2 flex-wrap text-xs">
+                  <span class="font-mono text-amber-700 font-semibold">{{ g.time || '시각 미정' }}</span>
+                  <span :class="['px-1.5 py-0.5 rounded text-[11px]', g.kind==='CERT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700']">{{ g.kind==='CERT' ? '자격증' : '대회' }}</span>
+                  <b class="text-slate-700">{{ g.title }}</b>
+                  <span v-if="g.detail" class="text-slate-500">{{ g.detail }}</span>
+                  <span class="text-slate-400">{{ g.people.length }}명</span>
+                  <span class="flex flex-wrap gap-1">
+                    <button v-for="w in g.people" :key="w.entry_id" @click="openExResult({ entry_id:w.entry_id, name:w.name, what:g.title+' '+g.detail, exam_date:dashDate, exam_time:g.time, result:w.result, score:w.score, result_done:w.result_done, files:[] })"
+                            :class="['px-1.5 py-0.5 rounded text-[11px] border', w.result_done ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-amber-300 text-amber-700 hover:bg-amber-100']">
+                      {{ w.name }}<span v-if="w.result_done"> ✓</span>
+                    </button>
+                  </span>
+                  <span v-if="g.left" class="ml-auto text-rose-600 font-semibold">결과 대기 {{ g.left }}명</span>
+                  <span v-else class="ml-auto text-emerald-600">결과 등록 끝</span>
+                </div>
+              </td>
+            </tr>
             <tr v-if="dashIsToday && nowLineIndex===(dashData.lessons||[]).length && (dashData.lessons||[]).length" class="bg-rose-50"><td :colspan="dashColSpan" class="px-3 py-0.5 text-[11px] text-rose-500 font-medium border-y border-rose-300">▶ 현재 {{ nowClock }} ({{ dashAllDone ? '오늘 수업 종료' : '오늘 마지막 수업 중' }})</td></tr>
             <tr v-if="(dashData.lessons||[]).length===0"><td :colspan="dashColSpan" class="px-3 py-8 text-center text-sm text-slate-400">이 날짜에 수업이 없습니다.</td></tr>
             <!-- 오늘 안 오는 학생을 찾으면 위가 비는데, 아래에 결과가 있다는 걸 알려줘야
@@ -5876,6 +5923,8 @@
         <span class="text-slate-300">|</span>
         <span class="text-slate-400">시험일</span>
         <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="examFilter.upcoming" class="w-3 h-3" />예정 <span class="text-slate-400">{{ examCounts.upcoming }}</span></label>
+        <!-- 시험은 끝났는데 결과를 아직 안 넣은 것. '지난 것'으로 접히면 넣는 걸 잊는다 -->
+        <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="examFilter.waiting" class="w-3 h-3" /><b :class="examCounts.waiting ? 'text-rose-600' : 'text-slate-400'">결과 대기</b> <span :class="examCounts.waiting ? 'text-rose-500 font-semibold' : 'text-slate-400'">{{ examCounts.waiting }}</span></label>
         <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="examFilter.past" class="w-3 h-3" />지난 것 <span class="text-slate-400">{{ examCounts.past }}</span></label>
         <span class="text-slate-300">|</span>
         <!-- 종류 복수 선택 -->
@@ -5942,7 +5991,7 @@
               <th class="text-left px-3 py-2">응시료</th>
               <th class="text-left px-3 py-2">접수 계정</th>
               <!-- 결과는 지난 것을 볼 때만 의미가 있다. 예정만 볼 때는 늘 비어 있어 자리만 차지함 -->
-              <th v-if="examFilter.past" class="text-left px-3 py-2">결과</th>
+              <th v-if="examFilter.past || examFilter.waiting" class="text-left px-3 py-2">결과</th>
               <th class="px-3 py-2"></th>
             </tr>
           </thead>
@@ -5979,8 +6028,9 @@
                 </span>
               </td>
               <td class="px-3 py-2 whitespace-nowrap text-xs text-slate-500">{{ e.credential || '-' }}</td>
-              <td v-if="examFilter.past" class="px-3 py-2 whitespace-nowrap text-xs">
-                <span v-if="e.result" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{{ e.result }}<span v-if="e.score"> {{ e.score }}</span></span>
+              <td v-if="examFilter.past || examFilter.waiting" class="px-3 py-2 whitespace-nowrap text-xs">
+                <span v-if="e.result_done" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{{ e.result || '등록됨' }}<span v-if="e.score"> {{ e.score }}</span></span>
+                <span v-else-if="e.d_exam !== null && e.d_exam < 0" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 font-semibold">결과 대기</span>
                 <span v-else class="text-slate-300">-</span>
               </td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
@@ -5989,7 +6039,7 @@
                 <button @click="deleteExamEntry(e)" class="ml-2 text-xs text-rose-400 hover:underline">삭제</button>
               </td>
             </tr>
-            <tr v-if="!examRows.length"><td :colspan="examFilter.past ? 10 : 9" class="px-3 py-8 text-center text-sm text-slate-400">{{ examEmptyMsg }}</td></tr>
+            <tr v-if="!examRows.length"><td :colspan="(examFilter.past || examFilter.waiting) ? 10 : 9" class="px-3 py-8 text-center text-sm text-slate-400">{{ examEmptyMsg }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -8492,7 +8542,7 @@ const app = createApp({
       examCatalogs: [], examKinds: [], examModes: [],
       examSessions: [], examEntries: [], examLoading: false,
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
-      examFilter: { pending:true, done:false, upcoming:true, past:false, cats:[], q:'', qRaw:'' },
+      examFilter: { pending:true, done:false, upcoming:true, waiting:true, past:false, cats:[], q:'', qRaw:'' },
       examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
       examChgOpen: false, examChanges: [], stuExamShowCancelled: false,
       guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
@@ -8513,6 +8563,8 @@ const app = createApp({
                   levelsRaw:'', tracksRaw:'', homepage:'', apply_url:'', notice_url:'',
                   annual:false, check_from:'' },
       colCfg: null, colDragIdx: null, colDragOver: null, colGuard: false,
+      // 없으면 있는 줄도 모른다 — 기본은 켜 둔다
+      dashShowExam: (()=>{ try { return localStorage.getItem('portal_dash_exam') !== '0'; } catch(e){ return true; } })(),
       // ── 게시판 ──
       bdTree: [], bdBranches: [], bdCanEdit: false, bdFolderId: null, bdFolder: null,
       bdView: 'list', bdList: [], bdDetail: null, bdForm: { id:null, title:'', body:'', pinned:false },
@@ -9196,20 +9248,24 @@ const app = createApp({
       return this.examEntries.filter(e=>{
         if (k!=='ALL' && e.kind !== k) return false;
         if (e.applied ? !f.done : !f.pending) return false;
-        const past = (e.d_exam !== null && e.d_exam < 0);
-        if (past ? !f.past : !f.upcoming) return false;
+        // 시험일이 지났어도 결과를 아직 안 넣었으면 '지난 것'이 아니라 '결과 대기'다.
+        // 그래야 기간이 지났다고 접혀 사라지지 않는다.
+        const over = (e.d_exam !== null && e.d_exam < 0);
+        const g = !over ? 'upcoming' : (e.result_done ? 'past' : 'waiting');
+        if (!f[g]) return false;
         if (f.cats.length && !f.cats.includes(e.catalog_id)) return false;
         if (q && !((e.student||'')+' '+(e.what||'')).toLowerCase().includes(q)) return false;
         return true;
       });
     },
     examCounts(){
-      let pending=0, done=0, upcoming=0, past=0;
+      let pending=0, done=0, upcoming=0, waiting=0, past=0;
       this.examEntries.forEach(e=>{
         if (e.applied) done++; else pending++;
-        if (e.d_exam !== null && e.d_exam < 0) past++; else upcoming++;
+        const over = (e.d_exam !== null && e.d_exam < 0);
+        if (!over) upcoming++; else if (e.result_done) past++; else waiting++;
       });
-      return { pending, done, upcoming, past };
+      return { pending, done, upcoming, waiting, past };
     },
     examEmptyMsg(){
       if (!this.examSessions.length) return '등록된 시험·대회가 없습니다. 위에서 먼저 등록하세요.';
@@ -13884,6 +13940,20 @@ const app = createApp({
     // 수업일지 네 칸이 적혔는지. 요일 배지처럼 적힌 것만 색이 들어 한눈에 들어온다.
     // 비고가 둘이라 헷갈린다 — 출결 비고(지각예정·결석 사유 등)와 수업일지 비고는
     // 다른 것이다. 여기 '고'는 수업일지 쪽만 센다. 출결 비고는 오른쪽 비고 칸이 맡는다.
+    // 이 자리(i번째 수업) 앞에 와야 하는 시험들. 시각으로 자리를 잡는다.
+    examBefore(i){
+      if (!this.dashShowExam) return [];
+      const list = this.dashData.exam_today || [];
+      if (!list.length) return [];
+      const rows = this.dashLessonsOrdered;
+      const at = k => (k < rows.length ? this.hmMin(rows[k].start_time) : 99999);
+      const prev = (i === 0) ? -1 : at(i - 1);
+      const cur = at(i);
+      return list.filter(g=>{
+        const m = g.time ? this.hmMin(g.time) : 99999;
+        return m > prev && m <= cur;
+      });
+    },
     logMarks(l){
       const p = (l && l.progress) || {};
       return [
@@ -16059,6 +16129,7 @@ const app = createApp({
     // (화면을 열 때마다 미리 받으면 대부분 안 쓰는 낭비가 된다)
     this.$watch(() => this.dashFilter.q, (v)=>{ if ((v||'').trim()) this.ensureDashStudents(); });
     this.$watch(() => this.bdQ, ()=>{ if (this.tab==='board') this.loadBdList(); });
+    this.$watch(() => this.dashShowExam, (v)=>{ try { localStorage.setItem('portal_dash_exam', v ? '1' : '0'); } catch(e){} });
     // 적용일을 바꾸면 그 뒤에 남은 수업을 다시 센다
     this.$watch(() => [this.stuStatusDate, this.stuStatusNew].join('|'), ()=>{
       if (this.stuDetail && this.stuTab==='status') this.loadStuStatusAfter();
