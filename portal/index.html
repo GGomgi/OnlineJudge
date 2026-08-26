@@ -2957,9 +2957,6 @@
         <span class="text-emerald-600">등원 <b>{{ dashCheckedIn }}</b>명</span>
         <span class="text-indigo-600">하원 <b>{{ dashCheckedOut }}</b>명</span>
         <span class="text-amber-600">수업중 <b>{{ dashInClass }}</b>명</span>
-        <label v-if="(dashData.exam_today||[]).length" class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer select-none shrink-0">
-          <input type="checkbox" v-model="dashShowExam" class="w-3.5 h-3.5" /> 시험도 함께
-        </label>
         <button @click="openColCfg('dash','오늘 운영 — 화면 표시', $event)" class="ml-auto px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs hover:bg-white shrink-0">⚙ 화면표시</button>
       </div>
       <!-- 그날이 휴무일이면 맨 위에 사유를 띄운다 -->
@@ -3090,6 +3087,13 @@
           🏅 자격증·대회
           <span class="text-slate-400 font-normal">{{ dashData.exam_soon.length }}건 · 한 달 안</span>
           <span v-if="dashExamUrgent" class="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold">접수 마감 임박 {{ dashExamUrgent }}건</span>
+          <!-- 자격증 이야기이니 자격증 칸 옆에 둔다. 딴 데 있으면 찾을 수가 없다.
+               머리 전체가 접기 버튼이라 체크가 접기까지 부르지 않게 막는다 -->
+          <span v-if="(dashData.exam_today||[]).length" @click.stop
+                class="text-[11px] font-normal text-slate-500 flex items-center gap-1 cursor-pointer select-none">
+            <input type="checkbox" v-model="dashShowExam" class="w-3.5 h-3.5 align-middle" />
+            <span @click="dashShowExam = !dashShowExam">아래 목록에 시험도 함께</span>
+          </span>
           <span class="ml-auto font-normal text-slate-400">{{ panelOpen('exam') ? '접기' : '펼치기' }}</span>
         </button>
         <!-- 같은 시험·같은 날·같은 상태면 한 줄에 이름을 늘어놓는다 -->
