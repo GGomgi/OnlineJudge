@@ -3202,10 +3202,16 @@
                     <span class="text-slate-400">{{ g.people.length }}명</span>
                     <span class="flex flex-wrap gap-1">
                       <button v-for="w in g.people" :key="w.entry_id" @click="openExResult({ entry_id:w.entry_id, name:w.name, what:g.title+' '+g.detail, exam_date:dashDate, exam_time:g.time, result:w.result, score:w.score, result_done:w.result_done, files:[] })"
-                              :class="['px-1.5 py-0.5 rounded text-[11px] border', w.result_done ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-amber-300 text-amber-700 hover:bg-amber-100']">
-                        {{ w.name }}<span v-if="w.result_done"> ✓</span>
+                              :class="['px-1.5 py-0.5 rounded text-[11px] border inline-flex items-center gap-1',
+                                       w.result_done ? 'bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                                                     : 'bg-white border-dashed border-amber-400 text-amber-700 hover:bg-amber-100 hover:border-solid']">
+                        <span>{{ w.name }}</span>
+                        <span v-if="w.result_done" class="text-emerald-500">✓{{ w.result ? ' '+w.result : '' }}<span v-if="w.score"> {{ w.score }}</span></span>
+                        <span v-else class="text-amber-500 font-semibold">＋</span>
                       </button>
                     </span>
+                    <!-- 눌러야 아는 건 안 보이는 것과 같다. 안내를 한 번만 적는다 -->
+                    <span v-if="g.left" class="text-[11px] text-amber-600">← 이름을 눌러 결과 등록</span>
                     <span v-if="g.left" class="ml-auto text-rose-600 font-semibold">결과 대기 {{ g.left }}명</span>
                     <span v-else class="ml-auto text-emerald-600">결과 등록 끝</span>
                   </div>
@@ -3326,10 +3332,15 @@
                   <span class="text-slate-400">{{ g.people.length }}명</span>
                   <span class="flex flex-wrap gap-1">
                     <button v-for="w in g.people" :key="w.entry_id" @click="openExResult({ entry_id:w.entry_id, name:w.name, what:g.title+' '+g.detail, exam_date:dashDate, exam_time:g.time, result:w.result, score:w.score, result_done:w.result_done, files:[] })"
-                            :class="['px-1.5 py-0.5 rounded text-[11px] border', w.result_done ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-amber-300 text-amber-700 hover:bg-amber-100']">
-                      {{ w.name }}<span v-if="w.result_done"> ✓</span>
+                            :class="['px-1.5 py-0.5 rounded text-[11px] border inline-flex items-center gap-1',
+                                     w.result_done ? 'bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                                                   : 'bg-white border-dashed border-amber-400 text-amber-700 hover:bg-amber-100 hover:border-solid']">
+                      <span>{{ w.name }}</span>
+                      <span v-if="w.result_done" class="text-emerald-500">✓{{ w.result ? ' '+w.result : '' }}<span v-if="w.score"> {{ w.score }}</span></span>
+                      <span v-else class="text-amber-500 font-semibold">＋</span>
                     </button>
                   </span>
+                  <span v-if="g.left" class="text-[11px] text-amber-600">← 이름을 눌러 결과 등록</span>
                   <span v-if="g.left" class="ml-auto text-rose-600 font-semibold">결과 대기 {{ g.left }}명</span>
                   <span v-else class="ml-auto text-emerald-600">결과 등록 끝</span>
                 </div>
