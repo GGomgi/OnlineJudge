@@ -3205,6 +3205,8 @@
                       <span v-else-if="isHoliday(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-slate-100 text-slate-500">휴무</span>
                       <span v-else-if="isEarlyLeavePending(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer whitespace-nowrap" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}{{ stuAbsenceSuffix(l) }}</span>
                       <span v-else-if="l.att.note_tag" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
+                      <span v-else-if="hasBareNote(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop"
+                            class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-slate-700 text-white font-medium whitespace-nowrap">비고 ●</span>
                       <span v-else @click="openAtt(l)" class="text-[11px] text-slate-300 hover:text-indigo-500 cursor-pointer">비고+</span>
                     </template>
                 
@@ -11697,7 +11699,16 @@ const app = createApp({
         else if (l.date) this.loadTtCal(); else this.loadDashboard();
       } catch(e){ this.notify(e.message,false); }
     },
-    showNotePop(l,e){ this.notePop={ show:true, tag:(this.isAbsent(l) ? '결석' : (this.isLeave(l) ? '임시휴원' : this.attTagLabel(l.att.note_tag))), note:((this.isAbsent(l)||this.isLeave(l)) ? (l.lesson_note||'') : (l.att.note||'')), tagStyle:(this.isLeave(l) ? {backgroundColor:'#ede9fe',color:'#7c3aed'} : this.attTagStyle(l.att.note_tag)), x:Math.min(e.clientX+10,window.innerWidth-260), y:Math.min(e.clientY+10,window.innerHeight-80) }; },
+    showNotePop(l,e){
+      // 태그를 '없음'으로 두고 사유만 적은 경우에도 무엇인지는 보여야 한다
+      const bare = this.hasBareNote(l);
+      this.notePop = { show:true,
+        tag:(this.isAbsent(l) ? '결석' : (this.isLeave(l) ? '임시휴원' : (bare ? '비고' : this.attTagLabel(l.att.note_tag)))),
+        note:((this.isAbsent(l)||this.isLeave(l)) ? (l.lesson_note||'') : (l.att.note||'')),
+        tagStyle:(this.isLeave(l) ? {backgroundColor:'#ede9fe',color:'#7c3aed'}
+                 : (bare ? {backgroundColor:'#334155',color:'#fff'} : this.attTagStyle(l.att.note_tag))),
+        x:Math.min(e.clientX+10,window.innerWidth-260), y:Math.min(e.clientY+10,window.innerHeight-80) };
+    },
     showTcPop(l,e){ this.tcPop={ show:true, orig:l.orig_time||'', now:l.start_time, reason:l.time_change_reason||'', x:Math.min(e.clientX+12,window.innerWidth-240), y:Math.min(e.clientY+12,window.innerHeight-120) }; },
     hideTcPop(){ this.tcPop.show=false; },
     showProgPop(l,e){ const p=l.progress||{}; if(!p.content && !p.homework && !p.feedback && !p.memo) return; this.progPop={ show:true, content:p.content||'', homework:p.homework||'', feedback:p.feedback||'', memo:p.memo||'', x:Math.min(e.clientX+12,window.innerWidth-280), y:Math.min(e.clientY+12,window.innerHeight-160) }; },
@@ -13736,15 +13747,21 @@ const app = createApp({
       this.bdDelAsk = null;
     },
     // 수업일지 네 칸이 적혔는지. 요일 배지처럼 적힌 것만 색이 들어 한눈에 들어온다.
+    // 비고가 둘이라 헷갈린다 — 출결 비고(지각예정·결석 사유 등)와 수업일지 비고는
+    // 다른 것이다. 여기 '고'는 수업일지 쪽만 센다. 출결 비고는 오른쪽 비고 칸이 맡는다.
     logMarks(l){
       const p = (l && l.progress) || {};
-      const note = (l && (l.lesson_note || (l.att && l.att.note))) || '';
       return [
-        { k:'c', t:'수', label:'수업 내용',  on:!!(p.content||'').trim(),  cls:'bg-indigo-100 text-indigo-700' },
-        { k:'h', t:'숙', label:'숙제',       on:!!(p.homework||'').trim(), cls:'bg-emerald-100 text-emerald-700' },
-        { k:'f', t:'피', label:'피드백',     on:!!(p.feedback||'').trim(), cls:'bg-amber-100 text-amber-700' },
-        { k:'m', t:'고', label:'비고',       on:!!String(note).trim(),     cls:'bg-slate-200 text-slate-600' },
+        { k:'c', t:'수', label:'수업 내용',    on:!!(p.content||'').trim(),  cls:'bg-indigo-100 text-indigo-700' },
+        { k:'h', t:'숙', label:'숙제',         on:!!(p.homework||'').trim(), cls:'bg-emerald-100 text-emerald-700' },
+        { k:'f', t:'피', label:'피드백',       on:!!(p.feedback||'').trim(), cls:'bg-amber-100 text-amber-700' },
+        { k:'m', t:'고', label:'수업일지 비고', on:!!(p.memo||'').trim(),     cls:'bg-slate-200 text-slate-600' },
       ];
+    },
+    // 태그 없이 사유만 적은 경우. '없음'을 골라도 적은 글은 남아 있는데 아무 표시가
+    // 없어 사라진 것처럼 보였다.
+    hasBareNote(l){
+      return !!(l && l.att && !(l.att.note_tag||'') && String(l.att.note||'').trim());
     },
     // ── 비고 창에서 옆 학생으로 ──
     attStep(d){
