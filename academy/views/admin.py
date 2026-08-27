@@ -3874,6 +3874,36 @@ class DevLogAdminAPI(APIView):
                              "has_more": start > 0, "total": total})
 
 
+def _cal_today(user, d, view, bid):
+    """그날과 이레 안의 일정. 달력을 열지 않아도 오늘 무엇이 있는지 보여야 한다.
+    끌어온 것(휴무·시험·상담·보강)은 이미 저마다 제 자리에서 알리므로 여기선 뺀다."""
+    from ..models import CalendarEvent, OptionItem, AcademyProfile
+    prof = AcademyProfile.objects.filter(user=user, is_deleted=False).first()
+    kmap = {o.value: (o.label, o.color or "#0f766e")
+            for o in OptionItem.objects.filter(category="calendar_kind")}
+    out = []
+    for e in CalendarEvent.objects.filter(is_deleted=False, start_date__lte=d + timedelta(days=7)) \
+                                  .select_related("branch"):
+        end = e.end_date or e.start_date
+        if end < d:
+            continue
+        if e.scope == "PRIVATE" and e.created_by_id != user.id:
+            continue
+        if e.scope == "BRANCH":
+            if view is not None and e.branch_id not in view:
+                continue
+            if bid and str(e.branch_id) != str(bid):
+                continue
+        lb, color = kmap.get(e.kind, ("일정", "#0f766e"))
+        running = e.start_date <= d <= end
+        out.append({"id": e.id, "title": e.title, "kind_label": lb, "color": color,
+                    "date": str(e.start_date), "end": str(end), "time": e.start_time,
+                    "scope": e.scope, "branch": (e.branch.name if e.branch_id else ""),
+                    "d_day": (e.start_date - d).days, "running": running})
+    out.sort(key=lambda x: (not x["running"], x["date"], x["time"] or "99:99"))
+    return out
+
+
 def _board_unread(user):
     """읽음 확인을 켠 폴더의 안 읽은 글. 게시판에 들어가 봐야 새 글이 있는 줄 알면
     규정 개정이 전달되지 않는다. 하루에 꼭 한 번 여는 화면에 걸어 둔다."""
@@ -4589,6 +4619,7 @@ class DashboardAdminAPI(APIView):
                              "enrolled_leads": enrolled, "temp_leaves": temp_leaves,
                              "next_reservations": next_resv,
                              "exam_soon": exam_soon, "exam_today": exam_today,
+                             "cal_today": _cal_today(request.user, d, view, bid),
                              "board_unread": _board_unread(request.user),
                              "next_open_day": (str(nxt) if nxt else ""),
                              "next_makeups": makeups,

@@ -3114,6 +3114,29 @@
           </div>
         </div>
       </div>
+      <!-- 일정 — 달력을 열지 않아도 오늘 무엇이 있는지 보여야 한다. 오늘 것과 이레 안까지. -->
+      <div v-if="(dashData.cal_today||[]).length" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-emerald-300">
+        <button @click="togglePanel('cal')" class="w-full text-left text-xs font-semibold text-emerald-700 flex items-center gap-2">
+          <span class="text-emerald-400">{{ panelOpen('cal') ? '▾' : '▸' }}</span>
+          🗓 일정
+          <span class="text-slate-400 font-normal">{{ dashCalRunning }}건 진행 중 · 이레 안 {{ dashData.cal_today.length }}건</span>
+          <span class="ml-auto font-normal text-slate-400">{{ panelOpen('cal') ? '접기' : '펼치기' }}</span>
+        </button>
+        <div v-if="panelOpen('cal')" class="mt-2 space-y-1">
+          <div v-for="e in dashData.cal_today" :key="e.id" @click="go('calendar')"
+               class="flex items-center gap-2 px-2 py-1 rounded text-xs cursor-pointer hover:bg-slate-50">
+            <span class="shrink-0 px-1.5 py-0.5 rounded text-[11px]" :style="{ backgroundColor: e.color+'1a', color: e.color }">{{ e.kind_label }}</span>
+            <span class="font-medium truncate">{{ e.title }}</span>
+            <span v-if="e.time" class="shrink-0 font-mono text-slate-500">{{ e.time }}</span>
+            <span class="shrink-0 text-slate-400">{{ dd(e.date) }}<template v-if="e.end!==e.date"> ~ {{ dd(e.end) }}</template></span>
+            <span v-if="e.running" class="shrink-0 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[11px] font-semibold">진행 중</span>
+            <span v-else class="shrink-0 text-rose-500 font-semibold">D-{{ e.d_day }}</span>
+            <span v-if="e.branch" class="ml-auto shrink-0 text-slate-400">{{ e.branch }}</span>
+            <span v-else-if="e.scope==='PRIVATE'" class="ml-auto shrink-0 text-violet-500">내 일정</span>
+            <span v-else class="ml-auto shrink-0 text-slate-400">전 지점</span>
+          </div>
+        </div>
+      </div>
       <!-- 자격증·대회 — 접수 마감을 놓치면 못 돌이킨다. 마감은 보름, 시험일은 이레 앞부터. -->
       <div v-if="(dashData.exam_soon||[]).length" class="bg-white rounded-xl shadow-sm p-3 mb-3 border-l-4 border-teal-300">
         <button @click="togglePanel('exam')" class="w-full text-left text-xs font-semibold text-teal-700 flex items-center gap-2">
@@ -7319,11 +7342,13 @@
                 <button @click="openCalEvent(null, c.date)" class="ml-auto text-slate-200 hover:text-indigo-500 text-xs">＋</button>
               </div>
               <div class="mt-0.5 space-y-0.5">
-                <div v-for="e in calDay(c.date).slice(0,4)" :key="e.key" @click="calClick(e)"
-                     class="px-1 py-0.5 rounded text-[10px] leading-tight truncate cursor-pointer hover:opacity-80"
+                <div v-for="e in calDay(c.date).slice(0,4)" :key="e.key+c.date" @click="calClick(e)"
+                     :class="['py-0.5 text-[10px] leading-tight truncate cursor-pointer hover:opacity-80 flex items-baseline gap-1',
+                              calBandCls(e)]"
                      :style="{ backgroundColor: e.color+'1a', color: e.color }"
                      @mouseenter="showTextPop(e.kind_label || '일정', calPopText(e), $event)" @mouseleave="hideNotePop">
-                  <span v-if="e.time" class="font-mono">{{ e.time }} </span>{{ e.title }}
+                  <span v-if="e.time && e._head" class="font-mono shrink-0">{{ e.time }}</span>
+                  <span class="truncate">{{ e._head ? e.title : '' }}</span>
                 </div>
                 <div v-if="calDay(c.date).length>4" class="px-1 text-[10px] text-slate-400">＋{{ calDay(c.date).length-4 }}건</div>
               </div>
@@ -7342,7 +7367,8 @@
         <div v-else class="divide-y">
           <div v-for="e in calRows" :key="e.key" @click="calClick(e)"
                class="px-4 py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50">
-            <span class="shrink-0 font-mono text-xs text-slate-500 w-28">{{ dd(e.date) }}<template v-if="e.end && e.end!==e.date"> ~</template></span>
+            <span class="shrink-0 font-mono text-xs text-slate-500 w-28">{{ dd(e.date) }}</span>
+            <span class="shrink-0 font-mono text-xs text-slate-400 w-28">{{ (e.end && e.end!==e.date) ? '~ '+dd(e.end) : '' }}</span>
             <span class="shrink-0 font-mono text-xs text-slate-400 w-12">{{ e.time || '종일' }}</span>
             <span class="shrink-0 px-1.5 py-0.5 rounded text-[11px]" :style="{ backgroundColor: e.color+'1a', color: e.color }">{{ e.kind_label }}</span>
             <span class="font-medium truncate flex-1 min-w-0">{{ e.title }}</span>
@@ -8977,6 +9003,7 @@ const app = createApp({
       if (!this.attModal) return -1;
       return this.attSiblings.findIndex(x => x.occ_id === this.attModal.occ_id);
     },
+    dashCalRunning(){ return (this.dashData.cal_today||[]).filter(e=>e.running).length; },
     dashUnreadText(){
       const g = this.dashData.board_unread || [];
       const n = g.reduce((a,b)=>a+b.n, 0);
@@ -9039,7 +9066,10 @@ const app = createApp({
         const s0 = e.date, e0 = e.end || e.date;
         let d = s0, guard = 0;
         while (d <= e0 && guard++ < 400){
-          (map[d] = map[d] || []).push(e);
+          const pos = (s0 === e0) ? 'only' : (d === s0 ? 'start' : (d === e0 ? 'end' : 'mid'));
+          // 주가 바뀌면 제목을 다시 적는다. 안 그러면 다음 주 줄이 무엇인지 모른다.
+          const sun = new Date(d + 'T00:00:00Z').getUTCDay() === 0;
+          (map[d] = map[d] || []).push({ ...e, _pos: pos, _head: (pos === 'only' || pos === 'start' || sun) });
           d = this.nextDay(d);
         }
       }
@@ -13686,6 +13716,14 @@ const app = createApp({
     async copyMsg(){ const ok=await this.doCopy(this.msgPreview); this.notify(ok ? '복사되었습니다. 문자/카톡에 붙여넣으세요.' : '복사 실패 — 미리보기를 직접 선택해 복사하세요.', ok); },
     // ── 일정 ──
     calDay(d){ return this.calByDay[d] || []; },
+    // 여러 날 걸친 일정은 칸 끝까지 늘려 띠처럼 이어 보이게 한다
+    calBandCls(e){
+      const p = e._pos;
+      if (p === 'only') return 'px-1 rounded';
+      if (p === 'start') return 'pl-1 pr-0 -mr-1 rounded-l';
+      if (p === 'end') return 'pl-0 pr-1 -ml-1 rounded-r';
+      return 'px-0 -mx-1';
+    },
     calPopText(e){
       const p = [];
       if (e.time) p.push(e.time + (e.end_time ? ' ~ ' + e.end_time : ''));
