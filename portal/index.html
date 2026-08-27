@@ -1006,7 +1006,7 @@
               <div v-if="r.body" class="mt-1 text-xs text-slate-600 whitespace-pre-wrap break-all">{{ r.body }}</div>
               <div v-if="r.file_list.length" class="mt-1.5 flex flex-wrap gap-1.5">
                 <div v-for="f in r.file_list" :key="f.id"
-                     @mouseenter="showBdPrev(f,$event)" @mouseleave="hideBdPrev" @click="openBdFile(f)"
+                     @mouseenter="showBdPrev(f,$event)" @mouseleave="hideBdPrev" @click="openBdFile(f, r.linked==='exam' ? 'exam' : 'record')"
                      class="flex items-center gap-1.5 px-2 py-1 rounded border border-slate-200 text-[11px] cursor-pointer hover:bg-slate-50 max-w-[14rem]">
                   <span class="shrink-0">{{ bdIcon(f.kind) }}</span>
                   <span class="truncate">{{ f.name }}</span>
@@ -2013,7 +2013,7 @@
           <label class="lbl">파일</label>
           <div class="flex flex-wrap gap-1.5 mb-1.5">
             <div v-for="x in stuRecForm.file_list" :key="x.id"
-                 @mouseenter="showBdPrev(x,$event)" @mouseleave="hideBdPrev" @click="openBdFile(x)"
+                 @mouseenter="showBdPrev(x,$event)" @mouseleave="hideBdPrev" @click="openBdFile(x, 'record')"
                  class="flex items-center gap-1.5 px-2 py-1 rounded border border-slate-200 text-[11px] cursor-pointer hover:bg-slate-50 max-w-[13rem]">
               <span class="shrink-0">{{ bdIcon(x.kind) }}</span>
               <span class="truncate">{{ x.name }}</span>
@@ -2135,7 +2135,7 @@
           <div v-if="exAllFiles.length" class="flex flex-wrap gap-1.5">
             <div v-for="f in exAllFiles" :key="f.key"
                  @mouseenter="!f.pending && showBdPrev(f,$event)" @mouseleave="hideBdPrev"
-                 @click="!f.pending && openBdFile(f)"
+                 @click="!f.pending && openBdFile(f, 'exam')"
                  :class="['flex items-center gap-1.5 px-2 py-1 rounded border text-[11px] max-w-[14rem]',
                           f.pending ? 'border-dashed border-indigo-300 bg-indigo-50/50 text-indigo-700'
                                     : 'border-slate-200 cursor-pointer hover:bg-slate-50']">
@@ -2431,6 +2431,7 @@
         <div class="font-bold text-sm">{{ filePrev.title }}</div>
         <div class="flex items-center gap-3">
           <a :href="filePrev.url" target="_blank" class="text-xs text-indigo-600 hover:underline">새 창에서 열기</a>
+          <a v-if="filePrev.dl" :href="filePrev.dl" class="text-xs text-slate-500 hover:underline">내려받기</a>
           <button @click="filePrev=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
         </div>
       </div>
@@ -13924,9 +13925,17 @@ const app = createApp({
         this.bdDetail.file_list = this.bdDetail.file_list.filter(x=>x.id!==f.id);
       } catch(e){ this.notify(e.message,false); }
     },
-    openBdFile(f){
-      if (f.kind==='img' || f.kind==='pdf'){ this.filePrev = { url:f.url, title:f.name, kind:(f.kind==='img'?'img':'pdf') }; return; }
-      window.open(f.url, '_blank');     // 한글·PPT·압축은 브라우저가 못 그린다
+    openBdFile(f, kind){
+      if (f.kind==='img' || f.kind==='pdf'){
+        this.filePrev = { url:f.url, title:f.name, kind:(f.kind==='img'?'img':'pdf'),
+                          dl:this.bdFileUrl(f, kind) };
+        return;
+      }
+      // 한글·PPT·압축은 브라우저가 못 그린다. 저장 이름이 아니라 올린 이름으로 내려준다.
+      window.location.href = this.bdFileUrl(f, kind);
+    },
+    bdFileUrl(f, kind){
+      return '/api/admin/academy/file/download?kind=' + (kind || 'board') + '&id=' + f.id;
     },
     showBdPrev(f, e){
       this.popStay('bdPrev');

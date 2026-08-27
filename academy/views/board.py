@@ -895,3 +895,61 @@ class BoardCommentAPI(APIView):
         c.is_deleted = True
         c.save(update_fields=["is_deleted"])
         return self.success({"deleted": True})
+
+
+# ── 내려받기 (원래 이름으로) ──
+
+def _serve(request, name, size, path_url):
+    """저장 이름이 아니라 올린 이름으로 내려준다.
+
+    파일은 board_a6daa8bce346e258.pptx 처럼 겹치지 않는 이름으로 저장한다. 그대로
+    내려받으면 무슨 파일인지 알 수 없다. 여기서 이름을 되돌려 준다.
+    """
+    import mimetypes
+    import os as _os2
+    from urllib.parse import quote
+    from django.http import FileResponse, Http404
+    fn = _os2.path.basename(path_url or "")
+    full = _os2.path.join(_settings.UPLOAD_DIR, fn)
+    if not fn or not _os2.path.exists(full):
+        raise Http404
+    ct = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    resp = FileResponse(open(full, "rb"), content_type=ct)
+    resp["Content-Length"] = size or _os2.path.getsize(full)
+    # 한글은 헤더에 그대로 못 실어 RFC 5987 로 보낸다. 앞의 filename 은 옛 브라우저용
+    # 대비책이라 아스키만 남긴다 — 퍼센트 글자가 그대로 파일 이름이 되면 더 나쁘다.
+    ascii_name = "".join(ch if 32 < ord(ch) < 127 and ch not in '"\\' else "_" for ch in name)
+    resp["Content-Disposition"] = "attachment; filename=\"%s\"; filename*=UTF-8''%s" % (
+        ascii_name or "download", quote(name))
+    return resp
+
+
+class BoardFileDownloadAPI(APIView):
+    """게시판 파일 · 학생 기록 파일 · 자격증 결과 파일을 원래 이름으로 내려준다."""
+
+    @admin_role_required
+    def get(self, request):
+        from django.http import Http404
+        from ..models import StudentRecordFile, ExamEntryFile
+        me = request.user
+        role, bid = _role_of(me)
+        sup = _is_super(me)
+        kind = request.GET.get("kind") or "board"
+        fid = request.GET.get("id")
+        if kind == "board":
+            x = BoardFile.objects.filter(id=fid).select_related("post__folder").first()
+            if not x:
+                raise Http404
+            if not _can_see(x.post.folder, role, bid, sup, me, _seeable_owners(me, role, sup)):
+                return self.error("이 파일을 볼 권한이 없습니다.")
+        elif kind == "record":
+            x = StudentRecordFile.objects.filter(id=fid).select_related("record").first()
+            if not x or not _student_ok(request, x.record.student_id):
+                raise Http404
+        elif kind == "exam":
+            x = ExamEntryFile.objects.filter(id=fid).select_related("entry").first()
+            if not x or not _student_ok(request, x.entry.student_id):
+                raise Http404
+        else:
+            raise Http404
+        return _serve(request, x.name, x.size, x.url)
