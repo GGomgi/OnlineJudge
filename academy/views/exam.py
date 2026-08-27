@@ -733,6 +733,7 @@ MENU_DEFS = [
     {"key": "billing", "label": "원비·수납", "floor": "원장 이상",
      "floor_roles": ["HQ_ADMIN", "HR_ADMIN", "REGIONAL_MANAGER", "BRANCH_MANAGER"]},
     {"key": "board", "label": "게시판"},
+    {"key": "calendar", "label": "일정"},
     {"key": "devboard", "label": "개발 요청"},
     {"key": "devlog", "label": "개발일지", "floor": "본부 관리자", "floor_roles": []},
 ]

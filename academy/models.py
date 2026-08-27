@@ -1183,6 +1183,7 @@ class OptionCategory(object):
     COUNSELING_PURPOSE = "counseling_purpose"  # 상담: 상담 목적
     ATTENDANCE_NOTE = "attendance_note"    # 출결: 비고 표시(색상 태그)
     STUDENT_RECORD = "student_record"       # 학생 기록: 종류(학교 시험·수행평가…)
+    CALENDAR_KIND = "calendar_kind"         # 일정: 종류(방학·중간고사·학원 행사…)
 
 
 OPTION_CATEGORIES = [
@@ -1192,6 +1193,7 @@ OPTION_CATEGORIES = [
     (OptionCategory.COUNSELING_PURPOSE, "상담 목적"),
     (OptionCategory.ATTENDANCE_NOTE, "출결 비고"),
     (OptionCategory.STUDENT_RECORD, "학생 기록 종류"),
+    (OptionCategory.CALENDAR_KIND, "일정 종류"),
 ]
 OPTION_CATEGORY_VALUES = [c[0] for c in OPTION_CATEGORIES]
 
@@ -2088,3 +2090,34 @@ class ExamEntryFile(models.Model):
     class Meta:
         db_table = "academy_exam_entry_file"
         ordering = ["order", "id"]
+
+
+class CalendarEvent(models.Model):
+    """일정. 달력은 하나이고, 여기에 범위와 종류를 붙여 켜고 끈다(docs/83).
+
+    달력을 여러 개 만들면 '어느 달력에 넣더라'를 넣을 때마다 생각해야 하고, "이번 주에
+    뭐 있지"를 보려고 여럿을 오가야 한다. 날짜는 이미 하나의 축이라 나눌수록 손해다.
+
+    공휴일·자격증·상담 예약·보강은 여기 적지 않는다. 이미 제 자리에 있으므로 달력이
+    끌어와 보여 주기만 한다 — 두 곳에 적으면 반드시 어긋난다.
+    """
+    SCOPE_CHOICES = (("ALL", "전 지점"), ("BRANCH", "지점"), ("PRIVATE", "개인"))
+    scope = models.CharField(max_length=16, default="BRANCH")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="calendar_events")
+    kind = models.CharField(max_length=32, blank=True, default="")   # OptionItem(calendar_kind)
+    title = models.CharField(max_length=128)
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)      # 비면 하루짜리
+    start_time = models.CharField(max_length=5, blank=True, default="")   # HH:MM, 비면 종일
+    end_time = models.CharField(max_length=5, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    is_deleted = models.BooleanField(default=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_calendar_event"
+        ordering = ["start_date", "start_time", "id"]

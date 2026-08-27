@@ -3,6 +3,7 @@ from django.conf.urls import url
 from ..views.verify import ProfileVerifyAdminAPI, ProfileVerifyResolveAPI, StudentVoiceAdminAPI
 from ..views.promotion import PromotionPreviewAPI, PromotionAPI
 from ..views.billing import InvoiceAPI, PaymentAPI
+from ..views.calendar import CalendarAPI
 from ..views.board import (BoardFolderAPI, BoardPostAPI, BoardFileAPI, BoardVersionAPI,
                           StudentRecordAPI, StudentRecordFileAPI, StudentBoardLinkAPI,
                           BoardCommentAPI)
@@ -151,6 +152,7 @@ urlpatterns = [
     url(r"^academy/tuition_preview/?$", TuitionPreviewAPI.as_view(), name="academy_tuition_preview"),
     url(r"^academy/invoice/?$", InvoiceAPI.as_view(), name="academy_invoice"),
     url(r"^academy/payment/?$", PaymentAPI.as_view(), name="academy_payment"),
+    url(r"^academy/calendar/?$", CalendarAPI.as_view(), name="academy_calendar"),
     url(r"^academy/board/folder/?$", BoardFolderAPI.as_view(), name="academy_board_folder"),
     url(r"^academy/board/post/?$", BoardPostAPI.as_view(), name="academy_board_post"),
     url(r"^academy/board/file/?$", BoardFileAPI.as_view(), name="academy_board_file"),

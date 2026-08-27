@@ -465,10 +465,11 @@
   <div v-if="progPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 overflow-y-auto"
        @mouseenter="popStay('progPop')" @mouseleave="popGo('progPop')" :style="popStyle(progPop)">
     <div class="font-semibold text-indigo-600">📝 수업일지</div>
-    <div class="mt-1 whitespace-pre-wrap text-slate-700">{{ progPop.content }}</div>
-    <div v-if="progPop.homework" class="mt-1 pt-1 border-t text-slate-500">숙제: {{ progPop.homework }}</div>
-    <div v-if="progPop.feedback" class="mt-1 pt-1 border-t text-slate-500">피드백: {{ progPop.feedback }}</div>
-    <div v-if="progPop.memo" class="mt-1 pt-1 border-t text-amber-700">비고: {{ progPop.memo }}</div>
+    <!-- 빈 것도 흐리게 적어 둔다. 안 적으면 무엇이 비었는지 배지로 되돌아가 봐야 한다 -->
+    <div class="mt-1 whitespace-pre-wrap" :class="progPop.content ? 'text-slate-700' : 'text-slate-300'">{{ progPop.content || '수업 내용 없음' }}</div>
+    <div class="mt-1 pt-1 border-t" :class="progPop.homework ? 'text-slate-500' : 'text-slate-300'">숙제: {{ progPop.homework || '없음' }}</div>
+    <div class="mt-1 pt-1 border-t" :class="progPop.feedback ? 'text-slate-500' : 'text-slate-300'">피드백: {{ progPop.feedback || '없음' }}</div>
+    <div class="mt-1 pt-1 border-t" :class="progPop.memo ? 'text-amber-700' : 'text-slate-300'">비고: {{ progPop.memo || '없음' }}</div>
   </div>
 
   <!-- 이전/다음 학생 버튼 안내 팝오버(브라우저 기본 툴팁은 느려서 직접 표시) -->
@@ -2972,6 +2973,7 @@
           <span class="ml-2 font-mono text-base text-indigo-600">🕒 {{ nowClock }}</span>
         </h2>
         <div class="flex items-center gap-2">
+          <button @click="go('calendar')" class="px-2 py-1.5 rounded border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 whitespace-nowrap shrink-0">🗓 일정</button>
           <button @click="dashShift(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 shrink-0">◀</button>
           <date-box v-model="dashDate" @change="loadDashboard" box-class="input py-1" wrap-class="date-w shrink-0"></date-box>
           <button @click="dashShift(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 shrink-0">▶</button>
@@ -3595,6 +3597,10 @@
                   class="shrink-0 px-2 py-1 rounded border border-slate-200 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-30"
                   :title="attNeighbor(-1) ? attNeighbor(-1).student_name : ''">‹ 이전</button>
           <div class="font-bold flex-1 min-w-0 truncate">{{ attModal.student_name }}
+            <!-- 오늘 운영·학생 정보와 같은 자리에 둔다. 여기서 바로 옛 기록을 열 수 있어야 한다 -->
+            <a v-if="attModal.legacy_url" :href="attModal.legacy_url" target="_blank" rel="noopener"
+               class="text-[11px] font-normal px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 hover:bg-amber-100">(이전기록)</a>
+            <span v-else class="text-[11px] font-normal px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">(이전기록없음)</span>
             <span class="text-xs font-normal text-slate-400">{{ dd(attModal.date || dashDate) }} · {{ attModal.subject }}</span>
             <span v-if="attIdx>=0" class="text-xs font-normal text-slate-300">{{ attIdx+1 }} / {{ attSiblings.length }}</span>
           </div>
@@ -7268,6 +7274,134 @@
       </div>
     </div>
 
+    <!-- ============ 일정 (달력은 하나, 범위와 종류로 켜고 끈다) ============ -->
+    <section v-if="tab==='calendar'">
+      <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h2 class="text-lg font-bold">일정 <span class="text-sm font-normal text-slate-400">(달력 · 이달의 일정)</span></h2>
+        <div class="flex items-center gap-2">
+          <button @click="calShift(-1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500">◀</button>
+          <span class="font-mono text-base font-semibold w-28 text-center">{{ calYm }}</span>
+          <button @click="calShift(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500">▶</button>
+          <button @click="calGoToday" class="px-2 py-1.5 rounded border border-slate-200 text-slate-500 text-xs">이번 달</button>
+          <button @click="openCalEvent(null)" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 whitespace-nowrap">+ 일정 추가</button>
+        </div>
+      </div>
+
+      <!-- 두 줄로 가른다 — 위는 '어디 일정인가', 아래는 '무슨 종류인가' -->
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-3 space-y-2 text-xs">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="text-slate-400 w-12 shrink-0">범위</span>
+          <label v-for="o in calScopes" :key="o.v" class="flex items-center gap-1 cursor-pointer select-none">
+            <input type="checkbox" v-model="calOn.scope[o.v]" class="w-3.5 h-3.5" />{{ o.l }}
+          </label>
+        </div>
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="text-slate-400 w-12 shrink-0">종류</span>
+          <label v-for="k in calAllKinds" :key="k.value" class="flex items-center gap-1 cursor-pointer select-none">
+            <input type="checkbox" v-model="calOn.kind[k.value]" class="w-3.5 h-3.5" />
+            <span class="w-2 h-2 rounded-full shrink-0" :style="{ backgroundColor: k.color }"></span>{{ k.label }}
+          </label>
+          <button @click="calAllOn" class="ml-auto text-slate-400 hover:underline">모두 켜기</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-3 overflow-x-auto">
+        <div class="grid grid-cols-7 gap-px bg-slate-100 rounded-lg overflow-hidden min-w-[46rem]">
+          <div v-for="(w,i) in ['일','월','화','수','목','금','토']" :key="w"
+               :class="['bg-slate-50 py-1.5 text-center text-xs font-semibold',
+                        i===0 ? 'text-rose-500' : (i===6 ? 'text-blue-500' : 'text-slate-500')]">{{ w }}</div>
+          <div v-for="(c,i) in calCells" :key="i"
+               :class="['bg-white min-h-[5.5rem] p-1 align-top', c.date ? '' : 'bg-slate-50/60']">
+            <template v-if="c.date">
+              <div class="flex items-center gap-1">
+                <span :class="['text-xs font-mono', c.isToday ? 'bg-indigo-600 text-white rounded px-1' :
+                               (c.dow===0 ? 'text-rose-500' : (c.dow===6 ? 'text-blue-500' : 'text-slate-500'))]">{{ c.day }}</span>
+                <button @click="openCalEvent(null, c.date)" class="ml-auto text-slate-200 hover:text-indigo-500 text-xs">＋</button>
+              </div>
+              <div class="mt-0.5 space-y-0.5">
+                <div v-for="e in calDay(c.date).slice(0,4)" :key="e.key" @click="calClick(e)"
+                     class="px-1 py-0.5 rounded text-[10px] leading-tight truncate cursor-pointer hover:opacity-80"
+                     :style="{ backgroundColor: e.color+'1a', color: e.color }"
+                     @mouseenter="showTextPop(e.kind_label || '일정', calPopText(e), $event)" @mouseleave="hideNotePop">
+                  <span v-if="e.time" class="font-mono">{{ e.time }} </span>{{ e.title }}
+                </div>
+                <div v-if="calDay(c.date).length>4" class="px-1 text-[10px] text-slate-400">＋{{ calDay(c.date).length-4 }}건</div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm">
+        <div class="px-4 py-2 border-b text-xs text-slate-400 flex items-center gap-2">
+          <b class="text-slate-600">이달의 일정</b>
+          <span>{{ calRows.length }}건</span>
+          <span v-if="calLoading" class="ml-auto text-indigo-500">불러오는 중…</span>
+        </div>
+        <div v-if="!calRows.length" class="px-4 py-10 text-center text-sm text-slate-400">이달에 일정이 없습니다.</div>
+        <div v-else class="divide-y">
+          <div v-for="e in calRows" :key="e.key" @click="calClick(e)"
+               class="px-4 py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50">
+            <span class="shrink-0 font-mono text-xs text-slate-500 w-28">{{ dd(e.date) }}<template v-if="e.end && e.end!==e.date"> ~</template></span>
+            <span class="shrink-0 font-mono text-xs text-slate-400 w-12">{{ e.time || '종일' }}</span>
+            <span class="shrink-0 px-1.5 py-0.5 rounded text-[11px]" :style="{ backgroundColor: e.color+'1a', color: e.color }">{{ e.kind_label }}</span>
+            <span class="font-medium truncate flex-1 min-w-0">{{ e.title }}</span>
+            <span v-if="e.detail" class="shrink-0 text-xs text-slate-400 truncate max-w-[10rem]">{{ e.detail }}</span>
+            <span v-if="e.src!=='event'" class="shrink-0 text-[11px] text-slate-300">끌어옴</span>
+            <span v-else-if="e.editable" class="shrink-0 text-[11px] text-indigo-500">고치기</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div v-if="calForm" class="fixed inset-0 z-[68] bg-black/40 flex items-start justify-center p-4 overflow-auto" @click.self="calForm=null">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-md my-4">
+        <div class="flex items-center justify-between px-4 py-3 border-b">
+          <div class="font-bold text-sm">{{ calForm.id ? '일정 고치기' : '새 일정' }}</div>
+          <button @click="calForm=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">✕</button>
+        </div>
+        <div class="p-4 space-y-3">
+          <div class="flex gap-2">
+            <div style="width:8rem"><label class="lbl">범위</label>
+              <select v-model="calForm.scope" class="input py-1 px-2">
+                <option v-if="calCanAll" value="ALL">전 지점</option>
+                <option value="BRANCH">지점</option>
+                <option value="PRIVATE">개인</option>
+              </select>
+            </div>
+            <div v-if="calForm.scope==='BRANCH' && calBranches.length>1" style="width:9rem"><label class="lbl">지점</label>
+              <select v-model="calForm.branch_id" class="input py-1 px-2">
+                <option v-for="b in calBranches" :key="b.id" :value="b.id">{{ b.name }}</option>
+              </select>
+            </div>
+            <div class="flex-1 min-w-[7rem]"><label class="lbl">종류</label>
+              <select v-model="calForm.kind" class="input py-1 px-2">
+                <option v-for="k in calKinds" :key="k.value" :value="k.value">{{ k.label }}</option>
+              </select>
+            </div>
+          </div>
+          <div><label class="lbl">제목</label><input v-model="calForm.title" class="input py-1" @keyup.enter="saveCalEvent" /></div>
+          <div class="flex gap-2 items-end flex-wrap">
+            <div class="shrink-0"><label class="lbl">시작</label><date-box v-model="calForm.start_date" :max="calForm.end_date || null" box-class="input py-1"></date-box></div>
+            <div class="shrink-0"><label class="lbl">끝 <span class="text-slate-400 font-normal">(하루면 비움)</span></label><date-box v-model="calForm.end_date" :min="calForm.start_date || null" box-class="input py-1"></date-box></div>
+          </div>
+          <div class="flex gap-2 items-end">
+            <div style="width:6rem"><label class="lbl">시작 시각</label>
+              <input :value="calForm.start_time" @input="calForm.start_time = hmTyped($event.target.value)" maxlength="5" placeholder="비우면 종일" class="input py-1 text-center font-mono" /></div>
+            <div style="width:6rem"><label class="lbl">끝 시각</label>
+              <input :value="calForm.end_time" @input="calForm.end_time = hmTyped($event.target.value)" maxlength="5" class="input py-1 text-center font-mono" /></div>
+            <span class="text-[11px] text-slate-400 pb-1">시각을 비우면 종일 일정입니다.</span>
+          </div>
+          <div><label class="lbl">메모</label><textarea v-model="calForm.note" rows="2" class="input text-sm"></textarea></div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button v-if="calForm.id" @click="deleteCalEvent" class="mr-auto text-xs text-rose-500 hover:underline">삭제</button>
+            <button @click="calForm=null" class="btn-secondary text-sm">취소</button>
+            <button @click="saveCalEvent" class="btn-primary text-sm">저장</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ============ 게시판 (공지 · 규정 · 수업자료) ============ -->
     <section v-if="tab==='board'">
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
@@ -8625,6 +8759,11 @@ const app = createApp({
       bdDraft: [], bdMgrGuard: false, bdMgrSaving: false, _bdTmp: 0, bdIconPick: false,
       exResult: null, exUploading: false, exUpDone: 0, exUpTotal: 0, _exKey: 0,
       upList: [], _upKey: 0,
+      // ── 일정 ──
+      calYm: '', calRaw: [], calKinds: [], calPulled: [], calBranches: [], calCanAll: false,
+      calMyBranch: null, calLoading: false, calForm: null,
+      calOn: { scope:{ ALL:true, BRANCH:true, PRIVATE:true }, kind:{} },
+      calScopes: [{v:'ALL',l:'전 지점'},{v:'BRANCH',l:'지점'},{v:'PRIVATE',l:'내 일정'}],
       _bdWas: { title:'', body:'' },
       // 폴더 관리 창의 접기는 트리와 따로 기억한다(한쪽을 접었다고 다른 쪽이 접히면 헷갈린다)
       bdMgrFold: {},
@@ -8869,6 +9008,43 @@ const app = createApp({
     },
     bdGroups(){ return this.bdBuildGroups(this.bdTree); },
     // 이미 올린 것과 아직 안 올린 것을 한 줄에. 두 목록으로 나누면 무엇이 들어갈지 안 보인다.
+    // 직접 넣는 종류 + 끌어오는 것을 한 줄에 늘어놓는다. 켜고 끄는 방식이 같아야 한다.
+    calAllKinds(){ return this.calKinds.concat(this.calPulled); },
+    calRows(){
+      return this.calRaw.filter(e=>{
+        const sc = e.src === 'event' ? (e.scope || 'BRANCH') : 'ALL';
+        if (e.src === 'event' && !this.calOn.scope[sc]) return false;
+        const k = e.src === 'event' ? e.kind : e.src;
+        return this.calOn.kind[k] !== false;
+      });
+    },
+    calCells(){
+      if (!this.calYm) return [];
+      const [y,m] = this.calYm.split('-').map(Number);
+      const first = new Date(Date.UTC(y, m-1, 1)), last = new Date(Date.UTC(y, m, 0));
+      const p = x=>String(x).padStart(2,'0');
+      const out = [];
+      for (let i=0;i<first.getUTCDay();i++) out.push({});
+      for (let d=1; d<=last.getUTCDate(); d++){
+        const ds = y+'-'+p(m)+'-'+p(d);
+        out.push({ day:d, date:ds, dow:new Date(Date.UTC(y,m-1,d)).getUTCDay(), isToday: ds===this.todayStr });
+      }
+      while (out.length % 7) out.push({});
+      return out;
+    },
+    // 여러 날짜에 걸친 일정은 걸친 날마다 보인다
+    calByDay(){
+      const map = {};
+      for (const e of this.calRows){
+        const s0 = e.date, e0 = e.end || e.date;
+        let d = s0, guard = 0;
+        while (d <= e0 && guard++ < 400){
+          (map[d] = map[d] || []).push(e);
+          d = this.nextDay(d);
+        }
+      }
+      return map;
+    },
     upDoneCount(){ return this.upList.filter(u=>u.state!=='up').length; },
     upAllDone(){ return this.upList.length > 0 && this.upList.every(u=>u.state!=='up'); },
     upSpeedText(){
@@ -9939,6 +10115,7 @@ const app = createApp({
         if (this.isDirectorUp) t.push({key:'billing',label:'원비·수납'});
         t.push({key:'msgtpl',label:'문자 템플릿'});
         t.push({key:'board',label:'게시판'});
+        t.push({key:'calendar',label:'일정'});
         t.push({key:'devboard',label:'개발 요청'});
         if (this.me.user.admin_type === 'Super Admin') t.push({key:'devlog',label:'개발일지'});
         // 학원 관리 → 메뉴에서 꺼둔 것은 감춘다(아직 못 받았으면 그대로 보여준다)
@@ -10116,6 +10293,7 @@ const app = createApp({
       else if (key==='devlog') this.loadDevlog(true);
       else if (key==='billing'){ this.loadInvoices(); this.loadUnpaid(); }
       else if (key==='board') this.loadBoard();
+      else if (key==='calendar') this.loadCalendar();
       else if (key==='devboard') this.loadDevBoard();
       else if (key==='msgtpl') this.loadMsgtpl();
       else if (key==='messages'){ this.msgBox='inbox'; this.loadMessages(); }
@@ -13506,6 +13684,73 @@ const app = createApp({
     _autoPickTplPreviewStudent(){ this.tplPreviewStudent=(this.students||[])[0]||null; this.tplPreviewStuQ=this.tplPreviewStudent?(this.tplPreviewStudent.real_name||this.tplPreviewStudent.username):''; this.tplPreviewStuQRaw=this.tplPreviewStuQ; },
     addMsgVar(){ const k=prompt('변수 이름 (중괄호 없이, 예: 금액)'); if(!k||!k.trim()) return; const key=k.trim().replace(/[{}]/g,''); this.msgBody=(this.msgBody||'')+' {'+key+'}'; this.syncMsgVars(); },
     async copyMsg(){ const ok=await this.doCopy(this.msgPreview); this.notify(ok ? '복사되었습니다. 문자/카톡에 붙여넣으세요.' : '복사 실패 — 미리보기를 직접 선택해 복사하세요.', ok); },
+    // ── 일정 ──
+    calDay(d){ return this.calByDay[d] || []; },
+    calPopText(e){
+      const p = [];
+      if (e.time) p.push(e.time + (e.end_time ? ' ~ ' + e.end_time : ''));
+      if (e.end && e.end !== e.date) p.push(this.dd(e.date) + ' ~ ' + this.dd(e.end));
+      if (e.detail) p.push(e.detail);
+      if (e.note) p.push(e.note);
+      if (e.src !== 'event') p.push('※ 끌어온 일정입니다. 원래 있던 곳에서 고칩니다.');
+      return e.title + (p.length ? '\n' + p.join('\n') : '');
+    },
+    calShift(n){
+      const [y,m] = this.calYm.split('-').map(Number);
+      const t = new Date(Date.UTC(y, m-1+n, 1)); const p = x=>String(x).padStart(2,'0');
+      this.calYm = t.getUTCFullYear()+'-'+p(t.getUTCMonth()+1);
+      this.loadCalendar();
+    },
+    calGoToday(){ this.calYm = this.todayStr.slice(0,7); this.loadCalendar(); },
+    calAllOn(){
+      const k = {};
+      this.calAllKinds.forEach(x=>{ k[x.value] = true; });
+      this.calOn = { scope:{ ALL:true, BRANCH:true, PRIVATE:true }, kind:k };
+    },
+    async loadCalendar(){
+      if (!this.calYm) this.calYm = this.todayStr.slice(0,7);
+      this.calLoading = true;
+      try {
+        const d = await api('GET','/api/admin/academy/calendar?ym='+this.calYm);
+        this.calRaw = d.rows; this.calKinds = d.kinds; this.calPulled = d.pulled;
+        this.calBranches = d.branches; this.calCanAll = d.can_all; this.calMyBranch = d.my_branch;
+        // 처음 열 때는 다 켜 둔다. 꺼져 있으면 있는 줄도 모른다.
+        this.calAllKinds.forEach(x=>{ if (this.calOn.kind[x.value] === undefined) this.calOn.kind[x.value] = true; });
+      } catch(e){ this.notify(e.message,false); }
+      this.calLoading = false;
+    },
+    calClick(e){
+      if (e.src === 'event'){ if (e.editable) this.openCalEvent(e); return; }
+      // 끌어온 것은 원래 있던 곳에서 다룬다
+      if (e.src === 'exam') this.go('exam');
+      else if (e.src === 'counsel') this.go('leadmgr');
+      else if (e.src === 'makeup') this.go('makeup');
+      else if (e.src === 'holiday') this.go('options');
+    },
+    openCalEvent(e, date){
+      const k0 = (this.calKinds[0] || {}).value || '';
+      this.calForm = e
+        ? { id:e.ref, scope:e.scope||'BRANCH', branch_id:this.calMyBranch, kind:e.kind, title:e.title,
+            start_date:e.date, end_date:(e.end||''), start_time:e.time||'', end_time:e.end_time||'', note:e.note||'' }
+        : { id:null, scope:(this.calCanAll ? 'ALL' : 'BRANCH'), branch_id:this.calMyBranch, kind:k0, title:'',
+            start_date:(date || this.todayStr), end_date:'', start_time:'', end_time:'', note:'' };
+    },
+    async saveCalEvent(){
+      const f = this.calForm;
+      if (!(f.title||'').trim()) return this.notify('제목을 적어 주세요.', false);
+      if (!f.start_date) return this.notify('시작일을 정해 주세요.', false);
+      try {
+        await api('POST','/api/admin/academy/calendar', f);
+        this.calForm = null; this.notify('저장되었습니다.'); this.loadCalendar();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async deleteCalEvent(){
+      if (!await this.askConfirm('이 일정을 지우시겠습니까?')) return;
+      try {
+        await api('DELETE','/api/admin/academy/calendar?id='+this.calForm.id);
+        this.calForm = null; this.notify('지웠습니다.'); this.loadCalendar();
+      } catch(e){ this.notify(e.message,false); }
+    },
     // ── 게시판 (공지 · 규정 · 자료) ──
     bdIcon(k){ return ({ img:'🖼', pdf:'📕', doc:'📄', zip:'🗜' })[k] || '📎'; },
     bdScopeLabel(s){ return ({ ALL:'전 직원', DIRECTOR:'원장 이상', HQ:'본부만', BRANCH:'지점' })[s] || s; },
