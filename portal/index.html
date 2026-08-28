@@ -4655,6 +4655,8 @@
                        :class="['px-1.5 py-1 leading-tight cursor-pointer', calItemCls(it), ttConnRole(it,d.date)==='first' ? 'rounded-t' : (ttConnRole(it,d.date)==='second' ? 'rounded-b mb-0.5' : 'rounded mb-0.5')]">
                     <span class="block"><span class="font-semibold">{{ it.start_time }}</span> {{ it.student_name }}<span v-if="ttConnRole(it,d.date)" class="ml-1 opacity-60" title="연속 수업(이어짐)">🔗</span></span>
                     <span v-if="it.school_name || it.grade" class="block text-[10px] opacity-70">{{ schoolGradeShort(it.school_name, it.school_type, it.grade) }}</span>
+                    <!-- 오는 요일 — 주1회인지 주2회인지 그 자리에서 보인다 -->
+                    <span v-if="it.weekdays" class="block text-[10px] opacity-70">{{ it.weekdays }}</span>
                     <span class="block text-[10px] opacity-70">{{ ttSubjectShort(it.subject) }}({{ it.duration_minutes||60 }}분)</span>
                     <span v-if="it.makeup || calBadge(it)" class="block text-[10px] opacity-70"><template v-if="it.makeup">보강{{ mkAbsenceRefSuffix(it) }}</template><template v-if="it.makeup && calBadge(it)"> · </template><span v-if="calBadge(it)" class="px-1 rounded" :style="calBadge(it).style">{{ calBadge(it).label }}</span></span>
                     <span v-if="it.att && (it.att.in || it.att.out)" class="block text-[10px] opacity-70">등원: {{ it.att.in||'-' }}</span>
@@ -4725,6 +4727,8 @@
                   <span v-if="ttConnRole(L.it,d.date)" class="absolute top-0.5 right-0.5 text-[9px] opacity-70 leading-none" title="연속 수업(이어짐)">🔗</span>
                   <div class="font-semibold truncate">{{ L.it.start_time }} {{ L.it.student_name }}</div>
                   <div v-if="L.it.school_name || L.it.grade" class="opacity-70 truncate">{{ schoolGradeShort(L.it.school_name, L.it.school_type, L.it.grade) }}</div>
+                  <!-- 오는 요일 — 주1회인지 주2회인지 그 자리에서 보인다 -->
+                  <div v-if="L.it.weekdays" class="opacity-70 truncate">{{ L.it.weekdays }}</div>
                   <div class="opacity-70 truncate">{{ ttSubjectShort(L.it.subject) }}({{ L.it.duration_minutes||60 }}분)</div>
                   <div v-if="L.it.makeup || calBadge(L.it)" class="opacity-70 truncate"><template v-if="L.it.makeup">보강{{ mkAbsenceRefSuffix(L.it) }}</template><template v-if="L.it.makeup && calBadge(L.it)"> · </template><template v-if="calBadge(L.it)">{{ calBadge(L.it).label }}</template></div>
                   <div v-if="L.it.att && (L.it.att.in || L.it.att.out)" class="opacity-70 truncate">등원: {{ L.it.att.in||'-' }}</div>

@@ -4998,6 +4998,17 @@ class KioskDeviceActionAPI(APIView):
         return self.success({"status": d.status, "label": d.label})
 
 
+def _student_weekday_map(student_ids, on):
+    """학생마다 오늘 적용중인 시간표의 요일 묶음. 요일을 옮겨 끊긴 옛 줄은 빼야
+    주1회가 주2회로 둔갑하지 않는다."""
+    out = {}
+    for t in StudentTimetable.objects.filter(student_id__in=student_ids).exclude(status="ENDED"):
+        if not _slot_active_on(t, on):
+            continue
+        out.setdefault(t.student_id, set()).add(t.weekday)
+    return {k: ", ".join(_WD[w] for w in sorted(v)) for k, v in out.items()}
+
+
 class TimetableCalendarAPI(APIView):
     @admin_role_required
     def get(self, request):
@@ -5206,6 +5217,13 @@ class TimetableCalendarAPI(APIView):
         hol = {}
         for h in hq:
             hol.setdefault(str(h.date), []).append(h.name)
+        # 그 학생이 오는 요일. 학교 밑에 적어 주면 주1회인지 주2회인지 그 자리에서 보인다.
+        sids = {it["student_id"] for day in days.values() for it in day.get("items", [])
+                if it.get("student_id")}
+        wdmap = _student_weekday_map(sids, (now() + timedelta(hours=9)).date()) if sids else {}
+        for day in days.values():
+            for it in day.get("items", []):
+                it["weekdays"] = wdmap.get(it.get("student_id"), "")
         return self.success({"from": str(d0), "to": str(d1), "days": days,
                              "reservations": resv, "holidays": hol})
 
