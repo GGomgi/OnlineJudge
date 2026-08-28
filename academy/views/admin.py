@@ -5471,6 +5471,28 @@ class LessonEditAdminAPI(APIView):
         if not can_manage_branch(request.user, o.branch_id):
             return self.error("권한이 없습니다.")
         changes = []
+        # 추가 수업 ↔ 보강 바꾸기. 미리 해 준 수업을 나중 결석의 보강으로 돌리는 일이
+        # 실제로 있다(반대도 있다). 다만 값을 조용히 뒤집으면 나중에 무슨 일이 있었는지
+        # 알 수 없으므로 반드시 이력에 남긴다.
+        if "kind" in data:
+            newk = (data.get("kind") or "").upper()
+            if newk not in ("MAKEUP", "EXTRA"):
+                return self.error("종류가 올바르지 않습니다.")
+            if not (o.is_makeup or o.is_extra):
+                return self.error("정규 수업은 보강·추가 수업으로 바꿀 수 없습니다.")
+            cur = "MAKEUP" if o.is_makeup else "EXTRA"
+            if newk != cur:
+                if newk == "MAKEUP":
+                    if not data.get("makeup_for"):
+                        return self.error("보강으로 바꾸려면 메울 결석을 골라야 합니다.")
+                    o.is_makeup, o.is_extra, o.extra_reason = True, False, ""
+                    changes.append("추가 수업 → 보강으로 바꿈")
+                else:
+                    o.is_makeup, o.is_extra = False, True
+                    if o.makeup_for_id:
+                        changes.append("결석 연결 해제(%s)" % str(o.makeup_for.date))
+                        o.makeup_for = None
+                    changes.append("보강 → 추가 수업으로 바꿈")
         what = "추가 수업" if o.is_extra else "보강"
         if "date" in data:
             if not (o.is_makeup or o.is_extra):
