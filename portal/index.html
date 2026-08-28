@@ -780,19 +780,28 @@
               <div class="flex-1 min-w-[10rem]"><label class="lbl">메모</label><input v-model="stuFeeForm.note" class="input py-1 text-xs" /></div>
             </div>
 
-            <!-- 붙은 할인. 정액을 먼저 빼고 남은 금액에 비율을 적용한다 -->
+            <!-- 붙은 할인. 겹치지 않고 큰 것 하나만 붙는다. 밀린 줄도 남긴다 —
+                 지워 버리면 "형제 할인은요?" 하고 물을 때 댈 말이 없다. -->
             <div class="text-xs">
               <div v-if="(stuFee.discounts||[]).length" class="space-y-0.5 mb-1">
                 <div v-if="stuFee.base !== null" class="flex items-center gap-2 text-slate-500">
                   <span class="w-32">기본 원비</span><span class="font-mono">{{ Number(stuFee.base).toLocaleString() }}원</span>
                 </div>
-                <div v-for="dc in stuFee.discounts" :key="dc.id" class="flex items-center gap-2">
-                  <span class="w-44 text-slate-600">{{ dc.name }}
+                <div v-for="dc in stuFee.discounts" :key="dc.id" :class="['flex items-center gap-2', dc.beaten ? 'text-slate-400' : '']">
+                  <span :class="['w-44', dc.beaten ? 'text-slate-400' : 'text-slate-600']">{{ dc.name }}
                     <span class="text-slate-400">{{ dc.kind==='PERCENT' ? dc.value+'%' : Number(dc.value).toLocaleString()+'원' }}</span>
                     <span v-if="!dc.recurring" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">한 번만</span>
+                    <span v-if="dc.alone" class="ml-1 text-[10px] px-1 rounded bg-sky-50 text-sky-600">따로</span>
                   </span>
-                  <span class="font-mono text-rose-500">-{{ Number(dc.off).toLocaleString() }}원</span>
+                  <span v-if="dc.beaten" class="font-mono line-through">-{{ Number(dc.raw||0).toLocaleString() }}원</span>
+                  <span v-else class="font-mono text-rose-500">-{{ Number(dc.off).toLocaleString() }}원</span>
+                  <span v-if="dc.beaten" class="text-[10px] px-1 rounded bg-slate-100 text-slate-500 whitespace-nowrap">더 큰 할인에 밀림</span>
+                  <span v-else-if="dc.capped" class="text-[10px] px-1 rounded bg-amber-50 text-amber-600 whitespace-nowrap">최대 {{ Number(dc.cap).toLocaleString() }}원까지</span>
                   <button v-if="stuFee.can_edit" @click="removeStuDiscount(dc)" class="text-slate-400 hover:text-rose-500">✕</button>
+                </div>
+                <div v-if="(stuFee.discounts||[]).length>1" class="text-[11px] text-slate-400 pt-0.5">
+                  할인은 겹치지 않습니다. 큰 것 하나만 붙고, <b>따로</b> 표시된 것만 함께 붙습니다.
+                  <span v-if="stuFee.cap_rule">· 지금 기준: 주{{ stuFee.cap_rule.sessions }}회 · 재원 {{ stuFee.cap_rule.months }}개월</span>
                 </div>
               </div>
               <div v-if="stuFee.can_edit" class="flex items-center gap-2">
@@ -6807,16 +6816,17 @@
           </div>
         </div>
 
-        <!-- 할인 — 여러 개를 겹쳐 붙일 수 있다. 정액을 먼저 빼고 남은 금액에 비율을 적용한다. -->
+        <!-- 할인 — 겹치지 않는다. 여럿이 걸려도 큰 것 하나만 붙는다. -->
         <div class="bg-white rounded-xl shadow-sm p-4 mb-5">
           <div class="flex items-center gap-2 mb-1">
             <h2 class="text-lg font-bold">할인 항목</h2>
-            <button @click="dcNew = dcNew ? null : { name:'', kind:'AMOUNT', value:'', recurring:true, branch_id:'', note:'' }"
+            <button @click="dcNew = dcNew ? null : { name:'', kind:'AMOUNT', value:'', recurring:true, branch_id:'', cap_scope:'DEFAULT', stands_alone:false, note:'' }"
                     class="ml-auto px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">{{ dcNew ? '취소' : '+ 할인 추가' }}</button>
           </div>
           <p class="text-xs text-slate-400 mb-3">
-            학생마다 <b>여러 개를 겹쳐</b> 붙일 수 있습니다. 계산은 <b>정액을 먼저 빼고, 남은 금액에 비율</b>을 적용합니다.
-            끄면 새로 붙일 수 없고 이미 붙은 것은 그대로 둡니다.
+            학생에게 여러 개를 붙여 두어도 <b>실제로는 큰 것 하나만</b> 깎입니다. 밀린 것도 청구서에 적혀
+            왜 안 붙었는지 알 수 있습니다. <b>따로 붙음</b>을 켠 항목(소개 할인)은 이 겨룸 밖이라 늘 함께 붙습니다.
+            금액의 뚜껑은 아래 <b>최대치 기준</b>표가 정합니다. 끄면 새로 붙일 수 없고 이미 붙은 것은 그대로 둡니다.
           </p>
 
           <div v-if="dcNew" class="bg-slate-50 rounded-lg p-3 mb-3 grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
@@ -6825,6 +6835,8 @@
             <div><label class="lbl">값</label><input v-model="dcNew.value" inputmode="numeric" class="input py-1 text-right" /></div>
             <div><label class="lbl">지속</label><select v-model="dcNew.recurring" class="input py-1 px-2"><option :value="true">계속</option><option :value="false">한 번만</option></select></div>
             <div><label class="lbl">적용 지점</label><select v-model="dcNew.branch_id" class="input py-1 px-2"><option value="">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></div>
+            <div><label class="lbl">최대치 기준</label><select v-model="dcNew.cap_scope" class="input py-1 px-2"><option value="DEFAULT">그 밖의 할인</option><option value="ADVANCE">진학 할인</option></select></div>
+            <div><label class="lbl">따로 붙음</label><select v-model="dcNew.stands_alone" class="input py-1 px-2"><option :value="false">겨룬다</option><option :value="true">늘 붙는다</option></select></div>
             <button @click="saveDiscount(dcNew)" class="btn-primary text-sm">추가</button>
           </div>
 
@@ -6837,6 +6849,8 @@
                   <th class="px-3 py-2 text-right w-28">값</th>
                   <th class="px-3 py-2 text-left w-24">지속</th>
                   <th class="px-3 py-2 text-left w-28">적용 지점</th>
+                  <th class="px-3 py-2 text-left w-28">최대치 기준</th>
+                  <th class="px-3 py-2 text-left w-24">따로 붙음</th>
                   <th class="px-3 py-2 text-left">비고</th>
                   <th class="px-3 py-2 text-right w-20">사용</th>
                 </tr>
@@ -6848,6 +6862,8 @@
                   <td class="px-3 py-1.5"><input v-model="x.value" @change="saveDiscount(x)" inputmode="numeric" class="input py-1 text-right font-mono" /></td>
                   <td class="px-3 py-1.5"><select v-model="x.recurring" @change="saveDiscount(x)" class="input py-1 px-2"><option :value="true">계속</option><option :value="false">한 번만</option></select></td>
                   <td class="px-3 py-1.5"><select v-model="x.branch_id" @change="saveDiscount(x)" class="input py-1 px-2"><option :value="null">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></td>
+                  <td class="px-3 py-1.5"><select v-model="x.cap_scope" @change="saveDiscount(x)" class="input py-1 px-2"><option value="DEFAULT">그 밖의 할인</option><option value="ADVANCE">진학 할인</option></select></td>
+                  <td class="px-3 py-1.5"><select v-model="x.stands_alone" @change="saveDiscount(x)" class="input py-1 px-2"><option :value="false">겨룬다</option><option :value="true">늘 붙는다</option></select></td>
                   <td class="px-3 py-1.5"><input v-model="x.note" @change="saveDiscount(x)" class="input py-1 text-xs" /></td>
                   <td class="px-3 py-1.5 text-right">
                     <label class="inline-flex items-center gap-1 cursor-pointer">
@@ -6855,7 +6871,56 @@
                     </label>
                   </td>
                 </tr>
-                <tr v-if="!(dcRows||[]).length"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">아직 만든 할인이 없습니다.</td></tr>
+                <tr v-if="!(dcRows||[]).length"><td colspan="9" class="px-3 py-6 text-center text-xs text-slate-400">아직 만든 할인이 없습니다.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 최대치 기준 — 진학 할인은 주회수와 재원 기간에 따라 뚜껑이 다르다 -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-5">
+          <div class="flex items-center gap-2 mb-1">
+            <h2 class="text-lg font-bold">할인 최대치 기준</h2>
+            <button @click="capNew = capNew ? null : { scope:'ADVANCE', sessions_min:2, months_min:12, amount:'', branch_id:'', note:'' }"
+                    class="ml-auto px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">{{ capNew ? '취소' : '+ 줄 추가' }}</button>
+          </div>
+          <p class="text-xs text-slate-400 mb-3">
+            할인 하나가 <b>최대 얼마까지</b> 깎을 수 있는지 정합니다. 진학 할인은 주회수와 재원 기간에 따라
+            달라 표로 둡니다. 찾는 법은 <b>조건에 드는 줄 가운데 주회수가 가장 큰 것, 그 안에서 개월이 가장 큰 것</b>입니다.
+            지점 줄이 있으면 지점 것이 먼저입니다.
+          </p>
+          <div v-if="capNew" class="bg-slate-50 rounded-lg p-3 mb-3 grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
+            <div><label class="lbl">기준</label><select v-model="capNew.scope" class="input py-1 px-2"><option value="ADVANCE">진학 할인</option><option value="DEFAULT">그 밖의 할인</option></select></div>
+            <div><label class="lbl">주회수</label><input v-model="capNew.sessions_min" inputmode="numeric" class="input py-1 text-right" placeholder="2" /></div>
+            <div><label class="lbl">재원 개월</label><input v-model="capNew.months_min" inputmode="numeric" class="input py-1 text-right" placeholder="12" /></div>
+            <div><label class="lbl">최대치(원)</label><input v-model="capNew.amount" inputmode="numeric" class="input py-1 text-right" placeholder="40000" /></div>
+            <div><label class="lbl">적용 지점</label><select v-model="capNew.branch_id" class="input py-1 px-2"><option value="">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></div>
+            <button @click="saveCap(capNew)" class="btn-primary text-sm">추가</button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-slate-500 text-xs">
+                <tr>
+                  <th class="px-3 py-2 text-left w-32">기준</th>
+                  <th class="px-3 py-2 text-right w-24">주회수</th>
+                  <th class="px-3 py-2 text-right w-24">재원 개월</th>
+                  <th class="px-3 py-2 text-right w-28">최대치</th>
+                  <th class="px-3 py-2 text-left w-28">적용 지점</th>
+                  <th class="px-3 py-2 text-left">비고</th>
+                  <th class="px-3 py-2 text-right w-16"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="x in capOrdered" :key="x.id" class="border-t">
+                  <td class="px-3 py-1.5"><select v-model="x.scope" @change="saveCap(x)" class="input py-1 px-2"><option value="ADVANCE">진학 할인</option><option value="DEFAULT">그 밖의 할인</option></select></td>
+                  <td class="px-3 py-1.5"><input v-model="x.sessions_min" @change="saveCap(x)" inputmode="numeric" :disabled="x.scope!=='ADVANCE'" class="input py-1 text-right font-mono disabled:bg-slate-50 disabled:text-slate-300" /></td>
+                  <td class="px-3 py-1.5"><input v-model="x.months_min" @change="saveCap(x)" inputmode="numeric" class="input py-1 text-right font-mono" /></td>
+                  <td class="px-3 py-1.5"><input v-model="x.amount" @change="saveCap(x)" inputmode="numeric" class="input py-1 text-right font-mono" /></td>
+                  <td class="px-3 py-1.5"><select v-model="x.branch_id" @change="saveCap(x)" class="input py-1 px-2"><option :value="null">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></td>
+                  <td class="px-3 py-1.5"><input v-model="x.note" @change="saveCap(x)" class="input py-1 text-xs" /></td>
+                  <td class="px-3 py-1.5 text-right"><button @click="delCap(x)" class="text-xs text-rose-400 hover:underline">지우기</button></td>
+                </tr>
+                <tr v-if="!(capRows||[]).length"><td colspan="7" class="px-3 py-6 text-center text-xs text-slate-400">기준이 없으면 뚜껑 없이 그대로 깎입니다.</td></tr>
               </tbody>
             </table>
           </div>
@@ -8838,7 +8903,7 @@ const app = createApp({
       payForm: { paid_on:'', amount:'', method:'TRANSFER', note:'' },
       stuFee: null, stuFeeEdit: false, stuFeeAddId: '',
       stuFeeForm: { mode:'AUTO', planned_sessions:'', planned_duration:'', manual_amount:'', note:'' },
-      dcRows: [], dcNew: null,
+      dcRows: [], dcNew: null, capRows: [], capNew: null,
       examCatalogs: [], examKinds: [], examModes: [],
       examSessions: [], examEntries: [], examLoading: false,
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
@@ -9120,6 +9185,11 @@ const app = createApp({
     // 초안을 트리와 같은 모양으로 묶는다(같은 셈을 두 번 적지 않게 하나로 뽑아 쓴다)
     bdDraftGroups(){ return this.bdBuildGroups(this.bdOrdered); },
     // 고칠 수 없는 덩어리는 보여 줄 까닭이 없다. 강사에게는 개인 폴더만 남는다.
+    capOrdered(){
+      const rank = x => (x.scope==='ADVANCE' ? 0 : 1);
+      return (this.capRows||[]).slice().sort((a,b)=>
+        rank(a)-rank(b) || (b.sessions_min-a.sessions_min) || (b.months_min-a.months_min));
+    },
     bdMgrGroups(){
       return this.bdDraftGroups.filter(g => g.rows.some(f => this.bdFolderEditable(f)));
     },
@@ -10944,7 +11014,7 @@ const app = createApp({
       }
       if (k==='menu') this.loadMenuSettings();
       if (k==='holiday' && this.hdView==='cmp') this.loadHdCompare();
-      if (k==='tuition'){ this.loadTuition(); this.loadDiscounts(); }
+      if (k==='tuition'){ this.loadTuition(); this.loadDiscounts(); this.loadCaps(); }
       if (k==='work'){
         if (!this.wsForm.branch_id) this.wsForm.branch_id = (this.myProfile && this.myProfile.branch_id) || '';
         if (!this.ttInstructors.length) this.loadTtInstructors();
@@ -12744,10 +12814,32 @@ const app = createApp({
         await api('POST','/api/admin/academy/discount_item',
                   { id:x.id||null, name:x.name, kind:x.kind, value:String(x.value||'').replace(/[^0-9]/g,''),
                     recurring:x.recurring, branch_id:x.branch_id || null, note:x.note,
+                    cap_scope:x.cap_scope||'DEFAULT', stands_alone:!!x.stands_alone,
                     ...(x.id ? { is_active:x.is_active } : {}) });
         if (!x.id){ this.dcNew = null; this.notify('추가했습니다.'); }
         this.loadDiscounts();
       } catch(e){ this.notify(e.message,false); this.loadDiscounts(); }
+    },
+    // ── 할인 최대치 기준 ──
+    async loadCaps(){
+      try { const d = await api('GET','/api/admin/academy/discount_cap'); this.capRows = d.rows || []; }
+      catch(e){ this.notify(e.message,false); }
+    },
+    async saveCap(x){
+      try {
+        await api('POST','/api/admin/academy/discount_cap',
+                  { id:x.id||null, scope:x.scope, sessions_min:String(x.sessions_min||0).replace(/[^0-9]/g,''),
+                    months_min:String(x.months_min||0).replace(/[^0-9]/g,''),
+                    amount:String(x.amount||0).replace(/[^0-9]/g,''),
+                    branch_id:x.branch_id || null, note:x.note||'' });
+        if (!x.id){ this.capNew = null; this.notify('추가했습니다.'); }
+        this.loadCaps();
+      } catch(e){ this.notify(e.message,false); this.loadCaps(); }
+    },
+    async delCap(x){
+      if (!await this.askConfirm('이 줄을 지울까요? 이 조건에 걸리던 할인은 한 단계 아래 줄을 따르게 됩니다.')) return;
+      try { await api('DELETE','/api/admin/academy/discount_cap?id='+x.id); this.loadCaps(); }
+      catch(e){ this.notify(e.message,false); }
     },
     async loadMenuSettings(){
       try {

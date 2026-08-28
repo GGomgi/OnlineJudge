@@ -887,11 +887,17 @@ class TuitionRateChange(models.Model):
 
 
 class DiscountItem(models.Model):
-    """할인 항목. 여러 개를 겹쳐 붙일 수 있고, 비율과 정액 두 가지가 있다.
+    """할인 항목. 비율과 정액 두 가지가 있다.
 
-    계산 순서: 정액을 먼저 빼고, 남은 금액에 비율을 적용한다(순서에 따라 금액이 달라져
-    못박아 둔다). 청구서에는 어떤 할인이 얼마씩 붙었는지 줄로 남긴다."""
+    **할인은 겹치지 않는다.** 진학·형제가 함께 걸려도 큰 쪽 하나만 붙는다. 다만
+    '따로 붙음'으로 표시한 항목(소개 할인)은 원비를 깎아 주는 것이 아니라 소개해 준 데
+    대한 답례라 이 겨룸 밖에 있다 — 큰 것 하나 + 소개 할인이 함께 붙는다.
+
+    항목마다 최대치가 있고, 그 값은 기준표(DiscountCap)가 정한다. 진학 할인은 주회수와
+    재원 기간에 따라 달라 항목에 못박을 수 없다."""
     KIND_CHOICES = (("AMOUNT", "정액"), ("PERCENT", "비율"))
+    # 최대치를 어느 기준으로 찾는가. 진학 할인만 주회수·재원 기간을 본다.
+    CAP_CHOICES = (("DEFAULT", "그 밖의 할인"), ("ADVANCE", "진학 할인"))
     name = models.CharField(max_length=64)                       # 형제 할인, 소개 할인 …
     kind = models.CharField(max_length=16, default="AMOUNT")
     value = models.PositiveIntegerField(default=0)               # 원 또는 %
@@ -899,9 +905,10 @@ class DiscountItem(models.Model):
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
                                related_name="discount_items")    # 비면 전 지점
     is_active = models.BooleanField(default=True)                # 끄면 새로 못 붙임
-    # 겹친 할인에 상한을 걸 때 이 항목은 세지 않는다. 소개 할인은 원비를 깎아 주는 것이
-    # 아니라 소개해 준 데 대한 답례라, 상한에 밀려 사라지면 뜻이 없어진다.
-    exclude_from_cap = models.BooleanField(default=False)
+    # 큰 것 하나만 붙는 겨룸에서 빠져 늘 붙는다. 소개 할인은 원비를 깎아 주는 것이
+    # 아니라 소개해 준 데 대한 답례라, 진학 할인에 밀려 사라지면 뜻이 없어진다.
+    stands_alone = models.BooleanField(default=False)
+    cap_scope = models.CharField(max_length=16, default="DEFAULT")
     # 한 달 청구서에 이 항목은 한 줄만 붙인다. 남은 것은 다음 달로 밀린다.
     # 같은 달에 셋을 소개해도 그 달 원비가 무너지지 않고, 소개한 만큼 다 받는다.
     once_per_month = models.BooleanField(default=False)
@@ -911,6 +918,36 @@ class DiscountItem(models.Model):
     class Meta:
         db_table = "academy_discount_item"
         ordering = ["branch_id", "id"]
+
+
+class DiscountCap(models.Model):
+    """할인 최대치 기준표. 코드를 고치지 않고 값만 바꿔 쓰기 위해 표로 둔다.
+
+    진학 할인은 주회수와 재원 기간에 따라 최대치가 다르다. 오래 다닌 학생일수록 많이
+    깎아 주는 것이라 기간이 짧으면 구간대로 줄어든다.
+
+        진학  주2회 이상  12개월 이상   40,000
+        진학  주2회 이상   6개월 이상   20,000
+        진학  주2회 이상   0개월 이상        0
+        진학  주1회 이상  12개월 이상   30,000
+        …
+        그 밖   —          0개월 이상   20,000
+
+    찾는 법: 조건을 만족하는 줄 가운데 주회수가 가장 큰 것, 그 안에서 개월이 가장 큰 것.
+    """
+    SCOPE_CHOICES = DiscountItem.CAP_CHOICES
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="discount_caps")     # 비면 전 지점
+    scope = models.CharField(max_length=16, default="DEFAULT")
+    sessions_min = models.PositiveIntegerField(default=0)        # 주 N회 이상 (진학만)
+    months_min = models.PositiveIntegerField(default=0)          # 재원 N개월 이상
+    amount = models.PositiveIntegerField(default=0)
+    note = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_discount_cap"
+        ordering = ["branch_id", "scope", "-sessions_min", "-months_min"]
 
 
 class StudentTuition(models.Model):

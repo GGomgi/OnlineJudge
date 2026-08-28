@@ -11,7 +11,8 @@
   주1·2회, 회당 시간이 섞임        →  Σ (각 회차의 회당 단가 × 4)
   주3회 이상                       →  Σ (각 회차의 회당 단가 × 4)   ※ 회수제
 
-할인은 정액을 먼저 빼고, 남은 금액에 비율을 적용한다(순서에 따라 금액이 달라져 못박아 둔다).
+할인은 겹치지 않는다. 여럿이 걸려도 큰 것 하나만 붙는다(소개 할인만 따로 붙는다).
+항목마다 최대치가 있고, 그 값은 기준표(DiscountCap)가 정한다.
 """
 from datetime import timedelta
 
@@ -204,69 +205,90 @@ def _pick_discounts(student_id, for_ym):
     return rows, later
 
 
-def _apply_discounts(student_id, out, for_ym=None):
-    """정액을 먼저 빼고, 남은 금액에 비율을 적용한다.
+def months_enrolled(student_id, on=None):
+    """이 학생이 몇 달째 다니는가. 수업 시작일이 없으면 등록일을 본다."""
+    sp = StudentProfile.objects.filter(user_id=student_id).first()
+    d0 = (sp.lesson_start_date if sp else None) or (sp.enrollment_date if sp else None)
+    if not d0:
+        return 0
+    d1 = on or _today()
+    m = (d1.year - d0.year) * 12 + (d1.month - d0.month)
+    if d1.day < d0.day:
+        m -= 1
+    return max(0, m)
 
-    겹쳐 붙은 할인에는 지점의 상한이 걸린다. 다만 '상한 제외'로 표시한 항목
-    (소개 할인)은 세지 않는다 — 원비를 깎아 주는 것이 아니라 소개해 준 데 대한
-    답례라, 상한에 밀려 사라지면 뜻이 없어진다.
+
+def cap_for(branch_id, scope, sessions, months):
+    """최대치 기준표에서 이 학생에게 걸리는 뚜껑을 찾는다.
+
+    조건을 만족하는 줄 가운데 주회수가 가장 큰 것, 그 안에서 개월이 가장 큰 것.
+    지점 표가 있으면 지점 것이 먼저다 — 지점마다 다르게 줄 수 있어야 한다.
+    표에 줄이 없으면 뚜껑이 없는 것으로 본다(None).
+    """
+    from .models import DiscountCap
+    q = DiscountCap.objects.filter(scope=scope, sessions_min__lte=sessions,
+                                   months_min__lte=months)
+    rows = [r for r in q if r.branch_id in (branch_id, None)]
+    if not rows:
+        return None
+    rows.sort(key=lambda r: (0 if r.branch_id else 1, -r.sessions_min, -r.months_min))
+    return rows[0].amount
+
+
+def _apply_discounts(student_id, out, for_ym=None):
+    """할인은 겹치지 않는다. 큰 것 하나만 붙는다.
+
+    진학과 형제가 함께 걸려도 둘 중 큰 쪽만 간다. 밀린 줄도 청구서에 남긴다 —
+    지워 버리면 학부모가 "형제 할인은요?" 하고 물을 때 댈 말이 없다.
+
+    '따로 붙음'(소개 할인)은 이 겨룸 밖이다. 원비를 깎아 주는 것이 아니라 소개해 준 데
+    대한 답례라, 진학 할인에 밀려 사라지면 뜻이 없어진다.
     """
     rows, later = _pick_discounts(student_id, for_ym)
 
-    def line(r, off):
+    amount = out["base"]
+    out["queued_discounts"] = later          # 다음 달로 밀린 건수
+
+    def line(r, off, cap=None, beaten=False):
         return {"id": r.id, "name": r.item.name, "kind": r.item.kind,
                 "value": _disc_value(r), "off": off, "note": r.note,
                 "recurring": r.item.recurring, "used_ym": r.used_ym,
-                "capped": False, "excluded": r.item.exclude_from_cap}
+                "raw": None, "capped": False, "cap": cap,
+                "alone": r.item.stands_alone, "beaten": beaten}
 
-    amount = out["base"]
-    out["queued_discounts"] = later          # 다음 달로 밀린 건수
     if amount is None:
         out["discounts"] = [line(r, 0) for r in rows]
         return out
 
     prof = AcademyProfile.objects.filter(user_id=student_id, is_deleted=False).first()
-    branch = prof.branch if prof and prof.branch_id else None
-    cap_pct = getattr(branch, "discount_cap_percent", 0) or 0
-    cap_amt = getattr(branch, "discount_cap_amount", 0) or 0
+    branch_id = prof.branch_id if prof else None
+    sessions = out.get("sessions") or 0
+    months = months_enrolled(student_id)
+    out["enrolled_months"] = months
 
     base = amount
-    lines, capped_sum, free_sum = [], 0, 0
-    # 상한에 드는 것과 안 드는 것을 나눠 셈한다. 정액 먼저, 비율 나중은 그대로다.
-    for group in (False, True):              # False=상한 대상, True=상한 제외
-        for kind in ("AMOUNT", "PERCENT"):
-            for r in [x for x in rows if bool(x.item.exclude_from_cap) == group and x.item.kind == kind]:
-                v = _disc_value(r)
-                off = min(v, amount) if kind == "AMOUNT" else int(amount * v / 100.0)
-                off = max(0, min(off, amount))
-                amount -= off
-                if group:
-                    free_sum += off
-                else:
-                    capped_sum += off
-                lines.append(line(r, off))
+    lines = []
+    for r in rows:
+        v = _disc_value(r)
+        raw = v if r.item.kind == "AMOUNT" else int(base * v / 100.0)
+        cap = cap_for(branch_id, r.item.cap_scope or "DEFAULT", sessions, months)
+        off = raw if cap is None else min(raw, cap)
+        ln = line(r, max(0, min(off, base)), cap)
+        ln["raw"] = raw
+        ln["capped"] = (cap is not None and raw > cap)
+        lines.append(ln)
 
-    # 상한을 넘으면 상한 대상 줄만 비율대로 줄인다
-    limit = None
-    if cap_pct:
-        limit = int(base * cap_pct / 100.0)
-    if cap_amt:
-        limit = cap_amt if limit is None else min(limit, cap_amt)
-    if limit is not None and capped_sum > limit:
-        keep = limit
-        for ln in lines:
-            if ln["excluded"]:
-                continue
-            share = int(round(ln["off"] * limit / float(capped_sum))) if capped_sum else 0
-            share = min(share, keep)
-            keep -= share
-            if share != ln["off"]:
-                ln["capped"] = True
-            ln["off"] = share
-        amount = base - limit - free_sum
-        out["cap_applied"] = {"limit": limit, "before": capped_sum}
-
-    out["cap"] = {"percent": cap_pct, "amount": cap_amt}
+    alone = [ln for ln in lines if ln["alone"]]
+    rivals = [ln for ln in lines if not ln["alone"]]
+    if rivals:
+        # 같은 금액이면 먼저 붙인 것이 이긴다(줄 차례가 곧 붙인 차례다)
+        win = max(rivals, key=lambda ln: ln["off"])
+        for ln in rivals:
+            if ln is not win:
+                ln["beaten"] = True
+                ln["off"] = 0
+    total_off = sum(ln["off"] for ln in lines)
     out["discounts"] = lines
-    out["amount"] = max(0, int(amount))
+    out["amount"] = max(0, int(base - total_off))
+    out["cap_rule"] = {"sessions": sessions, "months": months}
     return out

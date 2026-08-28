@@ -955,7 +955,7 @@ class TuitionRateAdminAPI(APIView):
 
 
 class DiscountItemAdminAPI(APIView):
-    """할인 항목 — 여러 개를 겹쳐 붙일 수 있다. 정액 먼저 빼고 비율을 적용한다."""
+    """할인 항목 — 겹치지 않는다. 여럿이 걸려도 큰 것 하나만 붙는다."""
 
     @admin_role_required
     def get(self, request):
@@ -969,8 +969,11 @@ class DiscountItemAdminAPI(APIView):
         rows = [{"id": x.id, "name": x.name, "kind": x.kind, "value": x.value,
                  "recurring": x.recurring, "branch_id": x.branch_id,
                  "branch": (x.branch.name if x.branch_id else ""), "is_active": x.is_active,
+                 "stands_alone": x.stands_alone, "cap_scope": x.cap_scope or "DEFAULT",
+                 "once_per_month": x.once_per_month,
                  "note": x.note} for x in qs]
-        return self.success({"rows": rows})
+        return self.success({"rows": rows, "cap_scopes": [
+            {"value": v, "label": l} for v, l in DiscountItem.CAP_CHOICES]})
 
     @admin_role_required
     def post(self, request):
@@ -999,6 +1002,12 @@ class DiscountItemAdminAPI(APIView):
             x.value = value
             x.recurring = bool(d.get("recurring", x.recurring))
             x.branch_id = bid
+            if "stands_alone" in d:
+                x.stands_alone = bool(d.get("stands_alone"))
+            if "once_per_month" in d:
+                x.once_per_month = bool(d.get("once_per_month"))
+            if d.get("cap_scope") in ("DEFAULT", "ADVANCE"):
+                x.cap_scope = d["cap_scope"]
             x.note = (d.get("note") or "").strip()
             if "is_active" in d:
                 x.is_active = bool(d.get("is_active"))
@@ -1006,7 +1015,11 @@ class DiscountItemAdminAPI(APIView):
         else:
             x = DiscountItem.objects.create(
                 name=name, kind=kind, value=value, branch_id=bid,
-                recurring=bool(d.get("recurring", True)), note=(d.get("note") or "").strip())
+                recurring=bool(d.get("recurring", True)),
+                stands_alone=bool(d.get("stands_alone")),
+                once_per_month=bool(d.get("once_per_month")),
+                cap_scope=(d.get("cap_scope") if d.get("cap_scope") in ("DEFAULT", "ADVANCE") else "DEFAULT"),
+                note=(d.get("note") or "").strip())
         return self.success({"id": x.id})
 
     @admin_role_required
@@ -1021,6 +1034,79 @@ class DiscountItemAdminAPI(APIView):
             return self.error("항목이 없습니다.")
         x.is_active = False          # 지우지 않고 끈다 — 이미 붙은 것은 그대로 둔다
         x.save(update_fields=["is_active"])
+        return self.success({"ok": True})
+
+
+class DiscountCapAdminAPI(APIView):
+    """할인 최대치 기준표.
+
+    진학 할인은 주회수와 재원 기간에 따라 최대치가 다르다. 코드에 못박으면 값 하나
+    바꾸는 데도 손을 대야 하므로 표로 두고 화면에서 고친다.
+    """
+
+    @admin_role_required
+    def get(self, request):
+        _d = menu_denied(request.user, "options")
+        if _d:
+            return self.error(_d)
+        from ..models import DiscountCap
+        view = viewable_branch_ids(request.user)
+        qs = DiscountCap.objects.select_related("branch")
+        if view is not None:
+            qs = qs.filter(Q(branch__isnull=True) | Q(branch_id__in=view))
+        rows = [{"id": x.id, "scope": x.scope, "sessions_min": x.sessions_min,
+                 "months_min": x.months_min, "amount": x.amount, "note": x.note,
+                 "branch_id": x.branch_id, "branch": (x.branch.name if x.branch_id else "")}
+                for x in qs]
+        return self.success({"rows": rows, "scopes": [
+            {"value": v, "label": l} for v, l in DiscountItem.CAP_CHOICES]})
+
+    @admin_role_required
+    def post(self, request):
+        _d = menu_denied(request.user, "options")
+        if _d:
+            return self.error(_d)
+        if not _is_director_up_exam(request.user):
+            return self.error("원장 이상만 고칠 수 있습니다.")
+        from ..models import DiscountCap
+        d = request.data
+        scope = d.get("scope") if d.get("scope") in ("DEFAULT", "ADVANCE") else "DEFAULT"
+        try:
+            se = max(0, int(str(d.get("sessions_min") or 0).replace(",", "") or 0))
+            mo = max(0, int(str(d.get("months_min") or 0).replace(",", "") or 0))
+            amt = max(0, int(str(d.get("amount") or 0).replace(",", "") or 0))
+        except (TypeError, ValueError):
+            return self.error("숫자가 올바르지 않습니다.")
+        bid = d.get("branch_id") or None
+        if bid and not can_manage_branch(request.user, int(bid)):
+            return self.error("이 지점을 고칠 권한이 없습니다.")
+        x = DiscountCap.objects.filter(id=d.get("id")).first() if d.get("id") else None
+        if x:
+            x.scope, x.sessions_min, x.months_min, x.amount = scope, se, mo, amt
+            x.branch_id, x.note = bid, (d.get("note") or "").strip()
+            x.save()
+        else:
+            # 같은 조건이 둘이면 어느 것이 이기는지 알 수 없다
+            if DiscountCap.objects.filter(branch_id=bid, scope=scope, sessions_min=se,
+                                          months_min=mo).exists():
+                return self.error("같은 조건의 줄이 이미 있습니다.")
+            x = DiscountCap.objects.create(branch_id=bid, scope=scope, sessions_min=se,
+                                           months_min=mo, amount=amt,
+                                           note=(d.get("note") or "").strip())
+        return self.success({"id": x.id})
+
+    @admin_role_required
+    def delete(self, request):
+        _d = menu_denied(request.user, "options")
+        if _d:
+            return self.error(_d)
+        if not _is_director_up_exam(request.user):
+            return self.error("원장 이상만 지울 수 있습니다.")
+        from ..models import DiscountCap
+        x = DiscountCap.objects.filter(id=request.GET.get("id")).first()
+        if not x:
+            return self.error("줄이 없습니다.")
+        x.delete()
         return self.success({"ok": True})
 
 
