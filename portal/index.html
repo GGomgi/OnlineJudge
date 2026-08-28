@@ -1057,7 +1057,7 @@
               <div class="flex flex-wrap gap-1">
                 <span v-for="(r,i) in stuStatusAfter.rows.slice(0,8)" :key="i"
                       :class="['px-1.5 py-0.5 rounded whitespace-nowrap', r.checked ? 'bg-emerald-100 text-emerald-700' : 'bg-white border border-amber-200 text-amber-700']">
-                  {{ dd(r.date) }} {{ r.time }}<span v-if="r.is_makeup"> 보강</span><span v-if="r.checked"> · 다녀감</span>
+                  {{ dd(r.date) }} {{ r.time }}<span v-if="r.is_makeup"> 보강</span><span v-else-if="r.is_extra"> 추가</span><span v-if="r.checked"> · 다녀감</span>
                 </span>
                 <span v-if="stuStatusAfter.rows.length>8" class="text-amber-600">외 {{ stuStatusAfter.rows.length-8 }}건</span>
               </div>
@@ -1195,7 +1195,7 @@
             <span>지각 <b class="text-amber-600">{{ stuAttOverall.late }}</b></span>
             <span>보강 <b class="text-blue-600">{{ stuAttOverall.makeupTotal }}</b><span class="text-slate-400 text-xs"> (날짜미정 {{ stuAttOverall.makeupPending }})</span></span>
             <button @click="toggleStuAttBulkMode" class="ml-auto btn-secondary text-sm">{{ stuAttBulkMode ? '선택일괄수정 닫기' : '+ 선택일괄수정' }}</button>
-            <button @click="openMakeupForThisStudent" class="btn-secondary text-sm">+ 보강 추가</button>
+            <button @click="openMakeupForThisStudent" class="btn-secondary text-sm">+ 수업 추가</button>
           </div>
           <div class="bg-slate-50 rounded-lg px-3 py-2 text-xs flex items-center gap-4 flex-wrap">
             <span>이번달 <b class="text-rose-500">결석 {{ stuAttSummary.mAbsent }}</b> · <b class="text-amber-600">지각 {{ stuAttSummary.mLate }}</b> <span class="text-slate-400">({{ stuAttSummary.mTotal }}회 중 {{ stuAttSummary.mRate }}%)</span></span>
@@ -2994,7 +2994,7 @@
           <date-box v-model="dashDate" @change="loadDashboard" box-class="input py-1" wrap-class="date-w shrink-0"></date-box>
           <button @click="dashShift(1)" class="px-2 py-1 rounded border border-slate-200 text-slate-500 shrink-0">▶</button>
           <button @click="dashToday" class="px-3 py-1 rounded border border-slate-200 text-slate-500 text-sm shrink-0 whitespace-nowrap">오늘</button>
-          <button @click="openMakeup" class="px-3 py-1.5 rounded bg-blue-600 text-white text-sm shrink-0 whitespace-nowrap hover:bg-blue-700">+ 보강 추가</button>
+          <button @click="openMakeup" class="px-3 py-1.5 rounded bg-blue-600 text-white text-sm shrink-0 whitespace-nowrap hover:bg-blue-700">+ 수업 추가</button>
           <button @click="openKiosk" class="px-3 py-1.5 rounded border border-slate-200 text-slate-600 text-sm shrink-0 whitespace-nowrap hover:bg-slate-50">🖥 출결 키오스크</button>
           <button v-if="isDirectorUp" @click="openKioskDevices" class="px-3 py-1.5 rounded border border-slate-200 text-slate-600 text-sm shrink-0 whitespace-nowrap hover:bg-slate-50">🔒 기기 등록</button>
         </div>
@@ -3305,6 +3305,7 @@
                   <template v-else-if="c.k==='student'">
                     <span v-if="colOn('dash','missing') && dashMissing(l).length" @click="openStudent({ id:l.student_id })" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop" class="mr-0.5 text-amber-500 font-bold cursor-pointer">!</span><span class="cursor-pointer hover:underline px-1 rounded" :class="(isAbsent(l)||isLeave(l)) ? 'line-through text-slate-400' : (needsCallHighlight(l) ? 'bg-yellow-200' : '')" @mouseenter="showDashPop(l,$event)" @mouseleave="hideDashPop">{{ l.student_name }}</span><span v-if="findContPartner(l)" class="ml-0.5 opacity-60" title="연속 수업(이어짐)">🔗</span><span v-if="l.adhoc" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">수업외</span><span v-else-if="l.biweekly" class="ml-1 text-[10px] px-1 rounded bg-violet-100 text-violet-700">격주</span><span v-if="!isAbsent(l) && !isLeave(l) && attStatusTag(l)" :class="['ml-1 text-[10px] px-1 rounded', attStatusTag(l).cls]">{{ attStatusTag(l).label }}</span>
                     <span v-if="l.is_makeup" @click="openAtt(l)" class="block mt-0.5 text-[10px] px-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer w-fit">보강{{ mkAbsenceRefSuffix(l) }}</span>
+                    <span v-else-if="l.is_extra" @click="openAtt(l)" class="block mt-0.5 text-[10px] px-1 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 cursor-pointer w-fit">추가{{ l.extra_reason ? ' · '+optLabel('extra_reason', l.extra_reason) : '' }}</span>
                 
                   </template>
                   <template v-else-if="c.k==='school'">
@@ -3760,7 +3761,7 @@
       </div>
       <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
         <div class="flex items-center justify-between px-5 py-3 border-b">
-          <div class="font-bold">보강 추가</div>
+          <div class="font-bold">{{ mkForm.extra ? '추가 수업' : '수업 추가' }}</div>
           <button @click="makeupOpen=false" class="text-slate-400 hover:text-slate-600">✕</button>
         </div>
         <div class="p-5 space-y-3">
@@ -3813,30 +3814,40 @@
                   </li>
                   <li v-if="mkSearch.candidates.length===0" class="px-3 py-4 text-xs text-slate-400 text-center">이 범위 안에 수업이 없습니다.</li>
                 </ul>
-                <button @click="pickMkStudentOnly" class="mt-2 text-xs text-indigo-500 hover:underline">결석 연결 없이 이 학생으로 새 보강만 추가</button>
+                <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                  <button @click="pickMkStudentOnly(false)" class="text-indigo-500 hover:underline">결석 연결 없이 새 보강만 추가</button>
+                  <!-- 대회 전날 하루 더 나오라고 불러 시키는 수업은 보강이 아니다 -->
+                  <button @click="pickMkStudentOnly(true)" class="text-emerald-600 hover:underline">추가 수업 넣기 (정규 외)</button>
+                </div>
               </template>
             </div>
           </template>
 
           <!-- 보강 대상 선택됨 -->
           <template v-else>
-            <div class="bg-slate-50 rounded px-3 py-2 text-sm">
+            <div :class="['rounded px-3 py-2 text-sm', mkForm.extra ? 'bg-emerald-50' : 'bg-slate-50']">
               <div class="flex items-center gap-2">
-                <span class="text-xs text-slate-400">보강 대상 선택됨</span>
+                <span :class="['text-xs', mkForm.extra ? 'text-emerald-700' : 'text-slate-400']">{{ mkForm.extra ? '추가 수업 — 빠진 것을 메우는 보강이 아니라 정규 외로 더 하는 수업입니다' : '보강 대상 선택됨' }}</span>
                 <button @click="clearMkTarget" class="ml-auto text-xs text-slate-400 hover:underline">변경</button>
               </div>
               <div class="mt-1"><span class="font-medium">{{ mkForm.student_name }}</span>
                 <span class="text-xs text-slate-500 ml-1">{{ mkForm.origin }}</span></div>
             </div>
             <div class="grid grid-cols-2 gap-2">
-              <div><label class="lbl">보강 할 날짜</label><date-box v-model="mkForm.date" :box-class="['input py-1', guardCls('makeupOpen','date')]"></date-box></div>
-              <div><label class="lbl">보강 할 시간</label><input :value="mkForm.time" @input="mkForm.time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 w-24 text-center font-mono', guardCls('makeupOpen','time')]" /></div>
+              <div><label class="lbl">{{ mkForm.extra ? '수업 날짜' : '보강 할 날짜' }}</label><date-box v-model="mkForm.date" :box-class="['input py-1', guardCls('makeupOpen','date')]"></date-box></div>
+              <div><label class="lbl">{{ mkForm.extra ? '수업 시간' : '보강 할 시간' }}</label><input :value="mkForm.time" @input="mkForm.time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 w-24 text-center font-mono', guardCls('makeupOpen','time')]" /></div>
             </div>
             <div v-if="mkForm.pair" class="text-xs px-3 py-2 rounded bg-blue-50 text-blue-700">연속 2타임 결석 보강 — 두번째 타임은 {{ mkPairSecondTime() }}부터 이어서 자동으로 함께 잡힙니다.</div>
-            <div><label class="lbl">사유</label><input v-model="mkForm.note" placeholder="예: 6/22 결석 보강" :class="['input py-1', guardCls('makeupOpen','note')]" /></div>
+            <div v-if="mkForm.extra"><label class="lbl">까닭</label>
+              <select v-model="mkForm.extra_reason" class="input py-1">
+                <option value="">고르세요</option>
+                <option v-for="o in optList_('extra_reason')" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <div><label class="lbl">{{ mkForm.extra ? '메모' : '사유' }}</label><input v-model="mkForm.note" :placeholder="mkForm.extra ? '예: 대회 전날 마무리 점검' : '예: 6/22 결석 보강'" :class="['input py-1', guardCls('makeupOpen','note')]" /></div>
             <div class="flex justify-end gap-2">
               <button @click="makeupOpen=false" class="btn-secondary text-sm">취소</button>
-              <button @click="addMakeup" class="btn-primary text-sm">보강 추가</button>
+              <button @click="addMakeup" class="btn-primary text-sm">{{ mkForm.extra ? '추가 수업 넣기' : '보강 추가' }}</button>
             </div>
           </template>
         </div>
@@ -9009,6 +9020,7 @@ const app = createApp({
         {v:'school_type', l:'학교 구분 (상담)'},
         {v:'counseling_purpose', l:'상담 목적 (상담)'},
         {v:'attendance_note', l:'출결 비고 (색상 태그)'},
+        {v:'extra_reason', l:'추가 수업 사유'},
       ],
       optCategory: 'program', optList: [], optNewForm: { value:'', label:'', allow_custom:false },
       durations: [60, 90, 120, 150, 180, 210, 240],
@@ -9491,7 +9503,7 @@ const app = createApp({
       const cutoff = t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
       const out = { mAbsent:0, mLate:0, mTotal:0, qAbsent:0, qLate:0, qTotal:0, mRate:0, qRate:0 };
       for (const row of this.stuAttHist.rows){
-        if (row.date > today || row.is_makeup) continue; // 아직 안 지난 수업·보강행은 결석률 계산에서 제외
+        if (row.date > today || row.is_makeup || row.is_extra) continue; // 아직 안 지난 수업·보강·추가 수업은 결석률 계산에서 제외
         const absent = row.status==='ABSENT';
         const late = !absent && row.att.in && (this.hmMin(row.att.in) - this.hmMin(row.start_time)) > 0;
         if (row.date.slice(0,7)===thisMonth){ out.mTotal++; if(absent) out.mAbsent++; if(late) out.mLate++; }
@@ -13214,7 +13226,8 @@ const app = createApp({
       if (n.status==='ABSENT') return { text:label+' 결석', cls:'text-rose-500 font-medium' };
       if (n.status==='LEAVE') return { text:label+' 임시휴원', cls:'text-purple-500' };
       if (n.status==='HOLIDAY') return { text:label+' 🏖 휴무', cls:'text-teal-600' };
-      return { text:label+(n.is_makeup ? ' 보강' : ''), cls:(n.is_makeup ? 'text-blue-600' : 'text-slate-600') };
+      const kindTxt = n.is_makeup ? ' 보강' : (n.is_extra ? ' 추가' : '');
+      return { text:label+kindTxt, cls:(n.is_makeup ? 'text-blue-600' : (n.is_extra ? 'text-emerald-600' : 'text-slate-600')) };
     },
     showWdPop(l, wi, e){
       const times = ((this.dashEx(l).weekdays||{})[wi]) || [];
@@ -13240,7 +13253,7 @@ const app = createApp({
     hideNextPop(){ this.nextPop.show = false; },
     nextStatusLabel(n){
       return n.status==='ABSENT' ? '결석' : (n.status==='LEAVE' ? '임시휴원'
-           : (n.status==='HOLIDAY' ? '🏖 휴무' : (n.is_makeup ? '보강' : '')));
+           : (n.status==='HOLIDAY' ? '🏖 휴무' : (n.is_makeup ? '보강' : (n.is_extra ? '추가' : ''))));
     },
     isEarlyLeavePending(l){ return !!(l && l.att && l.att.note_tag===EARLY_LEAVE_TAG); },
     calBadge(it){
@@ -13294,7 +13307,7 @@ const app = createApp({
       try { await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'SCHEDULED', note:'' }); this.notify('복원되었습니다.'); this.loadDashboard(); }
       catch(e){ this.notify(e.message,false); }
     },
-    _resetMkForm(){ this.mkForm={ makeup_for:null, student_id:null, student_name:'', origin:'', time:'', date:'', note:'' }; },
+    _resetMkForm(){ this.mkForm={ makeup_for:null, student_id:null, student_name:'', origin:'', time:'', date:'', note:'', extra:false, extra_reason:'' }; },
     // 상단 +보강 추가: 보강이 필요한 결석 목록을 모아 보여주고, 골라서 오늘 보강
     mkPendingFiltered(){
       const q = (this.mkPendingSearch||'').trim();
@@ -13396,23 +13409,28 @@ const app = createApp({
         date:(this.dashDate||this.todayStr), time:c.start_time, note:(c.date+' '+(c.status==='ABSENT'?'결석':'수업') +' 보강') };
       this.mkStep='form';
     },
-    pickMkStudentOnly(){
+    // extra=true 면 추가 수업. 빠진 것을 메우는 게 아니라 더 얹는 것이라 결석을 걸지 않는다.
+    pickMkStudentOnly(extra){
       const s = this.mkSearch.student; if (!s) return;
       this.mkForm={ makeup_for:null, student_id:s.id, student_name:(s.real_name||s.username),
-        origin:'', date:(this.dashDate||this.todayStr), time:'', note:'' };
+        origin:'', date:(this.dashDate||this.todayStr), time:'', note:'',
+        extra:!!extra, extra_reason:'' };
+      if (extra && !(this.options.extra_reason||[]).length) this.loadOptions();
       this.mkStep='form';
     },
     async addMakeup(){
       const f=this.mkForm;
-      if (!f.date) return this.notify('보강 할 날짜를 선택하세요.', false);
-      if (!f.time) return this.notify('보강 할 시간을 입력하세요.', false);
+      const what = f.extra ? '추가 수업' : '보강';
+      if (!f.date) return this.notify(what+' 날짜를 선택하세요.', false);
+      if (!f.time) return this.notify(what+' 시간을 입력하세요.', false);
+      if (f.extra && !f.extra_reason) return this.notify('추가 수업의 까닭을 고르세요.', false);
       try {
-        await api('POST','/api/admin/academy/makeup_add', { student_id:f.student_id, date:f.date, start_time:f.time, makeup_for:f.makeup_for, note:f.note });
+        await api('POST','/api/admin/academy/makeup_add', { student_id:f.student_id, date:f.date, start_time:f.time, makeup_for:f.makeup_for, note:f.note, is_extra:!!f.extra, extra_reason:f.extra_reason||'' });
         if (f.pair){
           const t2 = this.shiftHM(f.time, f.pair.offsetMinutes);
           await api('POST','/api/admin/academy/makeup_add', { student_id:f.student_id, date:f.date, start_time:t2, makeup_for:f.pair.occ_id, note:f.note });
         }
-        this.notify('보강이 추가되었습니다.'); this.guardSnap.makeupOpen = undefined; this.makeupOpen=false;
+        this.notify(what+'이(가) 추가되었습니다.'); this.guardSnap.makeupOpen = undefined; this.makeupOpen=false;
         if (this.stuDetail && this.stuTab==='attend'){ this.loadStuAttHist(this.stuAttHist.fwdDays); this.loadStuMakeups(); }
         else if (this.tab==='timetable') this.loadTtCal();
         else this.loadDashboard();
@@ -15656,6 +15674,7 @@ const app = createApp({
       // 회색은 '등원전'이 쓰고 있어 휴무가 묻혔다. 학원이 쉬는 날이니 색과 아이콘으로 갈라 준다.
       if (row.status==='HOLIDAY') return { label:'🏖 휴무', cls:'bg-teal-100 text-teal-700' };
       if (row.is_makeup) return { label:'보강'+this.mkAbsenceRefSuffix(row), cls:'bg-blue-100 text-blue-700' };
+      if (row.is_extra) return { label:'추가'+(row.extra_reason ? ' · '+this.optLabel('extra_reason', row.extra_reason) : ''), cls:'bg-emerald-100 text-emerald-700' };
       if (this.isEarlyLeavePending(row)) return { label:'조퇴예정'+this.stuAbsenceSuffix(row), cls:'bg-orange-100 text-orange-700' };
       if (row.att.in){
         const diff = this.hmMin(row.att.in) - this.hmMin(this.lateRefStart(row));

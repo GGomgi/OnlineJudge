@@ -1088,6 +1088,11 @@ class LessonOccurrence(models.Model):
     is_makeup = models.BooleanField(default=False)          # 보강 수업 여부
     makeup_for = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name="makeups")   # 어떤 결석에 대한 보강인지
+    # 정규도 보강도 아닌 수업. 대회 전날 하루 더 나오라고 불러 시키는 특강 같은 것으로,
+    # 빠진 것을 메우는 보강과는 성질이 반대다(더 얹는 것). 보강으로 적으면 '결석 없는
+    # 보강'이 쌓여 미보강 결석 수가 어긋난다.
+    is_extra = models.BooleanField(default=False)
+    extra_reason = models.CharField(max_length=32, blank=True, default="")
     no_makeup = models.BooleanField(default=False)
     # 보강 안 함일 때의 구분: HOMEWORK=숙제로 대체 / NONE=숙제도 없음 (빈값=옛 데이터, 미구분)
     no_makeup_kind = models.CharField(max_length=16, blank=True, default="")          # 결석이지만 보강 안 함(학부모 미희망)
@@ -1184,6 +1189,7 @@ class OptionCategory(object):
     ATTENDANCE_NOTE = "attendance_note"    # 출결: 비고 표시(색상 태그)
     STUDENT_RECORD = "student_record"       # 학생 기록: 종류(학교 시험·수행평가…)
     CALENDAR_KIND = "calendar_kind"         # 일정: 종류(방학·중간고사·학원 행사…)
+    EXTRA_REASON = "extra_reason"           # 추가 수업: 사유(대회 전 특강·시험 대비…)
 
 
 OPTION_CATEGORIES = [
@@ -1194,6 +1200,7 @@ OPTION_CATEGORIES = [
     (OptionCategory.ATTENDANCE_NOTE, "출결 비고"),
     (OptionCategory.STUDENT_RECORD, "학생 기록 종류"),
     (OptionCategory.CALENDAR_KIND, "일정 종류"),
+    (OptionCategory.EXTRA_REASON, "추가 수업 사유"),
 ]
 OPTION_CATEGORY_VALUES = [c[0] for c in OPTION_CATEGORIES]
 

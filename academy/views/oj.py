@@ -997,6 +997,7 @@ class KioskBoardAPI(APIView):
             att[a.student_id] = {"in": _hm_kst(a.check_in_at), "out": _hm_kst(a.check_out_at)}
         rows = [{"occ_id": o.id, "start_time": str(o.start_time)[:5], "student_name": _name_of(o.student),
                 "duration_minutes": o.duration_minutes, "status": o.status, "is_makeup": o.is_makeup,
+                "is_extra": o.is_extra, "extra_reason": o.extra_reason,
                 "no_makeup": o.no_makeup, "student_id": o.student_id,
                 "_absence_date": (str(o.makeup_for.date) if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
                 "_absence_time": (str(o.makeup_for.start_time)[:5] if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
@@ -1005,6 +1006,7 @@ class KioskBoardAPI(APIView):
             rows.append({"occ_id": None, "start_time": r["start_time"], "student_name": r["student_name"],
                         "duration_minutes": r["duration_minutes"], "att": r["att"], "adhoc": True,
                         "status": "SCHEDULED", "is_makeup": False, "no_makeup": False, "student_id": None,
+                        "is_extra": False, "extra_reason": "",
                         "_absence_date": "", "_absence_time": ""})
         # 결석↔보강 상호 연결 표시(포털과 동일한 규칙)
         absent_ids = [r["occ_id"] for r in rows if r["status"] == OccurrenceStatus.ABSENT and r["occ_id"]]

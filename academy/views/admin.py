@@ -3144,6 +3144,7 @@ class StudentStatusAdminAPI(APIView):
             att = DailyAttendance.objects.filter(student=u, date=o.date).first()
             rows.append({"date": str(o.date), "time": str(o.start_time)[:5],
                          "status": o.status, "is_makeup": o.is_makeup,
+                         "is_extra": o.is_extra, "extra_reason": o.extra_reason,
                          "checked": bool(att and (att.check_in_at or att.check_out_at))})
         return self.success({"after": str(eff), "rows": rows,
                              "last": (rows[-1]["date"] if rows else "")})
@@ -4154,6 +4155,7 @@ def _adhoc_lesson_rows(d, branch_ids):
             "branch": (prof.branch.name if prof and prof.branch_id else ""),
             "branch_id": (prof.branch_id if prof else None),
             "biweekly": False, "is_makeup": False, "status": "SCHEDULED", "lesson_note": "", "no_makeup": False, "no_makeup_kind": "",
+            "is_extra": False, "extra_reason": "",
             "school_type": (sp.school_type if sp else ""), "school_name": (sp.school_name if sp else ""),
             "grade": (sp.grade if sp else ""), "parent_phone": (sp.parent_phone if sp else ""),
             "student_phone": (sp.student_phone if sp else ""), "legacy_url": (sp.legacy_url if sp else ""),
@@ -4199,6 +4201,7 @@ def _dash_student_extra(d, lessons, late_min=5):
         e.setdefault("next", []).append({
             "date": str(o.date), "wd": _WD[o.date.weekday()], "time": str(o.start_time)[:5],
             "status": o.status, "is_makeup": o.is_makeup,
+            "is_extra": o.is_extra, "extra_reason": o.extra_reason,
             "subject": o.subject or ""})
 
     # 결석·지각 — 칸에는 이번 달 수만, 마우스를 올리면 지난달까지 날짜와 지각 분수를 본다
@@ -4329,6 +4332,7 @@ class DashboardAdminAPI(APIView):
                 "instructor_id": o.instructor_id,
                 "branch": (o.branch.name if o.branch_id else ""),
                 "biweekly": biweekly, "is_makeup": o.is_makeup,
+                "is_extra": o.is_extra, "extra_reason": o.extra_reason,
                 "status": o.status, "lesson_note": o.note, "no_makeup": o.no_makeup,
                 "no_makeup_kind": o.no_makeup_kind,
                 "_absence_date": (str(o.makeup_for.date) if (o.is_makeup and o.makeup_for_id and o.makeup_for) else ""),
@@ -5671,9 +5675,16 @@ class LessonProgressAdminAPI(APIView):
 class MakeupAddAdminAPI(APIView):
     @admin_role_required
     def post(self, request):
-        """보강 추가. {student_id, date, start_time'HH:MM', duration?, program?, instructor_id?,
-        source_timetable_id?(정규수업), makeup_for?(결석 occ_id), note?}"""
+        """수업 추가. {student_id, date, start_time'HH:MM', duration?, program?, instructor_id?,
+        source_timetable_id?(정규수업), makeup_for?(결석 occ_id), note?,
+        is_extra?(추가 수업), extra_reason?}
+
+        보강은 빠진 것을 메우는 것이고, 추가 수업은 더 얹는 것이다 — 대회 전날 하루 더
+        나오라고 불러 시키는 특강 같은 것. 성질이 반대라 섞으면 '결석 없는 보강'이 쌓여
+        미보강 결석 수가 어긋난다.
+        """
         data = request.data
+        is_extra = bool(data.get("is_extra"))
         u = User.objects.filter(id=data.get("student_id")).first()
         if not u:
             return self.error("학생이 없습니다.")
@@ -5695,8 +5706,10 @@ class MakeupAddAdminAPI(APIView):
             return self.error("시각 형식이 올바르지 않습니다(HH:MM).")
         note = (data.get("note") or "").strip()
         target = None
-        if data.get("makeup_for"):
-            target = LessonOccurrence.objects.filter(id=data.get("makeup_for"), student_id=u.id).first()
+        # 추가 수업은 메울 결석이 없다. 화면에서 잘못 딸려 와도 여기서 끊는다.
+        makeup_for_id = None if is_extra else data.get("makeup_for")
+        if makeup_for_id:
+            target = LessonOccurrence.objects.filter(id=makeup_for_id, student_id=u.id).first()
             if not target:
                 return self.error("연결할 수업을 찾을 수 없습니다.")
             # 같은 결석에 이미 보강이 잡혀 있으면 막는다. 두 사람이 거의 동시에 각자 보강을 잡아
@@ -5709,6 +5722,10 @@ class MakeupAddAdminAPI(APIView):
                     "화면을 새로고침해 확인하세요. 바꾸려면 기존 보강을 취소한 뒤 다시 잡아주세요."
                     % (str(dup.date), str(dup.start_time)[:5]))
         src = StudentTimetable.objects.filter(id=data.get("source_timetable_id")).first()
+        # 추가 수업은 걸어 둘 결석도, 고른 정규 수업도 없다. 그대로 두면 과목이 '추가 수업'
+        # 으로만 남아 무슨 수업이었는지 나중에 알 수 없다. 그 학생이 지금 듣는 줄을 따른다.
+        if not src and is_extra:
+            src = StudentTimetable.objects.filter(student_id=u.id, status="ACTIVE").order_by("id").last()
         # 과목·수업시간·담당강사: 명시 입력 > 정규수업(source_timetable_id) > 연결 대상 수업(target) > 기본값
         dur = data.get("duration") or (src.duration_minutes if src else (target.duration_minutes if target else 60))
         # 그 날 이미 있는 수업과 시간이 겹치면 막는다(같은 학생이 동시에 두 수업에 있을 수 없음)
@@ -5721,7 +5738,7 @@ class MakeupAddAdminAPI(APIView):
         # 실제 저장된 세부 과목(예: Python 약어 'Py')을 덮어써버리므로 주의.
         subj = (data.get("subject") or "").strip() or \
             (src.subject if src else "") or (target.subject if target else "") or \
-            resolve_program_label(prog) or "보강"
+            resolve_program_label(prog) or ("추가 수업" if is_extra else "보강")
         instr = data.get("instructor_id")
         if instr is None:
             instr = src.instructor_id if src else (target.instructor_id if target else None)
@@ -5741,13 +5758,15 @@ class MakeupAddAdminAPI(APIView):
                 student=u, branch_id=(prof.branch_id if prof else (src.branch_id if src else None)),
                 source_timetable=None, date=d, start_time=st_time, duration_minutes=dur,
                 program=prog, subject=subj, instructor_id=instr,
-                status=OccurrenceStatus.SCHEDULED, is_makeup=True,
-                makeup_for_id=data.get("makeup_for"), note=note)
+                status=OccurrenceStatus.SCHEDULED, is_makeup=(not is_extra),
+                is_extra=is_extra, extra_reason=((data.get("extra_reason") or "")[:32] if is_extra else ""),
+                makeup_for_id=makeup_for_id, note=note)
             instr_u = User.objects.filter(id=instr).first() if instr else None
+            what = "추가 수업" if is_extra else "보강"
             TimetableChange.objects.create(
-                student=u, actor=request.user, action="CREATE", reason=note or "보강 생성",
-                detail=("%s 보강 생성: %s %s분 %s%s" % (
-                    str(d), tm, dur, subj or "보강",
+                student=u, actor=request.user, action="CREATE", reason=note or (what + " 생성"),
+                detail=("%s %s 생성: %s %s분 %s%s" % (
+                    str(d), what, tm, dur, subj or what,
                     (" · " + _name_of(instr_u)) if instr_u else ""))[:255])
         return self.success({"occ_id": occ.id})
 
@@ -6036,6 +6055,7 @@ class StudentAttendanceHistoryAPI(APIView):
                   "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
                   "instructor_id": o.instructor_id,
                   "status": o.status, "is_makeup": o.is_makeup, "no_makeup": o.no_makeup,
+                  "is_extra": o.is_extra, "extra_reason": o.extra_reason,
                   "no_makeup_kind": o.no_makeup_kind, "lesson_note": o.note,
                   "time_changed": time_changed,
                   "orig_time": (str(o.source_timetable.start_time)[:5] if (time_changed and o.source_timetable) else ""),
