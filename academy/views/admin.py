@@ -2510,6 +2510,10 @@ def sync_program_to_profile(student, program, language=""):
     except (ValueError, TypeError):
         progs = []
     lang = language or ""
+    # 언어를 모르는 채로 프로그래밍언어를 담으면 '프로그래밍언어(C)' 옆에 언어 없는
+    # '프로그래밍언어' 가 따로 생긴다(38명에게 그렇게 쌓였다). 모르면 담지 않는다.
+    if program == "LANG" and not lang:
+        return
     for p in progs:
         if not isinstance(p, dict):
             continue

@@ -633,6 +633,8 @@ class CreateStudentTimetableSerializer(serializers.Serializer):
     # 적용 기간이 통째로 비고, 과거 무한대가 된다.
     active_from = serializers.DateField(required=False, allow_null=True)
     active_until = serializers.DateField(required=False, allow_null=True)
+    # 프로그래밍언어의 언어(C·Python…). 없으면 등록 과정에 언어 없는 줄이 따로 생긴다.
+    language = serializers.CharField(max_length=16, required=False, allow_blank=True)
     reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
 
@@ -649,5 +651,6 @@ class EditStudentTimetableSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=["ACTIVE", "PAUSED", "ENDED"], required=False)
     # 끝나는 날만 따로 고칠 수 있어야 한다(휴원 예정일이 바뀌면 여기도 바뀐다)
     active_until = serializers.DateField(required=False, allow_null=True)
+    language = serializers.CharField(max_length=16, required=False, allow_blank=True)
     reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
     effective_date = serializers.DateField(required=False, allow_null=True)
