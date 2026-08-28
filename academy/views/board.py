@@ -121,10 +121,19 @@ def _seeable_owners(user, role, is_super):
 
 
 def _folder_editable(f, user):
-    """이 폴더를 고치고 지울 수 있는가. 개인 폴더는 만든 사람, 나머지는 원장 이상."""
+    """이 폴더를 고치고 지울 수 있는가.
+
+    개인 폴더는 만든 사람만. 함께 쓰는 폴더는 원장 이상이되 **자기 자리 안에서만** 이다 —
+    전 지점 폴더는 본부 것이고, 지점 폴더는 그 지점 것이다. 특정 지점 원장이 전 지점
+    폴더를 고칠 까닭이 없다.
+    """
     if f.scope == "PRIVATE":
         return f.created_by_id == user.id
-    return _can_edit_folders(user)
+    if not _can_edit_folders(user):
+        return False
+    if f.scope == "ALL":
+        return viewable_branch_ids(user) is None            # 전 지점은 본부만
+    return f.branch_id is None or can_manage_branch(user, f.branch_id)
 
 
 def _kind_of(ext):
@@ -292,8 +301,10 @@ class BoardFolderAPI(APIView):
                     x = x.parent
             if f.scope == "PRIVATE" and f.created_by_id != request.user.id:
                 return self.error("남의 개인 폴더는 고칠 수 없습니다.")
-            if f.scope != "PRIVATE" and not _can_edit_folders(request.user):
-                return self.error("함께 쓰는 폴더는 원장 이상만 고칠 수 있습니다.")
+            if f.scope == "ALL" and viewable_branch_ids(me) is not None:
+                return self.error("전 지점 폴더는 본부 관리자만 고칠 수 있습니다.")
+            if f.scope != "PRIVATE" and not _folder_editable(f, request.user):
+                return self.error("이 폴더를 고칠 권한이 없습니다.")
             f.name, f.parent = name, parent
         else:
             sib = BoardFolder.objects.filter(parent=parent, is_deleted=False).count()
@@ -307,7 +318,14 @@ class BoardFolderAPI(APIView):
         f.need_read = bool(d.get("need_read"))
         f.versioned = bool(d.get("versioned"))
         f.allow_comments = bool(d.get("allow_comments"))
-        f.write_scope = d.get("write_scope") or ""
+        # 전 지점 폴더는 본부가 모든 지점에 알리는 자리다. 특정 지점 원장이 전 지점에
+        # 글을 쓸 일은 없다 — 범위가 전 지점이면 쓰기는 늘 본부만이다.
+        ws = d.get("write_scope") or ""
+        if f.scope == "ALL":
+            ws = "HQ"
+        elif ws == "HQ" and viewable_branch_ids(me) is not None:
+            return self.error("본부만 쓰는 폴더는 본부 관리자만 만들 수 있습니다.")
+        f.write_scope = ws
         f.sort_mode = d.get("sort_mode") or "RECENT"
         f.pin_when_collapsed = bool(d.get("pin"))
         if d.get("order") is not None:

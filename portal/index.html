@@ -2255,7 +2255,8 @@
           <span v-if="it.f.allow_comments" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600">덧글</span>
           <span v-if="it.f.pin" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-emerald-50 text-emerald-600">접어도</span>
           <span v-if="it.f.write_scope" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">쓰기 {{ bdScopeLabel(it.f.write_scope) }}</span>
-          <span v-if="it.f.scope!=='ALL' && it.f.scope!=='BRANCH' && it.f.scope!=='PRIVATE'" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500">{{ bdScopeLabel(it.f.scope) }}</span>
+          <!-- '누가 보는가'가 안 보여 원장 전용을 만들어 놓고도 알아볼 수 없었다 -->
+          <span v-if="it.f.read_floor" class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-violet-50 text-violet-600">{{ bdFloorLabel(it.f.read_floor) }}</span>
           <span v-if="bdFolderEditable(it.f)" class="flex items-center gap-1 shrink-0">
             <template v-if="it.f._del">
               <button @click="undoBdDelete(it.f)" class="px-1.5 h-6 rounded border border-slate-200 text-[11px] text-slate-600 hover:bg-white">되살리기</button>
@@ -2360,10 +2361,12 @@
           </div>
           <!-- 공지·규정은 아무나 쓰면 안 된다. 비우면 볼 수 있는 사람이 곧 쓸 수 있는 사람이다 -->
           <div class="flex-1 min-w-0"><label class="lbl">글쓰기</label>
-            <select v-model="bdFolderForm.write_scope" class="input px-2">
+            <!-- 전 지점은 본부가 모든 지점에 알리는 자리다. 고를 것이 없다 -->
+            <div v-if="bdFolderForm.scope==='ALL'" class="input px-2 flex items-center bg-slate-50 text-slate-500">본부만</div>
+            <select v-else v-model="bdFolderForm.write_scope" class="input px-2">
               <option value="">보는 사람 모두</option>
               <option value="DIRECTOR">원장 이상만</option>
-              <option value="HQ">본부만</option>
+              <option v-if="bdCanHq" value="HQ">본부만</option>
             </select>
           </div>
         </div>
@@ -7696,6 +7699,13 @@
               </div>
             </div>
 
+            <!-- 글이 길면 위 줄이 화면 밖으로 나간다. 다 읽고 고치려는 사람을 위해
+                 아래에도 같은 버튼을 둔다. -->
+            <div v-if="bdDetail.can_edit" class="flex justify-end gap-2 text-xs border-t pt-2">
+              <button @click="openBdEdit(bdDetail)" class="text-indigo-500 hover:underline">수정</button>
+              <button @click="deleteBd" class="text-rose-400 hover:underline">삭제</button>
+            </div>
+
             <!-- 덧글 — 폴더에서 켠 곳에만 -->
             <div v-if="bdDetail.allow_comments" class="border-t pt-3">
               <div class="text-xs font-semibold text-slate-500 mb-2">덧글 {{ (bdDetail.comments||[]).length }}</div>
@@ -7715,7 +7725,7 @@
                       <button @click="bdCommentEdit=null" class="btn-secondary text-xs">취소</button>
                     </div>
                   </div>
-                  <div v-else class="text-sm text-slate-700 whitespace-pre-wrap break-all mt-0.5">{{ c.body }}</div>
+                  <div v-else class="text-sm text-slate-700 whitespace-pre-wrap break-all mt-0.5" v-html="linkify(c.body)"></div>
                 </li>
               </ul>
               <div class="flex gap-2">
@@ -13858,6 +13868,19 @@ const app = createApp({
     // ── 게시판 (공지 · 규정 · 자료) ──
     bdIcon(k){ return ({ img:'🖼', pdf:'📕', doc:'📄', zip:'🗜' })[k] || '📎'; },
     bdScopeLabel(s){ return ({ ALL:'전 직원', DIRECTOR:'원장 이상', HQ:'본부만', BRANCH:'지점' })[s] || s; },
+    bdFloorLabel(s){ return ({ DIRECTOR:'원장만 봄', HQ:'본부만 봄' })[s] || s; },
+    // 인터넷 주소는 눌러서 가는 것이다. 덧글에 붙여 넣은 주소를 손으로 옮겨 적게 둘 수 없다.
+    linkify(s){
+      const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                                .replace(/"/g,'&quot;');
+      return esc(s).replace(/(https?:\/\/[^\s<]+)/g, m => {
+        // 문장 끝의 마침표·괄호까지 주소로 삼으면 링크가 깨진다
+        const tail = (m.match(/[).,!?]+$/) || [''])[0];
+        const u = m.slice(0, m.length - tail.length);
+        return '<a href="'+u+'" target="_blank" rel="noopener noreferrer" '
+             + 'class="text-indigo-600 underline break-all">'+u+'</a>'+tail;
+      });
+    },
     bdSizeText(n){
       n = Number(n)||0;
       if (n >= 1048576) return (n/1048576).toFixed(n>=10485760?0:1)+'MB';
@@ -14330,8 +14353,12 @@ const app = createApp({
     },
     toggleBdMgrGroup(k){ this.bdMgrFold = { ...this.bdMgrFold, [k]: this.bdMgrOpen(k) }; },
     bdFolderEditable(f){
-      // 개인 폴더는 만든 사람만, 나머지는 원장 이상
-      return f.scope==='PRIVATE' ? f.mine : this.bdCanEdit;
+      // 개인 폴더는 만든 사람만. 함께 쓰는 폴더는 원장 이상이되 자기 자리 안에서만이다 —
+      // 전 지점 폴더는 본부 것이라 지점 원장에게는 손댈 것이 없다.
+      if (f.scope==='PRIVATE') return f.mine;
+      if (!this.bdCanEdit) return false;
+      if (f.scope==='ALL') return this.bdCanHq;
+      return !f.branch_id || this.bdBranches.some(b=>b.id===f.branch_id);
     },
     editBdFolder(f, scope){
       if (!f && scope==='PRIVATE'){
@@ -14353,6 +14380,7 @@ const app = createApp({
       const f = this.bdFolderForm;
       if (!(f.name||'').trim()) return this.notify('폴더 이름을 적어 주세요.', false);
       if (f.scope==='BRANCH' && !f.branch_id) return this.notify('지점을 고르세요.', false);
+      if (f.scope==='ALL') f.write_scope = 'HQ';      // 전 지점은 본부가 알리는 자리다
       const gk = f.scope==='PRIVATE' ? 'private'
                : (f.scope==='BRANCH' && f.branch_id ? 'b'+f.branch_id : 'all');
       const gl = f.scope==='PRIVATE' ? '개인 폴더'
@@ -14373,13 +14401,20 @@ const app = createApp({
       }
       this.bdFolderForm = null;
     },
+    // 맨 위 폴더는 전 지점·지점·개인이 형제로 한 줄에 섞여 있다. 차례를 0부터 다시
+    // 매기면 화면에서 건드리지도 않은 남의 서랍까지 자리가 바뀌어 저장할 때 막힌다.
+    // 같은 덩어리 안에서만 자리를 바꾸고, 그 덩어리가 쓰던 번호만 돌려 쓴다.
     moveBdFolder(f, delta){
-      const sibs = this.bdDraft.filter(x=>(x.parent_id||null)===(f.parent_id||null) && !x._del)
+      const sibs = this.bdDraft.filter(x=>(x.parent_id||null)===(f.parent_id||null)
+                                       && x.group_key===f.group_key && !x._del)
                                .sort((a,b)=>a.order-b.order);
       const i = sibs.findIndex(x=>x.id===f.id), j = i+delta;
       if (i<0 || j<0 || j>=sibs.length) return;
+      let pool = sibs.map(x=>x.order).sort((a,b)=>a-b);
+      // 번호가 겹쳐 있으면 돌려 쓸 것이 없다. 그 덩어리만 0부터 다시 매긴다.
+      if (new Set(pool).size !== pool.length) pool = sibs.map((x,n)=>n);
       sibs.splice(j, 0, sibs.splice(i,1)[0]);
-      sibs.forEach((x,n)=>{ if (x.order!==n){ x.order = n; x._moved = true; } });
+      sibs.forEach((x,n)=>{ if (x.order!==pool[n]){ x.order = pool[n]; x._moved = true; } });
     },
     askDeleteBdFolder(f){
       // 안에 무엇이 있으면 어떻게 할지 먼저 고르게 한다(저장할 때 그대로 실행)
