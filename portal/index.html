@@ -3670,7 +3670,7 @@
               </div>
             </div>
             <div v-if="attForm.kind==='EXTRA'">
-              <label class="lbl">사유 <span class="text-slate-400">(왜 더 했나)</span></label>
+              <label class="lbl">사유 <span class="text-slate-400">(왜 수업을 더 했나요?)</span></label>
               <select v-model="attForm.extraReason" :class="['input py-1', guardCls('attModal','extraReason')]">
                 <option value="">고르세요</option>
                 <option v-for="o in optList_('extra_reason')" :key="o.value" :value="o.value">{{ o.label }}</option>
