@@ -3668,6 +3668,23 @@
               <p v-if="mkLinkCandidates.length===0" class="text-[11px] text-slate-400 mt-1">이 학생의 날짜미정 결석·조퇴예정이 없습니다.</p>
             </div>
           </div>
+          <!-- 추가 수업은 메울 결석이 없다. 대신 왜 불렀는지를 여기서 고친다 -->
+          <div v-else-if="attModal.is_extra" class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="lbl">수업 날짜 <span class="text-slate-400">(일정 변경)</span></label>
+              <div class="flex items-center gap-2">
+                <date-box v-model="attForm.mkDate" :box-class="['input py-1', guardCls('attModal','mkDate')]"></date-box>
+                <button @click="cancelMakeup" class="text-xs text-rose-500 hover:underline whitespace-nowrap shrink-0">수업 취소</button>
+              </div>
+            </div>
+            <div>
+              <label class="lbl">사유 <span class="text-slate-400">(왜 더 했나)</span></label>
+              <select v-model="attForm.extraReason" :class="['input py-1', guardCls('attModal','extraReason')]">
+                <option value="">고르세요</option>
+                <option v-for="o in optList_('extra_reason')" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+          </div>
           <div>
             <label class="lbl">수업 시각 <span class="text-slate-400">(이 날짜만 변경 · 24시간제 직접 입력)</span></label>
             <div class="flex items-center gap-1">
@@ -12171,20 +12188,22 @@ const app = createApp({
       this.attHist = [];
       const tag0 = l.status==='ABSENT' ? 'ABSENT' : (l.status==='LEAVE' ? 'TEMP_LEAVE' : (l.att.note_tag||''));
       const lang0 = (l.program==='LANG') ? this.parseRowLanguage(l.subject) : '';
-      const mkDate0 = l.is_makeup ? (l.date||'') : '';
+      const mkDate0 = (l.is_makeup || l.is_extra) ? (l.date||'') : '';
+      const extraReason0 = l.is_extra ? (l.extra_reason||'') : '';
       const linkTarget0 = (l.is_makeup && l.linked && l.linked.kind==='absence') ? l.linked.occ_id : null;
       const plan0 = (l.status==='ABSENT')
         ? (l.no_makeup ? (l.no_makeup_kind==='HOMEWORK' ? 'homework' : 'none')
                        : ((l.linked && l.linked.kind==='makeup') ? 'schedule' : 'later'))
         : '';
       this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, absentPlan:plan0, note:((l.status==='ABSENT'||l.status==='LEAVE') ? (l.lesson_note||'') : (l.att.note||'')),
-                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0,
+                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0, extraReason:extraReason0,
                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:''), progFeedback:(l.progress?l.progress.feedback:''), progMemo:(l.progress?l.progress.memo:'') };
       this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0, absentPlan:plan0,
-                        instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0,
+                        instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0, extraReason:extraReason0,
                         progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:''), progFeedback:(l.progress?l.progress.feedback:''), progMemo:(l.progress?l.progress.memo:'') };
       this.$nextTick(()=> this.openGuard('attModal'));
       if (!this.ttInstructors.length) this.loadTtInstructors();
+      if (l.is_extra && !(this.options.extra_reason||[]).length) this.loadOptions();
       this.mkLinkCandidates = [];
       if (l.is_makeup){
         try {
@@ -12206,10 +12225,12 @@ const app = createApp({
     attShiftLesson(delta){ if(this.attForm.lessonTime) this.attForm.lessonTime=this.shiftHM(this.attForm.lessonTime,delta); },
     async cancelMakeup(){
       const l = this.attModal;
-      if (!await this.askConfirm('이 보강 일정을 취소할까요? (결석 연결이 있다면 함께 해제됩니다)')) return;
+      const what = l.is_extra ? '추가 수업' : '보강';
+      if (!await this.askConfirm('이 '+what+' 일정을 취소할까요?'
+            + (l.is_extra ? '' : ' (결석 연결이 있다면 함께 해제됩니다)'))) return;
       try {
-        await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'CANCELLED', reason:'보강 취소' });
-        this.notify('보강이 취소되었습니다.'); this.guardSnap.attModal = undefined; this.attModal=null;
+        await api('POST','/api/admin/academy/lesson_status', { occ_id:l.occ_id, status:'CANCELLED', reason:what+' 취소' });
+        this.notify(what+'이(가) 취소되었습니다.'); this.guardSnap.attModal = undefined; this.attModal=null;
         if (this.stuDetail && this.stuTab==='attend'){ this.loadStuAttHist(this.stuAttHist.fwdDays); this.loadStuMakeups(); }
         else if (l.date) this.loadTtCal(); else this.loadDashboard();
       } catch(e){ this.notify(e.message,false); }
@@ -12353,8 +12374,11 @@ const app = createApp({
       try {
         const lessonEditBody = { occ_id:l.occ_id, reason:this.attForm.note };
         let lessonEditDirty = false;
-        if (l.is_makeup && this.attForm.mkDate && this.attForm.mkDate !== this._attOrig.mkDate){
+        if ((l.is_makeup || l.is_extra) && this.attForm.mkDate && this.attForm.mkDate !== this._attOrig.mkDate){
           lessonEditBody.date = this.attForm.mkDate; lessonEditDirty = true;
+        }
+        if (l.is_extra && this.attForm.extraReason !== this._attOrig.extraReason){
+          lessonEditBody.extra_reason = this.attForm.extraReason || ''; lessonEditDirty = true;
         }
         if (l.is_makeup && this.attForm.linkTarget !== this._attOrig.linkTarget){
           lessonEditBody.makeup_for = this.attForm.linkTarget || null; lessonEditDirty = true;

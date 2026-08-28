@@ -5461,7 +5461,8 @@ class LessonEditAdminAPI(APIView):
         """수업 인스턴스(그 날짜 하나만) 시각·길이·강사·과정 변경 + 사유(이력).
         정규수업은 패턴(StudentTimetable)은 그대로 두고 이 날짜 인스턴스만 바뀜(달력에도 반영).
         보강은 애초에 패턴이 없어 이 값이 유일한 소스.
-        {occ_id, start_time?'HH:MM', duration?, instructor_id?, program?, reason?}"""
+        추가 수업도 패턴이 없어 마찬가지다 — 날짜와 사유를 여기서 고친다.
+        {occ_id, start_time?'HH:MM', duration?, instructor_id?, program?, extra_reason?, reason?}"""
         data = request.data
         o = LessonOccurrence.objects.select_related("branch", "instructor", "student").filter(
             id=data.get("occ_id")).first()
@@ -5470,8 +5471,9 @@ class LessonEditAdminAPI(APIView):
         if not can_manage_branch(request.user, o.branch_id):
             return self.error("권한이 없습니다.")
         changes = []
+        what = "추가 수업" if o.is_extra else "보강"
         if "date" in data:
-            if not o.is_makeup:
+            if not (o.is_makeup or o.is_extra):
                 return self.error("정규수업은 날짜를 옮길 수 없습니다(요일 반복 시간표 자체를 바꾸려면 시간표 탭에서 수정하세요).")
             try:
                 new_date = datetime.strptime(data.get("date"), "%Y-%m-%d").date()
@@ -5479,9 +5481,9 @@ class LessonEditAdminAPI(APIView):
                 return self.error("날짜 형식이 올바르지 않습니다.")
             if new_date != o.date:
                 old_date = o.date
-                changes.append("보강 날짜 %s → %s" % (str(old_date), str(new_date)))
+                changes.append("%s 날짜 %s → %s" % (what, str(old_date), str(new_date)))
                 o.date = new_date
-                o.time_change_reason = (data.get("reason") or "").strip() or "보강 일정 변경"
+                o.time_change_reason = (data.get("reason") or "").strip() or (what + " 일정 변경")
                 # 옛 날짜에 이 보강 말고 남은 수업이 없다면(등원/하원 기록이 이 보강 때문에 생긴 것으로 보고)
                 # 새 날짜로 함께 옮겨준다 — 안 옮기면 옛 날짜에 '수업외'로 고아 데이터가 남음
                 still_others = LessonOccurrence.objects.filter(student_id=o.student_id, date=old_date)\
@@ -5498,7 +5500,7 @@ class LessonEditAdminAPI(APIView):
                             new_att.note = old_att.note
                             new_att.save()
                             AttendanceChange.objects.create(attendance=new_att, actor=request.user,
-                                detail="보강 날짜 변경으로 등원/하원 기록 이동(%s → %s)" % (str(old_date), str(new_date)),
+                                detail="%s 날짜 변경으로 등원/하원 기록 이동(%s → %s)" % (what, str(old_date), str(new_date)),
                                 reason=(data.get("reason") or "").strip())
                             old_att.check_in_at = None
                             old_att.check_out_at = None
@@ -5524,6 +5526,17 @@ class LessonEditAdminAPI(APIView):
             elif o.makeup_for_id:
                 changes.append("연결 해제")
                 o.makeup_for = None
+        # 추가 수업의 사유. 보강에는 메울 결석이 있어 까닭이 저절로 서지만, 추가 수업은
+        # 왜 불렀는지가 기록에 남지 않으면 나중에 무슨 수업이었는지 알 수 없다.
+        if "extra_reason" in data:
+            if not o.is_extra:
+                return self.error("추가 수업만 사유를 정할 수 있습니다.")
+            newr = (data.get("extra_reason") or "")[:32]
+            if newr != (o.extra_reason or ""):
+                lbl = {x.value: x.label for x in OptionItem.objects.filter(category="extra_reason")}
+                changes.append("추가 수업 사유 %s → %s" % (lbl.get(o.extra_reason, o.extra_reason or "없음"),
+                                                          lbl.get(newr, newr or "없음")))
+                o.extra_reason = newr
         if "start_time" in data:
             tm = (data.get("start_time") or "").strip()
             if not tm:
