@@ -5992,17 +5992,16 @@
 
       <!-- ========== 자격증 ========== -->
       <template v-if="examTab!=='CONTEST'">
-      <!-- 걸러 보기 — 기본은 '아직 처리할 것'만 보이게 미접수 + 예정 -->
+      <!-- 접수 축과 시험일 축을 곱해서 걸렀더니 '접수완료인데 결과 대기'가 사라졌다.
+           한 참가는 반드시 아래 넷 중 하나이고 차례가 있다 — 한 축으로 합친다.
+           미접수 → 접수완료 → 결과 대기 → 끝 -->
       <div class="bg-white rounded-xl shadow-sm px-3 py-2 mb-3 flex items-center gap-3 flex-wrap text-xs">
-        <span class="text-slate-400">접수</span>
-        <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="examFilter.pending" class="w-3 h-3" />미접수 <span class="text-rose-500 font-semibold">{{ examCounts.pending }}</span></label>
-        <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="examFilter.done" class="w-3 h-3" />접수완료 <span class="text-slate-400">{{ examCounts.done }}</span></label>
-        <span class="text-slate-300">|</span>
-        <span class="text-slate-400">시험일</span>
-        <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="examFilter.upcoming" class="w-3 h-3" />예정 <span class="text-slate-400">{{ examCounts.upcoming }}</span></label>
-        <!-- 시험은 끝났는데 결과를 아직 안 넣은 것. '지난 것'으로 접히면 넣는 걸 잊는다 -->
-        <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="examFilter.waiting" class="w-3 h-3" /><b :class="examCounts.waiting ? 'text-rose-600' : 'text-slate-400'">결과 대기</b> <span :class="examCounts.waiting ? 'text-rose-500 font-semibold' : 'text-slate-400'">{{ examCounts.waiting }}</span></label>
-        <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" v-model="examFilter.past" class="w-3 h-3" />지난 것 <span class="text-slate-400">{{ examCounts.past }}</span></label>
+        <span class="text-slate-400">할 일</span>
+        <label v-for="st in examStages" :key="st.v" class="flex items-center gap-1 cursor-pointer select-none">
+          <input type="checkbox" v-model="examFilter.st[st.v]" class="w-3 h-3" />
+          <span :class="(st.warn && examCounts[st.v]) ? 'text-rose-600 font-semibold' : ''">{{ st.l }}</span>
+          <span :class="(st.warn && examCounts[st.v]) ? 'text-rose-500 font-semibold' : 'text-slate-400'">{{ examCounts[st.v] }}</span>
+        </label>
         <span class="text-slate-300">|</span>
         <!-- 종류 복수 선택 -->
         <div class="relative">
@@ -6068,7 +6067,7 @@
               <th class="text-left px-3 py-2">응시료</th>
               <th class="text-left px-3 py-2">접수 계정</th>
               <!-- 결과는 지난 것을 볼 때만 의미가 있다. 예정만 볼 때는 늘 비어 있어 자리만 차지함 -->
-              <th v-if="examFilter.past || examFilter.waiting" class="text-left px-3 py-2">결과</th>
+              <th v-if="examFilter.st.waiting || examFilter.st.done" class="text-left px-3 py-2">결과</th>
               <th class="px-3 py-2"></th>
             </tr>
           </thead>
@@ -6105,10 +6104,11 @@
                 </span>
               </td>
               <td class="px-3 py-2 whitespace-nowrap text-xs text-slate-500">{{ e.credential || '-' }}</td>
-              <td v-if="examFilter.past || examFilter.waiting" class="px-3 py-2 whitespace-nowrap text-xs">
+              <td v-if="examFilter.st.waiting || examFilter.st.done" class="px-3 py-2 whitespace-nowrap text-xs">
                 <span v-if="e.result_done" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">{{ e.result || '등록됨' }}<span v-if="e.score"> {{ e.score }}</span></span>
-                <span v-else-if="e.d_exam !== null && e.d_exam < 0" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 font-semibold">결과 대기</span>
-                <span v-else class="text-slate-300">-</span>
+                <span v-else-if="examStageOf(e)==='waiting'" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 font-semibold">결과 대기</span>
+                <span v-else-if="examStageOf(e)==='todo'" class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">미접수</span>
+                <span v-else class="text-slate-300">시험 전</span>
               </td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
                 <button @click="openExResult(e)" :class="['text-xs hover:underline', e.result_done ? 'text-slate-400' : 'text-emerald-600 font-semibold']">{{ e.result_done ? '결과 수정' : '결과 등록' }}</button>
@@ -6116,7 +6116,7 @@
                 <button @click="deleteExamEntry(e)" class="ml-2 text-xs text-rose-400 hover:underline">삭제</button>
               </td>
             </tr>
-            <tr v-if="!examRows.length"><td :colspan="(examFilter.past || examFilter.waiting) ? 10 : 9" class="px-3 py-8 text-center text-sm text-slate-400">{{ examEmptyMsg }}</td></tr>
+            <tr v-if="!examRows.length"><td :colspan="(examFilter.st.waiting || examFilter.st.done) ? 10 : 9" class="px-3 py-8 text-center text-sm text-slate-400">{{ examEmptyMsg }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -8750,7 +8750,10 @@ const app = createApp({
       examCatalogs: [], examKinds: [], examModes: [],
       examSessions: [], examEntries: [], examLoading: false,
       // 기본은 '아직 처리할 것'만 — 미접수 + 예정
-      examFilter: { pending:true, done:false, upcoming:true, waiting:true, past:false, cats:[], q:'', qRaw:'' },
+      // 할 일이 남은 셋은 켜고 끝난 것만 끈다
+      examFilter: { st:{ todo:true, applied:true, waiting:true, done:false }, cats:[], q:'', qRaw:'' },
+      examStages: [{v:'todo',l:'미접수',warn:true},{v:'applied',l:'접수완료'},
+                   {v:'waiting',l:'결과 대기',warn:true},{v:'done',l:'끝'}],
       examCatOpen: false, examCatMgr: false, examCatWarn: false, examCredNew: null,
       examChgOpen: false, examChanges: [], stuExamShowCancelled: false,
       guardSnap: {}, guardAsk: '', leavePrompt: null, confirmPrompt: null, inputPrompt: null,
@@ -9508,25 +9511,16 @@ const app = createApp({
       const k = this.examTab;
       return this.examEntries.filter(e=>{
         if (k!=='ALL' && e.kind !== k) return false;
-        if (e.applied ? !f.done : !f.pending) return false;
-        // 시험일이 지났어도 결과를 아직 안 넣었으면 '지난 것'이 아니라 '결과 대기'다.
-        // 그래야 기간이 지났다고 접혀 사라지지 않는다.
-        const over = (e.d_exam !== null && e.d_exam < 0);
-        const g = !over ? 'upcoming' : (e.result_done ? 'past' : 'waiting');
-        if (!f[g]) return false;
+        if (!f.st[this.examStageOf(e)]) return false;
         if (f.cats.length && !f.cats.includes(e.catalog_id)) return false;
         if (q && !((e.student||'')+' '+(e.what||'')).toLowerCase().includes(q)) return false;
         return true;
       });
     },
     examCounts(){
-      let pending=0, done=0, upcoming=0, waiting=0, past=0;
-      this.examEntries.forEach(e=>{
-        if (e.applied) done++; else pending++;
-        const over = (e.d_exam !== null && e.d_exam < 0);
-        if (!over) upcoming++; else if (e.result_done) past++; else waiting++;
-      });
-      return { pending, done, upcoming, waiting, past };
+      const c = { todo:0, applied:0, waiting:0, done:0 };
+      this.examEntries.forEach(e=>{ c[this.examStageOf(e)]++; });
+      return c;
     },
     examEmptyMsg(){
       if (!this.examSessions.length) return '등록된 시험·대회가 없습니다. 위에서 먼저 등록하세요.';
@@ -13058,6 +13052,13 @@ const app = createApp({
       return ({ enroll_no:'enroll_no', name:'real_name', birth:'birth_date', school:'school_name',
                 school_type:'school_type', grade:'grade', parent:'parent_name', branch:'branch',
                 status:'enrollment_status' })[k] || '';
+    },
+    // 미접수 → 접수완료 → 결과 대기 → 끝. 한 참가는 반드시 이 중 하나다.
+    examStageOf(e){
+      const over = (e.d_exam !== null && e.d_exam < 0);
+      if (!e.applied) return 'todo';
+      if (!over) return 'applied';
+      return e.result_done ? 'done' : 'waiting';
     },
     stuMissing(s){ return ((s.extra||{}).missing) || []; },
     stuHasDay(s, wi){ const w = (s.extra||{}).weekdays; return !!(w && w[wi]); },
