@@ -186,6 +186,7 @@ def _post_row(p, me=None, with_body=False):
          "pinned": p.is_pinned, "author": _name_of(p.author) if p.author_id else "",
          "author_id": p.author_id, "time": _kst(p.create_time),
          "files": p.files.count(),
+         "comments": p.comments.filter(is_deleted=False).count(),
          "students": [{"id": u.id, "name": _name_of(u)} for u in p.students.all()]}
     if with_body:
         d["body"] = p.body

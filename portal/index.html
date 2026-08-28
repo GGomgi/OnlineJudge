@@ -2228,7 +2228,7 @@
         <button @click="saveBdMgr" class="px-2.5 py-1 rounded bg-indigo-600 text-white text-xs whitespace-nowrap">저장하고 닫기</button>
       </div>
       <div class="p-3 space-y-2">
-        <template v-for="g in bdDraftGroups" :key="g.key">
+        <template v-for="g in bdMgrGroups" :key="g.key">
         <button @click="toggleBdMgrGroup(g.key)"
                 class="w-full flex items-center gap-1 text-[11px] font-semibold text-slate-400 pt-1 hover:text-slate-600">
           <span class="text-slate-300">{{ bdMgrOpen(g.key) ? '▾' : '▸' }}</span>
@@ -3388,7 +3388,7 @@
                       <span v-else-if="isEarlyLeavePending(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer whitespace-nowrap" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}{{ stuAbsenceSuffix(l) }}</span>
                       <span v-else-if="l.att.note_tag" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop" class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer" :style="attTagStyle(l.att.note_tag)">{{ attTagLabel(l.att.note_tag) }}</span>
                       <span v-else-if="hasBareNote(l)" @click="openAtt(l)" @mouseenter="showNotePop(l,$event)" @mouseleave="hideNotePop"
-                            class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-slate-700 text-white font-medium whitespace-nowrap">비고 ●</span>
+                            class="px-1.5 py-0.5 rounded text-[11px] cursor-pointer bg-slate-100 text-slate-500 whitespace-nowrap">비고 ●</span>
                       <span v-else @click="openAtt(l)" class="text-[11px] text-slate-300 hover:text-indigo-500 cursor-pointer">비고+</span>
                     </template>
                 
@@ -7512,6 +7512,7 @@
               <span v-if="bdFolder && bdFolder.need_read && !d.read" class="shrink-0 w-1.5 h-1.5 rounded-full bg-rose-500"></span>
               <span class="font-medium truncate">{{ d.title }}</span>
               <span v-if="d.files" class="text-xs text-slate-400 shrink-0">📎{{ d.files }}</span>
+              <span v-if="d.comments" class="text-xs text-sky-600 shrink-0">💬{{ d.comments }}</span>
               <span v-if="d.students.length" class="text-xs text-indigo-500 shrink-0">👤{{ d.students.length }}</span>
               <span class="ml-auto text-xs text-slate-400 shrink-0 whitespace-nowrap">{{ d.author }} · {{ dt(d.time) }}</span>
             </div>
@@ -7617,6 +7618,10 @@
             </div>
             <div class="flex items-center gap-2 text-xs text-slate-400 border-b pb-2 flex-wrap">
               <span>{{ bdDetail.folder_name }} · {{ bdDetail.author }} · {{ dt(bdDetail.time) }}</span>
+              <span v-if="bdDetail.can_edit" class="ml-auto flex gap-2 shrink-0">
+                <button @click="openBdEdit(bdDetail)" class="text-indigo-500 hover:underline">수정</button>
+                <button @click="deleteBd" class="text-rose-400 hover:underline">삭제</button>
+              </span>
               <span v-if="bdDetail.students.length" class="flex items-center gap-1 flex-wrap">
                 <span class="text-slate-300">|</span>
                 <span class="text-slate-400">학생</span>
@@ -7689,11 +7694,6 @@
                 <div><span class="text-emerald-600">읽음</span> — {{ bdDetail.reads.read.join(', ') || '없음' }}</div>
                 <div><span class="text-rose-500">미확인</span> — {{ bdDetail.reads.unread.join(', ') || '없음' }}</div>
               </div>
-            </div>
-
-            <div v-if="bdDetail.can_edit" class="flex justify-end gap-2 text-xs border-t pt-2">
-              <button @click="openBdEdit(bdDetail)" class="text-indigo-500 hover:underline">수정</button>
-              <button @click="deleteBd" class="text-rose-400 hover:underline">삭제</button>
             </div>
 
             <!-- 덧글 — 폴더에서 켠 곳에만 -->
@@ -9055,6 +9055,10 @@ const app = createApp({
     },
     // 초안을 트리와 같은 모양으로 묶는다(같은 셈을 두 번 적지 않게 하나로 뽑아 쓴다)
     bdDraftGroups(){ return this.bdBuildGroups(this.bdOrdered); },
+    // 고칠 수 없는 덩어리는 보여 줄 까닭이 없다. 강사에게는 개인 폴더만 남는다.
+    bdMgrGroups(){
+      return this.bdDraftGroups.filter(g => g.rows.some(f => this.bdFolderEditable(f)));
+    },
     // 부모 바로 아래에 자식이 오게 다시 세운다. 안 하면 새로 만든 것이 맨 뒤에만
     // 보이고 ▲▼ 를 눌러도 화면이 안 움직인다.
     bdOrdered(){
@@ -12181,7 +12185,7 @@ const app = createApp({
         tag:(this.isAbsent(l) ? '결석' : (this.isLeave(l) ? '임시휴원' : (bare ? '비고' : this.attTagLabel(l.att.note_tag)))),
         note:((this.isAbsent(l)||this.isLeave(l)) ? (l.lesson_note||'') : (l.att.note||'')),
         tagStyle:(this.isLeave(l) ? {backgroundColor:'#ede9fe',color:'#7c3aed'}
-                 : (bare ? {backgroundColor:'#334155',color:'#fff'} : this.attTagStyle(l.att.note_tag))),
+                 : (bare ? {backgroundColor:'#f1f5f9',color:'#64748b'} : this.attTagStyle(l.att.note_tag))),
         ...this.popAt(e, 260) };
     },
     showTcPop(l,e){ this.tcPop={ show:true, orig:l.orig_time||'', now:l.start_time, reason:l.time_change_reason||'', x:Math.min(e.clientX+12,window.innerWidth-240), y:Math.min(e.clientY+12,window.innerHeight-120) }; },
