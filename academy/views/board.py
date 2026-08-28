@@ -22,7 +22,7 @@ from account.decorators import admin_role_required
 
 from ..models import (BoardFolder, BoardPost, BoardFile, BoardRead, BoardPostVersion,
                       BoardComment, Branch, AcademyProfile, AcademyRole, STAFF_ROLES)
-from ..services import viewable_branch_ids
+from ..services import viewable_branch_ids, can_manage_branch
 from .exam import menu_denied
 
 MAX_FILE = 50 * 1024 * 1024          # 파일 하나 50MB
@@ -230,8 +230,11 @@ class BoardFolderAPI(APIView):
         return self.success({
             "rows": rows, "can_edit": _can_edit_folders(me), "can_private": True,
             "max_depth": MAX_DEPTH, "max_file": MAX_FILE, "max_post": MAX_POST,
+            # 원장에게 남의 지점을 보여 주면 거기에 폴더를 만들 수 있게 된다
             "branches": [{"id": b.id, "name": b.name}
-                         for b in Branch.objects.filter(is_active=True)],
+                         for b in Branch.objects.filter(
+                             is_active=True, **({"id__in": view} if view is not None else {}))],
+            "can_hq": (view is None),      # 전 직원·원장 이상·본부만 폴더는 본부만 만든다
         })
 
     @admin_role_required
@@ -240,9 +243,21 @@ class BoardFolderAPI(APIView):
         if _d:
             return self.error(_d)
         d = request.data
+        me = request.user
+        scope = d.get("scope") or "ALL"
         # 개인 폴더는 누구나 만든다. 남이 못 보는 자기 서랍이라 막을 까닭이 없다.
-        if (d.get("scope") or "ALL") != "PRIVATE" and not _can_edit_folders(request.user):
+        if scope != "PRIVATE" and not _can_edit_folders(me):
             return self.error("함께 쓰는 폴더는 원장 이상만 만들 수 있습니다.")
+        # 만들 수 있는 범위는 자기 자리를 넘지 않는다. 원장이 전 지점·본부 폴더를 만들면
+        # 자기가 못 보는 곳에 폴더가 생기고, 남의 지점에도 끼어들게 된다.
+        if scope in ("ALL", "DIRECTOR", "HQ") and viewable_branch_ids(me) is not None:
+            return self.error("전 지점·본부 폴더는 본부 관리자만 만들 수 있습니다.")
+        if scope == "BRANCH":
+            bid2 = d.get("branch_id")
+            if not bid2:
+                return self.error("지점을 고르세요.")
+            if not can_manage_branch(me, int(bid2)):
+                return self.error("이 지점에 폴더를 만들 권한이 없습니다.")
         name = (d.get("name") or "").strip()
         if not name:
             return self.error("폴더 이름을 적어 주세요.")

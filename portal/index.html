@@ -2325,8 +2325,12 @@
         <div v-if="bdCanEdit" class="flex gap-2">
           <div class="flex-1 min-w-0"><label class="lbl">볼 수 있는 사람</label>
             <select v-model="bdFolderForm.scope" @change="bdFolderForm.parent_id=null" class="input px-2">
-              <option value="ALL">전 직원</option><option value="DIRECTOR">원장 이상</option>
-              <option value="HQ">본부만</option><option value="BRANCH">지점 한정</option>
+              <!-- 원장이 전 지점·본부 폴더를 만들면 자기가 못 보는 곳에 폴더가 생긴다 -->
+              <template v-if="bdCanHq">
+                <option value="ALL">전 직원</option><option value="DIRECTOR">원장 이상</option>
+                <option value="HQ">본부만</option>
+              </template>
+              <option value="BRANCH">지점 한정</option>
               <option value="PRIVATE">개인 (내 서랍)</option>
             </select>
           </div>
@@ -8807,6 +8811,7 @@ const app = createApp({
       exResult: null, exUploading: false, exUpDone: 0, exUpTotal: 0, _exKey: 0,
       upList: [], _upKey: 0,
       // ── 일정 ──
+      bdCanHq: false,
       calYm: '', calRaw: [], calKinds: [], calPulled: [], calBranches: [], calCanAll: false,
       calMyBranch: null, calLoading: false, calForm: null,
       calOn: { scope:{ ALL:true, BRANCH:true, PRIVATE:true }, kind:{} },
@@ -9041,7 +9046,23 @@ const app = createApp({
                         .map(f=>f.group_key).filter((v,i,a)=>a.indexOf(v)===i).length > 1;
     },
     // 초안을 트리와 같은 모양으로 묶는다(같은 셈을 두 번 적지 않게 하나로 뽑아 쓴다)
-    bdDraftGroups(){ return this.bdBuildGroups(this.bdDraft); },
+    bdDraftGroups(){ return this.bdBuildGroups(this.bdOrdered); },
+    // 부모 바로 아래에 자식이 오게 다시 세운다. 안 하면 새로 만든 것이 맨 뒤에만
+    // 보이고 ▲▼ 를 눌러도 화면이 안 움직인다.
+    bdOrdered(){
+      const live = this.bdDraft;
+      const by = {};
+      live.forEach(f=>{ (by[f.parent_id || 0] = by[f.parent_id || 0] || []).push(f); });
+      const out = [];
+      const walk = (pid, depth) => {
+        (by[pid] || []).sort((a,b)=> (a.order-b.order) || String(a.id).localeCompare(String(b.id)))
+          .forEach(f=>{ f.depth = depth; out.push(f); walk(f.id, depth+1); });
+      };
+      walk(0, 1);
+      // 부모가 지워졌는데 남은 줄이 있으면 잃지 않게 뒤에 붙인다
+      live.forEach(f=>{ if (!out.includes(f)) out.push(f); });
+      return out;
+    },
     bdMgrDirty(){
       return this.bdDraft.some(f => f._new || f._del || f._chg || f._moved);
     },
@@ -13824,7 +13845,7 @@ const app = createApp({
     async loadBoard(){
       try {
         const d = await api('GET','/api/admin/academy/board/folder');
-        this.bdCanEdit = d.can_edit; this.bdBranches = d.branches || [];
+        this.bdCanEdit = d.can_edit; this.bdBranches = d.branches || []; this.bdCanHq = !!d.can_hq;
         this.bdMaxFile = d.max_file; this.bdMaxPost = d.max_post;
         // 트리 차례대로 늘어놓는다(위 폴더 바로 아래에 그 자식이 오게)
         const by = {}; (d.rows||[]).forEach(r=>{ (by[r.parent_id||0] = by[r.parent_id||0] || []).push(r); });
@@ -14301,7 +14322,9 @@ const app = createApp({
         ? { id:f.id, name:f.name, icon:f.icon, parent_id:f.parent_id, scope:f.scope,
             branch_id:f.branch_id, need_read:f.need_read, versioned:f.versioned,
             allow_comments:f.allow_comments, write_scope:f.write_scope||'', sort_mode:f.sort_mode, pin:f.pin }
-        : { id:null, name:'', icon:'📁', parent_id:null, scope:'ALL', branch_id:null,
+        : { id:null, name:'', icon:'📁', parent_id:null,
+            scope:(this.bdCanHq ? 'ALL' : 'BRANCH'),
+            branch_id:(this.bdBranches.length===1 ? this.bdBranches[0].id : null),
             need_read:false, versioned:false, allow_comments:false, write_scope:'', sort_mode:'RECENT', pin:false };
     },
     saveBdFolder(){
@@ -14320,7 +14343,8 @@ const app = createApp({
                                       depth, _chg:!this.bdDraft[i]._new };
       } else {
         const id = 'tmp'+(++this._bdTmp);
-        const sib = this.bdDraft.filter(x=>(x.parent_id||null)===(f.parent_id||null) && !x._del).length;
+        const sib = this.bdDraft.filter(x=>(x.parent_id||null)===(f.parent_id||null) && !x._del)
+                                .reduce((m,x)=>Math.max(m, (x.order||0)+1), 0);
         this.bdDraft.push({ ...f, id, group_key:gk, group_label:gl, depth, order:sib,
                             mine:true, owner:'', owner_id:(this.me?this.me.user.id:null),
                             posts:0, unread:0, _new:true });
