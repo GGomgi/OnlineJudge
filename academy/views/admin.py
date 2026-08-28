@@ -5537,6 +5537,12 @@ class LessonEditAdminAPI(APIView):
                 changes.append("추가 수업 사유 %s → %s" % (lbl.get(o.extra_reason, o.extra_reason or "없음"),
                                                           lbl.get(newr, newr or "없음")))
                 o.extra_reason = newr
+        # 넣을 때 적은 메모. 여기 말고는 고칠 곳이 없다.
+        if "lesson_memo" in data:
+            newm = (data.get("lesson_memo") or "").strip()
+            if newm != (o.note or ""):
+                changes.append("메모 고침")
+                o.note = newm
         if "start_time" in data:
             tm = (data.get("start_time") or "").strip()
             if not tm:

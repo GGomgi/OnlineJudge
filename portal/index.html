@@ -3651,7 +3651,8 @@
         </div>
         <div class="p-5 space-y-3">
           <!-- 보강 건에만 나오는 두 항목 — 세로로 쌓으면 창이 길어져서 한 줄로 묶음 -->
-          <div v-if="attModal.is_makeup" class="grid grid-cols-2 gap-3">
+          <div v-if="attModal.is_makeup" class="rounded-r bg-blue-50/50 border-l-2 border-blue-300 pl-3 pr-2 py-2 grid grid-cols-2 gap-3">
+            <div class="col-span-2 text-[11px] font-semibold text-blue-700 -mb-1">보강 <span class="font-normal text-blue-400">빠진 수업을 메우는 자리</span></div>
             <div>
               <label class="lbl">보강 날짜 <span class="text-slate-400">(일정 변경)</span></label>
               <div class="flex items-center gap-2">
@@ -3669,7 +3670,8 @@
             </div>
           </div>
           <!-- 추가 수업은 메울 결석이 없다. 대신 왜 불렀는지를 여기서 고친다 -->
-          <div v-else-if="attModal.is_extra" class="grid grid-cols-2 gap-3">
+          <div v-else-if="attModal.is_extra" class="rounded-r bg-emerald-50/50 border-l-2 border-emerald-300 pl-3 pr-2 py-2 grid grid-cols-2 gap-3">
+            <div class="col-span-2 text-[11px] font-semibold text-emerald-700 -mb-1">추가 수업 <span class="font-normal text-emerald-500">정규 외로 더 한 수업</span></div>
             <div>
               <label class="lbl">수업 날짜 <span class="text-slate-400">(일정 변경)</span></label>
               <div class="flex items-center gap-2">
@@ -3683,6 +3685,10 @@
                 <option value="">고르세요</option>
                 <option v-for="o in optList_('extra_reason')" :key="o.value" :value="o.value">{{ o.label }}</option>
               </select>
+            </div>
+            <div class="col-span-2">
+              <label class="lbl">메모 <span class="text-slate-400">(넣을 때 적은 내용)</span></label>
+              <input v-model="attForm.extraMemo" placeholder="예: 대회 전날 마무리 점검" :class="['input py-1', guardCls('attModal','extraMemo')]" />
             </div>
           </div>
           <div>
@@ -3800,7 +3806,7 @@
           <template v-else-if="mkStep==='pick'">
             <div class="flex items-center gap-2 mb-1">
               <span :class="['text-xs px-2 py-0.5 rounded', mkForm.extra ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700']">{{ mkForm.extra ? '추가 수업' : '보강' }}</span>
-              <button @click="mkStep='kind'" class="text-xs text-slate-400 hover:underline">바꾸기</button>
+              <button @click="mkStep='kind'" class="text-xs text-slate-400 hover:underline">‹ 이전</button>
             </div>
             <div v-if="!mkForm.extra" class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs mb-1">
               <button @click="mkMode='pending'" :class="['px-3 py-1.5', mkMode==='pending' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50']">결석 목록에서 고르기</button>
@@ -12190,16 +12196,17 @@ const app = createApp({
       const lang0 = (l.program==='LANG') ? this.parseRowLanguage(l.subject) : '';
       const mkDate0 = (l.is_makeup || l.is_extra) ? (l.date||'') : '';
       const extraReason0 = l.is_extra ? (l.extra_reason||'') : '';
+      const extraMemo0 = l.is_extra ? (l.lesson_note||'') : '';
       const linkTarget0 = (l.is_makeup && l.linked && l.linked.kind==='absence') ? l.linked.occ_id : null;
       const plan0 = (l.status==='ABSENT')
         ? (l.no_makeup ? (l.no_makeup_kind==='HOMEWORK' ? 'homework' : 'none')
                        : ((l.linked && l.linked.kind==='makeup') ? 'schedule' : 'later'))
         : '';
       this.attForm = { lessonTime:l.start_time||'', note_tag:tag0, absentPlan:plan0, note:((l.status==='ABSENT'||l.status==='LEAVE') ? (l.lesson_note||'') : (l.att.note||'')),
-                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0, extraReason:extraReason0,
+                       instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0, extraReason:extraReason0, extraMemo:extraMemo0,
                        progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:''), progFeedback:(l.progress?l.progress.feedback:''), progMemo:(l.progress?l.progress.memo:'') };
       this._attOrig = { lessonTime:l.start_time||'', note_tag:tag0, absentPlan:plan0,
-                        instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0, extraReason:extraReason0,
+                        instructor_id:l.instructor_id||null, program:l.program||'', language:lang0, duration:l.duration_minutes||60, mkDate:mkDate0, linkTarget:linkTarget0, extraReason:extraReason0, extraMemo:extraMemo0,
                         progContent:(l.progress?l.progress.content:''), progHomework:(l.progress?l.progress.homework:''), progFeedback:(l.progress?l.progress.feedback:''), progMemo:(l.progress?l.progress.memo:'') };
       this.$nextTick(()=> this.openGuard('attModal'));
       if (!this.ttInstructors.length) this.loadTtInstructors();
@@ -12379,6 +12386,9 @@ const app = createApp({
         }
         if (l.is_extra && this.attForm.extraReason !== this._attOrig.extraReason){
           lessonEditBody.extra_reason = this.attForm.extraReason || ''; lessonEditDirty = true;
+        }
+        if (l.is_extra && this.attForm.extraMemo !== this._attOrig.extraMemo){
+          lessonEditBody.lesson_memo = this.attForm.extraMemo || ''; lessonEditDirty = true;
         }
         if (l.is_makeup && this.attForm.linkTarget !== this._attOrig.linkTarget){
           lessonEditBody.makeup_for = this.attForm.linkTarget || null; lessonEditDirty = true;
