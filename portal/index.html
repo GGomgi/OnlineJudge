@@ -12140,6 +12140,7 @@ const app = createApp({
       const o = s._orig; if (!o) return;
       s.weekday=o.weekday; s.start_time=o.start_time; s.duration_minutes=o.duration_minutes;
       s.program=o.program; s._instructor_id=o.instr; s.frequency=o.frequency;
+      s.language=o.language; s.active_until=o.active_until||'';
     },
     sortTtCol(k){ if (this.ttSortKey===k) this.ttSortDir = this.ttSortDir==='asc'?'desc':'asc'; else { this.ttSortKey=k; this.ttSortDir='asc'; } },
     ttColArrow(k){ return this.ttSortKey===k ? (this.ttSortDir==='asc'?' ▲':' ▼') : ' ↕'; },
@@ -15854,7 +15855,8 @@ const app = createApp({
         const language = (t.program==='LANG') ? this.parseRowLanguage(t.subject) : '';
         const row = { ...t, _instructor_id: t.instructor ? t.instructor.id : null, student: sref, language, effective_date: this.todayStr };
         row._orig = { weekday:t.weekday, start_time:t.start_time, duration_minutes:t.duration_minutes,
-          program:t.program||'', instr:(t.instructor?t.instructor.id:null), frequency:t.frequency, language };
+          program:t.program||'', instr:(t.instructor?t.instructor.id:null), frequency:t.frequency, language,
+          active_until:t.active_until||'' };
         return row;
       });
       if (this.stuForm) this.stuForm.weekly_sessions = this.stuWeeklySessions();
