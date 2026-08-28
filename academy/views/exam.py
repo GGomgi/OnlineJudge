@@ -995,6 +995,11 @@ class DiscountItemAdminAPI(APIView):
         if kind == "PERCENT" and not (0 <= value <= 100):
             return self.error("비율은 0~100 사이여야 합니다.")
         bid = d.get("branch_id") or None
+        # '전 지점'은 말 그대로 모든 지점이다. 원장이 만들면 남의 지점 원비까지 깎인다.
+        if bid is None and viewable_branch_ids(request.user) is not None:
+            return self.error("전 지점 할인은 본부 관리자만 만들 수 있습니다. 지점을 고르세요.")
+        if bid and not can_manage_branch(request.user, int(bid)):
+            return self.error("이 지점에 할인을 만들 권한이 없습니다.")
         if x:
             if name:
                 x.name = name
@@ -1078,6 +1083,8 @@ class DiscountCapAdminAPI(APIView):
         except (TypeError, ValueError):
             return self.error("숫자가 올바르지 않습니다.")
         bid = d.get("branch_id") or None
+        if bid is None and viewable_branch_ids(request.user) is not None:
+            return self.error("전 지점 기준은 본부 관리자만 고칠 수 있습니다. 지점을 고르세요.")
         if bid and not can_manage_branch(request.user, int(bid)):
             return self.error("이 지점을 고칠 권한이 없습니다.")
         x = DiscountCap.objects.filter(id=d.get("id")).first() if d.get("id") else None
@@ -1106,6 +1113,8 @@ class DiscountCapAdminAPI(APIView):
         x = DiscountCap.objects.filter(id=request.GET.get("id")).first()
         if not x:
             return self.error("줄이 없습니다.")
+        if x.branch_id is None and viewable_branch_ids(request.user) is not None:
+            return self.error("전 지점 기준은 본부 관리자만 지울 수 있습니다.")
         x.delete()
         return self.success({"ok": True})
 
@@ -1207,10 +1216,21 @@ class StudentTuitionAdminAPI(APIView):
             return self.error("이 지점을 볼 권한이 없습니다.")
         d = compute(int(sid))
         d["can_edit"] = can_manage_branch(request.user, prof.branch_id)
-        d["items"] = [{"id": x.id, "name": x.name, "kind": x.kind, "value": x.value,
-                       "recurring": x.recurring}
-                      for x in DiscountItem.objects.filter(is_active=True).filter(
-                          Q(branch__isnull=True) | Q(branch_id=prof.branch_id))]
+        # 항목의 값만 보이면 "진학 할인 40,000원"이라 읽히는데 이 학생은 3만일 수 있다.
+        # 실제로 얼마가 붙는지를 함께 내려보내 고를 때 바로 보이게 한다.
+        from ..services_tuition import cap_for as _cap_for
+        _ses = d.get("sessions") or 0
+        _mon = d.get("enrolled_months") or 0
+        _items = []
+        for x in DiscountItem.objects.filter(is_active=True).filter(
+                Q(branch__isnull=True) | Q(branch_id=prof.branch_id)):
+            cap = _cap_for(prof.branch_id, x.cap_scope or "DEFAULT", _ses, _mon)
+            raw = x.value if x.kind == "AMOUNT" else int((d.get("base") or 0) * x.value / 100.0)
+            _items.append({"id": x.id, "name": x.name, "kind": x.kind, "value": x.value,
+                           "recurring": x.recurring, "cap": cap,
+                           "will_off": (raw if cap is None else min(raw, cap)),
+                           "stands_alone": x.stands_alone})
+        d["items"] = _items
         d["history"] = [{"detail": c.detail, "reason": c.reason,
                          "actor": name_of(c.actor) if c.actor_id else "",
                          "time": kst_dt(c.create_time)}

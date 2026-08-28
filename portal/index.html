@@ -807,13 +807,15 @@
               <div v-if="stuFee.can_edit" class="flex items-center gap-2">
                 <select v-model="stuFeeAddId" class="input py-1 px-2 text-xs" style="width:12rem">
                   <option value="">+ 할인 붙이기</option>
+                  <!-- 항목값만 보이면 '진학 할인 40,000원'으로 읽히는데 이 학생은 3만일 수 있다 -->
                   <option v-for="it in (stuFee.items||[])" :key="it.id" :value="it.id">
-                    {{ it.name }} {{ it.kind==='PERCENT' ? it.value+'%' : Number(it.value).toLocaleString()+'원' }}{{ it.recurring ? '' : ' (한 번만)' }}
+                    {{ it.name }} → {{ Number(it.will_off||0).toLocaleString() }}원{{ it.recurring ? '' : ' (한 번만)' }}
                   </option>
                 </select>
                 <button v-if="stuFeeAddId" @click="addStuDiscount" class="px-2 py-1 rounded bg-indigo-600 text-white text-xs">붙이기</button>
                 <span v-if="!(stuFee.items||[]).length" class="text-[11px] text-slate-400">학원 관리 › 원비에서 할인 항목을 먼저 만드세요.</span>
-                <span v-else class="text-[11px] text-slate-400"><b>한 번만</b> 할인은 다음 청구서 한 번에만 붙고 그 뒤로는 빠집니다.</span>
+                <span v-else class="text-[11px] text-slate-400">금액은 <b>이 학생 기준</b>으로 이미 셈한 값입니다. 손으로 적을 것이 없습니다.
+                  <b>한 번만</b> 할인은 다음 청구서 한 번에만 붙고 그 뒤로는 빠집니다.</span>
               </div>
             </div>
           </div>
@@ -6764,6 +6766,7 @@
                     <th class="px-3 py-2 text-right w-32">한 달 금액</th>
                     <th class="px-3 py-2 text-right w-20">인원</th>
                     <th class="px-3 py-2 text-right w-28">회당 단가</th>
+                    <th class="px-3 py-2 text-right w-28">시간당 단가</th>
                     <th class="px-3 py-2 text-left">비고</th>
                   </tr>
                 </thead>
@@ -6771,10 +6774,10 @@
                   <template v-for="r in tuRowsOf(b.id)" :key="r.sessions_per_week+'-'+r.duration_minutes">
                     <!-- 학년 구간이 바뀌는 자리에 이름을 한 줄 넣는다. 위에서부터 초1·2 → 초3~6 → 중등이상 -->
                     <tr v-if="r.tier && r.tier!==tuPrevTier(b.id, r)" class="bg-slate-50/70">
-                      <td colspan="6" class="px-3 py-1 text-xs font-semibold text-slate-500">{{ r.tier }}</td>
+                      <td colspan="7" class="px-3 py-1 text-xs font-semibold text-slate-500">{{ r.tier }}</td>
                     </tr>
                     <tr v-if="r.group==='extra' && !tuPrevExtra(b.id, r)" class="bg-slate-50/70">
-                      <td colspan="6" class="px-3 py-1 text-xs font-semibold text-slate-500">그 밖의 시간</td>
+                      <td colspan="7" class="px-3 py-1 text-xs font-semibold text-slate-500">그 밖의 시간</td>
                     </tr>
                     <tr :class="['border-t', r.people ? '' : 'text-slate-400']">
                       <td class="px-3 py-1.5">주{{ r.sessions_per_week }}회</td>
@@ -6789,8 +6792,14 @@
                         <span v-if="r.people" class="font-semibold text-slate-700">{{ r.people }}명</span>
                         <span v-else class="text-slate-300">-</span>
                       </td>
+                      <!-- 회당은 한 달 금액 ÷ (주횟수 × 4). 주2회 줄은 계산에도 쓰는 값이라 따로 짚는다 -->
                       <td class="px-3 py-1.5 text-right font-mono text-xs text-slate-500">
-                        {{ r.sessions_per_week===2 && r.amount ? Math.round(r.amount/8).toLocaleString()+'원' : '-' }}
+                        <template v-if="r.amount">{{ tuPerSession(r).toLocaleString() }}원<span v-if="r.sessions_per_week===2" class="ml-1 text-[10px] text-indigo-400 font-sans">기준</span></template>
+                        <span v-else class="text-slate-300">-</span>
+                      </td>
+                      <td class="px-3 py-1.5 text-right font-mono text-xs text-slate-500">
+                        <template v-if="r.amount && r.duration_minutes">{{ tuPerHour(r).toLocaleString() }}원</template>
+                        <span v-else class="text-slate-300">-</span>
                       </td>
                       <td class="px-3 py-1.5"><input v-model="r.note" :readonly="!tuEdit" :class="['input py-1 text-xs', !tuEdit ? 'bg-slate-50 text-slate-600' : '']" /></td>
                     </tr>
@@ -6834,7 +6843,7 @@
             <div><label class="lbl">방식</label><select v-model="dcNew.kind" class="input py-1 px-2"><option value="AMOUNT">정액(원)</option><option value="PERCENT">비율(%)</option></select></div>
             <div><label class="lbl">값</label><input v-model="dcNew.value" inputmode="numeric" class="input py-1 text-right" /></div>
             <div><label class="lbl">지속</label><select v-model="dcNew.recurring" class="input py-1 px-2"><option :value="true">계속</option><option :value="false">한 번만</option></select></div>
-            <div><label class="lbl">적용 지점</label><select v-model="dcNew.branch_id" class="input py-1 px-2"><option value="">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></div>
+            <div><label class="lbl">적용 지점</label><select v-model="dcNew.branch_id" class="input py-1 px-2"><option v-if="isHqAdmin" value="">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></div>
             <div><label class="lbl">최대치 기준</label><select v-model="dcNew.cap_scope" class="input py-1 px-2"><option value="DEFAULT">그 밖의 할인</option><option value="ADVANCE">진학 할인</option></select></div>
             <div><label class="lbl">따로 붙음</label><select v-model="dcNew.stands_alone" class="input py-1 px-2"><option :value="false">겨룬다</option><option :value="true">늘 붙는다</option></select></div>
             <button @click="saveDiscount(dcNew)" class="btn-primary text-sm">추가</button>
@@ -6861,7 +6870,7 @@
                   <td class="px-3 py-1.5"><select v-model="x.kind" @change="saveDiscount(x)" class="input py-1 px-2"><option value="AMOUNT">정액(원)</option><option value="PERCENT">비율(%)</option></select></td>
                   <td class="px-3 py-1.5"><input v-model="x.value" @change="saveDiscount(x)" inputmode="numeric" class="input py-1 text-right font-mono" /></td>
                   <td class="px-3 py-1.5"><select v-model="x.recurring" @change="saveDiscount(x)" class="input py-1 px-2"><option :value="true">계속</option><option :value="false">한 번만</option></select></td>
-                  <td class="px-3 py-1.5"><select v-model="x.branch_id" @change="saveDiscount(x)" class="input py-1 px-2"><option :value="null">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></td>
+                  <td class="px-3 py-1.5"><select v-model="x.branch_id" @change="saveDiscount(x)" :disabled="!x.branch_id && !isHqAdmin" class="input py-1 px-2 disabled:bg-slate-50 disabled:text-slate-400"><option :value="null">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></td>
                   <td class="px-3 py-1.5"><select v-model="x.cap_scope" @change="saveDiscount(x)" class="input py-1 px-2"><option value="DEFAULT">그 밖의 할인</option><option value="ADVANCE">진학 할인</option></select></td>
                   <td class="px-3 py-1.5"><select v-model="x.stands_alone" @change="saveDiscount(x)" class="input py-1 px-2"><option :value="false">겨룬다</option><option :value="true">늘 붙는다</option></select></td>
                   <td class="px-3 py-1.5"><input v-model="x.note" @change="saveDiscount(x)" class="input py-1 text-xs" /></td>
@@ -6894,7 +6903,7 @@
             <div><label class="lbl">주회수</label><input v-model="capNew.sessions_min" inputmode="numeric" class="input py-1 text-right" placeholder="2" /></div>
             <div><label class="lbl">재원 개월</label><input v-model="capNew.months_min" inputmode="numeric" class="input py-1 text-right" placeholder="12" /></div>
             <div><label class="lbl">최대치(원)</label><input v-model="capNew.amount" inputmode="numeric" class="input py-1 text-right" placeholder="40000" /></div>
-            <div><label class="lbl">적용 지점</label><select v-model="capNew.branch_id" class="input py-1 px-2"><option value="">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></div>
+            <div><label class="lbl">적용 지점</label><select v-model="capNew.branch_id" class="input py-1 px-2"><option v-if="isHqAdmin" value="">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></div>
             <button @click="saveCap(capNew)" class="btn-primary text-sm">추가</button>
           </div>
           <div class="overflow-x-auto">
@@ -6916,7 +6925,7 @@
                   <td class="px-3 py-1.5"><input v-model="x.sessions_min" @change="saveCap(x)" inputmode="numeric" :disabled="x.scope!=='ADVANCE'" class="input py-1 text-right font-mono disabled:bg-slate-50 disabled:text-slate-300" /></td>
                   <td class="px-3 py-1.5"><input v-model="x.months_min" @change="saveCap(x)" inputmode="numeric" class="input py-1 text-right font-mono" /></td>
                   <td class="px-3 py-1.5"><input v-model="x.amount" @change="saveCap(x)" inputmode="numeric" class="input py-1 text-right font-mono" /></td>
-                  <td class="px-3 py-1.5"><select v-model="x.branch_id" @change="saveCap(x)" class="input py-1 px-2"><option :value="null">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></td>
+                  <td class="px-3 py-1.5"><select v-model="x.branch_id" @change="saveCap(x)" :disabled="!x.branch_id && !isHqAdmin" class="input py-1 px-2 disabled:bg-slate-50 disabled:text-slate-400"><option :value="null">전 지점</option><option v-for="b in (tuBranches||[])" :key="b.id" :value="b.id">{{ b.name }}</option></select></td>
                   <td class="px-3 py-1.5"><input v-model="x.note" @change="saveCap(x)" class="input py-1 text-xs" /></td>
                   <td class="px-3 py-1.5 text-right"><button @click="delCap(x)" class="text-xs text-rose-400 hover:underline">지우기</button></td>
                 </tr>
@@ -12804,6 +12813,10 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     // ── 할인 항목 ──
+    // 회당 = 한 달 금액 ÷ (주횟수 × 4). 시간당 = 회당 ÷ (회당 시간 ÷ 60).
+    // 주1회와 주2회를 나란히 놓고 견줄 수 있어야 값을 매길 수 있다.
+    tuPerSession(r){ return Math.round(r.amount / ((r.sessions_per_week||1) * 4)); },
+    tuPerHour(r){ return Math.round(this.tuPerSession(r) / (r.duration_minutes / 60)); },
     async loadDiscounts(){
       try { const d = await api('GET','/api/admin/academy/discount_item'); this.dcRows = d.rows || []; }
       catch(e){ this.notify(e.message,false); }
