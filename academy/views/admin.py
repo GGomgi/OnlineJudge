@@ -5122,6 +5122,7 @@ class TimetableCalendarAPI(APIView):
                               "school_type": (sp.school_type if sp else ""),
                               "school_name": (sp.school_name if sp else ""),
                               "grade": (sp.grade if sp else ""),
+                              "legacy_url": (sp.legacy_url if sp else ""),
                               "instructor": (ov_instr_names.get(ov["instructor_id"], "미배정") if ov
                                              else (_name_of(s.instructor) if s.instructor_id else "미배정")),
                               "instructor_id": (ov["instructor_id"] if ov else s.instructor_id),
@@ -5165,6 +5166,7 @@ class TimetableCalendarAPI(APIView):
                               "school_type": (o_sp.school_type if o_sp else ""),
                               "school_name": (o_sp.school_name if o_sp else ""),
                               "grade": (o_sp.grade if o_sp else ""),
+                              "legacy_url": (o_sp.legacy_url if o_sp else ""),
                               "instructor": _name_of(o.instructor) if o.instructor_id else "미배정",
                               "instructor_id": o.instructor_id,
                               "status": o.status, "occ_id": o.id, "lesson_note": o.note, "linked": linked,

@@ -7505,7 +7505,11 @@
           <!-- 글쓰기 -->
           <div v-else-if="bdView==='write'" class="bg-white rounded-xl shadow-sm p-5 space-y-3">
             <div class="flex items-center gap-2 flex-wrap">
-              <div class="font-bold">{{ bdForm.id ? '글 수정' : '새 글' }} <span class="text-xs font-normal text-slate-400">— {{ bdFolder ? bdFolder.name : '' }}</span></div>
+              <div class="font-bold">{{ bdForm.id ? '글 수정' : '새 글' }}</div>
+              <!-- 잘못 넣은 글을 옮길 길이 없었다. 자리는 지금 폴더가 기본이고 바꿀 수 있다 -->
+              <select v-model="bdForm.folder_id" class="input py-1 px-2 text-sm" style="width:14rem">
+                <option v-for="f in bdWriteFolders" :key="f.id" :value="f.id">{{ '　'.repeat(f.depth-1) }}{{ f.icon }} {{ f.name }}</option>
+              </select>
               <div class="ml-auto flex gap-2">
                 <button @click="closeBdWrite" class="btn-secondary text-sm">취소</button>
                 <button @click="submitBd" class="btn-primary text-sm">{{ bdForm.id ? '수정' : '등록' }}</button>
@@ -7684,9 +7688,18 @@
                   <div class="flex items-center gap-2 text-xs text-slate-400">
                     <span class="font-medium text-slate-600">{{ c.author }}</span>
                     <span>{{ dt(c.time) }}</span>
-                    <button v-if="c.mine || isDirectorUp" @click="deleteBdComment(c)" class="ml-auto text-rose-300 hover:text-rose-500">지우기</button>
+                    <button v-if="c.mine" @click="startBdCommentEdit(c)" class="ml-auto text-slate-400 hover:text-indigo-600">고치기</button>
+                    <button v-if="c.mine || isDirectorUp" :class="[c.mine ? '' : 'ml-auto', 'text-rose-300 hover:text-rose-500']" @click="deleteBdComment(c)">지우기</button>
                   </div>
-                  <div class="text-sm text-slate-700 whitespace-pre-wrap break-all mt-0.5">{{ c.body }}</div>
+                  <!-- 지우고 다시 쓰면 이야기 흐름이 끊긴다 -->
+                  <div v-if="bdCommentEdit && bdCommentEdit.id===c.id" class="mt-1 flex gap-2">
+                    <textarea v-model="bdCommentEdit.body" rows="2" class="input text-sm flex-1"></textarea>
+                    <div class="flex flex-col gap-1 shrink-0">
+                      <button @click="saveBdCommentEdit" class="btn-primary text-xs">저장</button>
+                      <button @click="bdCommentEdit=null" class="btn-secondary text-xs">취소</button>
+                    </div>
+                  </div>
+                  <div v-else class="text-sm text-slate-700 whitespace-pre-wrap break-all mt-0.5">{{ c.body }}</div>
                 </li>
               </ul>
               <div class="flex gap-2">
@@ -8783,7 +8796,7 @@ const app = createApp({
       bdMaxFile: 52428800, bdMaxPost: 209715200, bdFilesAll: false, bdReadOpen: false,
       bdUploading: false, bdUpDone: 0, bdUpTotal: 0,
       bdDiff: null, bdDiffA: null, bdDiffB: null, bdStuQ: '', bdStuQRaw: '',
-      bdCanWrite: true, bdCommentDraft: '', bdPending: [], _bdKey: 0, bdDrag: '',
+      bdCanWrite: true, bdCommentDraft: '', bdCommentEdit: null, bdPending: [], _bdKey: 0, bdDrag: '',
       bdFold: (()=>{ try { return JSON.parse(localStorage.getItem('portal_board_fold')||'{}'); } catch(e){ return {}; } })(),
       // 폴더 관리 초안 — 저장을 눌러야 실제로 바뀐다
       bdDraft: [], bdMgrGuard: false, bdMgrSaving: false, _bdTmp: 0, bdIconPick: false,
@@ -9100,6 +9113,10 @@ const app = createApp({
       return saved.concat(pend);
     },
     bdFormBytes(){ return this.bdAllFiles.reduce((a,b)=>a+(b.size||0), 0); },
+    // 글을 쓸 수 있는 폴더만 고르게 한다(개인 폴더는 자기 것만)
+    bdWriteFolders(){
+      return this.bdTree.filter(f => f.group_key !== 'staff');
+    },
     bdStuCandidates(){
       const q = (this.bdStuQ||'').trim().toLowerCase();
       if (!q) return [];
@@ -13189,7 +13206,7 @@ const app = createApp({
         start_time:it.start_time, subject:it.subject, status:it.status, is_makeup: !!it.makeup,
         duration_minutes:it.duration_minutes, instructor_id:it.instructor_id, program:it.program,
         att: it.att || {in:'',out:'',note_tag:'',note:''}, lesson_note: it.lesson_note||'',
-        progress: it.progress, date, branch: it.branch });
+        progress: it.progress, date, branch: it.branch, legacy_url: it.legacy_url || '' });
     },
     hmMin(hm){ if(!hm) return 0; const p=hm.split(':'); return (+p[0])*60+(+p[1]); },
     wdOf(dateStr){ if(!dateStr) return ''; const [y,m,d]=dateStr.split('-').map(Number); return ['일','월','화','수','목','금','토'][new Date(y,m-1,d).getDay()]; },
@@ -13848,14 +13865,14 @@ const app = createApp({
     },
     openBdWrite(){
       if (!this.bdFolderId) return this.notify('폴더를 먼저 고르세요.', false);
-      this.bdForm={ id:null, title:'', body:'', pinned:false, note:'', effective_date:'', students:[], file_list:[] };
+      this.bdForm={ id:null, folder_id:this.bdFolderId, title:'', body:'', pinned:false, note:'', effective_date:'', students:[], file_list:[] };
       this.bdPending=[]; this.bdStuQ=''; this.bdStuQRaw=''; this.ensureStudentsLoaded();
       this._bdWas = { title:'', body:'' };
       this.bdView='write'; this._makeBdEditor('');
     },
     openBdEdit(d){
       // 개정 사유는 판마다 새로 적는다. 앞 판 것을 물려받으면 안 고쳤는데 고친 것처럼 남는다.
-      this.bdForm={ id:d.id, title:d.title, body:d.body, pinned:d.pinned, note:'', effective_date:'',
+      this.bdForm={ id:d.id, folder_id:d.folder_id, title:d.title, body:d.body, pinned:d.pinned, note:'', effective_date:'',
                     students:(d.students||[]).map(x=>x.id), file_list:[...(d.file_list||[])] };
       this.bdPending=[]; this.bdStuQ=''; this.bdStuQRaw=''; this.ensureStudentsLoaded();
       this._bdWas = { title:d.title||'', body:d.body||'' };
@@ -13876,12 +13893,20 @@ const app = createApp({
       const body = this._bdEditor ? this._bdEditor.getMarkdown() : (this.bdForm.body||'');
       try {
         const r = await api('POST','/api/admin/academy/board/post',
-                            { id:this.bdForm.id, folder_id:this.bdFolderId, title, body,
+                            { id:this.bdForm.id, folder_id:(this.bdForm.folder_id || this.bdFolderId), title, body,
                               pinned:this.bdForm.pinned, note:this.bdForm.note,
                               effective_date:this.bdForm.effective_date || null,
                               student_ids:this.bdForm.students });
         await this._flushBdPending(r.id);
-        this._destroyBdEditors(); this.notify('저장되었습니다.'); this.openBdDetail(r.id);
+        this._destroyBdEditors(); this.notify('저장되었습니다.');
+        // 자리를 옮겼으면 그 폴더로 따라간다. 안 그러면 옮긴 글이 사라진 것처럼 보인다.
+        const moved = this.bdForm.folder_id && this.bdForm.folder_id !== this.bdFolderId;
+        if (moved){
+          const f = this.bdTree.find(x=>x.id===this.bdForm.folder_id);
+          if (f){ this.bdFolderId = f.id; this.bdFolder = f; }
+          this.loadBoard();
+        }
+        this.openBdDetail(r.id);
       } catch(e){ this.notify(e.message,false); }
     },
     async openBdDetail(id){
@@ -14063,6 +14088,17 @@ const app = createApp({
         this.bdUpDone++;
       }
       this.bdPending=[]; this.bdUploading=false;
+    },
+    startBdCommentEdit(c){ this.bdCommentEdit = { id:c.id, body:c.body }; },
+    async saveBdCommentEdit(){
+      const e = this.bdCommentEdit;
+      if (!(e.body||'').trim()) return this.notify('덧글을 적어 주세요.', false);
+      try {
+        const r = await api('PUT','/api/admin/academy/board/comment', { id:e.id, body:e.body });
+        const c = this.bdDetail.comments.find(x=>x.id===e.id);
+        if (c) c.body = r.body;
+        this.bdCommentEdit = null;
+      } catch(err){ this.notify(err.message,false); }
     },
     async addBdComment(){
       const body = (this.bdCommentDraft||'').trim();

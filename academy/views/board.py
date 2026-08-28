@@ -881,6 +881,26 @@ class BoardCommentAPI(APIView):
                              "mine": True, "time": _kst(c.create_time)})
 
     @admin_role_required
+    def put(self, request):
+        """덧글 고치기. 지우고 다시 쓰면 이야기 흐름이 끊긴다."""
+        _d = menu_denied(request.user, "board")
+        if _d:
+            return self.error(_d)
+        c = BoardComment.objects.filter(id=request.data.get("id"), is_deleted=False).first()
+        if not c:
+            return self.error("덧글이 없습니다.")
+        me = request.user
+        role, _ = _role_of(me)
+        if not (_is_super(me) or c.author_id == me.id):
+            return self.error("자기 덧글만 고칠 수 있습니다.")
+        body = (request.data.get("body") or "").strip()
+        if not body:
+            return self.error("덧글을 적어 주세요.")
+        c.body = body
+        c.save(update_fields=["body"])
+        return self.success({"id": c.id, "body": c.body})
+
+    @admin_role_required
     def delete(self, request):
         _d = menu_denied(request.user, "board")
         if _d:
