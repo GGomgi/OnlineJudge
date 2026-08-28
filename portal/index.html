@@ -3843,7 +3843,7 @@
             <div :class="['rounded px-3 py-2 text-sm', mkForm.extra ? 'bg-emerald-50' : 'bg-slate-50']">
               <div class="flex items-center gap-2">
                 <span :class="['text-xs', mkForm.extra ? 'text-emerald-700' : 'text-slate-400']">{{ mkForm.extra ? '추가 수업 — 빠진 것을 메우는 보강이 아니라 정규 외로 더 하는 수업입니다' : '보강 대상 선택됨' }}</span>
-                <button @click="clearMkTarget" class="ml-auto text-xs text-slate-400 hover:underline">변경</button>
+                <button @click="clearMkTarget" class="ml-auto shrink-0 whitespace-nowrap text-xs text-slate-400 hover:underline">변경</button>
               </div>
               <div class="mt-1"><span class="font-medium">{{ mkForm.student_name }}</span>
                 <span class="text-xs text-slate-500 ml-1">{{ mkForm.origin }}</span></div>
@@ -3853,7 +3853,7 @@
               <div><label class="lbl">{{ mkForm.extra ? '수업 시간' : '보강 할 시간' }}</label><input :value="mkForm.time" @input="mkForm.time = hmTyped($event.target.value)" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" :class="['input py-1 w-24 text-center font-mono', guardCls('makeupOpen','time')]" /></div>
             </div>
             <div v-if="mkForm.pair" class="text-xs px-3 py-2 rounded bg-blue-50 text-blue-700">연속 2타임 결석 보강 — 두번째 타임은 {{ mkPairSecondTime() }}부터 이어서 자동으로 함께 잡힙니다.</div>
-            <div v-if="mkForm.extra"><label class="lbl">까닭</label>
+            <div v-if="mkForm.extra"><label class="lbl">사유</label>
               <select v-model="mkForm.extra_reason" class="input py-1">
                 <option value="">고르세요</option>
                 <option v-for="o in optList_('extra_reason')" :key="o.value" :value="o.value">{{ o.label }}</option>
@@ -13446,7 +13446,7 @@ const app = createApp({
       const what = f.extra ? '추가 수업' : '보강';
       if (!f.date) return this.notify(what+' 날짜를 선택하세요.', false);
       if (!f.time) return this.notify(what+' 시간을 입력하세요.', false);
-      if (f.extra && !f.extra_reason) return this.notify('추가 수업의 까닭을 고르세요.', false);
+      if (f.extra && !f.extra_reason) return this.notify('추가 수업의 사유를 고르세요.', false);
       try {
         await api('POST','/api/admin/academy/makeup_add', { student_id:f.student_id, date:f.date, start_time:f.time, makeup_for:f.makeup_for, note:f.note, is_extra:!!f.extra, extra_reason:f.extra_reason||'' });
         if (f.pair){
