@@ -1899,11 +1899,14 @@ class BoardFolder(models.Model):
 
     깊이는 3단까지. 수업자료 > Python > 3주차 면 충분하고 더 깊으면 찾다가 지친다.
     """
-    SCOPE_CHOICES = (("ALL", "전 직원"), ("DIRECTOR", "원장 이상"),
-                     ("HQ", "본부만"), ("BRANCH", "지점 한정"),
+    # 범위(어디 것인가)와 층(누가 보는가)은 다른 물음이다. 한 칸에 섞어 두었더니
+    # '그 지점의 원장만 보는 폴더'를 만들 수 없었다 — 원장 전용이 이름과 달리
+    # 그 지점 강사에게도 보였다. 둘로 가른다.
+    SCOPE_CHOICES = (("ALL", "전 지점"), ("BRANCH", "지점"),
                      # 만든 사람이 쓰는 서랍. 다른 직원은 못 보고, 원장·본부는 본다
                      # (회사 안에서 쓰는 것이라 관리 밖에 두지 않는다).
                      ("PRIVATE", "개인"))
+    FLOOR_CHOICES = (("", "모두"), ("DIRECTOR", "원장 이상"), ("HQ", "본부만"))
     ORDER_CHOICES = (("RECENT", "최신 순"), ("MANUAL", "직접 순서"))
 
     name = models.CharField(max_length=64)
@@ -1911,6 +1914,8 @@ class BoardFolder(models.Model):
                                related_name="children")
     icon = models.CharField(max_length=8, blank=True, default="")     # 📌 📖 📁
     scope = models.CharField(max_length=16, default="ALL")
+    # 볼 수 있는 최소 자리. 비면 그 범위 안 모두가 본다.
+    read_floor = models.CharField(max_length=16, blank=True, default="")
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
                                related_name="board_folders")          # scope=BRANCH 일 때
     need_read = models.BooleanField(default=False)                    # 읽음 확인

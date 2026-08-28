@@ -2322,15 +2322,13 @@
           <p class="text-[11px] text-slate-400 mt-0.5">3단까지만 만들 수 있습니다. 더 깊으면 찾기 어렵습니다.</p>
         </div>
         <p v-if="!bdCanEdit" class="text-[11px] text-slate-400">내 폴더입니다.</p>
+        <!-- '어디 것인가'와 '누가 보는가'는 다른 물음이다. 한 칸에 섞으면
+             '그 지점의 원장만 보는 폴더'를 만들 수 없다. -->
         <div v-if="bdCanEdit" class="flex gap-2">
-          <div class="flex-1 min-w-0"><label class="lbl">볼 수 있는 사람</label>
+          <div class="flex-1 min-w-0"><label class="lbl">범위</label>
             <select v-model="bdFolderForm.scope" @change="bdFolderForm.parent_id=null" class="input px-2">
-              <!-- 원장이 전 지점·본부 폴더를 만들면 자기가 못 보는 곳에 폴더가 생긴다 -->
-              <template v-if="bdCanHq">
-                <option value="ALL">전 직원</option><option value="DIRECTOR">원장 이상</option>
-                <option value="HQ">본부만</option>
-              </template>
-              <option value="BRANCH">지점 한정</option>
+              <option v-if="bdCanHq" value="ALL">전 지점</option>
+              <option value="BRANCH">지점</option>
               <option value="PRIVATE">개인 (내 서랍)</option>
             </select>
           </div>
@@ -2340,7 +2338,17 @@
               <option v-for="b in bdBranches" :key="b.id" :value="b.id">{{ b.name }}</option>
             </select>
           </div>
+          <div v-if="bdFolderForm.scope!=='PRIVATE'" class="flex-1 min-w-0"><label class="lbl">볼 수 있는 사람</label>
+            <select v-model="bdFolderForm.read_floor" class="input px-2">
+              <option value="">모두</option>
+              <option value="DIRECTOR">원장 이상</option>
+              <option v-if="bdCanHq" value="HQ">본부만</option>
+            </select>
+          </div>
         </div>
+        <p v-if="bdCanEdit && bdFolderForm.scope!=='PRIVATE'" class="text-[11px] text-slate-400 leading-snug">
+          {{ bdFolderScopeText }}
+        </p>
         <p v-if="bdFolderForm.scope==='PRIVATE'" class="text-[11px] text-slate-400 leading-snug">
           내가 쓰는 서랍입니다. 아래 설정은 뜻이 없어 감춥니다.
         </p>
@@ -9139,6 +9147,16 @@ const app = createApp({
     },
     bdFormBytes(){ return this.bdAllFiles.reduce((a,b)=>a+(b.size||0), 0); },
     // 글을 쓸 수 있는 폴더만 고르게 한다(개인 폴더는 자기 것만)
+    // 고른 대로 누가 보게 되는지 그 자리에서 한 줄로 알려 준다
+    bdFolderScopeText(){
+      const f = this.bdFolderForm;
+      if (!f) return '';
+      const b = (this.bdBranches.find(x=>x.id===f.branch_id) || {}).name || '그 지점';
+      const where = f.scope==='ALL' ? '모든 지점의' : (b + ' ');
+      const who = f.read_floor==='HQ' ? '본부 관리자만'
+                : (f.read_floor==='DIRECTOR' ? '원장 이상만' : '직원 모두가');
+      return where + ' ' + who + ' 봅니다.';
+    },
     bdWriteFolders(){
       return this.bdTree.filter(f => f.group_key !== 'staff');
     },
@@ -14314,18 +14332,18 @@ const app = createApp({
     editBdFolder(f, scope){
       if (!f && scope==='PRIVATE'){
         this.bdFolderForm = { id:null, name:'', icon:'🗂', parent_id:null, scope:'PRIVATE',
-                              branch_id:null, need_read:false, versioned:false,
+                              branch_id:null, read_floor:'', need_read:false, versioned:false,
                               allow_comments:false, write_scope:'', sort_mode:'RECENT', pin:false };
         return;
       }
       this.bdFolderForm = f
         ? { id:f.id, name:f.name, icon:f.icon, parent_id:f.parent_id, scope:f.scope,
-            branch_id:f.branch_id, need_read:f.need_read, versioned:f.versioned,
+            branch_id:f.branch_id, read_floor:f.read_floor||'', need_read:f.need_read, versioned:f.versioned,
             allow_comments:f.allow_comments, write_scope:f.write_scope||'', sort_mode:f.sort_mode, pin:f.pin }
         : { id:null, name:'', icon:'📁', parent_id:null,
             scope:(this.bdCanHq ? 'ALL' : 'BRANCH'),
             branch_id:(this.bdBranches.length===1 ? this.bdBranches[0].id : null),
-            need_read:false, versioned:false, allow_comments:false, write_scope:'', sort_mode:'RECENT', pin:false };
+            read_floor:'', need_read:false, versioned:false, allow_comments:false, write_scope:'', sort_mode:'RECENT', pin:false };
     },
     saveBdFolder(){
       const f = this.bdFolderForm;

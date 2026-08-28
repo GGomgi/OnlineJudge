@@ -57,6 +57,11 @@ def _is_super(user):
 
 
 def _can_see(folder, role, branch_id, is_super, user=None, seeable_owners=None):
+    """범위(어디 것인가)와 층(누가 보는가)을 따로 본다.
+
+    한 칸에 섞어 두었더니 '그 지점의 원장만 보는 폴더'를 만들 수 없었다 — 원장 전용이
+    이름과 달리 그 지점 강사에게도 보였다.
+    """
     # 개인 폴더는 만든 사람이 쓰는 서랍이다. 다른 직원은 못 보고, 원장·본부는 본다
     # (회사 안에서 쓰는 것이라 관리 밖에 두지 않는다).
     if folder.scope == "PRIVATE":
@@ -67,17 +72,18 @@ def _can_see(folder, role, branch_id, is_super, user=None, seeable_owners=None):
         if role in _DIRECTOR_UP and seeable_owners is not None:
             return folder.created_by_id in seeable_owners
         return False
-    if is_super:
-        return True
-    if folder.scope == "ALL":
-        return True
-    if folder.scope == "DIRECTOR":
-        return role in _DIRECTOR_UP
-    if folder.scope == "HQ":
-        return role in _HQ
+    # 층 — 자리가 모자라면 범위와 상관없이 못 본다
+    fl = folder.read_floor or ""
+    if fl == "DIRECTOR" and not (is_super or role in _DIRECTOR_UP):
+        return False
+    if fl == "HQ" and not (is_super or role in _HQ):
+        return False
+    # 범위
     if folder.scope == "BRANCH":
+        if is_super or role in _HQ:
+            return True                 # 본부는 모든 지점을 본다
         return folder.branch_id is None or folder.branch_id == branch_id
-    return False
+    return True
 
 
 def _can_write(folder, role, branch_id, is_super, user=None):
@@ -152,12 +158,15 @@ def _folder_row(f, unread=0, posts=0, multi=False, me=None, owners_meta=None):
             owner = _name_of(f.created_by) or "이름 없음"
     elif f.scope == "BRANCH" and f.branch_id:
         gk, gl = "b%d" % f.branch_id, f.branch.name
+    elif f.scope == "BRANCH":
+        gk, gl = "b0", "지점"
     else:
         gk, gl = "all", "전 지점"
     return {"id": f.id, "name": f.name, "parent_id": f.parent_id, "icon": f.icon,
             "group_key": gk, "group_label": gl, "mine": mine, "owner": owner,
             "owner_id": f.created_by_id, "owner_role": orole, "owner_branch": obranch,
-            "scope": f.scope, "branch_id": f.branch_id, "need_read": f.need_read,
+            "scope": f.scope, "read_floor": f.read_floor,
+            "branch_id": f.branch_id, "need_read": f.need_read,
             "versioned": f.versioned, "allow_comments": f.allow_comments,
             "write_scope": f.write_scope,
             "sort_mode": f.sort_mode, "order": f.order, "depth": f.depth,
@@ -250,8 +259,10 @@ class BoardFolderAPI(APIView):
             return self.error("함께 쓰는 폴더는 원장 이상만 만들 수 있습니다.")
         # 만들 수 있는 범위는 자기 자리를 넘지 않는다. 원장이 전 지점·본부 폴더를 만들면
         # 자기가 못 보는 곳에 폴더가 생기고, 남의 지점에도 끼어들게 된다.
-        if scope in ("ALL", "DIRECTOR", "HQ") and viewable_branch_ids(me) is not None:
-            return self.error("전 지점·본부 폴더는 본부 관리자만 만들 수 있습니다.")
+        if scope == "ALL" and viewable_branch_ids(me) is not None:
+            return self.error("전 지점 폴더는 본부 관리자만 만들 수 있습니다.")
+        if (d.get("read_floor") or "") == "HQ" and viewable_branch_ids(me) is not None:
+            return self.error("본부만 보는 폴더는 본부 관리자만 만들 수 있습니다.")
         if scope == "BRANCH":
             bid2 = d.get("branch_id")
             if not bid2:
@@ -288,6 +299,7 @@ class BoardFolderAPI(APIView):
             f = BoardFolder(name=name, parent=parent, order=sib, created_by=request.user)
         f.icon = (d.get("icon") or "")[:8]
         f.scope = d.get("scope") or "ALL"
+        f.read_floor = d.get("read_floor") or ""
         f.branch_id = d.get("branch_id") if f.scope == "BRANCH" else None
         if f.scope == "PRIVATE" and not f.created_by_id:
             f.created_by = request.user
