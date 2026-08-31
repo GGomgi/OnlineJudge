@@ -730,8 +730,12 @@ MENU_DEFS = [
     {"key": "options", "label": "학원 관리", "always": True, "floor": "원장 이상",
      "floor_roles": ["HQ_ADMIN", "HR_ADMIN", "REGIONAL_MANAGER", "BRANCH_MANAGER"]},
     {"key": "msgtpl", "label": "문자 템플릿"},
-    {"key": "billing", "label": "원비·수납", "floor": "원장 이상",
-     "floor_roles": ["HQ_ADMIN", "HR_ADMIN", "REGIONAL_MANAGER", "BRANCH_MANAGER"]},
+    # 데스크 선생님이 따로 없는 학원이라 강사가 원비를 셈하고 받는 일까지 맡는다.
+    # 코드로 막지 않고 기본만 강사 이상으로 두어, 조교까지 열지는 지점이 정한다.
+    # 할인 항목과 최대치 기준은 여전히 원장 몫이다 — 그쪽은 '학원 관리'에 있다.
+    {"key": "billing", "label": "원비·수납",
+     "default_roles": ["HQ_ADMIN", "HR_ADMIN", "REGIONAL_MANAGER", "BRANCH_MANAGER",
+                       "VICE_PRINCIPAL", "INSTRUCTOR"]},
     {"key": "board", "label": "게시판"},
     {"key": "calendar", "label": "일정"},
     {"key": "devboard", "label": "개발 요청"},
