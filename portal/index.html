@@ -3502,6 +3502,25 @@
                                      stuHasDay(s,wi) ? 'bg-indigo-100 text-indigo-700' : 'text-slate-200']">{{ w }}</span>
                     </span>
                   </template>
+                  <template v-else-if="c.k==='durations'">{{ stuDurText(s) }}</template>
+                  <template v-else-if="c.k==='fee'">
+                    <span v-if="stuFeeOf(s).amount !== null && stuFeeOf(s).amount !== undefined" class="font-mono">
+                      {{ Number(stuFeeOf(s).amount).toLocaleString() }}원
+                      <span v-if="stuFeeCut(s)" class="text-[10px] text-rose-400">-{{ Number(stuFeeCut(s)).toLocaleString() }}</span>
+                    </span>
+                    <span v-else class="text-slate-300">{{ stuFeeOf(s).mode==='UNDECIDED' ? '미정' : '-' }}</span>
+                  </template>
+                  <template v-else-if="c.k==='discounts'">
+                    <span v-if="(stuFeeOf(s).discounts||[]).length" class="inline-flex gap-1 flex-wrap">
+                      <span v-for="(d,di) in stuFeeOf(s).discounts" :key="di"
+                            :class="['text-[10px] px-1 py-0.5 rounded whitespace-nowrap',
+                                     d.beaten ? 'bg-slate-100 text-slate-400 line-through'
+                                              : (d.alone ? 'bg-sky-50 text-sky-600' : 'bg-indigo-50 text-indigo-700')]">
+                        {{ d.name }} {{ d.beaten ? '' : '-'+Number(d.off).toLocaleString() }}
+                      </span>
+                    </span>
+                    <span v-else class="text-slate-300">-</span>
+                  </template>
                   <template v-else-if="c.k==='instructor'">{{ ((s.extra||{}).instructors||[]).join(', ') || '-' }}</template>
                   <template v-else-if="c.k==='parent'">{{ s.parent_name || '-' }}</template>
                   <template v-else-if="c.k==='parent_phone'">
@@ -13447,9 +13466,10 @@ const app = createApp({
       this.dashStuLoading = true;
       try {
         // 학생 관리에서 켜 둔 열에 필요한 값까지 함께 받는다(같은 설정을 쓰므로)
-        const heavy = ['missing','weekdays','instructor','month','mk','last_attend','verify','sibling'];
+        const heavy = ['missing','weekdays','instructor','month','mk','last_attend','verify','sibling','fee'];
         const need = heavy.filter(k=>this.colOn('stu', k));
         if (this.colOn('stu','tenure') || this.colOn('stu','enrolled_at')) need.push('verify');
+        if (this.colOn('stu','discounts')) need.push('fee');   // 두 열이 같은 셈을 쓴다
         need.push('weekdays');
         const qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
         this.dashStuAll = await api('GET','/api/admin/academy/students'+qs) || [];
