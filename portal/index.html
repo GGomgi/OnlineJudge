@@ -12308,7 +12308,9 @@ const app = createApp({
       if (l.is_makeup || l.is_extra){
         try {
           const all = await api('GET','/api/admin/academy/pending_makeup') || [];
-          this.mkLinkCandidates = all.filter(p=>p.student_id===l.student_id);
+          // 이미 보강이 잡힌 결석은 고를 수 없다. 다만 이 줄이 그 보강이면 남겨 둔다.
+          this.mkLinkCandidates = all.filter(p=>p.student_id===l.student_id
+                                              && (p.mk_state==='none' || p.makeup_occ_id===l.occ_id));
           // 이미 연결된 결석·조퇴예정은 "보강필요 목록"엔 안 나오니(이미 처리됨), 현재 연결된 게 있으면 목록 맨 위에 끼워넣음
           if (linkTarget0 && !this.mkLinkCandidates.some(p=>p.occ_id===linkTarget0)){
             this.mkLinkCandidates.unshift({ occ_id:linkTarget0, date:l.linked.date, start_time:l.linked.start_time, subject:l.subject||'', kind:l.linked.kind });
@@ -13487,6 +13489,9 @@ const app = createApp({
       catch(e){ this.notify(e.message,false); }
     },
     _resetMkForm(){ this.mkForm={ makeup_for:null, student_id:null, student_name:'', origin:'', time:'', date:'', note:'', extra:false, extra_reason:'' }; },
+    // 보강 관리 화면은 미정·예정·완료를 다 보여 주지만, '고르는' 자리에는 아직 보강을
+    // 안 잡은 결석만 나와야 한다. 잡힌 것을 골라 봐야 서버가 막는다.
+    mkUnlinked(list){ return (list || []).filter(p => p.mk_state === 'none'); },
     // 상단 +보강 추가: 보강이 필요한 결석 목록을 모아 보여주고, 골라서 오늘 보강
     mkPendingFiltered(){
       const q = (this.mkPendingSearch||'').trim();
@@ -13498,7 +13503,8 @@ const app = createApp({
       this.$nextTick(()=> this.openGuard('makeupOpen')); this.mkPending=[]; this.mkPendingSearch=''; this.mkPendingSearchRaw='';
       this.mkSearch={ query:'', queryRaw:'', student:null, candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' };
       if (!this.students.length) this.loadStudents();
-      try { this.mkPending = await api('GET','/api/admin/academy/pending_makeup') || []; } catch(e){ this.mkPending=[]; }
+      try { this.mkPending = this.mkUnlinked(await api('GET','/api/admin/academy/pending_makeup')); }
+      catch(e){ this.mkPending=[]; }
     },
     // 보강 관리 탭: 날짜미정 보강(결석) 목록
     async loadMkgPending(){
@@ -13543,7 +13549,8 @@ const app = createApp({
       this.mkSearch = { query:'', queryRaw:'', student:{ id:this.stuDetail.id, real_name:(this.stuDetail.real_name||this.stuDetail.username) },
                         candidates:[], selected:null, backMonths:3, fwdMonths:1, from:'', to:'' };
       this.loadMkCandidates(3,1);
-      try { const all = await api('GET','/api/admin/academy/pending_makeup') || []; this.mkPending = all.filter(p=>p.student_id===this.stuDetail.id); }
+      try { const all = await api('GET','/api/admin/academy/pending_makeup');
+            this.mkPending = this.mkUnlinked(all).filter(p=>p.student_id===this.stuDetail.id); }
       catch(e){ this.mkPending=[]; }
     },
     pickPending(p){
