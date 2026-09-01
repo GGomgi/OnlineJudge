@@ -3330,9 +3330,15 @@ class StudentStatusAdminAPI(APIView):
         upcoming = list(LessonOccurrence.objects.filter(
             student=student, date__gte=eff, is_makeup=False, source_timetable__isnull=False))
         rec_ids = _occ_record_ids(upcoming)
+        # 앞날의 휴무 줄은 남길 것이 없다. 휴무는 학원 달력에 이미 있고, 이 줄은 그 학생이
+        # 그날 수업이 있을 때만 뜻이 있다 — 쉬거나 그만둔 학생에게는 그림자만 남는다.
+        loose = _occ_record_ids(upcoming, ignore_status=True)
         removed = 0
         for occ in upcoming:
-            if occ.id in rec_ids or occ.time_change_reason:
+            keep = occ.id in rec_ids
+            if occ.status == OccurrenceStatus.HOLIDAY and occ.id not in loose:
+                keep = False
+            if keep or occ.time_change_reason:
                 continue
             occ.delete()
             removed += 1
@@ -4034,9 +4040,12 @@ def _conflict_msg(name, when, start_time, duration, label):
             % (name, when, label, fmt(a0), fmt(a1)))
 
 
-def _occ_record_ids(occs):
+def _occ_record_ids(occs, ignore_status=False):
     """'실제로 뭔가 있었던 수업'의 id 집합 — 등원·결석/휴원·비고·수업일지·연결된 보강.
-    시간표가 바뀌거나 삭제돼도 이건 사실이므로 지우지 않고 남긴다."""
+    시간표가 바뀌거나 삭제돼도 이건 사실이므로 지우지 않고 남긴다.
+
+    ignore_status=True 면 상태(휴무·결석 등)는 세지 않고 사람이 남긴 것만 본다.
+    앞날의 휴무 줄처럼 '상태만 붙어 있고 실은 빈 줄'을 가려낼 때 쓴다."""
     ids = [o.id for o in occs]
     if not ids:
         return set()
@@ -4049,7 +4058,8 @@ def _occ_record_ids(occs):
              .values_list("makeup_for_id", flat=True))
     return {o.id for o in occs
             if ((o.student_id, o.date) in att or o.id in prog or o.id in mk
-                or bool(o.note) or o.status != OccurrenceStatus.SCHEDULED)}
+                or bool(o.note)
+                or (not ignore_status and o.status != OccurrenceStatus.SCHEDULED))}
 
 
 def _reconcile_slot_occurrences(slot, occ_qs):
