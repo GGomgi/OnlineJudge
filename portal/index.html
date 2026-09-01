@@ -5188,6 +5188,24 @@
                   </span>
                 </template>
                 <template v-else-if="c.k==='durations'">{{ stuDurText(s) }}</template>
+                <template v-else-if="c.k==='fee'">
+                  <span v-if="stuFeeOf(s).amount !== null && stuFeeOf(s).amount !== undefined" class="font-mono">
+                    {{ Number(stuFeeOf(s).amount).toLocaleString() }}원
+                    <span v-if="stuFeeCut(s)" class="text-[10px] text-rose-400">-{{ Number(stuFeeCut(s)).toLocaleString() }}</span>
+                  </span>
+                  <span v-else class="text-slate-300">{{ stuFeeOf(s).mode==='UNDECIDED' ? '미정' : '-' }}</span>
+                </template>
+                <template v-else-if="c.k==='discounts'">
+                  <span v-if="(stuFeeOf(s).discounts||[]).length" class="inline-flex gap-1 flex-wrap">
+                    <span v-for="(d,di) in stuFeeOf(s).discounts" :key="di"
+                          :class="['text-[10px] px-1 py-0.5 rounded whitespace-nowrap',
+                                   d.beaten ? 'bg-slate-100 text-slate-400 line-through'
+                                            : (d.alone ? 'bg-sky-50 text-sky-600' : 'bg-indigo-50 text-indigo-700')]">
+                      {{ d.name }} {{ d.beaten ? '' : '-'+Number(d.off).toLocaleString() }}
+                    </span>
+                  </span>
+                  <span v-else class="text-slate-300">-</span>
+                </template>
                 <template v-else-if="c.k==='instructor'">{{ ((s.extra||{}).instructors||[]).join(', ') || '-' }}</template>
                 <template v-else-if="c.k==='parent'">
                   <span v-if="siblingCount(s)>=2" @mouseenter="showSiblings(s,$event)" @mouseleave="scheduleCloseSib" class="cursor-pointer hover:underline text-indigo-600">{{ s.parent_name || '-' }} <span class="text-xs text-indigo-400">(형제 {{ siblingCount(s) }})</span></span>
@@ -8829,6 +8847,8 @@ const COLDEFS = {
     { k:'weekly',       l:'주 횟수' },
     { k:'weekdays',     l:'요일 패턴', d:'올리면 그 요일 시각' },
     { k:'durations',    l:'수업 시간', d:'60+90분' },
+    { k:'fee',          l:'원비', d:'할인 뒤 받을 금액' },
+    { k:'discounts',    l:'할인 내용', d:'밀린 할인은 흐리게' },
     { k:'instructor',   l:'담당 강사' },
     { k:'parent',       l:'보호자', always:true },
     { k:'parent_phone', l:'보호자 연락처', d:'통화·문자 버튼 포함' },
@@ -14837,15 +14857,21 @@ const app = createApp({
     async deleteDbComment(c){ if (!await this.askConfirm('덧글을 삭제할까요?')) return; try { await api('DELETE','/api/academy/dev_comment?id='+c.id); this.openDbDetail(this.dbDetail.id); } catch(e){ this.notify(e.message,false); } },
     // ── 학생 관리 ──
     // 원비 셈에서 쓰는 '60+90분' 표기를 그대로 쓴다. 회당 시간이 섞인 것도 한눈에 보인다.
+    stuFeeOf(s){ return (s.extra||{}).fee || {}; },
+    // 기본 원비에서 얼마나 깎였는지. 붙은 할인만 센다(밀린 것은 0원이라 저절로 빠진다).
+    stuFeeCut(s){
+      return (this.stuFeeOf(s).discounts||[]).reduce((a,d)=>a+(d.off||0), 0);
+    },
     stuDurText(s){
       const d = ((s.extra||{}).durations||[]).slice().sort((a,b)=>a-b);
       return d.length ? d.join('+')+'분' : '-';
     },
     async loadStudents(){
       // 켠 열에 필요한 값만 서버에서 계산하게 한다(다 계산하면 목록이 무거워짐)
-      const heavy = ['missing','weekdays','instructor','month','mk','last_attend','verify','sibling'];
+      const heavy = ['missing','weekdays','instructor','month','mk','last_attend','verify','sibling','fee'];
       const need = heavy.filter(k=>this.colOn('stu', k));
       if (this.colOn('stu','tenure') || this.colOn('stu','enrolled_at')) need.push('verify');
+      if (this.colOn('stu','discounts')) need.push('fee');   // 두 열이 같은 셈을 쓴다
       need.push('weekdays');    // 요일로 찾을 수 있어야 해서 열을 껐어도 받아 둔다
       const qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
       try { this.students = await api('GET','/api/admin/academy/students'+qs); }

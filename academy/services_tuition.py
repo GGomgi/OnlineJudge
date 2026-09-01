@@ -29,7 +29,37 @@ def _today():
     return (now() + timedelta(hours=9)).date()
 
 
-def active_slots(student_id, on=None):
+def prefetch(ids, cache):
+    """여러 학생을 잇달아 셈하기 전에 필요한 것을 한 번에 읽어 둔다.
+
+    한 명씩 셈하면 학생 수만큼 같은 표를 다시 읽는다(70명에 560번). 목록 화면에서
+    원비 열을 켤 때 쓴다 — 한 명만 볼 때는 그냥 compute 를 부르면 된다.
+    """
+    ids = list(ids)
+    cache["prof"] = {p.user_id: p for p in AcademyProfile.objects.filter(
+        user_id__in=ids, is_deleted=False).select_related("branch")}
+    cache["st"] = {t.student_id: t for t in StudentTuition.objects.filter(student_id__in=ids)}
+    cache["sp"] = {p.user_id: p for p in StudentProfile.objects.filter(user_id__in=ids)}
+    slots = {}
+    for t in StudentTimetable.objects.filter(student_id__in=ids).exclude(status="ENDED"):
+        slots.setdefault(t.student_id, []).append(t)
+    cache["slots"] = slots
+    disc = {}
+    for r in StudentDiscount.objects.filter(student_id__in=ids, is_active=True) \
+                                    .select_related("item").order_by("id"):
+        disc.setdefault(r.student_id, []).append(r)
+    cache["disc"] = disc
+    return cache
+
+
+def _from_cache(cache, key, uid):
+    """미리 읽어 둔 것이 있으면 꺼내 쓴다. (찾았는가, 값)"""
+    if cache is not None and key in cache:
+        return True, cache[key].get(uid)
+    return False, None
+
+
+def active_slots(student_id, on=None, cache=None):
     """오늘(또는 지정일) 적용 기간 안에 있는 시간표만.
 
     요일을 옮기면 옛 줄은 기간만 끊기고 상태는 ACTIVE 로 남는다(과거 기록 보존).
@@ -37,13 +67,21 @@ def active_slots(student_id, on=None):
     """
     from .views.admin import _slot_active_on
     d = on or _today()
-    return [t for t in StudentTimetable.objects.filter(student_id=student_id).exclude(status="ENDED")
-            if _slot_active_on(t, d)]
+    hit, rows = _from_cache(cache, "slots", student_id)
+    if not hit:
+        rows = StudentTimetable.objects.filter(student_id=student_id).exclude(status="ENDED")
+    return [t for t in (rows or []) if _slot_active_on(t, d)]
 
 
-def rate_table(branch_id):
-    return {(r.sessions_per_week, r.duration_minutes): r.amount
-            for r in TuitionRate.objects.filter(branch_id=branch_id) if r.amount}
+def rate_table(branch_id, cache=None):
+    """지점 기준표. 여러 학생을 잇달아 셈할 때는 cache 를 넘겨 한 번만 읽는다."""
+    if cache is not None and ("rate", branch_id) in cache:
+        return cache[("rate", branch_id)]
+    t = {(r.sessions_per_week, r.duration_minutes): r.amount
+         for r in TuitionRate.objects.filter(branch_id=branch_id) if r.amount}
+    if cache is not None:
+        cache[("rate", branch_id)] = t
+    return t
 
 
 def unit_price(rates, duration):
@@ -52,14 +90,18 @@ def unit_price(rates, duration):
     return (base / 8.0) if base else None
 
 
-def compute(student_id, for_ym=None):
+def compute(student_id, for_ym=None, cache=None):
     """{mode, amount, base, source, discounts, warnings, sessions, durations} 를 돌려준다.
 
     amount 가 None 이면 '금액 미정'이다. 임의로 계산해 틀린 금액을 청구하느니 비워 둔다.
     """
-    prof = AcademyProfile.objects.filter(user_id=student_id, is_deleted=False).first()
+    hit, prof = _from_cache(cache, "prof", student_id)
+    if not hit:
+        prof = AcademyProfile.objects.filter(user_id=student_id, is_deleted=False).first()
     branch_id = prof.branch_id if prof else None
-    st = StudentTuition.objects.filter(student_id=student_id).first()
+    hit, st = _from_cache(cache, "st", student_id)
+    if not hit:
+        st = StudentTuition.objects.filter(student_id=student_id).first()
     mode = st.mode if st else "AUTO"
     out = {"mode": mode, "amount": None, "base": None, "source": "",
            "discounts": [], "warnings": [], "sessions": 0, "durations": [],
@@ -68,7 +110,7 @@ def compute(student_id, for_ym=None):
            "manual_amount": (st.manual_amount if st else None),
            "note": (st.note if st else "")}
 
-    slots = active_slots(student_id)
+    slots = active_slots(student_id, cache=cache)
     durs = sorted(s.duration_minutes for s in slots)
     out["sessions"] = len(slots)
     out["durations"] = durs
@@ -91,15 +133,15 @@ def compute(student_id, for_ym=None):
         if out["base"] is None:
             out["warnings"].append("직접 지정인데 금액이 비어 있습니다.")
         # 기준표대로면 얼마인지 함께 알려 준다 — 얼마나 깎아 주고 있는지 보여야 한다
-        out["auto_base"] = _auto_base(branch_id, slots, st)[0]
-        return _apply_discounts(student_id, out, for_ym)
+        out["auto_base"] = _auto_base(branch_id, slots, st, cache)[0]
+        return _apply_discounts(student_id, out, for_ym, cache)
 
     # ── 자동 ──
     out["auto_base"] = None
     if not branch_id:
         out["warnings"].append("지점이 없어 기준표를 찾을 수 없습니다.")
         return out
-    rates = rate_table(branch_id)
+    rates = rate_table(branch_id, cache)
 
     if not slots:
         # 시간표가 아직 없으면 미리 정해 둔 주횟수·시간으로 셈한다
@@ -140,16 +182,16 @@ def compute(student_id, for_ym=None):
         out["auto_base"] = out["base"]
         out["source"] += " · 회당 단가"
 
-    return _apply_discounts(student_id, out, for_ym)
+    return _apply_discounts(student_id, out, for_ym, cache)
 
 
-def _auto_base(branch_id, slots, st):
+def _auto_base(branch_id, slots, st, cache=None):
     """기준표대로면 얼마인가. (금액, 까닭) — 못 셈하면 (None, 까닭)."""
     if not branch_id:
         return None, "지점 없음"
     from .models import Branch
     branch = Branch.objects.filter(id=branch_id).first()
-    rates = rate_table(branch_id)
+    rates = rate_table(branch_id, cache)
     if slots:
         durs = sorted(s.duration_minutes for s in slots)
     elif st and st.planned_sessions and st.planned_duration:
@@ -175,7 +217,7 @@ def _disc_value(r):
     return r.item.value if r.value_override is None else r.value_override
 
 
-def _pick_discounts(student_id, for_ym):
+def _pick_discounts(student_id, for_ym, cache=None):
     """이 달에 붙일 할인 줄을 고른다.
 
     '한 번만' 할인은 이미 쓴 것이면 빠진다. 그 달 청구서에 쓴 것이면 그대로 붙어
@@ -187,8 +229,11 @@ def _pick_discounts(student_id, for_ym):
     """
     ym = for_ym or ""
     rows, pool = [], {}
-    for r in StudentDiscount.objects.filter(student_id=student_id, is_active=True) \
-                                    .select_related("item").order_by("id"):
+    hit, rows0 = _from_cache(cache, "disc", student_id)
+    if not hit:
+        rows0 = StudentDiscount.objects.filter(student_id=student_id, is_active=True) \
+                                       .select_related("item").order_by("id")
+    for r in (rows0 or []):
         if not r.item.recurring and r.used_ym and r.used_ym != ym:
             continue                      # 다른 달에 이미 쓴 한 번만 할인
         if r.item.once_per_month:
@@ -205,9 +250,11 @@ def _pick_discounts(student_id, for_ym):
     return rows, later
 
 
-def months_enrolled(student_id, on=None):
+def months_enrolled(student_id, on=None, cache=None):
     """이 학생이 몇 달째 다니는가. 수업 시작일이 없으면 등록일을 본다."""
-    sp = StudentProfile.objects.filter(user_id=student_id).first()
+    hit, sp = _from_cache(cache, "sp", student_id)
+    if not hit:
+        sp = StudentProfile.objects.filter(user_id=student_id).first()
     d0 = (sp.lesson_start_date if sp else None) or (sp.enrollment_date if sp else None)
     if not d0:
         return 0
@@ -218,7 +265,7 @@ def months_enrolled(student_id, on=None):
     return max(0, m)
 
 
-def cap_for(branch_id, scope, sessions, months):
+def cap_for(branch_id, scope, sessions, months, cache=None):
     """최대치 기준표에서 이 학생에게 걸리는 뚜껑을 찾는다.
 
     조건을 만족하는 줄 가운데 주회수가 가장 큰 것, 그 안에서 개월이 가장 큰 것.
@@ -226,16 +273,22 @@ def cap_for(branch_id, scope, sessions, months):
     표에 줄이 없으면 뚜껑이 없는 것으로 본다(None).
     """
     from .models import DiscountCap
-    q = DiscountCap.objects.filter(scope=scope, sessions_min__lte=sessions,
-                                   months_min__lte=months)
-    rows = [r for r in q if r.branch_id in (branch_id, None)]
+    if cache is not None and "caps" in cache:
+        all_rows = cache["caps"]
+    else:
+        all_rows = list(DiscountCap.objects.all())
+        if cache is not None:
+            cache["caps"] = all_rows
+    rows = [r for r in all_rows
+            if r.scope == scope and r.sessions_min <= sessions and r.months_min <= months
+            and r.branch_id in (branch_id, None)]
     if not rows:
         return None
     rows.sort(key=lambda r: (0 if r.branch_id else 1, -r.sessions_min, -r.months_min))
     return rows[0].amount
 
 
-def _apply_discounts(student_id, out, for_ym=None):
+def _apply_discounts(student_id, out, for_ym=None, cache=None):
     """할인은 겹치지 않는다. 큰 것 하나만 붙는다.
 
     진학과 형제가 함께 걸려도 둘 중 큰 쪽만 간다. 밀린 줄도 청구서에 남긴다 —
@@ -244,7 +297,7 @@ def _apply_discounts(student_id, out, for_ym=None):
     '따로 붙음'(소개 할인)은 이 겨룸 밖이다. 원비를 깎아 주는 것이 아니라 소개해 준 데
     대한 답례라, 진학 할인에 밀려 사라지면 뜻이 없어진다.
     """
-    rows, later = _pick_discounts(student_id, for_ym)
+    rows, later = _pick_discounts(student_id, for_ym, cache)
 
     amount = out["base"]
     out["queued_discounts"] = later          # 다음 달로 밀린 건수
@@ -260,10 +313,12 @@ def _apply_discounts(student_id, out, for_ym=None):
         out["discounts"] = [line(r, 0) for r in rows]
         return out
 
-    prof = AcademyProfile.objects.filter(user_id=student_id, is_deleted=False).first()
+    hit, prof = _from_cache(cache, "prof", student_id)
+    if not hit:
+        prof = AcademyProfile.objects.filter(user_id=student_id, is_deleted=False).first()
     branch_id = prof.branch_id if prof else None
     sessions = out.get("sessions") or 0
-    months = months_enrolled(student_id)
+    months = months_enrolled(student_id, cache=cache)
     out["enrolled_months"] = months
 
     base = amount
@@ -271,7 +326,7 @@ def _apply_discounts(student_id, out, for_ym=None):
     for r in rows:
         v = _disc_value(r)
         raw = v if r.item.kind == "AMOUNT" else int(base * v / 100.0)
-        cap = cap_for(branch_id, r.item.cap_scope or "DEFAULT", sessions, months)
+        cap = cap_for(branch_id, r.item.cap_scope or "DEFAULT", sessions, months, cache)
         off = raw if cap is None else min(raw, cap)
         ln = line(r, max(0, min(off, base)), cap)
         ln["raw"] = raw

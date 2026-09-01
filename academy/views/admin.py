@@ -1959,6 +1959,23 @@ def _student_list_extra(rows, want):
                 if nm not in names:
                     names.append(nm)
 
+    # 원비는 저장돼 있지 않고 볼 때마다 셈한다. 열이 켜졌을 때만 돈다 — 학생 수만큼
+    # 셈해야 해서 늘 돌리면 목록이 무거워진다.
+    if "fee" in want:
+        from ..services_tuition import compute as _fee_compute, prefetch as _fee_prefetch
+        # 한 명씩 셈하면 학생 수만큼 같은 표를 다시 읽는다. 한 번에 읽어 두고 돈다.
+        _fee_cache = _fee_prefetch(ids, {})
+        for uid in ids:
+            try:
+                f = _fee_compute(uid, cache=_fee_cache)
+            except Exception:
+                continue
+            e = ex[uid]
+            e["fee"] = {"amount": f.get("amount"), "base": f.get("base"), "mode": f.get("mode"),
+                        "discounts": [{"name": d["name"], "off": d["off"],
+                                       "beaten": d.get("beaten"), "alone": d.get("alone")}
+                                      for d in (f.get("discounts") or [])]}
+
     if "month" in want:
         m0 = today.replace(day=1)
         starts = {}
