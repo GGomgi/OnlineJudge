@@ -1941,6 +1941,7 @@ def _student_list_extra(rows, want):
                 continue
             e = ex[slot.student_id]
             e.setdefault("weekdays", {}).setdefault(slot.weekday, []).append(str(slot.start_time)[:5])
+            e.setdefault("durations", []).append(slot.duration_minutes)
             if slot.instructor_id:
                 names = e.setdefault("instructors", [])
                 nm = _name_of(slot.instructor)

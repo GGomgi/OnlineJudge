@@ -5169,6 +5169,7 @@
                           @mouseenter="stuHasDay(s,wi) && showStuWdPop(s,wi,$event)" @mouseleave="hideWdPop">{{ w }}</span>
                   </span>
                 </template>
+                <template v-else-if="c.k==='durations'">{{ stuDurText(s) }}</template>
                 <template v-else-if="c.k==='instructor'">{{ ((s.extra||{}).instructors||[]).join(', ') || '-' }}</template>
                 <template v-else-if="c.k==='parent'">
                   <span v-if="siblingCount(s)>=2" @mouseenter="showSiblings(s,$event)" @mouseleave="scheduleCloseSib" class="cursor-pointer hover:underline text-indigo-600">{{ s.parent_name || '-' }} <span class="text-xs text-indigo-400">(형제 {{ siblingCount(s) }})</span></span>
@@ -8809,6 +8810,7 @@ const COLDEFS = {
     { k:'programs',     l:'등록 과정', d:'C · Py · 블록코딩' },
     { k:'weekly',       l:'주 횟수' },
     { k:'weekdays',     l:'요일 패턴', d:'올리면 그 요일 시각' },
+    { k:'durations',    l:'수업 시간', d:'60+90분' },
     { k:'instructor',   l:'담당 강사' },
     { k:'parent',       l:'보호자', always:true },
     { k:'parent_phone', l:'보호자 연락처', d:'통화·문자 버튼 포함' },
@@ -14800,6 +14802,11 @@ const app = createApp({
     async addDbComment(){ const b=(this.dbComment||'').trim(); if(!b) return; try { await api('POST','/api/academy/dev_comment', { request_id:this.dbDetail.id, body:b }); this.dbComment=''; this.openDbDetail(this.dbDetail.id); } catch(e){ this.notify(e.message,false); } },
     async deleteDbComment(c){ if (!await this.askConfirm('덧글을 삭제할까요?')) return; try { await api('DELETE','/api/academy/dev_comment?id='+c.id); this.openDbDetail(this.dbDetail.id); } catch(e){ this.notify(e.message,false); } },
     // ── 학생 관리 ──
+    // 원비 셈에서 쓰는 '60+90분' 표기를 그대로 쓴다. 회당 시간이 섞인 것도 한눈에 보인다.
+    stuDurText(s){
+      const d = ((s.extra||{}).durations||[]).slice().sort((a,b)=>a-b);
+      return d.length ? d.join('+')+'분' : '-';
+    },
     async loadStudents(){
       // 켠 열에 필요한 값만 서버에서 계산하게 한다(다 계산하면 목록이 무거워짐)
       const heavy = ['missing','weekdays','instructor','month','mk','last_attend','verify','sibling'];
