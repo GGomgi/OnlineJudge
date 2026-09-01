@@ -2825,28 +2825,46 @@ class StudentTimetableAdminAPI(APIView):
             return self.error("Timetable does not exist")
         if not self._branch_ok(request, slot.branch_id):
             return self.error("No permission for this branch")
+        from ..models import TimetableStatus
         reason = (request.GET.get("reason") or "").strip()
         if not reason:
-            return self.error("삭제 이유를 입력하세요.")
-        # 앞으로 예정돼 있던 수업도 같이 정리한다. 안 하면 시간표는 지웠는데 수업 인스턴스만 남아
-        # '오늘 운영'에 유령 수업으로 계속 뜬다(패턴이 지워지면 소속만 비고 인스턴스는 그대로라서).
-        # 지난 수업과 실제 기록(등원·결석·비고·수업일지·연결된 보강)이 있는 수업은 이력이므로 보존.
+            return self.error("그만 쓰는 까닭을 적어 주세요.")
+        # 줄을 지우지 않고 어제까지 쓴 것으로 끊는다. 지우면 그 줄로 했던 지난 수업이 어느
+        # 시간표였는지 알 수 없게 된다(전서준 2026-09-01, 두 줄이 통째로 사라졌다).
+        # 정말 지워야 하는 경우는 데이터가 꼬였을 때뿐이고, 그건 손으로 다룬다.
         today = (now() + timedelta(hours=9)).date()
+        until = today - timedelta(days=1)
+        # 이미 끝나는 날이 적혀 있으면 그 날을 지킨다. 어제로 덮으면 도리어 기간이 늘어난다.
+        if slot.active_until and slot.active_until < until:
+            until = slot.active_until
+        # 아직 시작도 안 한 줄을 어제까지로 끊으면 시작이 끝보다 뒤가 된다. 하루도 안 쓴 줄이다.
+        if slot.active_from and slot.active_from > until:
+            until = slot.active_from
+        # 앞으로 예정돼 있던 수업도 같이 정리한다. 안 하면 시간표는 끊었는데 수업 인스턴스만 남아
+        # '오늘 운영'에 유령 수업으로 계속 뜬다.
+        # 지난 수업과 실제 기록(등원·결석·비고·수업일지·연결된 보강)이 있는 수업은 이력이므로 보존.
         upcoming = list(LessonOccurrence.objects.filter(
             source_timetable=slot, date__gte=today, is_makeup=False))
         rec_ids = _occ_record_ids(upcoming)
+        loose = _occ_record_ids(upcoming, ignore_status=True)
         removed = 0
         for occ in upcoming:
-            if occ.id in rec_ids or occ.time_change_reason:
+            keep = occ.id in rec_ids
+            if occ.status == OccurrenceStatus.HOLIDAY and occ.id not in loose:
+                keep = False
+            if keep or occ.time_change_reason:
                 continue
             occ.delete()
             removed += 1
+        slot.status = TimetableStatus.ENDED
+        slot.active_until = until
+        slot.save(update_fields=["status", "active_until"])
         TimetableChange.objects.create(
             student=slot.student, actor=request.user, action="DELETE", reason=reason,
-            detail=(f"{_WD[slot.weekday]} {str(slot.start_time)[:5]} {slot.subject or ''} 삭제"
-                    + (f" (예정 수업 {removed}건 정리)" if removed else "")).strip())
-        slot.delete()
-        return self.success("Deleted")
+            detail=(f"{_WD[slot.weekday]} {str(slot.start_time)[:5]} {slot.subject or ''} "
+                    f"그만 씀 ({until}까지)"
+                    + (f" · 예정 수업 {removed}건 정리" if removed else "")).strip())
+        return self.success("Ended")
 
 
 MANAGER_ROLES = {AcademyRole.HQ_ADMIN, AcademyRole.HR_ADMIN, AcademyRole.REGIONAL_MANAGER,
