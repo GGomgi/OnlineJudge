@@ -783,7 +783,9 @@
             <!-- 붙은 할인. 겹치지 않고 큰 것 하나만 붙는다. 밀린 줄도 남긴다 —
                  지워 버리면 "형제 할인은요?" 하고 물을 때 댈 말이 없다. -->
             <div class="text-xs">
-              <div v-if="(stuFee.discounts||[]).length" class="space-y-0.5 mb-1">
+              <!-- 붙은 것이 없어도 이번에 고른 것이 있으면 보여야 한다. 안 그러면 골라 놓고도
+                   아무 일이 없어 보인다(박민아 2026-09-01). -->
+              <div v-if="(stuFee.discounts||[]).length || stuFeePendingAdds.length" class="space-y-0.5 mb-1">
                 <div v-if="stuFee.base !== null" class="flex items-center gap-2 text-slate-500">
                   <span class="w-32">기본 원비</span><span class="font-mono">{{ Number(stuFee.base).toLocaleString() }}원</span>
                 </div>
