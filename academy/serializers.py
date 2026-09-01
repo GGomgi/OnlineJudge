@@ -506,6 +506,12 @@ class ConvertLeadSerializer(serializers.Serializer):
     consent_guardian_name = serializers.CharField(max_length=64, required=False, allow_blank=True)
     consent_signature = serializers.CharField(required=False, allow_blank=True)
     consent_date = serializers.DateField(required=False, allow_null=True)
+    # 원비 — 여기 없으면 화면이 보내도 입구에서 버려진다. '직접 지정'으로 넣은 금액이
+    # 등록 뒤에 사라지고 있었다(2026-09-01).
+    tuition_mode = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    tuition_amount = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    tuition_note = serializers.CharField(required=False, allow_blank=True)
+    discount_ids = serializers.CharField(required=False, allow_blank=True)   # "4,5" 꼴
 
 
 class StudentRegisterSerializer(ConvertLeadSerializer):

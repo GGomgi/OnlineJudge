@@ -1551,14 +1551,25 @@ def _create_student_from_lead(request, lead, data, source="LEAD"):
         lead.is_hidden = True  # 등록 전환 완료 시 상담 목록에서 자동 숨김
         lead.save()
         # 원비를 등록할 때 정해 둘 수 있다. 비워 두면 자동(기준표에서 계산)이다.
+        from ..models import StudentTuition, DiscountItem, StudentDiscount
         _tm = data.get("tuition_mode")
-        if _tm in ("MANUAL", "UNDECIDED"):
-            from ..models import StudentTuition
+        _note = (data.get("tuition_note") or "").strip()
+        if _tm in ("MANUAL", "UNDECIDED") or _note:
             _amt = str(data.get("tuition_amount") or "").replace(",", "").strip()
             StudentTuition.objects.update_or_create(
                 student=user,
-                defaults={"mode": _tm, "updated_by": (request.user if request else None),
+                defaults={"mode": (_tm if _tm in ("AUTO", "MANUAL", "UNDECIDED") else "AUTO"),
+                          "note": _note,
+                          "updated_by": (request.user if request else None),
                           "manual_amount": (int(_amt) if _amt.isdigit() else None)})
+        # 할인은 등록하면서 함께 붙인다. 등록 뒤 학생 정보에서 또 붙이러 들어가지 않아도 된다.
+        _dids = [int(x) for x in str(data.get("discount_ids") or "").split(",") if x.strip().isdigit()]
+        if _dids:
+            for it in DiscountItem.objects.filter(id__in=_dids, is_active=True).filter(
+                    Q(branch__isnull=True) | Q(branch_id=lead.branch_id)):
+                StudentDiscount.objects.get_or_create(
+                    student=user, item=it,
+                    defaults={"created_by": (request.user if request else None)})
         # 누가 언제 누구를 등록했는지. 상세는 남기지 않는다 — 뒤에 고친 것은 각자의 이력에 남는다
         StudentRegisterLog.objects.create(
             student=user, actor=(request.user if request else None),

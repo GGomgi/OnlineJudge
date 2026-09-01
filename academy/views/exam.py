@@ -1303,19 +1303,25 @@ class TuitionPreviewAPI(APIView):
         bid = request.GET.get("branch_id")
         if not bid or not can_view_branch(request.user, int(bid)):
             return self.error("지점을 고르세요.")
+        # 등록 화면에는 아직 학생이 없어 학생 원비 API 를 쓸 수 없다. 붙일 수 있는 할인
+        # 목록만 함께 내려보낸다(금액은 등록 뒤 그 학생 기준으로 셈한다).
+        items = [{"id": x.id, "name": x.name, "kind": x.kind, "value": x.value,
+                  "recurring": x.recurring}
+                 for x in DiscountItem.objects.filter(is_active=True).filter(
+                     Q(branch__isnull=True) | Q(branch_id=int(bid)))]
         raw = (request.GET.get("durations") or "").strip()
         durs = sorted(int(x) for x in raw.split(",") if x.strip().isdigit())
         if not durs:
-            return self.success({"amount": None, "source": "", "warning": ""})
+            return self.success({"amount": None, "source": "", "warning": "", "items": items})
         rates = rate_table(int(bid))
         n = len(durs)
         src = "주%d회 %s분" % (n, "+".join(str(x) for x in durs))
         if n <= 2 and len(set(durs)) == 1:
             amt = rates.get((n, durs[0]))
             if amt is None:
-                return self.success({"amount": None, "source": src,
+                return self.success({"amount": None, "source": src, "items": items,
                                      "warning": "기준표에 주%d회 %d분 금액이 없습니다." % (n, durs[0])})
-            return self.success({"amount": amt, "source": src, "warning": ""})
+            return self.success({"amount": amt, "source": src, "warning": "", "items": items})
         total, missing = 0, []
         for d in durs:
             u = unit_price(rates, d)
@@ -1324,10 +1330,10 @@ class TuitionPreviewAPI(APIView):
             else:
                 total += u * WEEKS_PER_MONTH
         if missing:
-            return self.success({"amount": None, "source": src,
+            return self.success({"amount": None, "source": src, "items": items,
                                  "warning": "기준표에 주2회 %s분 금액이 없습니다."
                                             % "·".join(str(x) for x in sorted(set(missing)))})
-        return self.success({"amount": int(round(total)), "source": src + " · 회당 단가", "warning": ""})
+        return self.success({"amount": int(round(total)), "source": src + " · 회당 단가", "warning": "", "items": items})
 
 
 class StudentDiscountAdminAPI(APIView):
