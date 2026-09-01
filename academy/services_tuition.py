@@ -303,7 +303,7 @@ def _apply_discounts(student_id, out, for_ym=None, cache=None):
     out["queued_discounts"] = later          # 다음 달로 밀린 건수
 
     def line(r, off, cap=None, beaten=False):
-        return {"id": r.id, "name": r.item.name, "kind": r.item.kind,
+        return {"id": r.id, "item_id": r.item_id, "name": r.item.name, "kind": r.item.kind,
                 "value": _disc_value(r), "off": off, "note": r.note,
                 "recurring": r.item.recurring, "used_ym": r.used_ym,
                 "raw": None, "capped": False, "cap": cap,

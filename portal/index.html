@@ -753,7 +753,7 @@
               <div v-if="stuFee.can_edit" class="ml-auto flex items-center gap-2">
                 <button v-if="!stuFeeEdit" @click="stuFeeEdit=true" class="text-xs text-indigo-500 hover:underline">✎ 수정</button>
                 <template v-else>
-                  <button @click="stuFeeEdit=false; loadStuFee()" class="text-xs text-slate-500 hover:underline">취소</button>
+                  <button @click="stuFeeEdit=false; stuDiscAdd=[]; stuDiscDel=[]; loadStuFee()" class="text-xs text-slate-500 hover:underline">취소</button>
                   <button @click="saveStuFee" class="px-2.5 py-1 rounded bg-indigo-600 text-white text-xs">저장</button>
                 </template>
               </div>
@@ -793,29 +793,43 @@
                     <span v-if="!dc.recurring" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">한 번만</span>
                     <span v-if="dc.alone" class="ml-1 text-[10px] px-1 rounded bg-sky-50 text-sky-600">따로</span>
                   </span>
-                  <span v-if="dc.beaten" class="font-mono line-through">-{{ Number(dc.raw||0).toLocaleString() }}원</span>
+                  <span v-if="dcMarkedDel(dc)" class="font-mono line-through text-slate-400">-{{ Number(dc.off||dc.raw||0).toLocaleString() }}원</span>
+                  <span v-else-if="dc.beaten" class="font-mono line-through">-{{ Number(dc.raw||0).toLocaleString() }}원</span>
                   <span v-else class="font-mono text-rose-500">-{{ Number(dc.off).toLocaleString() }}원</span>
-                  <span v-if="dc.beaten" class="text-[10px] px-1 rounded bg-slate-100 text-slate-500 whitespace-nowrap">더 큰 할인에 밀림</span>
+                  <span v-if="dcMarkedDel(dc)" class="text-[10px] px-1 rounded bg-rose-50 text-rose-500 whitespace-nowrap">뗄 예정</span>
+                  <span v-else-if="dc.beaten" class="text-[10px] px-1 rounded bg-slate-100 text-slate-500 whitespace-nowrap">더 큰 할인에 밀림</span>
                   <span v-else-if="dc.capped" class="text-[10px] px-1 rounded bg-amber-50 text-amber-600 whitespace-nowrap">최대 {{ Number(dc.cap).toLocaleString() }}원까지</span>
-                  <button v-if="stuFee.can_edit" @click="removeStuDiscount(dc)" class="text-slate-400 hover:text-rose-500">✕</button>
+                  <button v-if="stuFeeEdit" @click="toggleStuDiscDel(dc)"
+                          :class="['text-xs', dcMarkedDel(dc) ? 'text-slate-400 hover:underline' : 'text-slate-400 hover:text-rose-500']">{{ dcMarkedDel(dc) ? '되살리기' : '✕' }}</button>
+                </div>
+                <!-- 아직 저장하지 않은 것. 저장을 눌러야 실제로 붙는다 -->
+                <div v-for="it in stuFeePendingAdds" :key="'add'+it.id" class="flex items-center gap-2">
+                  <span class="w-44 text-emerald-700">{{ it.name }}
+                    <span class="text-[10px] px-1 rounded bg-emerald-100 text-emerald-700">붙일 예정</span>
+                  </span>
+                  <span class="font-mono text-emerald-600">-{{ Number(it.will_off||0).toLocaleString() }}원</span>
+                  <button @click="unpickStuDiscount(it.id)" class="text-slate-400 hover:text-rose-500 text-xs">✕</button>
                 </div>
                 <div v-if="(stuFee.discounts||[]).length>1" class="text-[11px] text-slate-400 pt-0.5">
                   할인은 겹치지 않습니다. 큰 것 하나만 붙고, <b>따로</b> 표시된 것만 함께 붙습니다.
                   <span v-if="stuFee.cap_rule">· 지금 기준: 주{{ stuFee.cap_rule.sessions }}회 · 재원 {{ stuFee.cap_rule.months }}개월</span>
                 </div>
               </div>
-              <div v-if="stuFee.can_edit" class="flex items-center gap-2">
-                <select v-model="stuFeeAddId" class="input py-1 px-2 text-xs" style="width:12rem">
+              <!-- 붙이고 떼는 것도 원비를 고치는 일이다. 수정 안에서 하고 저장할 때 함께 반영한다 -->
+              <div v-if="stuFeeEdit" class="flex items-center gap-2">
+                <select v-model="stuFeeAddId" @change="pickStuDiscount" class="input py-1 px-2 text-xs" style="width:13rem">
                   <option value="">+ 할인 붙이기</option>
                   <!-- 항목값만 보이면 '진학 할인 40,000원'으로 읽히는데 이 학생은 3만일 수 있다 -->
-                  <option v-for="it in (stuFee.items||[])" :key="it.id" :value="it.id">
+                  <option v-for="it in stuFeeAddable" :key="it.id" :value="it.id">
                     {{ it.name }} → {{ Number(it.will_off||0).toLocaleString() }}원{{ it.recurring ? '' : ' (한 번만)' }}
                   </option>
                 </select>
-                <button v-if="stuFeeAddId" @click="addStuDiscount" class="px-2 py-1 rounded bg-indigo-600 text-white text-xs">붙이기</button>
                 <span v-if="!(stuFee.items||[]).length" class="text-[11px] text-slate-400">학원 관리 › 원비에서 할인 항목을 먼저 만드세요.</span>
-                <span v-else class="text-[11px] text-slate-400">금액은 <b>이 학생 기준</b>으로 이미 셈한 값입니다. 손으로 적을 것이 없습니다.
-                  <b>한 번만</b> 할인은 다음 청구서 한 번에만 붙고 그 뒤로는 빠집니다.</span>
+                <span v-else class="text-[11px] text-slate-400">금액은 <b>이 학생 기준</b>으로 이미 셈한 값입니다.
+                  <b>저장</b>을 눌러야 실제로 붙습니다.</span>
+              </div>
+              <div v-else-if="stuFee.can_edit && !(stuFee.discounts||[]).length" class="text-[11px] text-slate-400">
+                붙은 할인이 없습니다. <b>수정</b>을 눌러 붙일 수 있습니다.
               </div>
             </div>
           </div>
@@ -8950,7 +8964,7 @@ const app = createApp({
       unpaid: [], unpaidTotal: 0,
       payFor: null, payData: { invoices:[], payments:[] },
       payForm: { paid_on:'', amount:'', method:'TRANSFER', note:'' },
-      stuFee: null, stuFeeEdit: false, stuFeeAddId: '',
+      stuFee: null, stuFeeEdit: false, stuFeeAddId: '', stuDiscAdd: [], stuDiscDel: [],
       stuFeeForm: { mode:'AUTO', planned_sessions:'', planned_duration:'', manual_amount:'', note:'' },
       dcRows: [], dcNew: null, capRows: [], capNew: null,
       examCatalogs: [], examKinds: [], examModes: [],
@@ -9242,6 +9256,15 @@ const app = createApp({
     cvPickedDiscounts(){
       const on = this.convertForm.discount_ids || [];
       return (this.cvFee.items || []).filter(x => on.includes(x.id));
+    },
+    // 이미 붙었거나 이번에 고른 것은 목록에서 뺀다
+    stuFeeAddable(){
+      const on = new Set([...(this.stuFee&&this.stuFee.discounts||[]).map(d=>d.item_id),
+                          ...this.stuDiscAdd]);
+      return ((this.stuFee&&this.stuFee.items)||[]).filter(x=>!on.has(x.id));
+    },
+    stuFeePendingAdds(){
+      return ((this.stuFee&&this.stuFee.items)||[]).filter(x=>this.stuDiscAdd.includes(x.id));
     },
     capOrdered(){
       const rank = x => (x.scope==='ADVANCE' ? 0 : 1);
@@ -12780,29 +12803,36 @@ const app = createApp({
         this.stuFeeForm = { mode:d.mode||'AUTO',
                             planned_sessions:d.planned_sessions||'', planned_duration:d.planned_duration||'',
                             manual_amount:d.manual_amount||'', note:d.note||'' };
+        this.stuDiscAdd = []; this.stuDiscDel = []; this.stuFeeAddId = '';
       } catch(e){ this.stuFee = null; }
+    },
+    // 붙이고 떼는 것은 저장할 때 한 번에. 고르자마자 반영되면 '수정'을 누른 뜻이 없다.
+    pickStuDiscount(){
+      const id = Number(this.stuFeeAddId); this.stuFeeAddId = '';
+      if (id && !this.stuDiscAdd.includes(id)) this.stuDiscAdd.push(id);
+    },
+    unpickStuDiscount(id){ this.stuDiscAdd = this.stuDiscAdd.filter(x=>x!==id); },
+    dcMarkedDel(dc){ return this.stuDiscDel.includes(dc.id); },
+    toggleStuDiscDel(dc){
+      this.stuDiscDel = this.dcMarkedDel(dc) ? this.stuDiscDel.filter(x=>x!==dc.id)
+                                             : this.stuDiscDel.concat([dc.id]);
     },
     async saveStuFee(){
       try {
-        const d = await api('POST','/api/admin/academy/student_tuition',
-                            { student_id:this.stuDetail.id, ...this.stuFeeForm });
-        this.stuFee = { ...this.stuFee, ...d }; this.stuFeeEdit = false;
+        for (const id of this.stuDiscDel){
+          await api('DELETE','/api/admin/academy/student_discount?id='+id);
+        }
+        for (const id of this.stuDiscAdd){
+          await api('POST','/api/admin/academy/student_discount',
+                    { student_id:this.stuDetail.id, item_id:id });
+        }
+        await api('POST','/api/admin/academy/student_tuition',
+                  { student_id:this.stuDetail.id, ...this.stuFeeForm });
+        this.stuFeeEdit = false;
+        await this.loadStuFee();          // 할인까지 넣고 다시 셈한 값을 받는다
+        this.loadStudents();              // 학생 관리 목록의 원비·할인 열도 함께 맞춘다
         this.notify('저장했습니다.');
-      } catch(e){ this.notify(e.message,false); }
-    },
-    async addStuDiscount(){
-      try {
-        const d = await api('POST','/api/admin/academy/student_discount',
-                            { student_id:this.stuDetail.id, item_id:this.stuFeeAddId });
-        this.stuFee = { ...this.stuFee, ...d }; this.stuFeeAddId = '';
-      } catch(e){ this.notify(e.message,false); }
-    },
-    async removeStuDiscount(dc){
-      if (!await this.askConfirm('할인 「' + dc.name + '」을 뗄까요?')) return;
-      try {
-        const d = await api('DELETE','/api/admin/academy/student_discount?id='+dc.id);
-        this.stuFee = { ...this.stuFee, ...d };
-      } catch(e){ this.notify(e.message,false); }
+      } catch(e){ this.notify(e.message,false); this.loadStuFee(); }
     },
     // ── 원비 기준표 ──
     tuKey(r){ return r.branch_id + '/' + r.sessions_per_week + '/' + r.duration_minutes; },
