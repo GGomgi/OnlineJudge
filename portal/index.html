@@ -8727,8 +8727,21 @@ function peerGrade(birthYear, today){
   return { level:'대학교', grade:n - 12 };
 }
 // 학교급은 '초등학교' 로 저장돼 있지만 말할 때는 '초등학생' 이라고도 한다. 둘 다 찾히게.
+// '초등'·'고등'은 '초등학교'·'고등학교' 안에 글자가 들어 있어 저절로 찾혔지만 '중등'은
+// '중학교' 안에 없어 혼자만 안 찾혔다. 줄여 부르는 말을 모두 적어 둔다.
 const SCHOOL_ALIAS = { '초등학생':'초등학교', '중학생':'중학교', '고등학생':'고등학교',
-                       '대학생':'대학교', '초딩':'초등학교', '중딩':'중학교', '고딩':'고등학교' };
+                       '대학생':'대학교', '초딩':'초등학교', '중딩':'중학교', '고딩':'고등학교',
+                       '초등':'초등학교', '중등':'중학교', '고등':'고등학교', '대학':'대학교' };
+// 전체 문자를 보낼 때처럼 '다 고르기'가 필요할 때. 이 말이 하나라도 있으면 모두 걸린다.
+const ALL_TERMS = new Set(['전체','모두','모든','전부','all']);
+// 재원 상태로 찾기. 목록마다 따로 고르는 칸을 두지 않고 검색어로 다룬다.
+const STATUS_TERMS = { '재원':'ENROLLED', '재원생':'ENROLLED', '재학':'ENROLLED',
+                       '휴원':'ON_LEAVE', '휴원생':'ON_LEAVE',
+                       '퇴원':'WITHDRAWN', '퇴원생':'WITHDRAWN', '그만둔':'WITHDRAWN' };
+// 검색어에 재원 상태를 콕 집어 적었는가. 적었으면 목록의 기본 거르개를 물린다.
+function qMentionsStatus(q){
+  return qGroups(q).some(terms => terms.some(t => Object.prototype.hasOwnProperty.call(STATUS_TERMS, t)));
+}
 // 학교 이름은 '청람초' 로 저장돼 있는데 부를 때는 '청람초등학교·청람초딩' 처럼 뒤를 늘려 부른다.
 // 끝에 붙은 학교급 말을 떼어내고 앞부분 + 학교급으로 나눠 본다.
 const SCHOOL_TAIL = [
@@ -10039,7 +10052,10 @@ const app = createApp({
     // 전화번호 모으기 — 검색은 학생 관리와 같은 규칙(띄어쓰기=그리고, 쉼표=또는)
     phoneFound(){
       const p = this.phonePick; if (!p || !(p.q||'').trim()) return [];
-      return (p.rows||[]).filter(st => st.enrollment_status==='ENROLLED' && this.stuMatch(st, p.q))
+      // 기본은 재원생이다. 다만 검색어에 '휴원·퇴원'을 콕 집어 적었으면 그 뜻을 따른다.
+      const anyStatus = qMentionsStatus(p.q);
+      return (p.rows||[]).filter(st => (anyStatus || st.enrollment_status==='ENROLLED')
+                                    && this.stuMatch(st, p.q))
                  .sort((a,b)=> String(a.real_name||'').localeCompare(String(b.real_name||''),'ko'));
     },
     promoSelCount(){ return Object.values(this.promoSel).filter(Boolean).length; },
@@ -15285,6 +15301,9 @@ const app = createApp({
                    (st.subjects||[]).join(' ')].filter(Boolean).join(' ').toLowerCase();
       const subj = (st.subjects||[]).map(x => String(x).toLowerCase());
       const hit = (term) => {
+        if (ALL_TERMS.has(term)) return true;
+        if (Object.prototype.hasOwnProperty.call(STATUS_TERMS, term))
+          return (st.enrollment_status || '') === STATUS_TERMS[term];
         const wi = WD_FULL.indexOf(term);
         if (wi >= 0) return this.stuHasWeekday(st, wi);
         if (Object.prototype.hasOwnProperty.call(SUBJ_ALIAS, term)){
