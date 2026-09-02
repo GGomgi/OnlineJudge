@@ -371,21 +371,21 @@
   </div>
 
   <!-- 비고 호버 팝오버 -->
-  <div v-if="notePop.show" class="fixed z-[60] bg-slate-800 text-white rounded-lg shadow-xl px-3 py-2 text-xs max-w-xs overflow-y-auto"
+  <div v-if="notePop.show" class="fixed z-[95] bg-slate-800 text-white rounded-lg shadow-xl px-3 py-2 text-xs max-w-xs overflow-y-auto"
        @mouseenter="popStay('notePop')" @mouseleave="popGo('notePop')" :style="popStyle(notePop)">
     <span class="px-1.5 py-0.5 rounded mr-1" :style="notePop.tagStyle">{{ notePop.tag }}</span>
     <span v-if="notePop.note">{{ notePop.note }}</span><span v-else class="text-slate-400">사유 없음</span>
   </div>
 
   <!-- 상담예약중 배지 호버: 예약 일시 + 메모 -->
-  <div v-if="resvPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-60 pointer-events-none" :style="{ left: resvPop.x+'px', top: resvPop.y+'px' }">
+  <div v-if="resvPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-3 text-xs w-60 pointer-events-none" :style="{ left: resvPop.x+'px', top: resvPop.y+'px' }">
     <div class="font-semibold text-amber-600">📅 {{ resvPop.at }}</div>
     <div class="mt-1 text-slate-600 whitespace-pre-wrap">{{ resvPop.note || '메모 없음' }}</div>
     <div v-if="resvPop.by || resvPop.created" class="mt-1 text-[11px] text-slate-400">{{ resvPop.by }}<span v-if="resvPop.created"> · {{ dt(resvPop.created) }} 작성</span></div>
   </div>
 
   <!-- 오늘 상담 예약: 학생 정보·상담 기록 호버 -->
-  <div v-if="resvInfoPop.show" @mouseenter="keepResvInfoPop" @mouseleave="hideResvInfoPop" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72" :style="{ left: resvInfoPop.x+'px', top: resvInfoPop.y+'px' }">
+  <div v-if="resvInfoPop.show" @mouseenter="keepResvInfoPop" @mouseleave="hideResvInfoPop" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-3 text-xs w-72" :style="{ left: resvInfoPop.x+'px', top: resvInfoPop.y+'px' }">
     <div class="font-bold text-sm">{{ resvInfoPop.rv.student_name }} <span class="text-xs font-normal text-slate-400">· 학부모 {{ resvInfoPop.rv.parent_name }}</span></div>
     <div class="text-slate-500">{{ resvInfoPop.rv.school_name }}{{ schoolSuffix(resvInfoPop.rv.school_type) }} {{ resvInfoPop.rv.grade ? resvInfoPop.rv.grade+'학년' : '' }}</div>
     <div class="text-slate-500 flex items-center gap-1">{{ resvInfoPop.rv.parent_phone || '-' }} <call-btn :phone="resvInfoPop.rv.parent_phone"></call-btn><sms-btn :phone="resvInfoPop.rv.parent_phone"></sms-btn></div>
@@ -405,7 +405,7 @@
   </div>
 
   <!-- 문자 템플릿 수정 이력 호버(원장+) -->
-  <div v-if="msgEditPop.show" @mouseenter="keepMsgEditPop" @mouseleave="hideMsgEditPop" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72" :style="{ left: msgEditPop.x+'px', top: msgEditPop.y+'px' }">
+  <div v-if="msgEditPop.show" @mouseenter="keepMsgEditPop" @mouseleave="hideMsgEditPop" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-3 text-xs w-72" :style="{ left: msgEditPop.x+'px', top: msgEditPop.y+'px' }">
     <div class="font-semibold text-amber-600 mb-1">✎ 수정 이력</div>
     <ul class="space-y-1.5 max-h-64 overflow-auto">
       <li v-for="(e,i) in msgEditPop.list" :key="i" class="border-t pt-1 first:border-t-0 first:pt-0">
@@ -420,7 +420,7 @@
   </div>
 
   <!-- 상담 기본정보 수정 이력 호버 -->
-  <div v-if="leadEditPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none" :style="{ left: leadEditPop.x+'px', top: leadEditPop.y+'px' }">
+  <div v-if="leadEditPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none" :style="{ left: leadEditPop.x+'px', top: leadEditPop.y+'px' }">
     <div class="font-semibold text-amber-600">✎ 정보 수정 이력</div>
     <ul class="mt-1 space-y-1">
       <li v-for="(e,i) in leadEditPop.list" :key="i" class="text-slate-600"><span class="text-slate-400">{{ e.time }} {{ e.by }}</span> · {{ e.changes }}</li>
@@ -428,7 +428,7 @@
   </div>
 
   <!-- 예약 수정 이력 호버 -->
-  <div v-if="resvEditPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none" :style="{ left: resvEditPop.x+'px', top: resvEditPop.y+'px' }">
+  <div v-if="resvEditPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none" :style="{ left: resvEditPop.x+'px', top: resvEditPop.y+'px' }">
     <div class="font-semibold text-amber-600">✎ 예약 변경 이력</div>
     <ul class="mt-1 space-y-1">
       <li v-for="(e,i) in resvEditPop.list" :key="i" class="text-slate-600">
@@ -438,13 +438,13 @@
   </div>
 
   <!-- 예약 취소 사유 호버 -->
-  <div v-if="resvCancelPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none" :style="{ left: resvCancelPop.x+'px', top: resvCancelPop.y+'px' }">
+  <div v-if="resvCancelPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 pointer-events-none" :style="{ left: resvCancelPop.x+'px', top: resvCancelPop.y+'px' }">
     <div class="font-semibold text-rose-500">❌ 취소 사유</div>
     <div class="mt-1 text-slate-600 whitespace-pre-wrap">{{ resvCancelPop.reason }}</div>
   </div>
 
   <!-- 휴원/퇴원 상태 이력 호버 팝오버 -->
-  <div v-if="statusPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-72 pointer-events-none" :style="{ left: statusPop.x+'px', top: statusPop.y+'px' }">
+  <div v-if="statusPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-3 text-xs w-72 pointer-events-none" :style="{ left: statusPop.x+'px', top: statusPop.y+'px' }">
     <div class="font-semibold mb-1">{{ statusPop.name }} · 상태 이력</div>
     <ul class="space-y-1">
       <li v-for="(h,i) in statusPop.list" :key="i" class="flex gap-2">
@@ -455,14 +455,14 @@
   </div>
 
   <!-- 수업 시각 변경 사유 호버(정규 시간표와 다른 날) -->
-  <div v-if="tcPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-2.5 text-xs w-56 pointer-events-none" :style="{ left: tcPop.x+'px', top: tcPop.y+'px' }">
+  <div v-if="tcPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-2.5 text-xs w-56 pointer-events-none" :style="{ left: tcPop.x+'px', top: tcPop.y+'px' }">
     <div class="font-semibold text-amber-600">⏱ 수업 시각 변경</div>
     <div class="mt-1 text-slate-500">{{ tcPop.orig }} → <b class="text-slate-700">{{ tcPop.now }}</b></div>
     <div class="mt-1 text-slate-600 whitespace-pre-wrap">{{ tcPop.reason || '사유 없음' }}</div>
   </div>
 
   <!-- 진도 호버(즉시) -->
-  <div v-if="progPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 overflow-y-auto"
+  <div v-if="progPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-3 text-xs w-64 overflow-y-auto"
        @mouseenter="popStay('progPop')" @mouseleave="popGo('progPop')" :style="popStyle(progPop)">
     <div class="font-semibold text-indigo-600">📝 수업일지</div>
     <!-- 빈 것도 흐리게 적어 둔다. 안 적으면 무엇이 비었는지 배지로 되돌아가 봐야 한다 -->
@@ -1521,7 +1521,7 @@
   </div>
 
   <!-- 연락 이력 호버 — '언제 무슨 안내를 보냈나' -->
-  <div v-if="examContactPop.show" class="fixed z-[80] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
+  <div v-if="examContactPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
        :style="{ left: examContactPop.x+'px', top: examContactPop.y+'px' }">
     <div class="font-bold text-slate-700 mb-1">{{ examContactPop.name }} · 연락 이력</div>
     <div v-for="(c,i) in examContactPop.rows" :key="i" class="flex items-center gap-2 py-0.5">
@@ -2485,7 +2485,7 @@
   </div>
 
   <!-- 이름 위에 올렸을 때 누구인지 — 동명이인 구분 -->
-  <div v-if="stuPop.show" class="fixed z-[90] px-2.5 py-1.5 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none"
+  <div v-if="stuPop.show" class="fixed z-[95] px-2.5 py-1.5 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none"
        :style="{ left: stuPop.x+'px', top: stuPop.y+'px' }">
     <div class="font-semibold">{{ stuPop.name }} <span class="font-normal text-slate-300">{{ stuPop.school }}</span></div>
     <div class="text-slate-300 mt-0.5">
@@ -2496,13 +2496,13 @@
   </div>
 
   <!-- 요일 칸 호버: 그 요일 수업 시각 -->
-  <div v-if="wdPop.show" class="fixed z-[70] px-2 py-1 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
+  <div v-if="wdPop.show" class="fixed z-[95] px-2 py-1 rounded-lg bg-slate-800 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
        :style="{ left: wdPop.x+'px', top: wdPop.y+'px' }">
     {{ wdPop.name }} · {{ wdPop.wd }}요일 <b class="font-mono">{{ wdPop.times.join(', ') }}</b>
   </div>
 
   <!-- 다음 수업 호버: 이번 주 남은 일정 + 다음 주 -->
-  <div v-if="nextPop.show" class="fixed z-[70] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
+  <div v-if="nextPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
        :style="{ left: nextPop.x+'px', top: nextPop.y+'px' }">
     <div class="font-bold text-slate-700 mb-1">{{ nextPop.name }} · 앞으로 한 달 수업 <span class="font-normal text-slate-400">({{ nextPop.rows.length }}회)</span></div>
     <div v-for="(n,i) in nextPop.rows" :key="i" class="flex items-center gap-2 py-0.5">
@@ -2517,7 +2517,7 @@
   </div>
 
   <!-- 결석·지각 호버: 이번 달과 지난달을 날짜순으로 함께 -->
-  <div v-if="attDetailPop.show" class="fixed z-[70] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
+  <div v-if="attDetailPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
        :style="{ left: attDetailPop.x+'px', top: attDetailPop.y+'px' }">
     <div class="font-bold text-slate-700 mb-1">{{ attDetailPop.name }} · 결석·지각</div>
     <template v-for="(grp,gi) in attDetailPop.groups" :key="gi">
@@ -2534,7 +2534,7 @@
   </div>
 
   <!-- 근태 월 그리드 호버 상세(클릭 없이 바로 보이게) -->
-  <div v-if="hrPop.show" class="fixed z-[70] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
+  <div v-if="hrPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border px-3 py-2 text-xs pointer-events-none whitespace-nowrap"
        :style="{ left: hrPop.x+'px', top: hrPop.y+'px' }">
     <div class="font-bold text-slate-700 mb-0.5">{{ hrPop.name }} · {{ hrPop.date }}({{ hrPop.wd }})</div>
     <div v-if="hrPop.leave" class="text-purple-600">{{ hrPop.leave }}<span v-if="hrPop.leaveReason" class="text-slate-400"> · {{ hrPop.leaveReason }}</span></div>
@@ -2621,7 +2621,7 @@
   </div>
 
   <!-- 대시보드 학생 호버 팝오버 -->
-  <div v-if="dashPop.show" @mouseenter="keepDashPop" @mouseleave="hideDashPop" class="fixed z-50 bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
+  <div v-if="dashPop.show" @mouseenter="keepDashPop" @mouseleave="hideDashPop" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-3 text-xs w-64" :style="{ left: dashPop.x+'px', top: dashPop.y+'px' }">
     <div class="font-bold text-sm mb-1 flex items-center gap-1">
       <span class="text-indigo-600 cursor-pointer hover:underline" @click="goStudentAttendFromDashPop">{{ dashPop.l.student_name }}</span>
       <a v-if="dashPop.l.legacy_url" :href="dashPop.l.legacy_url" target="_blank" rel="noopener"
@@ -2653,7 +2653,7 @@
   </div>
 
   <!-- 시간표 달력 수업 호버: 최근 진도(개별 진도 관리 연결 예정) -->
-  <div v-if="calPop.show" class="fixed z-[60] bg-white rounded-lg shadow-xl border p-3 text-xs w-60 pointer-events-none" :style="{ left: calPop.x+'px', top: calPop.y+'px' }">
+  <div v-if="calPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border p-3 text-xs w-60 pointer-events-none" :style="{ left: calPop.x+'px', top: calPop.y+'px' }">
     <div class="font-bold text-sm">{{ calPop.it.student_name }}</div>
     <div class="text-slate-500">{{ dd(calPop.date) }} {{ calPop.it.start_time }} · {{ calPop.it.subject }}<template v-if="calPop.it.makeup"> (보강)</template></div>
     <div v-if="calPop.it.status==='ABSENT'" class="mt-1 text-rose-500">결석</div>
@@ -2670,7 +2670,7 @@
   </div>
 
   <!-- 형제(보호자 연결 학생) 호버 팝오버 -->
-  <div v-if="sibPop.show" class="fixed z-50 bg-white rounded-lg shadow-xl border w-72 overflow-y-auto" style="max-height:18rem"
+  <div v-if="sibPop.show" class="fixed z-[95] bg-white rounded-lg shadow-xl border w-72 overflow-y-auto" style="max-height:18rem"
        :style="{ left: sibPop.x+'px', top: sibPop.y+'px' }"
        @mouseenter="sibPopHover=true" @mouseleave="sibPopHover=false; scheduleCloseSib()">
     <div class="px-3 py-2 border-b text-xs font-bold sticky top-0 bg-white">{{ sibPop.name }} · 연결 학생 {{ sibPop.list.length }}명</div>
