@@ -798,6 +798,8 @@
                   <span v-if="dcMarkedDel(dc)" class="font-mono line-through text-slate-400">-{{ Number(dc.off||dc.raw||0).toLocaleString() }}원</span>
                   <span v-else-if="dc.beaten" class="font-mono line-through">-{{ Number(dc.raw||0).toLocaleString() }}원</span>
                   <span v-else class="font-mono text-rose-500">-{{ Number(dc.off).toLocaleString() }}원</span>
+                  <span v-if="dc.kind==='PERCENT' && !dc.beaten && dc.on && dc.on !== stuFee.base"
+                        class="text-[10px] text-slate-400 whitespace-nowrap">{{ Number(dc.on).toLocaleString() }}원의 {{ dc.value }}%</span>
                   <span v-if="dcMarkedDel(dc)" class="text-[10px] px-1 rounded bg-rose-50 text-rose-500 whitespace-nowrap">뗄 예정</span>
                   <span v-else-if="dc.beaten" class="text-[10px] px-1 rounded bg-slate-100 text-slate-500 whitespace-nowrap">더 큰 할인에 밀림</span>
                   <span v-else-if="dc.capped" class="text-[10px] px-1 rounded bg-amber-50 text-amber-600 whitespace-nowrap">최대 {{ Number(dc.cap).toLocaleString() }}원까지</span>
@@ -814,6 +816,7 @@
                 </div>
                 <div v-if="(stuFee.discounts||[]).length>1" class="text-[11px] text-slate-400 pt-0.5">
                   할인은 겹치지 않습니다. 큰 것 하나만 붙고, <b>따로</b> 표시된 것만 함께 붙습니다.
+                  따로 붙는 비율 할인은 <b>깎고 남은 금액</b>에 매깁니다.
                   <span v-if="stuFee.cap_rule">· 지금 기준: 주{{ stuFee.cap_rule.sessions }}회 · 재원 {{ stuFee.cap_rule.months }}개월</span>
                 </div>
               </div>

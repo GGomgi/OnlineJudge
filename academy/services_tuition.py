@@ -294,8 +294,17 @@ def _apply_discounts(student_id, out, for_ym=None, cache=None):
     진학과 형제가 함께 걸려도 둘 중 큰 쪽만 간다. 밀린 줄도 청구서에 남긴다 —
     지워 버리면 학부모가 "형제 할인은요?" 하고 물을 때 댈 말이 없다.
 
-    '따로 붙음'(소개 할인)은 이 겨룸 밖이다. 원비를 깎아 주는 것이 아니라 소개해 준 데
-    대한 답례라, 진학 할인에 밀려 사라지면 뜻이 없어진다.
+    '따로 붙음'(소개 할인·3개월 결제 할인)은 이 겨룸 밖이라 함께 붙는다. 다만 **깎고
+    남은 금액**에 붙는다. 3개월 결제 5% 는 원래 금액이 아니라 진학 할인을 뺀 뒤의
+    금액에서 5% 다.
+
+        260,000  기본
+        -30,000  진학 할인          → 230,000
+        -11,500  3개월 결제 5%      ← 260,000 의 5%(13,000)가 아니다
+        218,500  낼 돈
+
+    따로 붙는 것이 여럿이면 정액을 먼저 빼고 남은 금액에 비율을 매긴다. 순서에 따라
+    금액이 달라지므로 못박아 둔다.
     """
     rows, later = _pick_discounts(student_id, for_ym, cache)
 
@@ -306,7 +315,7 @@ def _apply_discounts(student_id, out, for_ym=None, cache=None):
         return {"id": r.id, "item_id": r.item_id, "name": r.item.name, "kind": r.item.kind,
                 "value": _disc_value(r), "off": off, "note": r.note,
                 "recurring": r.item.recurring, "used_ym": r.used_ym,
-                "raw": None, "capped": False, "cap": cap,
+                "raw": None, "capped": False, "cap": cap, "on": None,
                 "alone": r.item.stands_alone, "beaten": beaten}
 
     if amount is None:
@@ -322,19 +331,22 @@ def _apply_discounts(student_id, out, for_ym=None, cache=None):
     out["enrolled_months"] = months
 
     base = amount
-    lines = []
-    for r in rows:
+
+    def calc(r, on):
+        """이 할인이 `on` 원에 붙으면 얼마인가. 뚜껑까지 씌운 줄을 돌려준다."""
         v = _disc_value(r)
-        raw = v if r.item.kind == "AMOUNT" else int(base * v / 100.0)
+        raw = v if r.item.kind == "AMOUNT" else int(on * v / 100.0)
         cap = cap_for(branch_id, r.item.cap_scope or "DEFAULT", sessions, months, cache)
         off = raw if cap is None else min(raw, cap)
-        ln = line(r, max(0, min(off, base)), cap)
+        ln = line(r, max(0, min(off, on)), cap)
         ln["raw"] = raw
+        ln["on"] = on
         ln["capped"] = (cap is not None and raw > cap)
-        lines.append(ln)
+        return ln
 
-    alone = [ln for ln in lines if ln["alone"]]
-    rivals = [ln for ln in lines if not ln["alone"]]
+    # ── 1) 겨루는 것 — 기본 원비를 기준으로 셈해 큰 것 하나만 ──
+    rivals = [calc(r, base) for r in rows if not r.item.stands_alone]
+    win = None
     if rivals:
         # 같은 금액이면 먼저 붙인 것이 이긴다(줄 차례가 곧 붙인 차례다)
         win = max(rivals, key=lambda ln: ln["off"])
@@ -342,8 +354,21 @@ def _apply_discounts(student_id, out, for_ym=None, cache=None):
             if ln is not win:
                 ln["beaten"] = True
                 ln["off"] = 0
-    total_off = sum(ln["off"] for ln in lines)
-    out["discounts"] = lines
-    out["amount"] = max(0, int(base - total_off))
+
+    remain = base - (win["off"] if win else 0)
+
+    # ── 2) 따로 붙는 것 — 깎고 남은 금액에 붙는다. 정액 먼저, 비율 나중 ──
+    alone_rows = [r for r in rows if r.item.stands_alone]
+    alone = []
+    for kind in ("AMOUNT", "PERCENT"):
+        for r in [x for x in alone_rows if x.item.kind == kind]:
+            ln = calc(r, remain)
+            remain -= ln["off"]
+            alone.append(ln)
+
+    # 화면에 보이는 차례는 붙은 차례 그대로
+    by_id = {ln["id"]: ln for ln in rivals + alone}
+    out["discounts"] = [by_id[r.id] for r in rows if r.id in by_id]
+    out["amount"] = max(0, int(remain))
     out["cap_rule"] = {"sessions": sessions, "months": months}
     return out

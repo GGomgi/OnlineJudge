@@ -772,6 +772,79 @@ class FixedTemplate(models.Model):
         unique_together = ("branch", "key")
 
 
+class NotifyKind(object):
+    ARRIVE = "ARRIVE"        # 등원
+    LEAVE = "LEAVE"          # 하원
+    ABSENT = "ABSENT"        # 결석
+    MAKEUP = "MAKEUP"        # 보강 안내
+    FEEDBACK = "FEEDBACK"    # 수업 피드백
+    TUITION = "TUITION"      # 원비 청구(결제선생이 보냄)
+    ETC = "ETC"
+
+
+NOTIFY_KIND_CHOICES = [
+    (NotifyKind.ARRIVE, "등원"), (NotifyKind.LEAVE, "하원"),
+    (NotifyKind.ABSENT, "결석"), (NotifyKind.MAKEUP, "보강"),
+    (NotifyKind.FEEDBACK, "수업 피드백"), (NotifyKind.TUITION, "원비"),
+    (NotifyKind.ETC, "기타"),
+]
+
+
+class NotifyStatus(object):
+    PENDING = "PENDING"      # 보내는 중
+    SENT = "SENT"
+    FAILED = "FAILED"
+    READ = "READ"            # 중계사가 읽음을 알려 주면
+    SKIPPED = "SKIPPED"      # 보내지 않음(동의 없음·휴원 등) — 까닭을 message 에
+
+
+NOTIFY_STATUS_CHOICES = [
+    (NotifyStatus.PENDING, "보내는 중"), (NotifyStatus.SENT, "보냄"),
+    (NotifyStatus.FAILED, "실패"), (NotifyStatus.READ, "읽음"),
+    (NotifyStatus.SKIPPED, "안 보냄"),
+]
+
+
+class NotifyLog(models.Model):
+    """학부모에게 나간 알림 한 건(docs/84).
+
+    보내는 것보다 **남기는 것**이 이 표의 목적이다. 지금은 전화번호를 모아 손으로
+    보내고 무엇을 보냈는지 아무 데도 남지 않는다.
+
+    나간 글(body)을 통째로 남긴다. 템플릿 코드만 남기면 나중에 문안을 고쳤을 때 옛
+    기록이 새 문안으로 읽혀 '이렇게 보낸 적 없는데'가 된다.
+
+    보내지 않은 것도 남긴다(SKIPPED). 조용히 넘어가면 왜 안 갔는지 아무도 모른다.
+    """
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="notify_logs")   # 누구에 대한 알림인가
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="notify_logs")
+    to_name = models.CharField(max_length=64, blank=True, default="")   # 받은 사람
+    to_phone = models.CharField(max_length=32, blank=True, default="")
+    kind = models.CharField(max_length=16, default=NotifyKind.ETC)
+    channel = models.CharField(max_length=16, blank=True, default="")   # KAKAO / SMS
+    provider = models.CharField(max_length=16, blank=True, default="")  # SOLAPI / PAYSSAM
+    template_code = models.CharField(max_length=64, blank=True, default="")
+    body = models.TextField(blank=True, default="")                     # 실제로 나간 글
+    variables = models.TextField(blank=True, default="")                # 넣은 값(JSON)
+    status = models.CharField(max_length=16, default=NotifyStatus.PENDING)
+    message = models.CharField(max_length=255, blank=True, default="")  # 실패·건너뜀 까닭
+    provider_msg_id = models.CharField(max_length=64, blank=True, default="")
+    # 같은 일로 두 번 나가지 않게. 손으로 보낸 것은 비운다(빈 값이 여럿일 수 있어 null).
+    idem_key = models.CharField(max_length=80, null=True, blank=True, unique=True)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")  # 손으로 보냈으면
+    ref_id = models.PositiveIntegerField(null=True, blank=True)   # 딸린 수업·청구서 id
+    sent_time = models.DateTimeField(null=True, blank=True)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_notify_log"
+        ordering = ["-create_time", "-id"]
+        indexes = [models.Index(fields=["student", "-create_time"])]
+
+
 class Message(models.Model):
     """직원 간 1:1 쪽지. 보낸/받은 각 측에서 소프트삭제(상대에겐 영향 없음)."""
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
