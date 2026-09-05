@@ -3375,16 +3375,14 @@ class StudentStatusAdminAPI(APIView):
         # 적용일 이후로 이미 만들어져 있던 수업 정리 — 실제 기록이 있는 건 사실이므로 남긴다
         upcoming = list(LessonOccurrence.objects.filter(
             student=student, date__gte=eff, is_makeup=False, source_timetable__isnull=False))
-        rec_ids = _occ_record_ids(upcoming)
-        # 앞날의 휴무 줄은 남길 것이 없다. 휴무는 학원 달력에 이미 있고, 이 줄은 그 학생이
-        # 그날 수업이 있을 때만 뜻이 있다 — 쉬거나 그만둔 학생에게는 그림자만 남는다.
-        loose = _occ_record_ids(upcoming, ignore_status=True)
+        # 휴원·퇴원한 뒤로는 수업이 아예 없다. 상태가 무엇이든(예정·휴무·임시휴원) 그
+        # 줄은 그림자일 뿐이다 — 남겨 두면 출결기록에 다니지 않는 달의 수업이 늘어서고
+        # 임시휴원으로 적힌 줄이 '수업이 있었는데 쉬었다'로 읽힌다(전지효 2026-09-05).
+        # 다만 사람이 남긴 것(등원·비고·수업일지·연결된 보강)은 사실이므로 지킨다.
+        rec_ids = _occ_record_ids(upcoming, ignore_status=True)
         removed = 0
         for occ in upcoming:
-            keep = occ.id in rec_ids
-            if occ.status == OccurrenceStatus.HOLIDAY and occ.id not in loose:
-                keep = False
-            if keep or occ.time_change_reason:
+            if occ.id in rec_ids or occ.time_change_reason:
                 continue
             occ.delete()
             removed += 1
