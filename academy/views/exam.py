@@ -1235,6 +1235,23 @@ class StudentTuitionAdminAPI(APIView):
                            "will_off": (raw if cap is None else min(raw, cap)),
                            "stands_alone": x.stands_alone})
         d["items"] = _items
+        # 청구·납부 요약. 원비 금액과 납부는 한 이야기라 같은 자리에서 보여야 한다.
+        # 탭을 하나 더 만들면 금액을 보고 다시 옮겨 가 납부를 봐야 한다.
+        from ..models import Invoice, Payment
+        from .billing import _paid_map
+        _invs = list(Invoice.objects.filter(student_id=sid, is_void=False))
+        _paid = _paid_map([x.id for x in _invs])
+        _unpaid = sorted([(x.ym, max(0, x.amount - _paid.get(x.id, 0)))
+                          for x in _invs if x.amount > _paid.get(x.id, 0)])
+        _last = Payment.objects.filter(student_id=sid, is_void=False).order_by("-paid_on", "-id").first()
+        d["billing"] = {
+            "invoices": len(_invs),
+            "unpaid_months": [m for m, _ in _unpaid],
+            "unpaid": sum(r for _, r in _unpaid),
+            "last_paid_on": (str(_last.paid_on) if _last else ""),
+            "last_paid_amount": (_last.amount if _last else 0),
+            "paid_months": sorted(x.ym for x in _invs if x.amount <= _paid.get(x.id, 0)),
+        }
         d["history"] = [{"detail": c.detail, "reason": c.reason,
                          "actor": name_of(c.actor) if c.actor_id else "",
                          "time": kst_dt(c.create_time)}

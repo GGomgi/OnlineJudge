@@ -759,6 +759,26 @@
               </div>
             </div>
 
+            <!-- 납부는 원비 금액의 뒷이야기다. 탭을 따로 두면 금액을 보고 다시 옮겨 가야 한다 -->
+            <div v-if="stuFee.billing" class="flex items-center gap-2 flex-wrap text-[11px] mb-1">
+              <template v-if="stuFee.billing.invoices">
+                <span v-if="stuFee.billing.unpaid" class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 font-medium">
+                  미납 {{ Number(stuFee.billing.unpaid).toLocaleString() }}원
+                  <span class="font-normal">({{ stuFee.billing.unpaid_months.join(', ') }})</span>
+                </span>
+                <span v-else class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">밀린 원비 없음</span>
+                <span v-if="stuFee.billing.paid_months.length" class="text-slate-400">
+                  완납 {{ stuFee.billing.paid_months.join(', ') }}
+                </span>
+                <span v-if="stuFee.billing.last_paid_on" class="text-slate-400">
+                  · 마지막 납부 {{ dd(stuFee.billing.last_paid_on) }} {{ Number(stuFee.billing.last_paid_amount).toLocaleString() }}원
+                </span>
+              </template>
+              <span v-else class="text-slate-400">아직 만든 청구서가 없습니다.</span>
+              <button v-if="stuFee.can_edit" @click="openPay(stuDetail.id, stuDetail.real_name || stuDetail.username)"
+                      class="text-indigo-500 hover:underline">납부 내역 · 기록</button>
+            </div>
+
             <!-- 예정과 실제가 어긋나면 알린다. 조용히 넘어가면 틀린 금액을 청구하게 된다 -->
             <div v-for="(w,i) in (stuFee.warnings||[])" :key="i"
                  class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-1">⚠ {{ w }}</div>
@@ -7468,7 +7488,8 @@
     </section>
 
     <!-- 납부 기록 창 -->
-    <div v-if="payFor" class="fixed inset-0 bg-black/40 z-[65] flex items-start justify-center p-4 overflow-auto" @click.self="payFor=null">
+    <!-- 학생 상세(z-70) 위에서도 열린다. 그 아래면 열어도 안 보인다 -->
+    <div v-if="payFor" class="fixed inset-0 bg-black/40 z-[75] flex items-start justify-center p-4 overflow-auto" @click.self="payFor=null">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl my-4">
         <div class="flex items-center justify-between px-5 py-3 border-b">
           <div class="font-bold">{{ payFor.name }} — 원비 수납</div>
@@ -12824,6 +12845,7 @@ const app = createApp({
         this.notify(Number(d.allocated).toLocaleString() + '원 붙였습니다.' + (d.left ? ' (남은 돈 '+Number(d.left).toLocaleString()+'원은 다음 청구서에)' : ''));
         this.payForm.amount = ''; this.payForm.note = '';
         await this.loadPayData(); this.loadInvoices(); this.loadUnpaid();
+        if (this.stuDetail) this.loadStuFee();     // 학생 상세의 미납 줄도 함께 맞춘다
       } catch(e){ this.notify(e.message,false); }
     },
     async voidPayment(p){
@@ -12832,6 +12854,7 @@ const app = createApp({
       try {
         await api('DELETE','/api/admin/academy/payment?id='+p.id+'&reason='+encodeURIComponent(reason));
         await this.loadPayData(); this.loadInvoices(); this.loadUnpaid();
+        if (this.stuDetail) this.loadStuFee();
       } catch(e){ this.notify(e.message,false); }
     },
     // ── 학생별 원비 ──
