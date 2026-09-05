@@ -3501,7 +3501,18 @@
           <table class="w-full min-w-max text-sm">
             <thead class="bg-indigo-50 text-slate-500 text-xs">
               <tr>
-                <th v-for="c in stuCols" :key="c.k" :class="['text-left px-3 py-2 whitespace-nowrap']">{{ c.l }}</th>
+                <th v-for="c in stuCols" :key="c.k" :class="['text-left px-3 py-2 whitespace-nowrap']">
+                  <template v-if="c.k==='month'">
+                    <div>{{ c.l }}</div>
+                    <div class="flex items-center gap-0.5 font-normal text-[10px] text-slate-400">
+                      <button @click="shiftStuMonth(-1)" class="hover:text-indigo-600 px-0.5">◀</button>
+                      <span :class="stuMonth===todayStr.slice(0,7) ? '' : 'text-indigo-600 font-semibold'">{{ stuMonthLabel }}</span>
+                      <button @click="shiftStuMonth(1)" :disabled="stuMonth>=todayStr.slice(0,7)"
+                              class="hover:text-indigo-600 px-0.5 disabled:opacity-25">▶</button>
+                    </div>
+                  </template>
+                  <template v-else>{{ c.l }}</template>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -5211,9 +5222,18 @@
           <thead class="bg-slate-50 text-slate-500 text-xs">
             <tr>
               <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다. 정렬은 헤더 클릭 그대로. -->
-              <th v-for="c in stuCols" :key="c.k" @click="colSortField(c.k) && sortStu(colSortField(c.k))"
-                  :class="['text-left px-3 py-2 select-none whitespace-nowrap', colSortField(c.k) ? 'cursor-pointer hover:text-slate-700' : '']">
-                {{ c.l }}<template v-if="colSortField(c.k)">{{ stuArrow(colSortField(c.k)) }}</template>
+              <th v-for="c in stuCols" :key="c.k" @click="c.k!=='month' && colSortField(c.k) && sortStu(colSortField(c.k))"
+                  :class="['text-left px-3 py-2 select-none whitespace-nowrap', (c.k!=='month' && colSortField(c.k)) ? 'cursor-pointer hover:text-slate-700' : '']">
+                <template v-if="c.k==='month'">
+                  <div>{{ c.l }}</div>
+                  <div class="flex items-center gap-0.5 font-normal text-[10px] text-slate-400">
+                    <button @click.stop="shiftStuMonth(-1)" class="hover:text-indigo-600 px-0.5">◀</button>
+                    <span :class="stuMonth===todayStr.slice(0,7) ? '' : 'text-indigo-600 font-semibold'">{{ stuMonthLabel }}</span>
+                    <button @click.stop="shiftStuMonth(1)" :disabled="stuMonth>=todayStr.slice(0,7)"
+                            class="hover:text-indigo-600 px-0.5 disabled:opacity-25">▶</button>
+                  </div>
+                </template>
+                <template v-else>{{ c.l }}<template v-if="colSortField(c.k)">{{ stuArrow(colSortField(c.k)) }}</template></template>
               </th>
             </tr>
           </thead>
@@ -8926,7 +8946,7 @@ const COLDEFS = {
     { k:'parent_phone', l:'보호자 연락처', d:'통화·문자 버튼 포함' },
     { k:'student_phone',l:'학생 연락처' },
     { k:'sibling',      l:'형제 재원' },
-    { k:'month',        l:'이번 달 결석·지각' },
+    { k:'month',        l:'결석·지각', d:'머리의 ◀▶ 로 달을 옮깁니다' },
     { k:'mk',           l:'미처리 보강' },
     { k:'last_attend',  l:'마지막 등원', d:'며칠 전인지' },
     { k:'verify',       l:'학부모 확인 대기' },
@@ -9022,7 +9042,7 @@ const app = createApp({
       unpaid: [], unpaidTotal: 0,
       payFor: null, payData: { invoices:[], payments:[] },
       payForm: { paid_on:'', amount:'', method:'TRANSFER', note:'' },
-      stuFee: null, stuFeeEdit: false, stuFeeAddId: '', stuDiscAdd: [], stuDiscDel: [],
+      stuMonth: '', stuFee: null, stuFeeEdit: false, stuFeeAddId: '', stuDiscAdd: [], stuDiscDel: [],
       stuFeeForm: { mode:'AUTO', planned_sessions:'', planned_duration:'', manual_amount:'', note:'' },
       dcRows: [], dcNew: null, capRows: [], capNew: null,
       examCatalogs: [], examKinds: [], examModes: [],
@@ -9935,6 +9955,10 @@ const app = createApp({
       return r.length>0 && r.every(e=>this.examSel.includes(e.id));
     },
     stuCols(){ return this.colOrder('stu'); },
+    stuMonthLabel(){
+      const m = this.stuMonth || this.todayStr.slice(0,7);
+      return (m.slice(0,4)===this.todayStr.slice(0,4) ? '' : m.slice(2,4)+'.') + Number(m.slice(5,7)) + '월';
+    },
     // 상태(재원·휴원·퇴원)를 가리지 않고 찾는다 — 오늘 운영에서는 오히려 휴원생을
     // 확인할 일이 많다(언제 돌아오는지 등). 상태는 배지로 구분한다.
     dashStuFound(){
@@ -13515,7 +13539,8 @@ const app = createApp({
         if (this.colOn('stu','tenure') || this.colOn('stu','enrolled_at')) need.push('verify');
         if (this.colOn('stu','discounts')) need.push('fee');   // 두 열이 같은 셈을 쓴다
         need.push('weekdays');
-        const qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
+        let qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
+        if (this.stuMonth) qs += (qs ? '&' : '?') + 'month=' + this.stuMonth;
         this.dashStuAll = await api('GET','/api/admin/academy/students'+qs) || [];
       } catch(e){ this.dashStuAll = []; }
       finally { this.dashStuLoading = false; }
@@ -14967,7 +14992,8 @@ const app = createApp({
       if (this.colOn('stu','tenure') || this.colOn('stu','enrolled_at')) need.push('verify');
       if (this.colOn('stu','discounts')) need.push('fee');   // 두 열이 같은 셈을 쓴다
       need.push('weekdays');    // 요일로 찾을 수 있어야 해서 열을 껐어도 받아 둔다
-      const qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
+      let qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
+      if (this.stuMonth) qs += (qs ? '&' : '?') + 'month=' + this.stuMonth;
       try { this.students = await api('GET','/api/admin/academy/students'+qs); }
       catch(e){ this.notify(e.message,false); }
     },
@@ -15363,6 +15389,16 @@ const app = createApp({
       return groups.some(terms => terms.every(hit));
     },
     // 이 학생이 주 몇 회인가. 시간표가 없으면 등록할 때 적어 둔 주횟수를 쓴다.
+    // 결석·지각을 다른 달로 옮겨 본다. 표를 두 곳에서 쓰므로 같은 달을 함께 본다.
+    shiftStuMonth(d){
+      const m = this.stuMonth || this.todayStr.slice(0,7);
+      const dt = new Date(Number(m.slice(0,4)), Number(m.slice(5,7))-1+d, 1);
+      const next = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+      if (next > this.todayStr.slice(0,7)) return;      // 앞날은 셀 것이 없다
+      this.stuMonth = next;
+      this.loadStudents();
+      if (this.dashStuAll){ this.dashStuAll = null; this.ensureDashStudents(); }
+    },
     stuWeekly(st){
       const d = (st.extra||{}).durations;
       if (d && d.length) return d.length;

@@ -1926,7 +1926,7 @@ def _missing_info(sp):
     return out
 
 
-def _student_list_extra(rows, want):
+def _student_list_extra(rows, want, month=""):
     """학생 목록의 선택 열 값. 필요한 것만 통째로 한 번씩 읽어 학생별로 묶는다."""
     ids = [r["id"] for r in rows]
     if not ids:
@@ -1977,10 +1977,21 @@ def _student_list_extra(rows, want):
                                       for d in (f.get("discounts") or [])]}
 
     if "month" in want:
+        # 기본은 이번 달. ?month=2026-08 처럼 지난 달을 볼 수 있다(열 머리의 ◀▶).
         m0 = today.replace(day=1)
+        m1 = today
+        _ym = (month or "").strip()
+        if len(_ym) == 7 and _ym[4] == "-":
+            try:
+                y, mm = int(_ym[:4]), int(_ym[5:7])
+                m0 = date_cls(y, mm, 1)
+                nxt = date_cls(y + (1 if mm == 12 else 0), 1 if mm == 12 else mm + 1, 1)
+                m1 = min(today, nxt - timedelta(days=1))
+            except ValueError:
+                m0, m1 = today.replace(day=1), today
         starts = {}
         for o in LessonOccurrence.objects.filter(
-                student_id__in=ids, date__gte=m0, date__lte=today).only(
+                student_id__in=ids, date__gte=m0, date__lte=m1).only(
                 "student_id", "date", "start_time", "status"):
             if o.status == OccurrenceStatus.ABSENT:
                 e = ex[o.student_id]
@@ -1990,7 +2001,7 @@ def _student_list_extra(rows, want):
             if key not in starts or t < starts[key]:
                 starts[key] = t
         for a in DailyAttendance.objects.filter(
-                student_id__in=ids, date__gte=m0, date__lte=today,
+                student_id__in=ids, date__gte=m0, date__lte=m1,
                 check_in_at__isnull=False).only("student_id", "date", "check_in_at"):
             ref = starts.get((a.student_id, a.date))
             if ref is not None and _t2m(_hm_kst(a.check_in_at)) - ref > 5:
@@ -2107,7 +2118,7 @@ class StudentListAdminAPI(APIView):
         # 화면이 cols= 로 알려준 것만 만든다.
         want = {c for c in (request.GET.get("cols") or "").split(",") if c}
         if want:
-            _student_list_extra(out, want)
+            _student_list_extra(out, want, request.GET.get("month") or "")
 
         # 휴원/퇴원 학생은 상태 변경 이력을 함께 내려 목록에서 호버로 보기
         non_enrolled = [r["id"] for r in out
