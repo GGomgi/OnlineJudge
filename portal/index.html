@@ -3299,7 +3299,7 @@
       <!-- 학생 검색은 수업표 바로 위 — 걸러 볼 대상이 바로 아래에 있어야 한다 -->
       <div class="flex items-center gap-2 mb-3">
         <!-- v-model은 한글 조합 중 값 갱신을 보류하므로, 조합 중 글자까지 받도록 원시 input 이벤트로 바인딩 -->
-        <search-box v-model="dashFilter.qRaw" placeholder="학생 검색 — 이름·학교·과정·요일 (토요일 C언어, 초등학생 3)" class="flex-1 min-w-0"></search-box>
+        <search-box v-model="dashFilter.qRaw" placeholder="학생 검색 — 이름·학교·과정·요일·주횟수 (토요일 C언어, 중등 주2회)" class="flex-1 min-w-0"></search-box>
         <div class="w-32 shrink-0"><select v-model="dashFilter.subject" class="input py-1"><option value="">과목 전체</option><option v-for="s in dashSubjects" :key="s" :value="s">{{ s }}</option></select></div>
         <div class="w-32 shrink-0"><select v-model="dashFilter.instructor" class="input py-1"><option value="">강사 전체</option><option v-for="t in dashInstructors" :key="t" :value="t">{{ t }}</option></select></div>
         <div v-if="showBranchCol" class="w-32 shrink-0"><select v-model="dashFilter.branch" class="input py-1"><option value="">지점 전체</option><option v-for="b in dashBranches" :key="b" :value="b">{{ b }}</option></select></div>
@@ -5194,7 +5194,7 @@
       <!-- 검색/필터 -->
       <div class="flex items-center gap-2 mb-3">
         <!-- 두 칸으로 나눠 두었던 1차·2차가 하던 일이 곧 '그리고' 라서 한 칸으로 합쳤다 -->
-        <search-box v-model="stuSearchRaw" ref="stuSearchInput" placeholder="검색 — 이름·학교·과정·요일 (토요일 C언어, 초등학생 3)" class="flex-1 min-w-0"></search-box>
+        <search-box v-model="stuSearchRaw" ref="stuSearchInput" placeholder="검색 — 이름·학교·과정·요일·주횟수 (토요일 C언어, 중등 주2회)" class="flex-1 min-w-0"></search-box>
         <div class="shrink-0 w-28">
           <select v-model="stuStatusFilter" class="input py-1">
             <option value="">상태 전체</option>
@@ -7057,7 +7057,7 @@
         <div class="p-5 space-y-3">
           <div class="flex items-center gap-2">
             <search-box v-model="phonePick.qRaw" @enter="phoneRemember(phonePick.qRaw)"
-                        placeholder="검색 — 이름·학교·과정·요일 (예: 토요일 블록코딩, 달튼 2) · 엔터로 검색어 저장"
+                        placeholder="검색 — 이름·학교·과정·요일·주횟수·재원상태 (예: 중등 주2회, 휴원) · 엔터로 검색어 저장"
                         class="flex-1"></search-box>
             <button @click="phoneFav" :disabled="!(phonePick.q||'').trim()"
                     :class="['px-2 py-1.5 rounded border text-sm whitespace-nowrap disabled:opacity-30',
@@ -15337,6 +15337,10 @@ const app = createApp({
           if (want) return subj.some(x => want.includes(x));
           return hay.includes(term);           // 'c' 한 글자는 그냥 글자로 찾는다
         }
+        // '주2회'·'주2' — 오늘 기준 적용중인 시간표 개수로 센다. 등록 주횟수와 어긋난
+        // 학생이 있어(시간표를 나중에 넣다가 달라진다) 실제 시간표를 따른다.
+        let w = term.match(/^주\s*(\d{1,2})\s*회?$/);
+        if (w) return this.stuWeekly(st) === Number(w[1]);
         // '5학년' 은 학년으로 본다 — 그냥 '5' 로 찾으면 전화번호·학교이름(ICS5)에도 걸린다
         let m = term.match(/^(\d{1,2})학년$/);
         if (m) return String(st.grade || '') === m[1];
@@ -15357,6 +15361,14 @@ const app = createApp({
         return false;
       };
       return groups.some(terms => terms.every(hit));
+    },
+    // 이 학생이 주 몇 회인가. 시간표가 없으면 등록할 때 적어 둔 주횟수를 쓴다.
+    stuWeekly(st){
+      const d = (st.extra||{}).durations;
+      if (d && d.length) return d.length;
+      const w = (st.extra||{}).weekdays || {};
+      const n = Object.keys(w).reduce((a,k)=> a + ((w[k]||[]).length), 0);
+      return n || Number(st.weekly_sessions || 0);
     },
     stuHasWeekday(st, wi){
       const w = (st.extra||{}).weekdays || {};
