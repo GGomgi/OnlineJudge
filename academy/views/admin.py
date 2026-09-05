@@ -1992,10 +1992,15 @@ def _student_list_extra(rows, want, month=""):
         starts = {}
         for o in LessonOccurrence.objects.filter(
                 student_id__in=ids, date__gte=m0, date__lte=m1).only(
-                "student_id", "date", "start_time", "status"):
+                "student_id", "date", "start_time", "status", "note",
+                "no_makeup", "no_makeup_kind"):
             if o.status == OccurrenceStatus.ABSENT:
                 e = ex[o.student_id]
                 e["m_absent"] = e.get("m_absent", 0) + 1
+                e.setdefault("att_detail", []).append(
+                    {"date": str(o.date), "wd": _WD[o.date.weekday()], "kind": "absent",
+                     "time": str(o.start_time)[:5], "note": (o.note or "")[:80],
+                     "no_makeup": o.no_makeup, "no_makeup_kind": o.no_makeup_kind})
             key = (o.student_id, o.date)
             t = _t2m(o.start_time)
             if key not in starts or t < starts[key]:
@@ -2004,9 +2009,22 @@ def _student_list_extra(rows, want, month=""):
                 student_id__in=ids, date__gte=m0, date__lte=m1,
                 check_in_at__isnull=False).only("student_id", "date", "check_in_at"):
             ref = starts.get((a.student_id, a.date))
-            if ref is not None and _t2m(_hm_kst(a.check_in_at)) - ref > 5:
+            if ref is None:
+                continue
+            hm = _hm_kst(a.check_in_at)
+            diff = _t2m(hm) - ref
+            if diff > 5:
                 e = ex[a.student_id]
                 e["m_late"] = e.get("m_late", 0) + 1
+                e.setdefault("att_detail", []).append(
+                    {"date": str(a.date), "wd": _WD[a.date.weekday()], "kind": "late",
+                     "time": hm, "mins": diff})
+        for e in ex.values():
+            if e.get("att_detail"):
+                e["att_detail"].sort(key=lambda r: (r["date"], r["time"]), reverse=True)
+        ex_month = "%04d-%02d" % (m0.year, m0.month)
+        for e in ex.values():
+            e["att_month"] = ex_month
 
     if "mk" in want:
         made = set(LessonOccurrence.objects.filter(
@@ -4281,15 +4299,18 @@ def _dash_student_extra(d, lessons, late_min=5):
     starts, detail = {}, {}
     for o in LessonOccurrence.objects.filter(
             student_id__in=sids, date__gte=p0, date__lte=m1).only(
-            "student_id", "date", "start_time", "status"):
+            "student_id", "date", "start_time", "status", "note", "no_makeup", "no_makeup_kind"):
         this_month = o.date >= m0
         if o.status == OccurrenceStatus.ABSENT:
             e = out.setdefault(o.student_id, {})
             if this_month:
                 e["m_absent"] = e.get("m_absent", 0) + 1
+            # 왜 빠졌는지가 없으면 날짜만 늘어서 무엇을 봐야 할지 알 수 없다
             detail.setdefault(o.student_id, []).append(
                 {"date": str(o.date), "wd": _WD[o.date.weekday()], "kind": "absent",
-                 "time": str(o.start_time)[:5], "this_month": this_month})
+                 "time": str(o.start_time)[:5], "this_month": this_month,
+                 "note": (o.note or "")[:80], "no_makeup": o.no_makeup,
+                 "no_makeup_kind": o.no_makeup_kind})
         key = (o.student_id, o.date)
         t = _t2m(o.start_time)
         if key not in starts or t < starts[key]:

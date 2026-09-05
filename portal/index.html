@@ -2552,6 +2552,8 @@
         <span v-if="r.kind==='absent'" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600">결석</span>
         <span v-else class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{{ r.mins }}분 지각</span>
         <span class="font-mono text-slate-400">{{ r.time }}</span>
+        <span v-if="r.no_makeup" class="text-[10px] px-1 rounded bg-slate-100 text-slate-500">{{ r.no_makeup_kind==='HOMEWORK' ? '숙제 대체' : '보강 안 함' }}</span>
+        <span v-if="r.note" class="text-slate-500 truncate" style="max-width:16rem">{{ r.note }}</span>
       </div>
     </template>
   </div>
@@ -3569,10 +3571,13 @@
                   </template>
                   <template v-else-if="c.k==='sibling'">{{ (s.extra||{}).siblings ? '형제 '+(s.extra.siblings+1)+'명' : '-' }}</template>
                   <template v-else-if="c.k==='month'">
-                    <span v-if="(s.extra||{}).m_absent" class="text-rose-500">결{{ s.extra.m_absent }}</span>
-                    <span v-if="(s.extra||{}).m_absent && (s.extra||{}).m_late" class="text-slate-300"> · </span>
-                    <span v-if="(s.extra||{}).m_late" class="text-amber-600">지{{ s.extra.m_late }}</span>
-                    <span v-if="!(s.extra||{}).m_absent && !(s.extra||{}).m_late" class="text-slate-200">-</span>
+                    <span :class="((s.extra||{}).att_detail||[]).length ? 'cursor-help' : ''"
+                          @mouseenter="showStuAttPop(s,$event)" @mouseleave="hideAttDetailPop">
+                      <span v-if="(s.extra||{}).m_absent" class="text-rose-500">결{{ s.extra.m_absent }}</span>
+                      <span v-if="(s.extra||{}).m_absent && (s.extra||{}).m_late" class="text-slate-300"> · </span>
+                      <span v-if="(s.extra||{}).m_late" class="text-amber-600">지{{ s.extra.m_late }}</span>
+                      <span v-if="!(s.extra||{}).m_absent && !(s.extra||{}).m_late" class="text-slate-200">-</span>
+                    </span>
                   </template>
                   <template v-else-if="c.k==='mk'">
                     <span v-if="(s.extra||{}).mk_pending" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 text-[11px]">미정 {{ s.extra.mk_pending }}</span>
@@ -5299,10 +5304,13 @@
                 </template>
                 <template v-else-if="c.k==='sibling'">{{ (s.extra||{}).siblings ? '형제 '+(s.extra.siblings+1)+'명' : '-' }}</template>
                 <template v-else-if="c.k==='month'">
-                  <span v-if="(s.extra||{}).m_absent" class="text-rose-500">결{{ s.extra.m_absent }}</span>
-                  <span v-if="(s.extra||{}).m_absent && (s.extra||{}).m_late" class="text-slate-300"> · </span>
-                  <span v-if="(s.extra||{}).m_late" class="text-amber-600">지{{ s.extra.m_late }}</span>
-                  <span v-if="!(s.extra||{}).m_absent && !(s.extra||{}).m_late" class="text-slate-200">-</span>
+                  <span :class="((s.extra||{}).att_detail||[]).length ? 'cursor-help' : ''"
+                        @mouseenter="showStuAttPop(s,$event)" @mouseleave="hideAttDetailPop">
+                    <span v-if="(s.extra||{}).m_absent" class="text-rose-500">결{{ s.extra.m_absent }}</span>
+                    <span v-if="(s.extra||{}).m_absent && (s.extra||{}).m_late" class="text-slate-300"> · </span>
+                    <span v-if="(s.extra||{}).m_late" class="text-amber-600">지{{ s.extra.m_late }}</span>
+                    <span v-if="!(s.extra||{}).m_absent && !(s.extra||{}).m_late" class="text-slate-200">-</span>
+                  </span>
                 </template>
                 <template v-else-if="c.k==='mk'">
                   <span v-if="(s.extra||{}).mk_pending" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 text-[11px]">미정 {{ s.extra.mk_pending }}</span>
@@ -13602,6 +13610,15 @@ const app = createApp({
         x:Math.min(e.clientX+12, window.innerWidth-260), y:Math.min(e.clientY+12, window.innerHeight-240) };
     },
     hideAttDetailPop(){ this.attDetailPop.show = false; },
+    // 학생 목록의 결석·지각 칸. 그달치만 보여 준다 — 머리의 ◀▶ 로 고른 달이다.
+    showStuAttPop(s, e){
+      const rows = ((s.extra||{}).att_detail) || [];
+      if (!rows.length) return;
+      const m = (s.extra||{}).att_month || this.todayStr.slice(0,7);
+      this.attDetailPop = { show:true, name:(s.real_name || s.username),
+        groups: [{ label: Number(m.slice(5))+'월', rows }],
+        x:Math.min(e.clientX+12, window.innerWidth-380), y:Math.min(e.clientY+12, window.innerHeight-240) };
+    },
     showNextPop(l, e){
       this.nextPop = { show:true, name:l.student_name, rows:(this.dashEx(l).next||[]),
                        x:Math.min(e.clientX+12, window.innerWidth-260), y:Math.min(e.clientY+12, window.innerHeight-220) };
