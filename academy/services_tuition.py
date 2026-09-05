@@ -212,6 +212,13 @@ def _auto_base(branch_id, slots, st, cache=None):
     return int(round(total)), ""
 
 
+def _alone(r):
+    """이 줄이 겨룸 밖인가. 학생마다 둔 예외가 항목 설정보다 앞선다."""
+    if r.stands_alone_override is not None:
+        return r.stands_alone_override
+    return r.item.stands_alone
+
+
 def _disc_value(r):
     """이 학생에게 적용할 값. 사람마다 다른 경우(진학 할인)는 덮어쓴 값을 쓴다."""
     return r.item.value if r.value_override is None else r.value_override
@@ -316,7 +323,8 @@ def _apply_discounts(student_id, out, for_ym=None, cache=None):
                 "value": _disc_value(r), "off": off, "note": r.note,
                 "recurring": r.item.recurring, "used_ym": r.used_ym,
                 "raw": None, "capped": False, "cap": cap, "on": None,
-                "alone": r.item.stands_alone, "beaten": beaten}
+                "alone": _alone(r), "except": (r.stands_alone_override is not None),
+                "beaten": beaten}
 
     if amount is None:
         out["discounts"] = [line(r, 0) for r in rows]
@@ -345,7 +353,7 @@ def _apply_discounts(student_id, out, for_ym=None, cache=None):
         return ln
 
     # ── 1) 겨루는 것 — 기본 원비를 기준으로 셈해 큰 것 하나만 ──
-    rivals = [calc(r, base) for r in rows if not r.item.stands_alone]
+    rivals = [calc(r, base) for r in rows if not _alone(r)]
     win = None
     if rivals:
         # 같은 금액이면 먼저 붙인 것이 이긴다(줄 차례가 곧 붙인 차례다)
@@ -358,7 +366,7 @@ def _apply_discounts(student_id, out, for_ym=None, cache=None):
     remain = base - (win["off"] if win else 0)
 
     # ── 2) 따로 붙는 것 — 깎고 남은 금액에 붙는다. 정액 먼저, 비율 나중 ──
-    alone_rows = [r for r in rows if r.item.stands_alone]
+    alone_rows = [r for r in rows if _alone(r)]
     alone = []
     for kind in ("AMOUNT", "PERCENT"):
         for r in [x for x in alone_rows if x.item.kind == kind]:

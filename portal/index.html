@@ -814,6 +814,8 @@
                     <span class="text-slate-400">{{ dc.kind==='PERCENT' ? dc.value+'%' : Number(dc.value).toLocaleString()+'원' }}</span>
                     <span v-if="!dc.recurring" class="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">한 번만</span>
                     <span v-if="dc.alone" class="ml-1 text-[10px] px-1 rounded bg-sky-50 text-sky-600">따로</span>
+                    <span v-if="dc.except" class="ml-1 text-[10px] px-1 rounded bg-violet-50 text-violet-600"
+                          :title="dc.note || ''">예외</span>
                   </span>
                   <span v-if="dcMarkedDel(dc)" class="font-mono line-through text-slate-400">-{{ Number(dc.off||dc.raw||0).toLocaleString() }}원</span>
                   <span v-else-if="dc.beaten" class="font-mono line-through">-{{ Number(dc.raw||0).toLocaleString() }}원</span>
@@ -823,6 +825,11 @@
                   <span v-if="dcMarkedDel(dc)" class="text-[10px] px-1 rounded bg-rose-50 text-rose-500 whitespace-nowrap">뗄 예정</span>
                   <span v-else-if="dc.beaten" class="text-[10px] px-1 rounded bg-slate-100 text-slate-500 whitespace-nowrap">더 큰 할인에 밀림</span>
                   <span v-else-if="dc.capped" class="text-[10px] px-1 rounded bg-amber-50 text-amber-600 whitespace-nowrap">최대 {{ Number(dc.cap).toLocaleString() }}원까지</span>
+                  <!-- 규칙은 '큰 것 하나'지만 예전부터 겹쳐 받아 오던 학생이 있다 -->
+                  <button v-if="stuFeeEdit && !dcMarkedDel(dc)" @click="toggleStuDiscAlone(dc)"
+                          :class="['text-[10px] px-1 rounded border whitespace-nowrap',
+                                   dc.except ? 'border-violet-300 text-violet-600 hover:bg-violet-50'
+                                             : 'border-slate-200 text-slate-400 hover:bg-slate-50']">{{ dc.except ? '예외 풀기' : '겹쳐 주기' }}</button>
                   <button v-if="stuFeeEdit" @click="toggleStuDiscDel(dc)"
                           :class="['text-xs', dcMarkedDel(dc) ? 'text-slate-400 hover:underline' : 'text-slate-400 hover:text-rose-500']">{{ dcMarkedDel(dc) ? '되살리기' : '✕' }}</button>
                 </div>
@@ -837,6 +844,7 @@
                 <div v-if="(stuFee.discounts||[]).length>1" class="text-[11px] text-slate-400 pt-0.5">
                   할인은 겹치지 않습니다. 큰 것 하나만 붙고, <b>따로</b> 표시된 것만 함께 붙습니다.
                   따로 붙는 비율 할인은 <b>깎고 남은 금액</b>에 매깁니다.
+                  <b class="text-violet-600">예외</b>는 이 학생에게만 겹쳐 주기로 한 것입니다.
                   <span v-if="stuFee.cap_rule">· 지금 기준: 주{{ stuFee.cap_rule.sessions }}회 · 재원 {{ stuFee.cap_rule.months }}개월</span>
                 </div>
               </div>
@@ -12913,6 +12921,21 @@ const app = createApp({
     toggleStuDiscDel(dc){
       this.stuDiscDel = this.dcMarkedDel(dc) ? this.stuDiscDel.filter(x=>x!==dc.id)
                                              : this.stuDiscDel.concat([dc.id]);
+    },
+    // 이 학생 이 줄만 겨룸에서 뺀다. 항목을 통째로 바꾸면 다른 형제까지 겹친다.
+    async toggleStuDiscAlone(dc){
+      const on = !dc.except;
+      const reason = await this.askInput(on
+        ? ('「' + dc.name + '」을 이 학생에게만 겹쳐 주려 합니다.\n왜 예외인지 적어 주세요.\n예) 예전부터 진학+형제 겹쳐 받던 학생')
+        : ('「' + dc.name + '」의 예외를 풉니다. 다시 큰 것 하나만 붙습니다.\n까닭을 적어 주세요.'));
+      if (reason === null) return;
+      if (!reason.trim()) return this.notify('까닭이 필요합니다.', false);
+      try {
+        await api('PUT','/api/admin/academy/student_discount',
+                  { id:dc.id, stands_alone:(on ? true : null), reason:reason.trim() });
+        await this.loadStuFee(); this.loadStudents();
+        this.notify(on ? '겹쳐 주기로 했습니다.' : '예외를 풀었습니다.');
+      } catch(e){ this.notify(e.message,false); }
     },
     async saveStuFee(){
       try {

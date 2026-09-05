@@ -1062,6 +1062,11 @@ class StudentDiscount(models.Model):
     # 같은 항목인데 사람마다 값이 다른 경우(진학 할인은 다닌 기간에 따라 1만~4만).
     # 비면 항목의 값을 그대로 쓴다.
     value_override = models.PositiveIntegerField(null=True, blank=True)
+    # 이 학생에게만 겨룸에서 빼 준다. 규칙은 '큰 것 하나'지만 예전부터 겹쳐 받아 오던
+    # 학생이 있어(송선우·송선민 2026-09) 그 약속을 깰 수 없다. 항목을 통째로 바꾸면
+    # 다른 형제까지 겹치므로 붙인 줄 하나에만 예외를 둔다.
+    # 비면 항목 설정(item.stands_alone)을 따른다.
+    stands_alone_override = models.BooleanField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     note = models.CharField(max_length=255, blank=True, default="")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,

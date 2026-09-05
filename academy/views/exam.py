@@ -1383,6 +1383,45 @@ class StudentDiscountAdminAPI(APIView):
         return self.success(compute(int(sid)))
 
     @admin_role_required
+    def put(self, request):
+        """붙인 할인 한 줄의 예외 설정. {id, stands_alone(true/false/null), reason}
+
+        규칙은 '큰 것 하나'지만 예전부터 겹쳐 받아 오던 학생이 있다. 항목을 통째로
+        바꾸면 다른 형제까지 겹치므로 붙인 줄 하나에만 예외를 둔다. 바꾼 것은 이력에
+        남는다 — 왜 이 학생만 겹치는지 나중에 댈 말이 있어야 한다.
+        """
+        _d = menu_denied(request.user, "billing")
+        if _d:
+            return self.error(_d)
+        from ..models import StudentDiscount, StudentTuitionChange
+        from ..services_tuition import compute
+        d = request.data
+        row = StudentDiscount.objects.filter(id=d.get("id"), is_active=True) \
+                                     .select_related("item").first()
+        if not row:
+            return self.error("할인이 없습니다.")
+        prof = AcademyProfile.objects.filter(user_id=row.student_id, is_deleted=False).first()
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        reason = (d.get("reason") or "").strip()
+        if not reason:
+            return self.error("예외를 두는 까닭을 적어 주세요.")
+        v = d.get("stands_alone")
+        new = None if v is None else bool(v)
+        old = row.stands_alone_override
+        if new == old:
+            return self.success(compute(row.student_id))
+        row.stands_alone_override = new
+        row.note = reason
+        row.save(update_fields=["stands_alone_override", "note"])
+        _lbl = {True: "따로 붙음(겹침 허용)", False: "겨룸(큰 것 하나)", None: "항목 설정 따름"}
+        StudentTuitionChange.objects.create(
+            student_id=row.student_id, actor=request.user,
+            detail="할인 예외: %s — %s → %s" % (row.item.name, _lbl[old], _lbl[new]),
+            reason=reason)
+        return self.success(compute(row.student_id))
+
+    @admin_role_required
     def delete(self, request):
         _d = menu_denied(request.user, "billing")
         if _d:
