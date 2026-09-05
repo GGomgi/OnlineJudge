@@ -3379,7 +3379,7 @@ class StudentStatusAdminAPI(APIView):
         # 줄은 그림자일 뿐이다 — 남겨 두면 출결기록에 다니지 않는 달의 수업이 늘어서고
         # 임시휴원으로 적힌 줄이 '수업이 있었는데 쉬었다'로 읽힌다(전지효 2026-09-05).
         # 다만 사람이 남긴 것(등원·비고·수업일지·연결된 보강)은 사실이므로 지킨다.
-        rec_ids = _occ_record_ids(upcoming, ignore_status=True)
+        rec_ids = _occ_record_ids(upcoming, ignore_status=True, ignore_note=True)
         removed = 0
         for occ in upcoming:
             if occ.id in rec_ids or occ.time_change_reason:
@@ -4084,12 +4084,16 @@ def _conflict_msg(name, when, start_time, duration, label):
             % (name, when, label, fmt(a0), fmt(a1)))
 
 
-def _occ_record_ids(occs, ignore_status=False):
+def _occ_record_ids(occs, ignore_status=False, ignore_note=False):
     """'실제로 뭔가 있었던 수업'의 id 집합 — 등원·결석/휴원·비고·수업일지·연결된 보강.
     시간표가 바뀌거나 삭제돼도 이건 사실이므로 지우지 않고 남긴다.
 
     ignore_status=True 면 상태(휴무·결석 등)는 세지 않고 사람이 남긴 것만 본다.
-    앞날의 휴무 줄처럼 '상태만 붙어 있고 실은 빈 줄'을 가려낼 때 쓴다."""
+    앞날의 휴무 줄처럼 '상태만 붙어 있고 실은 빈 줄'을 가려낼 때 쓴다.
+
+    ignore_note=True 면 비고도 세지 않는다. 앞날에 적어 둔 비고는 '이날 쉰다'는 예고일
+    뿐이고 실제로 일어난 일이 아니다 — 휴원으로 그 기간이 통째로 없어지면 예고도 함께
+    없어져야 한다(서율 2026-09-05)."""
     ids = [o.id for o in occs]
     if not ids:
         return set()
@@ -4102,7 +4106,7 @@ def _occ_record_ids(occs, ignore_status=False):
              .values_list("makeup_for_id", flat=True))
     return {o.id for o in occs
             if ((o.student_id, o.date) in att or o.id in prog or o.id in mk
-                or bool(o.note)
+                or (not ignore_note and bool(o.note))
                 or (not ignore_status and o.status != OccurrenceStatus.SCHEDULED))}
 
 
