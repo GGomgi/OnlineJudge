@@ -8786,6 +8786,8 @@ const SCHOOL_ALIAS = { '초등학생':'초등학교', '중학생':'중학교', '
                        '초등':'초등학교', '중등':'중학교', '고등':'고등학교', '대학':'대학교' };
 // 전체 문자를 보낼 때처럼 '다 고르기'가 필요할 때. 이 말이 하나라도 있으면 모두 걸린다.
 const ALL_TERMS = new Set(['전체','모두','모든','전부','all']);
+// 형제가 함께 다니는 학생. 형제 할인을 붙이거나 한 집에 한 번만 연락할 때 쓴다.
+const SIB_TERMS = new Set(['형제', '형제자매', '남매', '자매', '형제재원']);
 // 재원 상태로 찾기. 목록마다 따로 고르는 칸을 두지 않고 검색어로 다룬다.
 const STATUS_TERMS = { '재원':'ENROLLED', '재원생':'ENROLLED', '재학':'ENROLLED',
                        '휴원':'ON_LEAVE', '휴원생':'ON_LEAVE',
@@ -13546,7 +13548,7 @@ const app = createApp({
         const need = heavy.filter(k=>this.colOn('stu', k));
         if (this.colOn('stu','tenure') || this.colOn('stu','enrolled_at')) need.push('verify');
         if (this.colOn('stu','discounts')) need.push('fee');   // 두 열이 같은 셈을 쓴다
-        need.push('weekdays');
+        need.push('weekdays', 'sibling');
         let qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
         if (this.stuMonth) qs += (qs ? '&' : '?') + 'month=' + this.stuMonth;
         this.dashStuAll = await api('GET','/api/admin/academy/students'+qs) || [];
@@ -15008,7 +15010,7 @@ const app = createApp({
       const need = heavy.filter(k=>this.colOn('stu', k));
       if (this.colOn('stu','tenure') || this.colOn('stu','enrolled_at')) need.push('verify');
       if (this.colOn('stu','discounts')) need.push('fee');   // 두 열이 같은 셈을 쓴다
-      need.push('weekdays');    // 요일로 찾을 수 있어야 해서 열을 껐어도 받아 둔다
+      need.push('weekdays', 'sibling');   // 요일·형제로 찾을 수 있어야 해서 열을 껐어도 받아 둔다
       let qs = need.length ? ('?cols='+[...new Set(need)].join(',')) : '';
       if (this.stuMonth) qs += (qs ? '&' : '?') + 'month=' + this.stuMonth;
       try { this.students = await api('GET','/api/admin/academy/students'+qs); }
@@ -15371,6 +15373,7 @@ const app = createApp({
       const subj = (st.subjects||[]).map(x => String(x).toLowerCase());
       const hit = (term) => {
         if (ALL_TERMS.has(term)) return true;
+        if (SIB_TERMS.has(term)) return !!((st.extra||{}).siblings);
         if (Object.prototype.hasOwnProperty.call(STATUS_TERMS, term))
           return (st.enrollment_status || '') === STATUS_TERMS[term];
         const wi = WD_FULL.indexOf(term);
@@ -15639,7 +15642,7 @@ const app = createApp({
     async openPhonePick(){
       // 요일은 열 설정과 무관하게 늘 필요하므로 여기서 따로 받아 둔다
       this.phonePick = { q:'', qRaw:'', batches:[], seq:1, comma:false, rows:[] };
-      try { this.phonePick.rows = await api('GET','/api/admin/academy/students?cols=weekdays') || []; }
+      try { this.phonePick.rows = await api('GET','/api/admin/academy/students?cols=weekdays,sibling') || []; }
       catch(e){ this.notify(e.message, false); }
       this.loadPhoneSaved();
       this.$nextTick(()=> this.openGuard('phonePick'));
@@ -15701,7 +15704,7 @@ const app = createApp({
     },
     async refreshPhoneRows(){
       if (!this.phonePick) return;
-      try { this.phonePick.rows = await api('GET','/api/admin/academy/students?cols=weekdays') || []; }
+      try { this.phonePick.rows = await api('GET','/api/admin/academy/students?cols=weekdays,sibling') || []; }
       catch(e){}
     },
     phoneToggle(st){
