@@ -841,6 +841,13 @@
                   <span class="font-mono text-emerald-600">-{{ Number(it.will_off||0).toLocaleString() }}원</span>
                   <button @click="unpickStuDiscount(it.id)" class="text-slate-400 hover:text-rose-500 text-xs">✕</button>
                 </div>
+                <!-- 같은 달에 둘을 붙여도 하나만 나간다. 안 보이면 빠뜨린 줄 안다 -->
+                <div v-for="(n,nm) in (stuFee.queued_discounts||{})" :key="nm"
+                     class="flex items-center gap-2 text-[11px]">
+                  <span class="w-44 text-slate-400">{{ nm }}</span>
+                  <span class="px-1 py-0.5 rounded bg-violet-50 text-violet-600 whitespace-nowrap">다음 달에 {{ n }}건 더</span>
+                  <span class="text-slate-400">한 달에 한 줄만 붙고 나머지는 밀립니다</span>
+                </div>
                 <div v-if="(stuFee.discounts||[]).length>1" class="text-[11px] text-slate-400 pt-0.5">
                   할인은 겹치지 않습니다. 큰 것 하나만 붙고, <b>따로</b> 표시된 것만 함께 붙습니다.
                   따로 붙는 비율 할인은 <b>깎고 남은 금액</b>에 매깁니다.
@@ -7397,6 +7404,13 @@
             <button @click="makeInvoices" :disabled="!pvPicked.length" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm whitespace-nowrap disabled:bg-slate-300">고른 {{ pvPicked.length }}명 만들기</button>
           </div>
         </div>
+        <!-- 수십 명이 늘어서 컨트롤F로 찾고 있었다. 오늘 운영과 같은 규칙으로 찾는다 -->
+        <div class="flex items-center gap-2 mb-2">
+          <search-box v-model="pvQRaw" placeholder="찾기 — 이름·학교·과목·강사·요일·주횟수 (토 C언어, 주2회)" class="flex-1 min-w-0"></search-box>
+          <span class="text-xs text-slate-400 whitespace-nowrap">{{ pvRows.length }}명
+            <span v-if="pvQ" class="text-indigo-500">/ 전체 {{ (ivPreview.rows||[]).length }}명</span>
+          </span>
+        </div>
         <div class="flex items-center gap-2 mb-1 text-[11px] text-slate-400">
           <span>열 이름을 누르면 <b>오름차순 → 내림차순 → 해제</b>. 여러 번 누른 순서대로 1차·2차·3차 정렬이 됩니다.</span>
           <span v-if="pvSort.length" class="text-indigo-500">지금: {{ pvSort.map((s,i)=>(i+1)+'차 '+pvLabel(s.k)+(s.dir>0?'↑':'↓')).join(' · ') }}</span>
@@ -7445,7 +7459,21 @@
                   <div v-if="pvOffBase(r)" class="text-[10px] text-slate-400 font-mono">기본 {{ Number(pvBase(r)).toLocaleString() }}</div>
                 </td>
                 <td class="px-2 py-1.5 text-xs">
-                  <span v-for="dc in r.discounts" :key="dc.id" class="text-rose-500 mr-1">{{ dc.name }} -{{ Number(dc.off).toLocaleString() }}<span v-if="!dc.recurring" class="text-amber-600">(한 번만)</span></span>
+                  <!-- 소개 할인처럼 그달에만 붙이는 것은 청구서를 만들 때 생각난다 -->
+                  <span v-for="dc in r.discounts" :key="dc.id"
+                        :class="['inline-flex items-center gap-0.5 mr-1', dc.beaten ? 'text-slate-400 line-through' : 'text-rose-500']">
+                    {{ dc.name }} -{{ Number(dc.off).toLocaleString() }}<span v-if="!dc.recurring" class="text-amber-600">(한 번만)</span>
+                    <button @click="pvDelDiscount(r, dc)" class="text-slate-300 hover:text-rose-500">✕</button>
+                  </span>
+                  <span v-for="(n,nm) in (r.queued_discounts||{})" :key="'q'+nm"
+                        class="mr-1 text-[10px] px-1 rounded bg-violet-50 text-violet-600 whitespace-nowrap">{{ nm }} 다음 달에 {{ n }}건 더</span>
+                  <select :value="''" @change="pvAddDiscount(r, $event.target.value)"
+                          class="input py-0.5 px-1 text-[11px] mr-1" style="width:7.5rem">
+                    <option value="">+ 할인</option>
+                    <option v-for="it in pvAddable(r)" :key="it.id" :value="it.id">
+                      {{ it.name }}{{ it.recurring ? '' : ' (한 번만)' }}
+                    </option>
+                  </select>
                   <span v-for="(w,i) in r.warnings" :key="'w'+i" class="text-amber-700 mr-1">⚠ {{ w }}</span>
                   <span v-if="r.paid" class="text-emerald-600">받음 {{ Number(r.paid).toLocaleString() }} — 고치려면 납부부터 취소</span>
                   <span v-if="r.mode==='MANUAL'" class="text-indigo-600 mr-1">직접 지정<span v-if="r.auto_base"> (기준표 {{ Number(r.auto_base).toLocaleString() }})</span></span>
@@ -9056,7 +9084,7 @@ const app = createApp({
       // 같은 금액끼리 묶어 안내 문자를 보내려면 주횟수·시간 순으로 봐야 한다.
       // 누른 순서가 1차·2차·3차 정렬이 된다.
       pvSort: [{k:'sessions',dir:1},{k:'dur_max',dir:1}],
-      pvSel: {}, pvAmt: {}, pvNote: {},
+      pvSel: {}, pvAmt: {}, pvNote: {}, pvQ: '', pvQRaw: '',
       unpaid: [], unpaidTotal: 0,
       payFor: null, payData: { invoices:[], payments:[] },
       payForm: { paid_on:'', amount:'', method:'TRANSFER', note:'' },
@@ -9536,7 +9564,10 @@ const app = createApp({
       return ok.length > 0 && ok.every(r => this.pvSel[r.student_id]);
     },
     pvRows(){
-      const rows = (this.ivPreview && this.ivPreview.rows) ? this.ivPreview.rows.slice() : [];
+      let rows = (this.ivPreview && this.ivPreview.rows) ? this.ivPreview.rows.slice() : [];
+      // 수십 명이 늘어서 컨트롤F로 찾고 있었다. 오늘 운영과 같은 규칙(그리고·또는)으로 찾는다.
+      const q = (this.pvQ||'').trim();
+      if (q) rows = rows.filter(r => this.pvMatch(r, q));
       if (!this.pvSort.length) return rows;
       const val = (r,k) => {
         if (k==='amount') return r.amount === null ? -1 : r.amount;
@@ -12790,6 +12821,47 @@ const app = createApp({
     pvArrow(k){ const s = this.pvSort.find(x => x.k === k); return s ? (s.dir > 0 ? '↑' : '↓') : ''; },
     pvLabel(k){ const c = this.pvCols.find(x => x.k === k); return c ? c.l : k; },
     // 금액을 고칠 수 있어야 한다. 결석을 보강 못 하고 돈으로 이월하는 일이 있어서다.
+    // 미리보기 줄에는 학생 객체가 없다. 줄에 있는 글자와 주횟수로만 찾는다.
+    pvMatch(r, q){
+      const hay = [r.name, r.school, r.weekdays, r.times, r.subjects, r.instructors,
+                   (r.discounts||[]).map(d=>d.name).join(' ')].filter(Boolean).join(' ').toLowerCase();
+      const hit = term => {
+        if (ALL_TERMS.has(term)) return true;
+        const w = term.match(/^주\s*(\d{1,2})\s*회?$/);
+        if (w) return Number(r.sessions||0) === Number(w[1]);
+        return hay.includes(SCHOOL_ALIAS[term] || term);
+      };
+      return qGroups(q).some(terms => terms.every(hit));
+    },
+    // 이미 붙은 것은 목록에서 뺀다
+    pvAddable(r){
+      const on = new Set((r.discounts||[]).map(d=>d.item_id));
+      return ((this.ivPreview && this.ivPreview.items) || []).filter(x => !on.has(x.id));
+    },
+    // 붙이고 떼면 실제 학생 할인이 바뀐다 — 학생 정보에도 그대로 반영된다
+    async pvAddDiscount(r, itemId){
+      const id = Number(itemId); if (!id) return;
+      try {
+        await api('POST','/api/admin/academy/student_discount',
+                  { student_id:r.student_id, item_id:id, reason:this.ivYm+' 청구서를 만들며 붙임' });
+        await this.pvRefreshRow(r);
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async pvDelDiscount(r, dc){
+      if (!await this.askConfirm(r.name+' 학생의 「'+dc.name+'」을 뗄까요?\n학생 정보에서도 함께 떨어집니다.')) return;
+      try {
+        await api('DELETE','/api/admin/academy/student_discount?id='+dc.id);
+        await this.pvRefreshRow(r);
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async pvRefreshRow(r){
+      const d = await api('GET','/api/admin/academy/student_tuition?student_id='+r.student_id+'&ym='+this.ivYm);
+      r.amount = d.amount; r.base = d.base; r.source = d.source;
+      r.discounts = d.discounts; r.warnings = d.warnings;
+      r.mode = d.mode; r.auto_base = d.auto_base;
+      delete this.pvAmt[r.student_id];      // 손으로 고쳐 둔 금액은 새 금액을 따른다
+      if (this.stuDetail && this.stuDetail.id === r.student_id) this.loadStuFee();
+    },
     pvAmount(r){ const v = this.pvAmt[r.student_id]; return v === undefined ? r.amount : v; },
     pvSetAmount(r, v){ this.pvAmt[r.student_id] = Number(String(v).replace(/[^0-9]/g,'')) || 0; },
     pvAmountChanged(r){ const v = this.pvAmt[r.student_id]; return v !== undefined && v !== r.amount; },
@@ -17103,7 +17175,7 @@ const app = createApp({
      ['msgStuQRaw','msgStuQ'], ['tplPreviewStuQRaw','tplPreviewStuQ'],
      ['actFilter.qRaw','actFilter.q'], ['examFilter.qRaw','examFilter.q'],
      ['examAdd.qRaw','examAdd.q'], ['phonePick.qRaw','phonePick.q'],
-     ['bdQRaw','bdQ'], ['bdStuQRaw','bdStuQ']].forEach(([rawPath, realPath])=>{
+     ['bdQRaw','bdQ'], ['bdStuQRaw','bdStuQ'], ['pvQRaw','pvQ']].forEach(([rawPath, realPath])=>{
       const rawParts = rawPath.split('.'), realParts = realPath.split('.');
       this.$watch(() => rawParts.reduce((o,k)=>o&&o[k], this), (v)=>{
         this._debounce(realPath, ()=>{

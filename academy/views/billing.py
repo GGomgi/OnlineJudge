@@ -161,6 +161,7 @@ class InvoiceAPI(APIView):
             row = {"student_id": p.user_id, "name": _name_of(p.user),
                    "amount": t["amount"], "base": t["base"], "source": t["source"],
                    "discounts": t["discounts"], "warnings": t["warnings"],
+                   "queued_discounts": t.get("queued_discounts") or {},
                    "school": (_school_short(sp) if sp else ""),
                    "sessions": len(slots),
                    "weekdays": ",".join(WD[x.weekday] for x in slots),
@@ -217,7 +218,14 @@ class InvoiceAPI(APIView):
                 lines=_json.dumps(t["discounts"], ensure_ascii=False),
                 created_by=request.user)
             made += 1
-        return self.success({"ym": ym, "commit": commit, "rows": rows,
+        # 미리보기에서 바로 할인을 붙일 수 있게 목록을 함께 내려보낸다. 소개 할인처럼
+        # 그달에만 붙이는 것은 청구서를 만들 때 생각나지, 미리 붙여 두지 않는다.
+        from ..models import DiscountItem
+        items = [{"id": x.id, "name": x.name, "kind": x.kind, "value": x.value,
+                  "recurring": x.recurring}
+                 for x in DiscountItem.objects.filter(is_active=True).filter(
+                     Q(branch__isnull=True) | Q(branch_id=bid))]
+        return self.success({"ym": ym, "commit": commit, "rows": rows, "items": items,
                              "made": made, "skipped": skipped, "undecided": undecided,
                              "total": sum(r["amount"] or 0 for r in rows)})
 

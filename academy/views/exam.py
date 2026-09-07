@@ -1218,7 +1218,10 @@ class StudentTuitionAdminAPI(APIView):
             return self.error("학생이 없습니다.")
         if not can_view_branch(request.user, prof.branch_id):
             return self.error("이 지점을 볼 권한이 없습니다.")
-        d = compute(int(sid))
+        # 청구서 미리보기에서 부를 때는 그달 기준으로 셈해야 한다 — '한 번만' 할인이
+        # 어느 달에 쓰였는지에 따라 붙고 빠지기 때문이다.
+        _ym = (request.GET.get("ym") or "").strip() or None
+        d = compute(int(sid), _ym)
         d["can_edit"] = can_manage_branch(request.user, prof.branch_id)
         # 항목의 값만 보이면 "진학 할인 40,000원"이라 읽히는데 이 학생은 3만일 수 있다.
         # 실제로 얼마가 붙는지를 함께 내려보내 고를 때 바로 보이게 한다.
