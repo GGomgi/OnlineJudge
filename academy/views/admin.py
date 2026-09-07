@@ -5903,6 +5903,9 @@ class MakeupAddAdminAPI(APIView):
         return self.success({"occ_id": occ.id})
 
 
+_METHOD_LABEL = {"TRANSFER": "계좌이체", "CASH": "현금", "CARD": "카드", "ETC": "기타"}
+
+
 class ActivityLogAPI(APIView):
     """포털 사용 이력 — '누가 무엇을 했는지'를 한 화면에서 본다.
     기록을 새로 쌓는 게 아니라, 이미 각 기능이 남기고 있는 이력들(시간표/보강, 출결,
@@ -6005,6 +6008,62 @@ class ActivityLogAPI(APIView):
 
         for c in CounselingLogEdit.objects.filter(**base).select_related("log")[:1000]:
             add(c.create_time, "상담기록", "", "상담 기록 수정(이전 내용: %s)" % (c.old_summary or "")[:80], actor_id=c.actor_id)
+
+        # 돈이 걸린 일이 통째로 빠져 있었다(유채원 진학 할인 2026-09-01). 원비·할인·
+        # 청구·수납은 뒤에 물어볼 일이 가장 많은 자리인데 여기서 찾을 수 없었다.
+        from ..models import (StudentTuitionChange, TuitionRateChange, ExamChange,
+                              ExamContact, StaffAttendanceChange, WorkPlanChange,
+                              HolidayOptOut, Invoice, Payment)
+        for c in StudentTuitionChange.objects.filter(**base).select_related(
+                "student", "student__userprofile")[:1000]:
+            add(c.create_time, "원비·할인", _name_of(c.student), c.detail, c.reason, actor_id=c.actor_id)
+        for c in TuitionRateChange.objects.filter(**base).select_related("branch")[:1000]:
+            add(c.create_time, "원비 기준표", (c.branch.name if c.branch_id else ""),
+                c.detail, c.reason, actor_id=c.actor_id)
+        for c in ExamChange.objects.filter(**base).select_related("session")[:1000]:
+            add(c.create_time, "자격증·대회", (c.students or c.label or ""),
+                "%s %s" % (c.kind, c.detail), actor_id=c.actor_id)
+        for c in ExamContact.objects.filter(**base).select_related(
+                "entry", "entry__student", "entry__student__userprofile")[:1000]:
+            e = c.entry
+            add(c.create_time, "자격증·대회",
+                (_name_of(e.student) if e and e.student_id else ""),
+                "안내 %s%s" % (c.kind, (" — " + c.note) if c.note else ""), actor_id=c.actor_id)
+        for c in StaffAttendanceChange.objects.filter(**base).select_related(
+                "attendance", "attendance__staff", "attendance__staff__userprofile")[:1000]:
+            a2 = c.attendance
+            add(c.create_time, "근태",
+                "%s %s" % (_name_of(a2.staff) if a2 else "", str(a2.date) if a2 else ""),
+                "%s %s → %s" % (c.field, c.old_value or "-", c.new_value or "-"),
+                c.reason, actor_id=c.actor_id)
+        for c in WorkPlanChange.objects.filter(**base).select_related(
+                "staff", "staff__userprofile")[:1000]:
+            add(c.create_time, "근무표", "%s %s" % (_name_of(c.staff), c.date),
+                "%s~%s → %s~%s" % (c.old_start or "-", c.old_end or "-",
+                                   c.new_start or "-", c.new_end or "-"),
+                c.note, actor_id=c.actor_id)
+        for c in HolidayOptOut.objects.filter(**base).select_related("holiday", "branch")[:1000]:
+            add(c.create_time, "휴무일",
+                (c.branch.name if c.branch_id else ""),
+                "휴무 제외: %s" % (c.holiday.name if c.holiday_id else ""), c.reason, actor_id=c.actor_id)
+
+        # 청구서·납부는 이력 표가 따로 없다. 만든 것 자체가 한 일이므로 그대로 읽는다.
+        ibase = ({"created_by_id__in": actors} if actors is not None else {"created_by": target})
+        ibase.update(create_time__gte=lo, create_time__lt=hi)
+        for c in Invoice.objects.filter(**ibase).select_related(
+                "student", "student__userprofile")[:1000]:
+            add(c.create_time, "청구서", _name_of(c.student),
+                "%s %s원%s%s" % (c.ym, format(c.amount, ","),
+                                 (" (%d차)" % c.revision) if c.revision > 1 else "",
+                                 " · 취소됨" if c.is_void else ""),
+                c.note, actor_id=c.created_by_id)
+        for c in Payment.objects.filter(**ibase).select_related(
+                "student", "student__userprofile")[:1000]:
+            add(c.create_time, "수납", _name_of(c.student),
+                "%s %s원 %s%s" % (c.paid_on, format(c.amount, ","),
+                                  _METHOD_LABEL.get(c.method, c.method),
+                                  " · 취소됨" if c.is_void else ""),
+                c.note, actor_id=c.created_by_id)
 
         if q:
             ql = q.lower()
