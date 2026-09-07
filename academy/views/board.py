@@ -24,6 +24,7 @@ from ..models import (BoardFolder, BoardPost, BoardFile, BoardRead, BoardPostVer
                       BoardComment, Branch, AcademyProfile, AcademyRole, STAFF_ROLES)
 from ..services import viewable_branch_ids, can_manage_branch
 from .exam import menu_denied
+from ..audit import audit
 
 MAX_FILE = 50 * 1024 * 1024          # 파일 하나 50MB
 MAX_POST = 200 * 1024 * 1024         # 한 글 합계 200MB
@@ -134,6 +135,11 @@ def _folder_editable(f, user):
     if f.scope == "ALL":
         return viewable_branch_ids(user) is None            # 전 지점은 본부만
     return f.branch_id is None or can_manage_branch(user, f.branch_id)
+
+
+def _size_text(n):
+    n = n or 0
+    return ("%.1fMB" % (n / 1048576.0)) if n >= 1048576 else ("%dKB" % (n // 1024))
 
 
 def _kind_of(ext):
@@ -334,6 +340,9 @@ class BoardFolderAPI(APIView):
             except (TypeError, ValueError):
                 pass
         f.save()
+        audit(request, "게시판", ("고침" if d.get("id") else "만듦"), "폴더 " + f.name,
+              detail={"ALL": "전 지점", "BRANCH": (f.branch.name if f.branch_id else "지점"),
+                      "PRIVATE": "개인"}.get(f.scope, f.scope))
         return self.success({"id": f.id})
 
     @admin_role_required
@@ -411,6 +420,8 @@ class BoardFolderAPI(APIView):
                         k.save(update_fields=["parent"])
             f.is_deleted = True
             f.save(update_fields=["is_deleted"])
+        audit(request, "게시판", "지움", "폴더 " + f.name,
+              detail=("글 %d · 하위 폴더 %d — %s" % (n_posts, len(kids), mode or "빈 폴더")))
         return self.success({"deleted": True})
 
 
@@ -538,6 +549,9 @@ class BoardPostAPI(APIView):
                     post=p, rev=((last.rev + 1) if last else 1), title=p.title, body=p.body,
                     files=names, note=(d.get("note") or "").strip()[:255],
                     effective_date=eff, author=request.user)
+        audit(request, "게시판", ("고침" if d.get("id") else "만듦"), p.title,
+              detail=(f.name + (" · 고정" if p.is_pinned else "")),
+              reason=(d.get("note") or "").strip())
         return self.success({"id": p.id})
 
     @admin_role_required
@@ -554,6 +568,8 @@ class BoardPostAPI(APIView):
             return self.error("이 글을 지울 권한이 없습니다.")
         p.is_deleted = True
         p.save(update_fields=["is_deleted"])
+        audit(request, "게시판", "지움", p.title,
+              detail=(p.folder.name if p.folder_id else ""))
         return self.success({"deleted": True})
 
 
@@ -607,6 +623,8 @@ class BoardFileAPI(APIView):
             post=p, name=f.name[:255], url="%s/%s" % (_settings.UPLOAD_PREFIX, name),
             thumb_url=thumb, size=f.size, kind=_kind_of(ext),
             order=p.files.count(), uploaded_by=me)
+        audit(request, "게시판", "만듦", "파일 " + x.name,
+              detail="%s · %s" % (p.title, _size_text(x.size)))
         return self.success(_file_row(x))
 
     @admin_role_required
@@ -621,7 +639,9 @@ class BoardFileAPI(APIView):
         role, _ = _role_of(me)
         if not (_is_super(me) or x.post.author_id == me.id or role in _DIRECTOR_UP):
             return self.error("이 파일을 지울 권한이 없습니다.")
+        _nm, _pt = x.name, (x.post.title if x.post_id else "")
         x.delete()
+        audit(request, "게시판", "지움", "파일 " + _nm, detail=_pt)
         return self.success({"deleted": True})
 
 
@@ -808,6 +828,8 @@ class StudentRecordAPI(APIView):
         r.kind = d.get("kind") or ""
         r.date, r.title, r.body = dt, title, d.get("body") or ""
         r.save()
+        audit(request, "학생 기록", ("고침" if d.get("id") else "만듦"), r.title,
+              detail=str(r.date), student=r.student)
         return self.success(_rec_row(r))
 
     @admin_role_required
@@ -819,6 +841,7 @@ class StudentRecordAPI(APIView):
             return self.error("이 학생을 고칠 권한이 없습니다.")
         r.is_deleted = True
         r.save(update_fields=["is_deleted"])
+        audit(request, "학생 기록", "지움", r.title, detail=str(r.date), student=r.student)
         return self.success({"deleted": True})
 
 
@@ -866,6 +889,8 @@ class StudentRecordFileAPI(APIView):
             record=r, name=f.name[:255], url="%s/%s" % (_settings.UPLOAD_PREFIX, name),
             thumb_url=thumb, size=f.size, kind=_kind_of(ext),
             order=r.files.count(), uploaded_by=request.user)
+        audit(request, "학생 기록", "만듦", "파일 " + x.name,
+              detail=(r.title if r else ""), student=(r.student if r else None))
         return self.success(_rec_file_row(x))
 
     @admin_role_required
@@ -876,7 +901,9 @@ class StudentRecordFileAPI(APIView):
             return self.error("파일이 없습니다.")
         if not _student_ok(request, x.record.student_id, edit=True):
             return self.error("이 학생을 고칠 권한이 없습니다.")
+        _nm, _st = x.name, x.record.student
         x.delete()
+        audit(request, "학생 기록", "지움", "파일 " + _nm, student=_st)
         return self.success({"deleted": True})
 
 
@@ -923,6 +950,7 @@ class BoardCommentAPI(APIView):
         if not body:
             return self.error("덧글을 적어 주세요.")
         c = BoardComment.objects.create(post=p, body=body, author=request.user)
+        audit(request, "게시판", "만듦", "덧글 · " + p.title, detail=body[:80])
         return self.success({"id": c.id, "body": c.body, "author": _name_of(request.user),
                              "mine": True, "time": _kst(c.create_time)})
 
@@ -944,6 +972,8 @@ class BoardCommentAPI(APIView):
             return self.error("덧글을 적어 주세요.")
         c.body = body
         c.save(update_fields=["body"])
+        audit(request, "게시판", "고침", "덧글 · " + (c.post.title if c.post_id else ""),
+              detail=body[:80])
         return self.success({"id": c.id, "body": c.body})
 
     @admin_role_required
@@ -960,6 +990,8 @@ class BoardCommentAPI(APIView):
             return self.error("이 덧글을 지울 권한이 없습니다.")
         c.is_deleted = True
         c.save(update_fields=["is_deleted"])
+        audit(request, "게시판", "지움", "덧글 · " + (c.post.title if c.post_id else ""),
+              detail=(c.body or "")[:80])
         return self.success({"deleted": True})
 
 

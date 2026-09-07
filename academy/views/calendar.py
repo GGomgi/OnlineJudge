@@ -17,6 +17,7 @@ from ..models import (CalendarEvent, Holiday, HOLIDAY_KIND_CHOICES, OptionItem,
                       CounselReservation, LessonOccurrence)
 from ..services import viewable_branch_ids, can_manage_branch
 from .exam import menu_denied
+from ..audit import audit
 
 _HOLIDAY_LABEL = dict(HOLIDAY_KIND_CHOICES)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
@@ -223,6 +224,9 @@ class CalendarAPI(APIView):
         e.end_time = (d.get("end_time") or "")[:5]
         e.note = d.get("note") or ""
         e.save()
+        audit(request, "일정", ("고침" if d.get("id") else "만듦"), e.title,
+              detail="%s%s" % (str(e.start_date), (" ~ " + str(e.end_date)) if e.end_date else ""),
+              reason=e.note)
         return self.success({"id": e.id})
 
     @admin_role_required
@@ -237,4 +241,5 @@ class CalendarAPI(APIView):
             return self.error("이 일정을 지울 권한이 없습니다.")
         e.is_deleted = True
         e.save(update_fields=["is_deleted"])
+        audit(request, "일정", "지움", e.title, detail=str(e.start_date))
         return self.success({"deleted": True})

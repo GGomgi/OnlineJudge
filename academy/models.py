@@ -772,6 +772,42 @@ class FixedTemplate(models.Model):
         unique_together = ("branch", "key")
 
 
+class AuditLog(models.Model):
+    """무엇을 만들고 고치고 지웠는지 남기는 범용 이력.
+
+    기능마다 이력 표를 따로 두어 왔는데(시간표·출결·원비…), 그 방식은 새 기능을 만들
+    때마다 표를 만들고 사용 이력 화면에도 이어 줘야 해서 자꾸 빠졌다(원비·할인
+    2026-09-07). 제 화면에서 이력을 보여 줄 일이 없는 것은 여기 한 줄만 남긴다.
+
+    **보는 것은 남기지 않는다.** 목록을 열고 검색한 것까지 남기면 양이 폭발하고
+    정작 봐야 할 '바뀐 것'이 묻힌다. 만들고·고치고·지운 것만 남긴다.
+    """
+    CREATE = "CREATE"
+    UPDATE = "UPDATE"
+    DELETE = "DELETE"
+    ACTION_CHOICES = [(CREATE, "만듦"), (UPDATE, "고침"), (DELETE, "지움")]
+
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="audit_logs")
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="audit_logs")
+    kind = models.CharField(max_length=24)          # 게시판 · 일정 · 학생 기록 · 선택 목록 …
+    action = models.CharField(max_length=8, default=UPDATE)
+    target = models.CharField(max_length=120, blank=True, default="")   # 무엇을(글 제목·학생 이름)
+    # 학생에 딸린 일이면 학생을 함께 적는다. 학생 화면에서도 찾아볼 수 있어야 한다.
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="audit_about")
+    detail = models.CharField(max_length=255, blank=True, default="")
+    reason = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "academy_audit_log"
+        ordering = ["-create_time", "-id"]
+        indexes = [models.Index(fields=["actor", "-create_time"]),
+                   models.Index(fields=["kind", "-create_time"])]
+
+
 class NotifyKind(object):
     ARRIVE = "ARRIVE"        # 등원
     LEAVE = "LEAVE"          # 하원

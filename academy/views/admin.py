@@ -6006,6 +6006,20 @@ class ActivityLogAPI(APIView):
                 "일괄 등록%s — %s" % ((" · %s" % bn) if bn else "", ", ".join(names)),
                 actor_id=items[0].actor_id)
 
+        # 제 화면에서 이력을 따로 보여 줄 일이 없는 것들(게시판·일정·학생 기록…)은
+        # 범용 이력 한 줄로 남는다. 새 기능을 만들 때마다 표를 만들지 않아도 된다.
+        from ..models import AuditLog
+        _ACT = {AuditLog.CREATE: "만듦", AuditLog.UPDATE: "고침", AuditLog.DELETE: "지움"}
+        for c in AuditLog.objects.filter(**base).select_related(
+                "student", "student__userprofile")[:1000]:
+            # 학생 이름을 대상 칸에 세울 때만 무엇인지를 상세에 옮긴다. 아니면 '지움  · 수업자료'
+            # 처럼 빈 자리가 생긴다.
+            _what = ((c.target + " ") if c.student_id else "") + (c.detail or "")
+            add(c.create_time, c.kind,
+                (_name_of(c.student) if c.student_id else c.target),
+                ("%s %s" % (_ACT.get(c.action, c.action), _what)).strip(),
+                c.reason, actor_id=c.actor_id)
+
         for c in CounselingLogEdit.objects.filter(**base).select_related("log")[:1000]:
             add(c.create_time, "상담기록", "", "상담 기록 수정(이전 내용: %s)" % (c.old_summary or "")[:80], actor_id=c.actor_id)
 
