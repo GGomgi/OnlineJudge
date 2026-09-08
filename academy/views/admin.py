@@ -119,6 +119,7 @@ def get_or_create_guardian(student, parent_name, parent_phone, branch, login_id=
     GuardianStudent.objects.get_or_create(parent=parent_user, student=student,
                                           defaults={"relation": (relation or "").strip() or "학부모"})
     return parent_user
+from ..audit import audit
 from ..services import (apply_role, staff_scope, can_manage_branch, can_view_branch,
                         managed_branch_ids, viewable_branch_ids,
                         editable_branch_ids, can_manage_staff)
@@ -1215,6 +1216,7 @@ class LeadEditAdminAPI(APIView):
                         "changes": ", ".join(changed)})
             lead.edit_log = _json.dumps(log, ensure_ascii=False)
             lead.save()
+            audit(request, "상담 정보", "고침", lead.student_name or "", detail=", ".join(changed))
         return self.success(LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data)
 
 
@@ -2125,6 +2127,7 @@ class StudentListAdminAPI(APIView):
                         "parent_name": (sp.parent_name if sp else ""),
                         "parent_phone": (sp.parent_phone if sp else ""),
                         "parent_relation": (sp.parent_relation if sp else ""),
+                        "notify_optin": bool(sp.notify_optin) if sp else False,
                         "student_phone": (sp.student_phone if sp else ""),
                         "enrollment_status": (sp.enrollment_status if sp else EnrollmentStatus.ENROLLED),
                         "weekly_sessions": (sp.weekly_sessions if sp else None),
@@ -3134,6 +3137,15 @@ class StudentDetailAdminAPI(APIView):
                 if oldv_s != newv_s:
                     changed.append({"label": label, "old": oldv_s, "new": newv_s})
                 setattr(sp, df, newv)
+        # 등하원 알림은 희망하는 집만 받는다. 등록할 때만 정하고 나중에 못 바꾸면
+        # "이제 받고 싶다"는 말에 손쓸 자리가 없다.
+        if "notify_optin" in data:
+            newv = bool(data.get("notify_optin"))
+            if bool(sp.notify_optin) != newv:
+                changed.append({"label": "등하원 알림",
+                                "old": ("수신" if sp.notify_optin else "미수신"),
+                                "new": ("수신" if newv else "미수신")})
+            sp.notify_optin = newv
         if "consent_paper" in data:
             newv = bool(data.get("consent_paper"))
             if bool(sp.consent_paper) != newv:
@@ -3186,6 +3198,10 @@ class StudentDetailAdminAPI(APIView):
                 log = []
             log.append({"time": _now_kst_str(), "by": _name_of(request.user), "items": changed})
             sp.edit_log = _json.dumps(log, ensure_ascii=False)
+            # 학생 안 JSON 에만 쌓으면 사용 이력에서 찾을 수 없다. 한 줄 함께 남긴다.
+            audit(request, "인적사항", "고침", _name_of(u), student=u,
+                  detail=" · ".join("%s %s→%s" % (c["label"], c["old"], c["new"])
+                                    for c in changed))
 
         sp.save()
         # 이름이나 성별이 바뀌면 안내 음성을 다시 만든다(이름을 읽고, 성별로 목소리가 갈린다)

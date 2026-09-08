@@ -899,6 +899,18 @@
                 <input v-model="stuForm.parent_relation" list="guardianRelationList" :readonly="!stuEditMode" :class="stuCls('parent_relation')" placeholder="예: 어머니" />
               </div>
             </div>
+            <!-- 등하원 알림톡은 희망하는 집만 받는다. 등록할 때만 정하고 못 바꾸면
+                 "이제 받고 싶다"는 말에 손쓸 자리가 없다. -->
+            <div class="flex items-center gap-2 mb-2 text-sm">
+              <span class="text-xs text-slate-500 shrink-0">등하원 알림톡
+                <span v-if="stuFieldDirty('notify_optin')" class="text-amber-600">✏️</span></span>
+              <template v-if="stuEditMode">
+                <label class="flex items-center gap-1 cursor-pointer"><input type="radio" :value="true" v-model="stuForm.notify_optin" /> 받음</label>
+                <label class="flex items-center gap-1 cursor-pointer"><input type="radio" :value="false" v-model="stuForm.notify_optin" /> 안 받음</label>
+              </template>
+              <span v-else :class="['text-[11px] px-1.5 py-0.5 rounded', stuForm.notify_optin ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500']">{{ stuForm.notify_optin ? '받음' : '안 받음' }}</span>
+              <span class="text-[11px] text-slate-400">등원·하원을 찍을 때 학부모께 카톡이 갑니다. 결석·보강·피드백은 이것과 상관없이 갑니다.</span>
+            </div>
             <ul class="space-y-1">
               <li v-for="gd in stuDetail.guardians" :key="gd.link_id" class="flex items-center gap-2 text-sm bg-slate-50 rounded px-3 py-1.5">
                 <span class="font-medium">{{ gd.name }}<span v-if="gd.relation" class="font-normal text-slate-400">({{ gd.relation }})</span></span>
@@ -3563,6 +3575,10 @@
                     </span>
                     <span v-else class="text-slate-300">{{ stuFeeOf(s).mode==='UNDECIDED' ? '미정' : '-' }}</span>
                   </template>
+                  <template v-else-if="c.k==='notify'">
+                    <span v-if="s.notify_optin" class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">받음</span>
+                    <span v-else class="text-slate-300">-</span>
+                  </template>
                   <template v-else-if="c.k==='discounts'">
                     <span v-if="(stuFeeOf(s).discounts||[]).length" class="inline-flex gap-1 flex-wrap">
                       <span v-for="(d,di) in stuFeeOf(s).discounts" :key="di"
@@ -5292,6 +5308,10 @@
                     <span v-if="stuFeeCut(s)" class="text-[10px] text-rose-400">-{{ Number(stuFeeCut(s)).toLocaleString() }}</span>
                   </span>
                   <span v-else class="text-slate-300">{{ stuFeeOf(s).mode==='UNDECIDED' ? '미정' : '-' }}</span>
+                </template>
+                <template v-else-if="c.k==='notify'">
+                  <span v-if="s.notify_optin" class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">받음</span>
+                  <span v-else class="text-slate-300">-</span>
                 </template>
                 <template v-else-if="c.k==='discounts'">
                   <span v-if="(stuFeeOf(s).discounts||[]).length" class="inline-flex gap-1 flex-wrap">
@@ -8824,6 +8844,8 @@ const SCHOOL_ALIAS = { '초등학생':'초등학교', '중학생':'중학교', '
 const ALL_TERMS = new Set(['전체','모두','모든','전부','all']);
 // 형제가 함께 다니는 학생. 형제 할인을 붙이거나 한 집에 한 번만 연락할 때 쓴다.
 const SIB_TERMS = new Set(['형제', '형제자매', '남매', '자매', '형제재원']);
+// 등하원 알림톡을 받는 집. 켜고 끌 때 누가 받는지 골라 봐야 한다.
+const NOTIFY_TERMS = new Set(['알림톡', '알림수신', '등하원알림', '알림']);
 // 재원 상태로 찾기. 목록마다 따로 고르는 칸을 두지 않고 검색어로 다룬다.
 const STATUS_TERMS = { '재원':'ENROLLED', '재원생':'ENROLLED', '재학':'ENROLLED',
                        '휴원':'ON_LEAVE', '휴원생':'ON_LEAVE',
@@ -8987,6 +9009,7 @@ const COLDEFS = {
     { k:'durations',    l:'수업 시간', d:'60+90분' },
     { k:'fee',          l:'원비', d:'할인 뒤 받을 금액' },
     { k:'discounts',    l:'할인 내용', d:'밀린 할인은 흐리게' },
+    { k:'notify',       l:'알림톡', d:'등하원 알림 받는 집' },
     { k:'instructor',   l:'담당 강사' },
     { k:'parent',       l:'보호자', always:true },
     { k:'parent_phone', l:'보호자 연락처', d:'통화·문자 버튼 포함' },
@@ -10073,7 +10096,7 @@ const app = createApp({
     },
     stuCanEdit(){ return this.stuDetail ? this.canEditBranch(this.stuDetail.branch_id) : false; },
     stuFormDirty(){
-      const ks = ['real_name','birth_date','gender','student_phone','school_type','school_name','grade','weekly_sessions','lesson_start_date','enrollment_date','parent_name','parent_phone','parent_relation','guardian2_phone','guardian2_relation','memo','zipcode','address','address_detail'];
+      const ks = ['real_name','birth_date','gender','student_phone','school_type','school_name','grade','weekly_sessions','lesson_start_date','enrollment_date','parent_name','parent_phone','parent_relation','notify_optin','guardian2_phone','guardian2_relation','memo','zipcode','address','address_detail'];
       return ks.some(k => this.stuFieldDirty(k));
     },
     showBranchCol(){
@@ -15469,6 +15492,7 @@ const app = createApp({
       const hit = (term) => {
         if (ALL_TERMS.has(term)) return true;
         if (SIB_TERMS.has(term)) return !!((st.extra||{}).siblings);
+        if (NOTIFY_TERMS.has(term)) return !!st.notify_optin;
         if (Object.prototype.hasOwnProperty.call(STATUS_TERMS, term))
           return (st.enrollment_status || '') === STATUS_TERMS[term];
         const wi = WD_FULL.indexOf(term);
