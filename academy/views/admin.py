@@ -5765,15 +5765,21 @@ class LessonProgressAdminAPI(APIView):
         prof = getattr(u, "academy_profile", None)
         if prof and not can_view_branch(request.user, prof.branch_id):
             return self.error("권한이 없습니다.")
+        # 기간을 받는다. 다 보여 주면 오래 다닌 학생은 목록이 끝없이 길어진다.
+        # 비워 두면 최근 3개월 — 화면 기본값과 같다.
+        today = (now() + timedelta(hours=9)).date()
+        d0 = _to_date(request.GET.get("from") or "") or (today - timedelta(days=92))
+        d1 = _to_date(request.GET.get("to") or "") or today
         out = []
         for p in LessonProgress.objects.select_related("author", "occurrence").filter(
-                student=u, is_hidden=False).order_by("-date", "-id")[:200]:
+                student=u, is_hidden=False, date__gte=d0, date__lte=d1
+                ).order_by("-date", "-id")[:500]:
             out.append({"id": p.id, "date": str(p.date), "content": p.content, "homework": p.homework,
                         "feedback": p.feedback, "memo": p.memo,
                         "subject": (p.occurrence.subject if p.occurrence_id else ""),
                         "author": _name_of(p.author) if p.author_id else "",
                         "time": _kst_dt_str(p.update_time)})
-        return self.success(out)
+        return self.success({"rows": out, "from": str(d0), "to": str(d1)})
 
     @admin_role_required
     def post(self, request):

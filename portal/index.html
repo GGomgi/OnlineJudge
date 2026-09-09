@@ -1253,20 +1253,48 @@
             <textarea v-model="stuProgForm.memo" rows="1" placeholder="비고 (우리끼리 참고할 내용 — 학부모에게 전달되지 않음, 선택)" class="input"></textarea>
             <div class="flex justify-end"><button @click="addStuProgress" class="btn-secondary text-sm">추가</button></div>
           </div>
+          <!-- 오래 다닌 학생은 목록이 끝없이 길어진다. 기간을 좁혀 본다 -->
+          <div class="flex items-center gap-2 flex-wrap text-xs">
+            <div class="flex items-center gap-1">
+              <button @click="stuProgShiftMonth('from',-1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:bg-slate-50">−</button>
+              <date-box v-model="stuProgFrom" box-class="input py-0.5 px-1.5 text-[11px]"></date-box>
+              <button @click="stuProgShiftMonth('from',1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:bg-slate-50">+</button>
+            </div>
+            <span class="text-slate-400">~</span>
+            <div class="flex items-center gap-1">
+              <button @click="stuProgShiftMonth('to',-1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:bg-slate-50">−</button>
+              <date-box v-model="stuProgTo" box-class="input py-0.5 px-1.5 text-[11px]"></date-box>
+              <button @click="stuProgShiftMonth('to',1)" class="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:bg-slate-50">+</button>
+            </div>
+            <button @click="stuProgResetRange" class="px-2 py-1 rounded border border-slate-200 text-slate-500 hover:bg-slate-50">최근 3개월</button>
+            <!-- 무엇을 볼지. 피드백만 훑어보고 싶을 때가 있다 -->
+            <span class="flex items-center gap-2 ml-auto">
+              <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" :checked="stuProgAllShown" @change="stuProgShowAll($event.target.checked)" class="w-3 h-3" />모두 보기</label>
+              <span class="text-slate-300">|</span>
+              <label v-for="f in progFields" :key="f.k" class="flex items-center gap-1 cursor-pointer select-none">
+                <input type="checkbox" v-model="stuProgShow[f.k]" class="w-3 h-3" />{{ f.l }}
+              </label>
+            </span>
+          </div>
           <ul class="space-y-1">
-            <li v-for="p in stuProgress" :key="p.id" class="bg-white border rounded-lg px-3 py-2">
+            <li v-for="p in stuProgRows" :key="p.id" class="bg-white border rounded-lg px-3 py-2">
               <div class="flex items-center gap-2 text-xs text-slate-400">
                 <span class="font-medium text-slate-600">{{ dd(p.date) }}</span>
                 <span v-if="p.subject" class="text-indigo-500">{{ p.subject }}</span>
                 <span class="ml-auto">{{ p.author }}</span>
                 <button v-if="stuCanEdit" @click="deleteStuProgress(p)" class="text-rose-400 hover:underline">삭제</button>
               </div>
-              <div class="text-sm whitespace-pre-wrap mt-0.5">{{ p.content || '(내용 없음)' }}</div>
-              <div v-if="p.homework" class="text-xs text-slate-500 mt-0.5">숙제: {{ p.homework }}</div>
-              <div v-if="p.feedback" class="text-xs text-slate-500 mt-0.5">피드백: {{ p.feedback }}</div>
-              <div v-if="p.memo" class="text-xs text-amber-700 mt-0.5">비고: {{ p.memo }}</div>
+              <!-- 보이지 않는 표. 글이 길어 줄이 바뀌어도 내용이 이름표 아래로 흘러내리지 않는다 -->
+              <div class="mt-1 grid gap-x-2 gap-y-0.5 text-xs" style="grid-template-columns:3.25rem 1fr">
+                <template v-for="f in progFields" :key="f.k">
+                  <template v-if="stuProgShow[f.k] && (p[f.k] || f.k==='content')">
+                    <span :class="['text-right', f.cls]">{{ f.l }}</span>
+                    <span :class="['whitespace-pre-wrap break-words', f.k==='content' ? 'text-slate-700 text-sm leading-snug' : f.cls]">{{ p[f.k] || '(내용 없음)' }}</span>
+                  </template>
+                </template>
+              </div>
             </li>
-            <li v-if="stuProgress.length===0" class="text-xs text-slate-400">수업일지 기록이 없습니다.</li>
+            <li v-if="stuProgRows.length===0" class="text-xs text-slate-400">이 기간에 수업일지 기록이 없습니다.</li>
           </ul>
           </template>
         </div>
@@ -9201,7 +9229,13 @@ const app = createApp({
       stuAttFwdDefault: String(localStorage.getItem('stu_att_fwd_days') || '0'),
       stuAttSelected: [], stuAttBulkForm: { note_tag:'', note:'', no_makeup:false, start_time:'' }, stuAttBulkMode: false,
       stuProgress: [], stuProgForm: { date:'', content:'', homework:'', feedback:'', memo:'' },
-      stuProgView: 'cal', stuProgCalMonth: '', stuProgCalDays: {},
+      stuProgView: 'list', stuProgCalMonth: '', stuProgCalDays: {},
+      stuProgFrom: '', stuProgTo: '', stuProgShow: { content:true, homework:true, feedback:true, memo:true },
+      // 이름표 폭을 맞춰 두면 글이 길어져도 열이 어긋나지 않는다
+      progFields: [{ k:'content', l:'수업', cls:'text-slate-400' },
+                   { k:'homework', l:'숙제', cls:'text-slate-500' },
+                   { k:'feedback', l:'피드백', cls:'text-emerald-700' },
+                   { k:'memo', l:'비고', cls:'text-amber-700' }],
       legacyPopFor: null, _legacyPopTimer: null, legacyEdit: { id:null, url:'' },
       navTip: { show:false, x:0, y:0, text:'' },
       hrTab: 'me',
@@ -10033,6 +10067,14 @@ const app = createApp({
       return r.length>0 && r.every(e=>this.examSel.includes(e.id));
     },
     stuCols(){ return this.colOrder('stu'); },
+    stuProgAllShown(){
+      return this.progFields.every(f => this.stuProgShow[f.k]);
+    },
+    // 고른 것이 하나도 없는 줄은 빈 칸만 남아 자리만 먹는다
+    stuProgRows(){
+      const on = this.progFields.filter(f => this.stuProgShow[f.k]).map(f => f.k);
+      return (this.stuProgress||[]).filter(p => on.some(k => p[k]) || this.stuProgShow.content);
+    },
     stuMonthLabel(){
       const m = this.stuMonth || this.todayStr.slice(0,7);
       return (m.slice(0,4)===this.todayStr.slice(0,4) ? '' : m.slice(2,4)+'.') + Number(m.slice(5,7)) + '월';
@@ -15475,7 +15517,35 @@ const app = createApp({
         this.notify(rows.length+'명을 내보냈습니다.');
       } catch(e){ this.notify(e.message,false); }
     },
-    async loadStuProgress(){ if(!this.stuDetail) return; try { this.stuProgress = await api('GET','/api/admin/academy/lesson_progress?student_id='+this.stuDetail.id); } catch(e){ this.stuProgress=[]; } },
+    async loadStuProgress(){
+      if(!this.stuDetail) return;
+      if (!this.stuProgFrom || !this.stuProgTo) this.stuProgResetRange(false);
+      try {
+        const d = await api('GET','/api/admin/academy/lesson_progress?student_id='+this.stuDetail.id
+                            + '&from='+this.stuProgFrom + '&to='+this.stuProgTo);
+        this.stuProgress = d.rows || d || [];
+      } catch(e){ this.stuProgress=[]; }
+    },
+    // 기본은 오늘 기준 이전 3개월. 월 단위로 늘리고 줄인다.
+    stuProgResetRange(reload=true){
+      const t = new Date(this.todayStr+'T00:00:00');
+      const f = new Date(t.getFullYear(), t.getMonth()-3, t.getDate());
+      this.stuProgFrom = this.localDate(f); this.stuProgTo = this.todayStr;
+      if (reload) this.loadStuProgress();
+    },
+    stuProgShiftMonth(which, delta){
+      const cur = which==='from' ? this.stuProgFrom : this.stuProgTo;
+      if (!cur) return;
+      const d = new Date(cur+'T00:00:00');
+      d.setMonth(d.getMonth()+delta);
+      const v = this.localDate(d);
+      if (which==='from') this.stuProgFrom = v; else this.stuProgTo = v;
+      if (this.stuProgFrom > this.stuProgTo) return this.notify('시작이 끝보다 뒤입니다.', false);
+      this.loadStuProgress();
+    },
+    stuProgShowAll(on){
+      this.stuProgShow = { content:on, homework:on, feedback:on, memo:on };
+    },
     // 수업일지 달력: 이 학생의 월별 수업(수업일지 포함)을 시간표 캘린더 API로 로드
     async loadStuProgCal(){
       if (!this.stuDetail) return;
@@ -16331,7 +16401,7 @@ const app = createApp({
         this.gdForm = { parent_name:'', parent_phone:'', relation:'', password:'' };
         this.stuCreds=[]; this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds();
         this.stuProgress=[]; this.stuProgForm={ date:'', content:'', homework:'', feedback:'', memo:'' }; this.loadStuProgress();
-        this.stuProgView='cal'; this.stuProgCalMonth=this.todayStr.slice(0,7); this.stuProgCalDays={};
+        this.stuProgView='list'; this.stuProgCalMonth=this.todayStr.slice(0,7); this.stuProgCalDays={};
         this.stuAttHist={ rows:[], from:'', to:'', fwdDays:0 }; this.stuMkAll=[];
         this.stuVerify=null; this._stuVerifyRows=[]; this.loadStuVerify();
         this.stuAttSelected=[]; this.stuAttBulkForm={ note_tag:'', note:'', no_makeup:false, start_time:'' }; this.stuAttBulkMode=false;
