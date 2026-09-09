@@ -727,9 +727,10 @@
                      '언제부터 바뀌나'는 저장할 때 한 번 묻는다 — 칸이 둘이면 어느 것이 무엇인지 모른다. -->
                 <div v-if="s.id && stuCanEdit && stuTtEditMode" class="flex items-center gap-1 text-[11px] mt-1 pl-1 flex-wrap">
                   <span class="text-slate-400 shrink-0">적용 시작</span>
-                  <div class="shrink-0"><date-box v-model="s.active_from" :max="s.active_until || null" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
+                  <!-- 폭은 위 생년월일 칸과 같게(.date-w). 좁으면 요일까지 붙은 날짜가 답답하다 -->
+                  <div class="shrink-0"><date-box v-model="s.active_from" :max="s.active_until || null" box-class="input py-0.5 px-1.5 text-[11px]"></date-box></div>
                   <span class="text-slate-400 shrink-0">~ 끝</span>
-                  <div class="shrink-0"><date-box v-model="s.active_until" :min="s.active_from || null" box-class="input py-0.5 px-1 text-[11px]" wrap-class="date-w-sm"></date-box></div>
+                  <div class="shrink-0"><date-box v-model="s.active_until" :min="s.active_from || null" box-class="input py-0.5 px-1.5 text-[11px]"></date-box></div>
                   <span v-if="!s.active_until" class="text-slate-400 shrink-0">계속</span>
                   <button @click="delStuTt(s)" class="ml-1 text-slate-500 hover:text-rose-500 hover:underline shrink-0">그만 쓰기</button>
                   <span v-if="s.status==='PAUSED'" class="text-[10px] px-1 rounded bg-amber-100 text-amber-700 shrink-0">휴원중</span>
