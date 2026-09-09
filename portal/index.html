@@ -11721,8 +11721,29 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     stuTtDirtyCount(){ return this.stuTimetables.filter(s=>s.id && this.ttRowDirty(s)).length; },
-    // 학생 상세: 목록에 보이는 순서(기본 원번순) 그대로 이전/다음 학생으로 이동
-    stuNavList(){ return this.filteredStudents || []; },
+    // 학생 상세: 지금 보고 있는 목록 그대로 이전/다음 학생으로 이동.
+    // 오늘 운영에서 열었으면 그날 수업 순서, 학생 관리에서 열었으면 걸러 놓은 목록.
+    stuNavLists(){
+      const out = [];
+      if (this.tab === 'dashboard'){
+        const seen = {}, ls = [];
+        (this.dashLessonsOrdered || []).forEach(l => {
+          if (!l.student_id || seen[l.student_id]) return;
+          seen[l.student_id] = 1;   // 하루에 두 번 오는 학생은 한 번만
+          ls.push({ id: l.student_id, real_name: l.student_name, username: l.student_name });
+        });
+        out.push(ls);
+        out.push(this.dashStuFound || []);   // 오늘 운영 안의 학생 검색 결과
+      }
+      out.push(this.filteredStudents || []);
+      return out;
+    },
+    stuNavList(){
+      if (!this.stuDetail) return [];
+      const id = this.stuDetail.id;
+      for (const ls of this.stuNavLists()){ if (ls.some(x => x.id === id)) return ls; }
+      return this.filteredStudents || [];
+    },
     stuNavIndex(){
       if (!this.stuDetail) return -1;
       return this.stuNavList().findIndex(x=>x.id===this.stuDetail.id);
