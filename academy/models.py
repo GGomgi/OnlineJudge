@@ -772,6 +772,32 @@ class FixedTemplate(models.Model):
         unique_together = ("branch", "key")
 
 
+class NotifyTemplate(models.Model):
+    """승인받은 알림톡 템플릿과 우리 쪽 쓰임새를 잇는다(docs/84).
+
+    카카오는 승인된 템플릿만 보내 준다. 승인 뒤 받는 템플릿 ID 를 여기 적어 두면
+    코드를 고치지 않고 이어진다. 문안(body)도 함께 두는 까닭은 **보낸 글을 그대로
+    남기기** 위해서다 — 나중에 카카오에서 문안을 고치면 옛 기록이 새 문안으로 읽힌다.
+    """
+    kind = models.CharField(max_length=24)          # NotifyKind
+    name = models.CharField(max_length=64)
+    template_id = models.CharField(max_length=64, blank=True, default="")   # 카카오 승인 ID
+    body = models.TextField(blank=True, default="")      # #{변수} 가 든 문안 그대로
+    branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="notify_templates")   # 비면 전 지점
+    # 그 일이 벌어질 때 저절로 보낼지. 처음에는 꺼 두고 시작한다 — 잘못 나가면
+    # 되돌릴 수 없다.
+    auto = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    note = models.CharField(max_length=255, blank=True, default="")
+    create_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "academy_notify_template"
+        ordering = ["kind", "id"]
+
+
 class AuditLog(models.Model):
     """무엇을 만들고 고치고 지웠는지 남기는 범용 이력.
 
@@ -809,18 +835,29 @@ class AuditLog(models.Model):
 
 
 class NotifyKind(object):
-    ARRIVE = "ARRIVE"        # 등원
-    LEAVE = "LEAVE"          # 하원
-    ABSENT = "ABSENT"        # 결석
-    MAKEUP = "MAKEUP"        # 보강 안내
-    FEEDBACK = "FEEDBACK"    # 수업 피드백
-    TUITION = "TUITION"      # 원비 청구(결제선생이 보냄)
+    ARRIVE = "ARRIVE"              # 등원
+    LEAVE = "LEAVE"                # 하원
+    ABSENT = "ABSENT"              # 결석(보강 추후 안내)
+    MAKEUP_FIXED = "MAKEUP_FIXED"  # 보강 일정 확정
+    MAKEUP_SOON = "MAKEUP_SOON"    # 보강 하루 전
+    FIRST = "FIRST"                # 첫 수업
+    TIME_DAY = "TIME_DAY"          # 오늘 하루 수업 시간 변경
+    TIME_REG = "TIME_REG"          # 정규 수업 시간 변경
+    HOLIDAY = "HOLIDAY"            # 휴강
+    FEEDBACK = "FEEDBACK"          # 수업 피드백
+    TUITION = "TUITION"            # 원비 청구(결제선생이 보냄)
     ETC = "ETC"
 
 
 NOTIFY_KIND_CHOICES = [
-    (NotifyKind.ARRIVE, "등원"), (NotifyKind.LEAVE, "하원"),
-    (NotifyKind.ABSENT, "결석"), (NotifyKind.MAKEUP, "보강"),
+    (NotifyKind.ARRIVE, "등원 알림"), (NotifyKind.LEAVE, "하원 알림"),
+    (NotifyKind.ABSENT, "결석 안내(보강 추후)"),
+    (NotifyKind.MAKEUP_FIXED, "보강 일정 확정 안내"),
+    (NotifyKind.MAKEUP_SOON, "보강 수업 하루 전 안내"),
+    (NotifyKind.FIRST, "첫 수업 안내"),
+    (NotifyKind.TIME_DAY, "오늘 하루 수업 시간 변경"),
+    (NotifyKind.TIME_REG, "정규 수업 시간 변경"),
+    (NotifyKind.HOLIDAY, "휴강 안내"),
     (NotifyKind.FEEDBACK, "수업 피드백"), (NotifyKind.TUITION, "원비"),
     (NotifyKind.ETC, "기타"),
 ]

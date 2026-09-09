@@ -655,7 +655,9 @@ class EditStudentTimetableSerializer(serializers.Serializer):
     frequency = serializers.ChoiceField(choices=["WEEKLY", "BIWEEKLY"], required=False)
     room = serializers.CharField(max_length=64, required=False, allow_blank=True)
     status = serializers.ChoiceField(choices=["ACTIVE", "PAUSED", "ENDED"], required=False)
-    # 끝나는 날만 따로 고칠 수 있어야 한다(휴원 예정일이 바뀌면 여기도 바뀐다)
+    # 기간은 여기서 바로 고친다. 시작일은 '처음부터 잘못 적은' 것을 바로잡는 길이고,
+    # 끝나는 날은 휴원 예정일이 바뀌면 함께 바뀐다. 여기 없으면 화면이 보내도 버려진다.
+    active_from = serializers.DateField(required=False, allow_null=True)
     active_until = serializers.DateField(required=False, allow_null=True)
     language = serializers.CharField(max_length=16, required=False, allow_blank=True)
     reason = serializers.CharField(max_length=255, required=False, allow_blank=True)

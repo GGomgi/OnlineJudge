@@ -2703,6 +2703,14 @@ class StudentTimetableAdminAPI(APIView):
         # 끝나는 날은 기간 그 자체라 이력을 나눌 것이 없다. 늘 이 자리에서 바로 고친다.
         # 직렬화기를 거치지 않고 들어오는 길도 있어(EditStudentTimetableSerializer 밖의 호출)
         # 글자로 올 수 있다. 날짜로 맞춘 뒤에 견준다.
+        # 시작일도 이 자리에서 고친다. '처음부터 잘못 적은' 것을 바로잡는 길이라
+        # 이력을 나누지 않는다. 지난 수업이 딸려 바뀔 수 있어 화면에서 미리 알린다.
+        if "active_from" in data:
+            af = data.get("active_from")
+            if isinstance(af, str):
+                af = _to_date(af) if af.strip() else None
+            if af:
+                slot.active_from = af
         if "active_until" in data:
             au = data.get("active_until")
             if isinstance(au, str):
@@ -2997,6 +3005,10 @@ def _student_profile_dict(sp):
         "pending_reason": sp.pending_reason or "",
         "parent_name": sp.parent_name or "", "parent_phone": sp.parent_phone or "",
         "parent_relation": sp.parent_relation or "", "notify_optin": sp.notify_optin,
+        # 시작일을 이 날 앞으로 내리면 지난 수업이 딸려 바뀐다. 화면에서 미리 알린다.
+        "last_attend": (lambda a: str(a.date) if a else "")(
+            DailyAttendance.objects.filter(student_id=sp.user_id, check_in_at__isnull=False)
+                                   .order_by("-date").first()),
         "guardian2_phone": sp.guardian2_phone or "", "guardian2_relation": sp.guardian2_relation or "",
         "school_type": sp.school_type or "", "school_name": sp.school_name or "", "grade": sp.grade or "",
         "enrollment_date": str(sp.enrollment_date) if sp.enrollment_date else "",
@@ -4167,9 +4179,13 @@ def _reconcile_slot_occurrences(slot, occ_qs):
     if not occs:
         return 0, 0, 0
     rec_ids = _occ_record_ids(occs)
+    # 앞날은 아직 아무 일도 일어나지 않았다. 휴무·결석 같은 '상태'만으로 남기면 시간표
+    # 기간이 끊긴 뒤에도 유령 수업이 선다(윤성우 2026-09-08). 사람이 남긴 것만 지킨다.
+    loose = _occ_record_ids(occs, ignore_status=True)
+    _today = (now() + timedelta(hours=9)).date()
     updated = dropped = kept = 0
     for occ in occs:
-        has_record = occ.id in rec_ids
+        has_record = (occ.id in loose) if occ.date >= _today else (occ.id in rec_ids)
         overridden = bool(occ.time_change_reason)  # 그날만 개별 수정한 수업
         if occ.date.weekday() != slot.weekday or not _slot_active_on(slot, occ.date):
             if not overridden and not has_record:
