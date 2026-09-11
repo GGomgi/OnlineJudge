@@ -558,6 +558,10 @@
         <div class="font-bold flex-1 min-w-0 ml-3">{{ stuDetail.real_name || stuDetail.username }}
           <span class="text-xs font-normal text-slate-400">{{ stuDetail.username }} · {{ stuDetail.branch }}</span>
           <span :class="['ml-2 px-2 py-0.5 rounded text-xs', stuStatusBadge(stuDetail.enrollment_status).cls]">{{ stuStatusBadge(stuDetail.enrollment_status).label }}</span>
+          <!-- 쉬는 중이면 언제까지인지가 배지 하나보다 훨씬 쓸모 있다 -->
+          <span v-if="stuLeaveNow" class="ml-1 px-2 py-0.5 rounded text-xs font-normal bg-violet-100 text-violet-700 whitespace-nowrap">
+            🏖 {{ stuLeaveNow.open ? '기한 없음' : dd(stuLeaveNow.to) + ' 재원 예정' }}<span v-if="stuLeaveNow.dday" class="text-violet-400"> · D-{{ stuLeaveNow.dday }}</span>
+          </span>
           <!-- 기존 관리 시트 바로가기(포털 전환 기간용). 칩과 호버창이 붙어 있어야 마우스가 지나가도 안 닫힘 -->
           <span class="relative inline-block align-middle ml-2" @mouseenter="legacyPopEnter(stuDetail.id)" @mouseleave="legacyPopLeave">
             <a v-if="stuLegacyUrl()" :href="stuLegacyUrl()" target="_blank" rel="noopener"
@@ -1126,6 +1130,11 @@
               <div class="shrink-0">
                 <date-box v-model="stuStatusDate" box-class="input py-1" title="적용일 — 이 날부터 바뀝니다"></date-box>
               </div>
+              <!-- 여행·캠프처럼 돌아올 날을 아는 휴원이 잦다. 비우면 기한 없음 -->
+              <div v-if="stuStatusNew==='ON_LEAVE'" class="shrink-0 flex items-center gap-1">
+                <span class="text-xs text-slate-400 whitespace-nowrap">재원</span>
+                <date-box v-model="stuStatusResume" box-class="input py-1" title="재원 예정일 — 비우면 기한 없음"></date-box>
+              </div>
               <input v-model="stuStatusReason" placeholder="사유 (필수)" class="input flex-1 min-w-0 py-1" />
               <button @click="changeStuStatus" class="btn-secondary text-sm whitespace-nowrap shrink-0">상태 변경</button>
             </div>
@@ -1182,6 +1191,10 @@
                 비우면 오늘부터입니다.</p>
               <p><b class="text-purple-600">휴원</b>은 잠깐 쉬는 것 — 시간표를 <b>멈춰만</b> 둡니다.
                 나중에 <b>재원(재등록)</b>으로 되돌리면 그날부터 <b>같은 시간표가 되살아납니다</b>.</p>
+              <p><b class="text-violet-600">재원 예정일</b>을 적어 두면 그날 <b>재등록이 저절로 예약</b>되고,
+                출결기록에 <b>쉰 기간이 한 덩어리로</b> 남습니다(여행·캠프처럼 돌아올 날을 아는 휴원).
+                비우면 <b>기한 없음</b>입니다. 그 기간에 임시휴원으로 적어 둔 수업 줄은 지워지고,
+                거기 적힌 사유는 휴원 사유로 모아 옮겨집니다.</p>
               <p><b class="text-rose-600">퇴원</b>은 그만두는 것 — 시간표를 <b>끝냅니다</b>.
                 다시 다니게 되면 <b>시간표를 새로 등록</b>해야 합니다(되살아나지 않습니다).</p>
               <div class="text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-1.5 space-y-1">
@@ -1375,22 +1388,44 @@
             <button @click="openColCfg('stuatt','출결기록 — 화면 표시', $event)" class="ml-auto shrink-0 px-2 py-1 rounded border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 whitespace-nowrap">⚙ 화면표시</button>
           </div>
           <div v-if="stuAttHist.rows.length===0" class="text-xs text-slate-400 py-4 text-center">출결 기록이 없습니다.</div>
-          <div v-for="g in stuAttHistByMonth" :key="g.ym" class="border rounded-lg overflow-hidden">
+          <template v-for="b in stuAttBlocks" :key="b.key">
+          <!-- 쉰 기간은 수업일마다 붙이지 않는다. 한 덩어리로 한 번만 -->
+          <div v-if="b.kind==='leave'" :class="['rounded-lg border px-3 py-2 text-xs flex items-center gap-2 flex-wrap',
+                     b.lv.running ? 'border-violet-300 bg-violet-50' : 'border-slate-200 bg-slate-50']">
+            <span :class="['font-semibold whitespace-nowrap', b.lv.running ? 'text-violet-700' : 'text-slate-500']">
+              🏖 휴원 {{ dd(b.lv.from) }} ~ {{ b.lv.open ? '기한 없음' : dd(b.lv.to) }}
+            </span>
+            <span v-if="b.lv.weeks" class="text-slate-400 whitespace-nowrap">({{ b.lv.weeks }}주)</span>
+            <span v-if="!b.lv.open" :class="b.lv.running ? 'text-violet-600' : 'text-slate-400'">· {{ dd(b.lv.to) }}부터 재원</span>
+            <span v-if="b.lv.reason" class="text-slate-500 truncate">· {{ b.lv.reason }}</span>
+            <!-- 쉬기 시작할 땐 모르다가 나중에 정해지는 일이 흔하다. 그 자리에서 채운다 -->
+            <template v-if="stuCanEdit">
+              <span v-if="leaveEdit.id===b.lv.id" class="flex items-center gap-1">
+                <date-box v-model="leaveEdit.resume" box-class="input py-0.5 text-xs"></date-box>
+                <button @click="saveLeaveResume" class="text-indigo-600 hover:underline">저장</button>
+                <button @click="leaveEdit={id:null,resume:''}" class="text-slate-400 hover:underline">취소</button>
+              </span>
+              <button v-else @click="leaveEdit={ id:b.lv.id, resume:b.lv.open ? '' : b.lv.to }"
+                      class="text-violet-500 hover:underline whitespace-nowrap">{{ b.lv.open ? '재원 예정일 적기' : '고치기' }}</button>
+            </template>
+            <span class="ml-auto text-slate-400 whitespace-nowrap">{{ b.lv.actor || '자동' }} · {{ dt(b.lv.time) }}</span>
+          </div>
+          <div v-else class="border rounded-lg overflow-hidden">
             <div class="bg-slate-50 px-3 py-1.5 text-xs flex items-center gap-2">
-              <span class="font-semibold text-slate-600">{{ g.label }}</span>
-              <span v-if="g.absent" class="text-rose-500">결석 {{ g.absent }}</span>
-              <span v-if="g.late" class="text-amber-600">지각 {{ g.late }}</span>
-              <span v-if="g.makeup" class="text-blue-600">보강 {{ g.makeup }}</span>
-              <span class="ml-auto text-slate-400">{{ g.rows.length }}건</span>
+              <span class="font-semibold text-slate-600">{{ b.g.label }}</span>
+              <span v-if="b.g.absent" class="text-rose-500">결석 {{ b.g.absent }}</span>
+              <span v-if="b.g.late" class="text-amber-600">지각 {{ b.g.late }}</span>
+              <span v-if="b.g.makeup" class="text-blue-600">보강 {{ b.g.makeup }}</span>
+              <span class="ml-auto text-slate-400">{{ b.g.rows.length }}건</span>
             </div>
             <table class="w-full text-xs table-fixed">
               <thead class="text-slate-400"><tr>
-                <th class="px-2 py-1 w-8"><input v-if="stuAttBulkMode" type="checkbox" :checked="isGroupFullySelected(g)" @click="toggleStuAttGroupSel(g)" class="w-3.5 h-3.5 align-middle" title="이 달 전체 선택" /></th>
+                <th class="px-2 py-1 w-8"><input v-if="stuAttBulkMode" type="checkbox" :checked="isGroupFullySelected(b.g)" @click="toggleStuAttGroupSel(b.g)" class="w-3.5 h-3.5 align-middle" title="이 달 전체 선택" /></th>
                 <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다 -->
                 <th v-for="c in stuAttCols" :key="c.k" :class="['px-2 py-1 text-left whitespace-nowrap', stuAttColW(c.k)]">{{ c.l }}</th>
               </tr></thead>
               <tbody>
-                <tr v-for="row in g.rows" :key="row.occ_id" @click="openStuAttRow(row)" class="border-t hover:bg-indigo-50/50 cursor-pointer">
+                <tr v-for="row in b.g.rows" :key="row.occ_id" @click="openStuAttRow(row)" class="border-t hover:bg-indigo-50/50 cursor-pointer">
                   <td class="px-2 py-1" @click.stop="stuAttBulkMode && toggleStuAttSel(row.occ_id)"><input v-if="stuAttBulkMode" type="checkbox" :checked="stuAttSelected.includes(row.occ_id)" class="w-3.5 h-3.5 align-middle" /></td>
                   <!-- 열 구성·순서는 [⚙ 화면표시]에서 정한다 -->
                   <td v-for="c in stuAttCols" :key="c.k" :class="['px-2 py-1', stuAttColW(c.k)]"
@@ -1429,6 +1464,7 @@
               </tbody>
             </table>
           </div>
+          </template>
         </div>
 
         <!-- 아이디 관리 -->
@@ -9269,7 +9305,8 @@ const app = createApp({
       stuNoteText: '', stuNoteChannel: 'VISIT', stuNoteTime: { date:'', hour:'', min:'' }, stuEditLogId: null, stuEditLogText: '', stuEditMode: false,
       stuTtShowHistory: false, stuTtEditMode: false,
       stuResvForm: { date:'', hour:'', min:'', note:'' },
-      stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '',
+      stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '', stuStatusResume: '',
+      leaveEdit: { id:null, resume:'' },
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
@@ -9864,6 +9901,25 @@ const app = createApp({
     },
     ttHistoryShown(){ return (this.ttHistory||[]).filter(h => this.ttHistKind[h.kind || 'regular']); },
     stuAttCols(){ return this.colOrder('stuatt'); },
+    // 달 묶음과 쉰 기간 카드를 날짜 순으로 섞는다. 달 열쇠를 '-00' 으로 두면
+    // 그달 어느 날짜보다 앞서므로 표가 먼저 오고 그 뒤에 그달 시작된 휴원이 붙는다.
+    stuAttBlocks(){
+      const out = this.stuAttHistByMonth.map(g => ({ kind:'month', key:'m'+g.ym, at:g.ym+'-00', g }));
+      const a = this.stuAttHist.from || '', z = this.stuAttHist.to || '9999-12-31';
+      for (const lv of ((this.stuDetail && this.stuDetail.leaves) || [])){
+        if (lv.from > z) continue;
+        if (!lv.open && lv.to < a) continue;
+        out.push({ kind:'leave', key:'l'+lv.id, at:lv.from, lv });
+      }
+      out.sort((x,y) => x.at < y.at ? -1 : (x.at > y.at ? 1 : 0));
+      return out;
+    },
+    // 지금 쉬는 중인 기간(머리 배지용)
+    stuLeaveNow(){
+      const lv = ((this.stuDetail && this.stuDetail.leaves) || []).find(x => x.running);
+      if (!lv) return null;
+      return { ...lv, dday: lv.open ? 0 : this.daysBetween(this.todayStr, lv.to) };
+    },
     stuAttHistByMonth(){
       const groups = [];
       const map = {};
@@ -16418,7 +16474,7 @@ const app = createApp({
         if (!(this.options.program||[]).length) this.loadOptions();
         this.stuNoteText=''; this.stuNoteChannel='VISIT'; this.stuNoteTime=this.nowParts(); this.stuEditLogId=null;
         this.stuStatusNew = d.enrollment_status==='ENROLLED' ? 'ON_LEAVE' : 'ENROLLED';
-        this.stuStatusReason=''; this.stuStatusDate=this.todayStr;
+        this.stuStatusReason=''; this.stuStatusDate=this.todayStr; this.stuStatusResume='';
         this.gdForm = { parent_name:'', parent_phone:'', relation:'', password:'' };
         this.stuCreds=[]; this.stuCredNew={ site:'', login_id:'', password:'' }; this.loadStuCreds();
         this.stuProgress=[]; this.stuProgForm={ date:'', content:'', homework:'', feedback:'', memo:'' }; this.loadStuProgress();
@@ -16672,17 +16728,28 @@ const app = createApp({
         await this.refreshStuDetail();
       } catch(e){ this.notify(e.message,false); }
     },
+    async saveLeaveResume(){
+      try {
+        await api('PUT','/api/admin/academy/student_leave',
+                  { id:this.leaveEdit.id, resume_date:this.leaveEdit.resume || '' });
+        this.notify(this.leaveEdit.resume ? this.dd(this.leaveEdit.resume) + '부터 재원으로 잡았습니다.' : '기한 없음으로 두었습니다.');
+        this.leaveEdit = { id:null, resume:'' };
+        await this.refreshStuDetail(); this.loadStudents();
+      } catch(e){ this.notify(e.message,false); }
+    },
     async changeStuStatus(){
       if (!(this.stuStatusReason||'').trim()) return this.notify('변경 사유를 입력하세요.', false);
       try {
         const body = { student_id:this.stuDetail.id, status:this.stuStatusNew, reason:this.stuStatusReason };
         if (this.stuStatusDate) body.effective_date = this.stuStatusDate;
+        if (this.stuStatusNew==='ON_LEAVE' && this.stuStatusResume) body.resume_date = this.stuStatusResume;
         const r = await api('POST','/api/admin/academy/student_status', body);
         this.notify(r && r.scheduled
           ? (this.dd(r.date) + '부터 바뀌도록 잡아 두었습니다. 그날까지는 지금 상태 그대로입니다.'
              + (r.timetable ? ' (' + r.timetable + ')' : ''))
           : ('상태가 변경되었습니다.' + (r && r.timetable ? ' (' + r.timetable + ')' : '')));
-        this.stuStatusReason=''; this.stuStatusDate='';
+        if (r && r.swept) this.notify(r.swept + '건의 임시휴원 줄을 휴원 기간으로 모았습니다.');
+        this.stuStatusReason=''; this.stuStatusDate=''; this.stuStatusResume='';
         await this.refreshStuDetail(); this.loadStudents();
         this.stuStatusNew = this.stuDetail.enrollment_status==='ENROLLED' ? 'ON_LEAVE' : 'ENROLLED';
       } catch(e){ this.notify(e.message,false); }

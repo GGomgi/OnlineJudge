@@ -3059,8 +3059,10 @@ class StudentDetailAdminAPI(APIView):
                               "phone": (pp.phone if pp else "")})
         history = [{"id": c.id, "from": c.from_status, "to": c.to_status, "reason": c.reason,
                     "effective_date": str(c.effective_date) if c.effective_date else "",
+                    "resume_date": str(c.resume_date) if c.resume_date else "",
                     "actor": _name_of(c.actor) if c.actor_id else "", "time": _kst_dt_str(c.create_time)}
                    for c in StudentStatusChange.objects.filter(student=u).select_related("actor")[:200]]
+        leaves = _leave_periods(u)
         lead = Lead.objects.filter(converted_user=u).order_by("id").first()
         lead_data = LeadSerializer(lead, context={"show_hidden": _is_manager(request.user)}).data if lead else None
         pdict = _student_profile_dict(sp)
@@ -3090,6 +3092,7 @@ class StudentDetailAdminAPI(APIView):
             "branch_id": prof.branch_id if prof else None,
             "enrollment_status": sp.enrollment_status if sp else EnrollmentStatus.ENROLLED,
             "profile": pdict, "profile_edits": profile_edits, "guardians": guardians, "status_history": history,
+            "leaves": leaves,
             "timetables": timetables,
             "lead": lead_data, "lead_id": lead.id if lead else None,
         })
@@ -3277,6 +3280,18 @@ class StudentStatusAdminAPI(APIView):
             except (TypeError, ValueError):
                 return self.error("적용일이 올바르지 않습니다.")
         today = (now() + timedelta(hours=9)).date()
+        # 재원 예정일 — 여행·캠프처럼 돌아올 날을 아는 휴원. 비우면 기한 없음.
+        resume = None
+        rs = (data.get("resume_date") or "").strip()
+        if rs:
+            if to_status != EnrollmentStatus.ON_LEAVE:
+                return self.error("재원 예정일은 휴원에만 적을 수 있습니다.")
+            try:
+                resume = datetime.strptime(rs, "%Y-%m-%d").date()
+            except ValueError:
+                return self.error("재원 예정일이 올바르지 않습니다.")
+            if resume <= (eff or today):
+                return self.error("재원 예정일은 휴원 적용일보다 뒤여야 합니다.")
 
         # 적용일이 앞날이면 그날까지는 지금 상태 그대로다. 미리 바꿔 버리면 아직 다니는
         # 학생이 재원생 수와 원비 청구 대상에서 빠져 그달 청구서가 안 나간다.
@@ -3286,7 +3301,9 @@ class StudentStatusAdminAPI(APIView):
             sp.pending_status = to_status
             sp.pending_date = eff
             sp.pending_reason = reason
-            sp.save(update_fields=["pending_status", "pending_date", "pending_reason"])
+            sp.pending_resume_date = resume
+            sp.save(update_fields=["pending_status", "pending_date", "pending_reason",
+                                   "pending_resume_date"])
             # 시간표는 그날부터 끊는다(수업이 미리 안 잡히게)
             tt_msg = self._sync_timetables(u, to_status, request.user, reason, eff_s)
             return self.success({"scheduled": True, "date": str(eff), "timetable": tt_msg})
@@ -3297,14 +3314,26 @@ class StudentStatusAdminAPI(APIView):
         sp.pending_status = ""
         sp.pending_date = None
         sp.pending_reason = ""
-        sp.save(update_fields=["enrollment_status", "pending_status", "pending_date", "pending_reason"])
+        sp.pending_resume_date = None
+        sp.save(update_fields=["enrollment_status", "pending_status", "pending_date",
+                               "pending_reason", "pending_resume_date"])
+        # 쉰 기간의 임시휴원 줄은 지우고 그 사유를 휴원 한 줄로 모은다. 휴원은 애초에
+        # 수업 대상이 아니라 줄이 남으면 '수업이 있었는데 쉬었다'로 읽힌다.
+        swept, reason = _sweep_leave_occurrences(u, to_status, eff or today, resume, reason)
         StudentStatusChange.objects.create(
             student=u, from_status=from_status, to_status=to_status,
-            reason=reason, effective_date=eff, actor=request.user)
+            reason=reason, effective_date=eff, resume_date=resume, actor=request.user)
+        # 돌아올 날을 알면 그날 재등록을 잡아 둔다 — 손으로 또 눌러야 하면 잊는다
+        if resume and resume > today:
+            sp.pending_status = EnrollmentStatus.ENROLLED
+            sp.pending_date = resume
+            sp.pending_reason = "휴원 끝 — 재원"
+            sp.save(update_fields=["pending_status", "pending_date", "pending_reason"])
 
         # 등록상태에 따라 개별 시간표 자동 처리(+이력)
         tt_msg = self._sync_timetables(u, to_status, request.user, reason, eff_s)
-        return self.success({"timetable": tt_msg})
+        return self.success({"timetable": tt_msg, "swept": swept,
+                             "resume": str(resume) if resume else ""})
 
     @admin_role_required
     @admin_role_required
@@ -4762,6 +4791,113 @@ def kst_today_admin():
     return (now() + timedelta(hours=9)).date()
 
 
+class StudentLeaveAdminAPI(APIView):
+    """이미 적어 둔 휴원에 재원 예정일을 나중에 채워 넣는다.
+
+    쉬기 시작할 때는 언제 돌아올지 모르다가 나중에 정해지는 일이 흔하다(고은결 —
+    '9월 중순 복귀 가능하다 하였으나 미정'). 다시 휴원을 찍게 하면 이력에 두 줄이
+    남아 어수선하다."""
+
+    @admin_role_required
+    def put(self, request):
+        data = request.data
+        c = StudentStatusChange.objects.filter(id=data.get("id"),
+                                               to_status=EnrollmentStatus.ON_LEAVE).first()
+        if not c:
+            return self.error("휴원 기록이 없습니다.")
+        prof = getattr(c.student, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        start = c.effective_date or (c.create_time + timedelta(hours=9)).date()
+        rs = (data.get("resume_date") or "").strip()
+        resume = None
+        if rs:
+            try:
+                resume = datetime.strptime(rs, "%Y-%m-%d").date()
+            except ValueError:
+                return self.error("재원 예정일이 올바르지 않습니다.")
+            if resume <= start:
+                return self.error("재원 예정일은 휴원 적용일보다 뒤여야 합니다.")
+        was = c.resume_date
+        c.resume_date = resume
+        c.save(update_fields=["resume_date"])
+        # 아직 쉬는 중이고 돌아올 날이 앞날이면 그날 재등록을 잡아 둔다
+        sp = StudentProfile.objects.filter(user=c.student).first()
+        today = (now() + timedelta(hours=9)).date()
+        if sp and sp.enrollment_status == EnrollmentStatus.ON_LEAVE:
+            if resume and resume > today:
+                sp.pending_status = EnrollmentStatus.ENROLLED
+                sp.pending_date = resume
+                sp.pending_reason = "휴원 끝 — 재원"
+            elif not resume and sp.pending_status == EnrollmentStatus.ENROLLED:
+                sp.pending_status = ""
+                sp.pending_date = None
+                sp.pending_reason = ""
+            sp.save(update_fields=["pending_status", "pending_date", "pending_reason"])
+        audit(request, "STATUS", "UPDATE", "휴원 기간",
+              detail="%s 휴원 — 재원 예정일 %s → %s" % (start, was or "기한 없음", resume or "기한 없음"),
+              student=c.student, branch_id=(prof.branch_id if prof else None))
+        return self.success({"resume_date": str(resume) if resume else ""})
+
+
+def _sweep_leave_occurrences(student, to_status, start, resume, reason):
+    """휴원으로 바뀐 기간에 남아 있는 임시휴원 줄을 지우고, 그 사유를 휴원 사유로 모은다.
+
+    임시휴원은 '수업이 있는 날에 붙는 표시'다. 그 기간이 통째로 휴원이 되면 애초에
+    수업 대상이 아니었던 것이라 줄이 남으면 안 된다. 다만 회차마다 적어 둔 사유
+    (가족여행 · 개인사정처럼 갈래가 다른 것)는 지우면 사라지므로 한 줄로 옮겨 적는다.
+    """
+    if to_status != EnrollmentStatus.ON_LEAVE:
+        return 0, reason
+    qs = LessonOccurrence.objects.filter(student=student, status=OccurrenceStatus.LEAVE,
+                                         date__gte=start)
+    if resume:
+        qs = qs.filter(date__lt=resume)
+    notes, seen = [], set()
+    for n in qs.values_list("note", flat=True):
+        n = (n or "").strip()
+        if n and n not in seen:
+            seen.add(n)
+            notes.append(n)
+    count = qs.count()
+    if notes:
+        merged = " / ".join(notes)
+        reason = ("%s · 임시휴원 사유: %s" % (reason, merged)).strip(" ·") if reason else merged
+    qs.delete()
+    return count, reason[:2000]
+
+
+def _leave_periods(student):
+    """학생이 쉰 기간들. [{from, to, open, reason, actor, weeks, running}]
+
+    끝을 아는 길은 둘이다 — 휴원에 적어 둔 재원 예정일, 또는 그 뒤에 실제로 찍힌
+    재등록. 둘 다 없으면 기한 없음이다.
+    """
+    # 적용일이 빈 줄은 처리한 날이 곧 적용일이다. 그것까지 셈해 놓고 줄을 세워야
+    # 휴원 다음의 재등록을 짝지을 수 있다(DB 정렬만 믿으면 빈 칸이 맨 뒤로 밀린다).
+    rows = [(c.effective_date or (c.create_time + timedelta(hours=9)).date(), c)
+            for c in StudentStatusChange.objects.filter(student=student).select_related("actor")]
+    rows.sort(key=lambda r: (r[0], r[1].create_time))
+    today = (now() + timedelta(hours=9)).date()
+    out = []
+    for i, (start, c) in enumerate(rows):
+        if c.to_status != EnrollmentStatus.ON_LEAVE:
+            continue
+        end = c.resume_date
+        if not end:
+            for d0, d in rows[i + 1:]:
+                if d.to_status == EnrollmentStatus.ENROLLED:
+                    end = d0
+                    break
+        weeks = ((end - start).days // 7) if end else 0
+        out.append({"id": c.id, "from": str(start), "to": (str(end) if end else ""),
+                    "open": not end, "reason": c.reason,
+                    "actor": _name_of(c.actor) if c.actor_id else "",
+                    "time": _kst_dt_str(c.create_time), "weeks": weeks,
+                    "running": start <= today and (not end or end > today)})
+    return out
+
+
 def apply_due_status(branch_ids=None):
     """적용일이 된 예약을 반영한다.
 
@@ -4775,15 +4911,26 @@ def apply_due_status(branch_ids=None):
         to = sp.pending_status
         eff = sp.pending_date
         rsn = sp.pending_reason
+        resume = sp.pending_resume_date
         sp.enrollment_status = to
         sp.pending_status = ""
         sp.pending_date = None
         sp.pending_reason = ""
-        sp.save(update_fields=["enrollment_status", "pending_status", "pending_date", "pending_reason"])
+        sp.pending_resume_date = None
+        sp.save(update_fields=["enrollment_status", "pending_status", "pending_date",
+                               "pending_reason", "pending_resume_date"])
         if frm != to:
+            _, rsn2 = _sweep_leave_occurrences(sp.user, to, eff, resume, rsn)
             StudentStatusChange.objects.create(
                 student_id=sp.user_id, from_status=frm, to_status=to,
-                reason=(rsn + " (예약 적용)").strip(), effective_date=eff, actor=None)
+                reason=(rsn2 + " (예약 적용)").strip(), effective_date=eff,
+                resume_date=resume, actor=None)
+            # 잡아 둔 재원 예정일을 이어받아 다시 예약한다
+            if to == EnrollmentStatus.ON_LEAVE and resume and resume > today:
+                sp.pending_status = EnrollmentStatus.ENROLLED
+                sp.pending_date = resume
+                sp.pending_reason = "휴원 끝 — 재원"
+                sp.save(update_fields=["pending_status", "pending_date", "pending_reason"])
             # 예약할 때는 기간만 끊어 뒀다. 오늘이 그날이므로 이제 상태를 바꾼다.
             from ..models import TimetableStatus
             if to == EnrollmentStatus.ON_LEAVE:

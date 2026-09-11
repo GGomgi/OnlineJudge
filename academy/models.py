@@ -431,6 +431,8 @@ class StudentProfile(models.Model):
     pending_status = models.CharField(max_length=16, blank=True, default="")
     pending_date = models.DateField(null=True, blank=True)
     pending_reason = models.CharField(max_length=255, blank=True, default="")
+    # 휴원 예약에 딸린 재원 예정일. 예약이 실제로 적용될 때 이력으로 옮겨 간다.
+    pending_resume_date = models.DateField(null=True, blank=True)
     enrollment_status = models.CharField(max_length=16, default=EnrollmentStatus.ENROLLED)
     lesson_start_date = models.DateField(null=True, blank=True)  # 수업 시작일(시간표 표시 기준)
     # 등록 과정·교육 일정(입회원 신청서). 단일 과정(legacy) + 다중 과정(programs JSON).
@@ -1240,6 +1242,9 @@ class StudentStatusChange(models.Model):
     to_status = models.CharField(max_length=16)
     reason = models.TextField(blank=True, default="")
     effective_date = models.DateField(null=True, blank=True)  # 휴원/퇴원/재등록 적용일
+    # 휴원이 언제 끝나는가. 비면 기한 없음. 여행·캠프처럼 돌아올 날을 아는 휴원이 잦은데
+    # 시작만 남으면 "언제부터 언제까지 쉬었나" 를 아무 데서도 못 본다.
+    resume_date = models.DateField(null=True, blank=True)     # 재원 예정일(휴원만)
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                               on_delete=models.SET_NULL, related_name="+")
     create_time = models.DateTimeField(auto_now_add=True)
