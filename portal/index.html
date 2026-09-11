@@ -9901,8 +9901,8 @@ const app = createApp({
     },
     ttHistoryShown(){ return (this.ttHistory||[]).filter(h => this.ttHistKind[h.kind || 'regular']); },
     stuAttCols(){ return this.colOrder('stuatt'); },
-    // 달 묶음과 쉰 기간 카드를 날짜 순으로 섞는다. 달 열쇠를 '-00' 으로 두면
-    // 그달 어느 날짜보다 앞서므로 표가 먼저 오고 그 뒤에 그달 시작된 휴원이 붙는다.
+    // 달 묶음과 쉰 기간 카드를 한 줄로 섞는다. 최근이 위다. 달 열쇠를 '-00' 으로
+    // 두면 그달 어느 날짜보다 앞서므로, 그달에 시작된 휴원 카드가 그달 표 바로 위에 앉는다.
     stuAttBlocks(){
       const out = this.stuAttHistByMonth.map(g => ({ kind:'month', key:'m'+g.ym, at:g.ym+'-00', g }));
       const a = this.stuAttHist.from || '', z = this.stuAttHist.to || '9999-12-31';
@@ -9911,7 +9911,7 @@ const app = createApp({
         if (!lv.open && lv.to < a) continue;
         out.push({ kind:'leave', key:'l'+lv.id, at:lv.from, lv });
       }
-      out.sort((x,y) => x.at < y.at ? -1 : (x.at > y.at ? 1 : 0));
+      out.sort((x,y) => x.at > y.at ? -1 : (x.at < y.at ? 1 : 0));   // 최근이 위
       return out;
     },
     // 지금 쉬는 중인 기간(머리 배지용)
