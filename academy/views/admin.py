@@ -4918,9 +4918,16 @@ def _split_slots_around_leave(student, d0, d1, actor, reason):
             continue                      # 돌아온 뒤에 시작한 줄
         label = "%s %s" % (_WD[s0.weekday], str(s0.start_time)[:5])
         if af and af >= d0:
-            s0.active_from = d1           # 쉬는 동안 시작한 줄 — 돌아온 날로 민다
-            s0.save(update_fields=["active_from"])
-            moved.append("%s 시작 %s → %s" % (label, af, d1))
+            if au and au < d1:
+                # 쉬는 동안 시작해 쉬는 동안 끝난 줄. 시작일을 밀면 끝보다 뒤가 되어
+                # 앞뒤가 뒤집힌다. 기간은 그대로 두고 끝난 줄로 표시만 바꾼다.
+                s0.status = TimetableStatus.ENDED
+                s0.save(update_fields=["status"])
+                moved.append("%s (%s~%s) 휴원 기간 안이라 종료로" % (label, af, au))
+            else:
+                s0.active_from = d1       # 쉬는 동안 시작한 줄 — 돌아온 날로 민다
+                s0.save(update_fields=["active_from"])
+                moved.append("%s 시작 %s → %s" % (label, af, d1))
             continue
         tail = (not au) or au >= d1
         s0.active_until = d0 - day
@@ -4975,7 +4982,8 @@ def _sweep_leave_occurrences(student, to_status, start, resume, reason):
         if o.date in kept_days or o.id in has_log or o.id in linked or o.is_makeup or o.is_extra:
             continue
         n = (o.note or "").strip()
-        if n and n not in seen:
+        # 이미 사유에 들어 있는 말은 또 적지 않는다 ("삼성캠프 · 임시휴원 사유: 삼성캠프")
+        if n and n not in seen and n not in reason:
             seen.add(n)
             notes.append(n)
         drop.append(o.id)
