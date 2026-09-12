@@ -4799,6 +4799,56 @@ class StudentLeaveAdminAPI(APIView):
     남아 어수선하다."""
 
     @admin_role_required
+    def post(self, request):
+        """이미 끝난 휴원을 뒤늦게 기록한다.
+
+        보통 [상태 변경] 은 '그날부터 쭉' 이라 지금 상태와 시간표를 함께 바꾼다. 그런데
+        여행·캠프로 두어 달 쉬고 이미 돌아온 학생에게 그걸 쓰면 지금 다니는 시간표까지
+        멈춘다(이정윤 — 4~7월 쉬고 7/28 복귀, 지금은 토요일 수업 중).
+
+        그래서 시작도 복귀도 지난 날일 때는 지금 상태를 건드리지 않고 이력 두 줄과
+        쉰 기간만 남긴다. 그 기간의 임시휴원 줄은 지우고 사유를 모은다.
+        """
+        data = request.data
+        u = User.objects.filter(id=data.get("student_id")).first()
+        if not u:
+            return self.error("학생이 없습니다.")
+        prof = getattr(u, "academy_profile", None)
+        if prof and not can_manage_branch(request.user, prof.branch_id):
+            return self.error("권한이 없습니다.")
+        reason = (data.get("reason") or "").strip()
+        if not reason:
+            return self.error("사유를 적어 주세요.")
+        try:
+            d0 = datetime.strptime(data.get("from"), "%Y-%m-%d").date()
+            d1 = datetime.strptime(data.get("to"), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            return self.error("날짜가 올바르지 않습니다.")
+        today = (now() + timedelta(hours=9)).date()
+        if d1 <= d0:
+            return self.error("복귀일은 휴원 시작일보다 뒤여야 합니다.")
+        if d1 > today:
+            return self.error("아직 오지 않은 복귀일입니다. 이 자리는 이미 끝난 휴원만 적습니다 — "
+                              "지금부터 쉬는 것이면 [상태 변경]을 쓰세요.")
+        sp = StudentProfile.objects.filter(user=u).first()
+        if sp and sp.enrollment_status == EnrollmentStatus.ON_LEAVE:
+            return self.error("지금 휴원 중인 학생입니다. [상태 변경]으로 재원 처리하세요.")
+        if StudentStatusChange.objects.filter(student=u, to_status=EnrollmentStatus.ON_LEAVE,
+                                              effective_date=d0).exists():
+            return self.error("같은 날로 적어 둔 휴원이 이미 있습니다.")
+        swept, reason2 = _sweep_leave_occurrences(u, EnrollmentStatus.ON_LEAVE, d0, d1, reason)
+        StudentStatusChange.objects.create(
+            student=u, from_status=EnrollmentStatus.ENROLLED, to_status=EnrollmentStatus.ON_LEAVE,
+            reason=reason2, effective_date=d0, resume_date=d1, actor=request.user)
+        StudentStatusChange.objects.create(
+            student=u, from_status=EnrollmentStatus.ON_LEAVE, to_status=EnrollmentStatus.ENROLLED,
+            reason="휴원 끝 — 재원", effective_date=d1, actor=request.user)
+        audit(request, "STATUS", "CREATE", "지난 휴원 기록",
+              detail="%s ~ %s 휴원 (임시휴원 줄 %d건 정리)" % (d0, d1 - timedelta(days=1), swept),
+              reason=reason2, student=u, branch_id=(prof.branch_id if prof else None))
+        return self.success({"swept": swept, "from": str(d0), "to": str(d1)})
+
+    @admin_role_required
     def put(self, request):
         data = request.data
         c = StudentStatusChange.objects.filter(id=data.get("id"),

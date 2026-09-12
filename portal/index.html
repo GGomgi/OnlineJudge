@@ -1159,6 +1159,30 @@
                 <button @click="stuStatusDate = nextDay(stuStatusAfter.last)" class="ml-1 underline font-semibold">그 날짜로</button>
               </div>
             </div>
+            <!-- 이미 끝난 휴원을 뒤늦게 적는 자리. [상태 변경]은 '그날부터 쭉'이라
+                 이미 돌아온 학생에게 쓰면 지금 다니는 시간표까지 멈춘다 -->
+            <div class="border-t border-slate-200 pt-2">
+              <button v-if="!pastLeaveOpen" @click="pastLeaveOpen=true; pastLeave={from:'',to:'',reason:''}"
+                      class="text-xs text-slate-500 hover:text-violet-600 hover:underline">🏖 지난 휴원 기록하기 — 이미 쉬고 돌아온 기간을 뒤늦게 남길 때</button>
+              <div v-else class="rounded-lg border border-violet-300 bg-white px-3 py-2 space-y-2">
+                <div class="text-xs font-semibold text-violet-700">지난 휴원 기록하기</div>
+                <div class="flex gap-2 items-center flex-wrap">
+                  <span class="text-xs text-slate-400 shrink-0">쉰 첫날</span>
+                  <div class="shrink-0"><date-box v-model="pastLeave.from" box-class="input py-1"></date-box></div>
+                  <span class="text-xs text-slate-400 shrink-0">돌아온 날</span>
+                  <div class="shrink-0"><date-box v-model="pastLeave.to" box-class="input py-1"></date-box></div>
+                  <input v-model="pastLeave.reason" placeholder="사유 (필수)" class="input flex-1 min-w-0 py-1" />
+                  <button @click="pastLeaveOpen=false" class="btn-secondary text-xs shrink-0">취소</button>
+                  <button @click="savePastLeave" class="btn-primary text-xs shrink-0">기록</button>
+                </div>
+                <p class="text-[11px] text-slate-400">
+                  지금 상태와 시간표는 <b>건드리지 않습니다.</b> 이력에 휴원·재원 두 줄과
+                  출결기록의 <b>휴원 기간 카드</b>만 남습니다. 그 기간에 임시휴원으로 적어 둔 수업 줄은
+                  지워지고 거기 적힌 사유는 휴원 사유로 모아집니다.
+                  <b>돌아온 날</b>은 실제로 다시 나온 날 — 그 전날까지가 쉰 기간입니다.
+                </p>
+              </div>
+            </div>
             <!-- 앞날로 잡아 둔 것이 있으면 맨 위에. 잊고 또 누르면 안 된다 -->
             <div v-if="stuPending" class="rounded-lg bg-violet-50 border border-violet-200 px-3 py-2 flex items-center gap-2 text-sm">
               <span class="text-violet-700">📌 <b>{{ dd(stuPending.date) }}부터 {{ stuStatusBadge(stuPending.status).label }}</b> 로 잡혀 있습니다</span>
@@ -1393,7 +1417,7 @@
           <div v-if="b.kind==='leave'" :class="['rounded-lg border px-3 py-2 text-xs flex items-center gap-2 flex-wrap',
                      b.lv.running ? 'border-violet-300 bg-violet-50' : 'border-slate-200 bg-slate-50']">
             <span :class="['font-semibold whitespace-nowrap', b.lv.running ? 'text-violet-700' : 'text-slate-500']">
-              🏖 휴원 {{ dd(b.lv.from) }} ~ {{ b.lv.open ? '기한 없음' : dd(b.lv.to) }}
+              🏖 휴원 {{ dd(b.lv.from) }} ~ {{ b.lv.open ? '기한 없음' : dd(prevDay(b.lv.to)) }}
             </span>
             <span v-if="b.lv.weeks" class="text-slate-400 whitespace-nowrap">({{ b.lv.weeks }}주)</span>
             <span v-if="!b.lv.open" :class="b.lv.running ? 'text-violet-600' : 'text-slate-400'">· {{ dd(b.lv.to) }}부터 재원</span>
@@ -9307,6 +9331,7 @@ const app = createApp({
       stuResvForm: { date:'', hour:'', min:'', note:'' },
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '', stuStatusResume: '',
       leaveEdit: { id:null, resume:'' },
+      pastLeaveOpen: false, pastLeave: { from:'', to:'', reason:'' },
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
       gdSearchOpen: false, gdSearchQ: '', gdSearchList: [], gdSelectedParentId: null, _gdTimer: null,
       dashDate: '', dashData: { lessons:[], weekday:'', total:0 }, clockNow: Date.now(),
@@ -16698,6 +16723,12 @@ const app = createApp({
                                         + this.stuDetail.id + '&after=' + this.stuStatusDate);
       } catch(e){ this.stuStatusAfter = null; }
     },
+    prevDay(d){
+      if (!d) return '';
+      const [y,m,dd0] = String(d).split('-').map(Number);
+      const t = new Date(Date.UTC(y, m-1, dd0-1)); const p = x=>String(x).padStart(2,'0');
+      return t.getUTCFullYear()+'-'+p(t.getUTCMonth()+1)+'-'+p(t.getUTCDate());
+    },
     nextDay(d){
       if (!d) return '';
       const [y,m,dd0] = String(d).split('-').map(Number);
@@ -16726,6 +16757,19 @@ const app = createApp({
         await api('DELETE','/api/admin/academy/student_status?student_id='+this.stuDetail.id);
         this.notify('예약을 취소했습니다.');
         await this.refreshStuDetail();
+      } catch(e){ this.notify(e.message,false); }
+    },
+    async savePastLeave(){
+      const p = this.pastLeave;
+      if (!p.from || !p.to) return this.notify('쉰 첫날과 돌아온 날을 고르세요.', false);
+      if (!(p.reason||'').trim()) return this.notify('사유를 적어 주세요.', false);
+      try {
+        const r = await api('POST','/api/admin/academy/student_leave',
+                            { student_id:this.stuDetail.id, from:p.from, to:p.to, reason:p.reason });
+        this.notify(this.dd(p.from) + ' ~ ' + this.dd(this.prevDay(p.to)) + ' 휴원으로 남겼습니다.'
+                    + (r && r.swept ? ' (임시휴원 ' + r.swept + '건 정리)' : ''));
+        this.pastLeaveOpen = false; this.pastLeave = { from:'', to:'', reason:'' };
+        await this.refreshStuDetail(); this.loadStudents();
       } catch(e){ this.notify(e.message,false); }
     },
     async saveLeaveResume(){
