@@ -3457,6 +3457,11 @@ class StudentStatusAdminAPI(APIView):
         later = eff > today
         changed = 0
         for s0 in qs:
+            # 적용일 앞에서 이미 끝난 줄은 건드리지 않는다. 끊을 것도 멈출 것도 없는데
+            # 끝날을 적용일 전날로 늘려 버리면 이미 지나간 기간이 늘어나고(장원형 토 15:00
+            # 90분은 8/21 에 끝났다), 멈춤으로 바뀌어 재등록 때 옛 줄이 하나 더 되살아난다.
+            if s0.active_until and s0.active_until < eff:
+                continue
             if not later:
                 s0.status = new_status
             # 적용일 이전부터 쓰던 시간표만 기간을 끊는다(적용일 이후 시작 예정이면 통째로 끝난 것으로 본다)
@@ -4977,9 +4982,19 @@ def _sweep_leave_occurrences(student, to_status, start, resume, reason):
     linked = set(LessonOccurrence.objects.filter(makeup_for_id__in=ids)
                  .values_list("makeup_for_id", flat=True))
 
-    notes, seen, drop = [], set(), []
+    notes, seen, drop, cancelled = [], set(), [], 0
     for o in occ:
-        if o.date in kept_days or o.id in has_log or o.id in linked or o.is_makeup or o.is_extra:
+        if o.date in kept_days or o.id in has_log or o.id in linked:
+            continue
+        # 쉬는 기간에 잡혀 있던 보강·추가 수업은 하지 못한 것이다. 지우면 잡았던 사실까지
+        # 사라지고, 이어져 있던 결석이 조용히 보강된 것으로 남는다. 취소로 돌려 그 결석이
+        # 다시 '보강 미정'이 되게 한다 — 돌아온 뒤 다시 잡으면 된다.
+        if o.is_makeup or o.is_extra:
+            if o.status != OccurrenceStatus.CANCELLED:
+                o.status = OccurrenceStatus.CANCELLED
+                o.note = ((o.note or "") + " · 휴원으로 취소 — 복귀 뒤 다시 잡기").strip(" ·")
+                o.save(update_fields=["status", "note"])
+                cancelled += 1
             continue
         n = (o.note or "").strip()
         # 이미 사유에 들어 있는 말은 또 적지 않는다 ("삼성캠프 · 임시휴원 사유: 삼성캠프")
@@ -4994,6 +5009,8 @@ def _sweep_leave_occurrences(student, to_status, start, resume, reason):
     if notes:
         merged = " / ".join(notes)
         reason = ("%s · 임시휴원 사유: %s" % (reason, merged)).strip(" ·") if reason else merged
+    if cancelled:
+        reason = ("%s · 잡혀 있던 보강 %d건 취소" % (reason, cancelled)).strip(" ·")
     return len(drop), reason[:2000]
 
 
