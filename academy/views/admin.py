@@ -32,6 +32,12 @@ from ..models import (AcademyProfile, AcademyRole, ACADEMY_ROLE_CHOICES,
                       staff_field_label, staff_value_text)
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 
+# 포털로 출결을 실제로 찍기 시작한 날. 그 전은 종이로 관리했고 수업 기록이 남아 있지
+# 않다. 시간표에서 지난 날짜를 자동으로 채우는 자리들이 이 날 앞까지 거슬러 올라가면
+# 다닌 적도 없는 '등원 전' 줄이 학생마다 수십 개씩 생긴다(이정윤 2025-12~2026-04 19건).
+# 옛 기록을 옮겨 넣게 되면 이 날을 앞으로 당기면 된다.
+ATT_FLOOR = date_cls(2026, 7, 28)
+
 
 def _now_kst_str():
     """현재 시각을 KST(UTC+9) 'YYYY-MM-DD HH:MM' 문자열로 반환(이력·타임스탬프 표시용).
@@ -4251,6 +4257,8 @@ def _slot_active_on(s, d):
 
 def ensure_occurrences(d, branch_ids=None):
     """지정일 d의 정규 수업 인스턴스를 시간표 패턴에서 생성(없는 것만). branch_ids=None이면 전체."""
+    if d < ATT_FLOOR:
+        return              # 포털을 쓰기 전 — 없던 수업을 만들어 내면 안 된다
     wd = d.weekday()
     slots = StudentTimetable.objects.select_related("instructor", "branch").filter(
         weekday=wd, status="ACTIVE")
@@ -6517,7 +6525,7 @@ class StudentAttendanceHistoryAPI(APIView):
                 student_id=u.id, date__gte=d0, date__lte=d1, is_makeup=False
             ).exclude(status=OccurrenceStatus.CANCELLED).values_list("date", "start_time"))
             creates = []
-            cur = d0
+            cur = max(d0, ATT_FLOOR)     # 포털을 쓰기 전 날짜는 채우지 않는다
             while cur <= d1:
                 wd = cur.weekday()
                 for s in tts:
