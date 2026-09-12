@@ -4992,8 +4992,14 @@ def _sweep_leave_occurrences(student, to_status, start, resume, reason):
         if o.is_makeup or o.is_extra:
             if o.status != OccurrenceStatus.CANCELLED:
                 o.status = OccurrenceStatus.CANCELLED
+                tgt = o.makeup_for
                 o.note = ((o.note or "") + " · 휴원으로 취소 — 복귀 뒤 다시 잡기").strip(" ·")
-                o.save(update_fields=["status", "note"])
+                # 손으로 하는 보강 취소와 같게 연결을 푼다. 안 풀면 그 결석이 계속
+                # '보강 잡힘'으로 남아 보강 현황에서 빠진다 — 하지도 않은 보강인데.
+                if tgt:
+                    o.makeup_for = None
+                    o.note = "%s (%s 결석분)" % (o.note, tgt.date)
+                o.save(update_fields=["status", "note", "makeup_for"])
                 cancelled += 1
             continue
         n = (o.note or "").strip()
