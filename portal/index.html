@@ -9334,6 +9334,7 @@ const app = createApp({
       stuTtShowHistory: false, stuTtEditMode: false,
       stuResvForm: { date:'', hour:'', min:'', note:'' },
       stuStatusNew: 'ON_LEAVE', stuStatusReason: '', stuStatusDate: '', stuStatusResume: '',
+      stuNavSrc: '',
       leaveEdit: { id:null, resume:'' },
       pastLeaveOpen: false, pastLeave: { from:'', to:'', reason:'' },
       gdForm: { parent_name:'', parent_phone:'', relation:'', password:'' },
@@ -9911,6 +9912,16 @@ const app = createApp({
     // 「앞 줄보다 늦고 이번 줄보다 이르면 끼운다」로만 보면 되돌아올 때 같은 시험이 또
     // 걸려 두 번 나온다. 지나온 가장 늦은 시각을 기준으로 삼고, 한 번 자리 잡은 시험은
     // 다시 놓지 않는다.
+    // 오늘 운영 수업 줄 차례(하루에 두 번 오는 학생은 한 번만)
+    dashNavList(){
+      const seen = {}, ls = [];
+      (this.dashLessonsOrdered || []).forEach(l => {
+        if (!l.student_id || seen[l.student_id]) return;
+        seen[l.student_id] = 1;
+        ls.push({ id: l.student_id, real_name: l.student_name, username: l.student_name });
+      });
+      return ls;
+    },
     dashExamSlots(){
       const out = {};
       if (!this.dashShowExam) return out;
@@ -11834,27 +11845,22 @@ const app = createApp({
       } catch(e){ this.notify(e.message,false); }
     },
     stuTtDirtyCount(){ return this.stuTimetables.filter(s=>s.id && this.ttRowDirty(s)).length; },
-    // 학생 상세: 지금 보고 있는 목록 그대로 이전/다음 학생으로 이동.
-    // 오늘 운영에서 열었으면 그날 수업 순서, 학생 관리에서 열었으면 걸러 놓은 목록.
-    stuNavLists(){
-      const out = [];
-      if (this.tab === 'dashboard'){
-        const seen = {}, ls = [];
-        (this.dashLessonsOrdered || []).forEach(l => {
-          if (!l.student_id || seen[l.student_id]) return;
-          seen[l.student_id] = 1;   // 하루에 두 번 오는 학생은 한 번만
-          ls.push({ id: l.student_id, real_name: l.student_name, username: l.student_name });
-        });
-        out.push(ls);
-        out.push(this.dashStuFound || []);   // 오늘 운영 안의 학생 검색 결과
-      }
-      out.push(this.filteredStudents || []);
-      return out;
-    },
+    // 학생 상세: 열 때 붙잡아 둔 목록 그대로 이전/다음 학생으로 이동.
+    //
+    // 학생이 어느 목록에 들었는지로 그때그때 고르면 걷는 도중에 목록이 바뀐다 —
+    // 장원형은 검색 결과에만 있고 이정윤은 오늘 수업에도 있어서, 장원형에서 걷기
+    // 시작해도 이정윤에 닿는 순간 오늘 수업(2명)으로 갈아타 장원형으로 못 돌아왔다.
     stuNavList(){
       if (!this.stuDetail) return [];
       const id = this.stuDetail.id;
-      for (const ls of this.stuNavLists()){ if (ls.some(x => x.id === id)) return ls; }
+      const by = { found: this.dashStuFound || [], dash: this.dashNavList,
+                   stu: this.filteredStudents || [] };
+      const held = by[this.stuNavSrc];
+      if (held && held.some(x => x.id === id)) return held;
+      // 붙잡아 둔 목록에 없으면(다른 화면을 거쳐 왔다) 들어 있는 곳을 찾는다
+      for (const k of ['found', 'dash', 'stu']){
+        if (by[k] && by[k].some(x => x.id === id)) return by[k];
+      }
       return this.filteredStudents || [];
     },
     stuNavIndex(){
@@ -16499,6 +16505,12 @@ const app = createApp({
     // opt.history 로 과거 이력을 켜 둔 채 열 수 있고, opt.keepView 면 보던 설정을 그대로 둔다
     async openStudent(s, opt){
       const keepView = !!(opt && opt.keepView);
+      // 걸어 다닐 목록은 열 때 한 번만 정한다. 오늘 운영에서 학생을 찾아 둔 상태면
+      // 그 검색 표 차례가 지금 훑고 있는 차례다.
+      if (!keepView){
+        this.stuNavSrc = (opt && opt.navSrc) || (this.tab === 'dashboard'
+          ? ((this.dashStuFound || []).length ? 'found' : 'dash') : 'stu');
+      }
       try {
         const d = await api('GET','/api/admin/academy/student_detail/info?student_id='+s.id);
         this.stuDetail = d; this.stuTab='info';
