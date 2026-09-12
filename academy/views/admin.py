@@ -4836,6 +4836,7 @@ class StudentLeaveAdminAPI(APIView):
         if StudentStatusChange.objects.filter(student=u, to_status=EnrollmentStatus.ON_LEAVE,
                                               effective_date=d0).exists():
             return self.error("같은 날로 적어 둔 휴원이 이미 있습니다.")
+        moved = _split_slots_around_leave(u, d0, d1, request.user, reason)
         swept, reason2 = _sweep_leave_occurrences(u, EnrollmentStatus.ON_LEAVE, d0, d1, reason)
         StudentStatusChange.objects.create(
             student=u, from_status=EnrollmentStatus.ENROLLED, to_status=EnrollmentStatus.ON_LEAVE,
@@ -4844,9 +4845,11 @@ class StudentLeaveAdminAPI(APIView):
             student=u, from_status=EnrollmentStatus.ON_LEAVE, to_status=EnrollmentStatus.ENROLLED,
             reason="휴원 끝 — 재원", effective_date=d1, actor=request.user)
         audit(request, "STATUS", "CREATE", "지난 휴원 기록",
-              detail="%s ~ %s 휴원 (임시휴원 줄 %d건 정리)" % (d0, d1 - timedelta(days=1), swept),
+              detail=("%s ~ %s 휴원 (수업 줄 %d건 정리%s)"
+                      % (d0, d1 - timedelta(days=1), swept,
+                         (", 시간표 " + str(len(moved)) + "건 가름") if moved else "")),
               reason=reason2, student=u, branch_id=(prof.branch_id if prof else None))
-        return self.success({"swept": swept, "from": str(d0), "to": str(d1)})
+        return self.success({"swept": swept, "moved": moved, "from": str(d0), "to": str(d1)})
 
     @admin_role_required
     def put(self, request):
@@ -4890,31 +4893,92 @@ class StudentLeaveAdminAPI(APIView):
         return self.success({"resume_date": str(resume) if resume else ""})
 
 
-def _sweep_leave_occurrences(student, to_status, start, resume, reason):
-    """휴원으로 바뀐 기간에 남아 있는 임시휴원 줄을 지우고, 그 사유를 휴원 사유로 모은다.
+def _split_slots_around_leave(student, d0, d1, actor, reason):
+    """쉰 기간을 관통하는 시간표를 그 앞뒤로 가른다.
 
-    임시휴원은 '수업이 있는 날에 붙는 표시'다. 그 기간이 통째로 휴원이 되면 애초에
-    수업 대상이 아니었던 것이라 줄이 남으면 안 된다. 다만 회차마다 적어 둔 사유
-    (가족여행 · 개인사정처럼 갈래가 다른 것)는 지우면 사라지므로 한 줄로 옮겨 적는다.
+    이걸 안 하면 지운 수업 줄이 다음 조회 때 시간표에서 그대로 되살아난다 —
+    출결기록 화면이 ACTIVE 시간표를 보고 빠진 날짜를 채우기 때문이다.
+    """
+    from ..models import TimetableStatus
+    day = timedelta(days=1)
+    moved = []
+    for s0 in list(StudentTimetable.objects.filter(student=student, status=TimetableStatus.ACTIVE)):
+        af, au = s0.active_from, s0.active_until
+        if au and au < d0:
+            continue                      # 쉬기 전에 끝난 줄
+        if af and af >= d1:
+            continue                      # 돌아온 뒤에 시작한 줄
+        label = "%s %s" % (_WD[s0.weekday], str(s0.start_time)[:5])
+        if af and af >= d0:
+            s0.active_from = d1           # 쉬는 동안 시작한 줄 — 돌아온 날로 민다
+            s0.save(update_fields=["active_from"])
+            moved.append("%s 시작 %s → %s" % (label, af, d1))
+            continue
+        tail = (not au) or au >= d1
+        s0.active_until = d0 - day
+        s0.save(update_fields=["active_until"])
+        moved.append("%s 끝 %s → %s" % (label, au or "기한없음", d0 - day))
+        if tail:
+            StudentTimetable.objects.create(
+                student=s0.student, branch=s0.branch, class_type=s0.class_type,
+                weekday=s0.weekday, start_time=s0.start_time, duration_minutes=s0.duration_minutes,
+                instructor=s0.instructor, program=s0.program, subject=s0.subject,
+                frequency=s0.frequency, room=s0.room, status=TimetableStatus.ACTIVE,
+                active_from=d1, active_until=au)
+            moved.append("%s 돌아온 %s부터 다시" % (label, d1))
+    if moved:
+        TimetableChange.objects.create(
+            student=student, actor=actor, action="UPDATE",
+            reason=reason or "휴원 기간 정리",
+            detail=("휴원 %s ~ %s 앞뒤로 시간표 가름 — %s" % (d0, d1 - day, " / ".join(moved)))[:255])
+    return moved
+
+
+def _sweep_leave_occurrences(student, to_status, start, resume, reason):
+    """쉰 기간의 수업 줄을 걷어 내고, 거기 적힌 사유를 휴원 사유 한 줄로 모은다.
+
+    휴원은 '그 기간에 애초에 수업이 없었다'는 뜻이다. 날짜마다 줄이 남으면 원비를
+    안 낸 달에 임시휴원이 수십 줄 쌓여 출결기록을 덮어 버린다 — 그걸 한 덩어리로
+    줄이려고 휴원으로 바꾸는 것이므로, 임시휴원뿐 아니라 휴무일·예정 줄도 함께 걷는다.
+
+    다만 그날 **실제로 있었던 일**은 남긴다 — 등하원이 찍혔거나, 수업일지가 있거나,
+    보강으로 이어진 줄. 지우면 그 일이 없던 것이 된다.
     """
     if to_status != EnrollmentStatus.ON_LEAVE:
         return 0, reason
-    qs = LessonOccurrence.objects.filter(student=student, status=OccurrenceStatus.LEAVE,
-                                         date__gte=start)
+    qs = LessonOccurrence.objects.filter(student=student, date__gte=start)
+    att = DailyAttendance.objects.filter(student=student, date__gte=start)
     if resume:
         qs = qs.filter(date__lt=resume)
-    notes, seen = [], set()
-    for n in qs.values_list("note", flat=True):
-        n = (n or "").strip()
+        att = att.filter(date__lt=resume)
+
+    # 남길 값어치가 있는 날은 '실제로 왔다 간 날'이다. 학원 공통 휴무일 메모(현충일 같은
+    # 것)까지 기록으로 치면 쉬는 기간에 휴무일 줄만 남아 또 어수선해진다.
+    kept_days = {a.date for a in att if a.check_in_at or a.check_out_at}
+    occ = list(qs.select_related(None))
+    ids = [o.id for o in occ]
+    has_log = set(LessonProgress.objects.filter(occurrence_id__in=ids, is_hidden=False)
+                  .values_list("occurrence_id", flat=True))
+    linked = set(LessonOccurrence.objects.filter(makeup_for_id__in=ids)
+                 .values_list("makeup_for_id", flat=True))
+
+    notes, seen, drop = [], set(), []
+    for o in occ:
+        if o.date in kept_days or o.id in has_log or o.id in linked or o.is_makeup or o.is_extra:
+            continue
+        n = (o.note or "").strip()
         if n and n not in seen:
             seen.add(n)
             notes.append(n)
-    count = qs.count()
+        drop.append(o.id)
+    LessonOccurrence.objects.filter(id__in=drop).delete()
+    # 등하원 껍데기(찍힌 것도 적힌 것도 없는 날)도 함께 치운다 — 남으면 빈 줄만 쌓인다
+    att.exclude(date__in=kept_days).delete()
+
     if notes:
         merged = " / ".join(notes)
         reason = ("%s · 임시휴원 사유: %s" % (reason, merged)).strip(" ·") if reason else merged
-    qs.delete()
-    return count, reason[:2000]
+    return len(drop), reason[:2000]
 
 
 def _leave_periods(student):
