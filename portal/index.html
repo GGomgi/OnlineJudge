@@ -1414,25 +1414,29 @@
           <div v-if="stuAttHist.rows.length===0" class="text-xs text-slate-400 py-4 text-center">출결 기록이 없습니다.</div>
           <template v-for="b in stuAttBlocks" :key="b.key">
           <!-- 쉰 기간은 수업일마다 붙이지 않는다. 한 덩어리로 한 번만 -->
-          <div v-if="b.kind==='leave'" :class="['rounded-lg border px-3 py-2 text-xs flex items-center gap-2 flex-wrap',
+          <div v-if="b.kind==='leave'" :class="['rounded-lg border px-3 py-2 text-xs',
                      b.lv.running ? 'border-violet-300 bg-violet-50' : 'border-slate-200 bg-slate-50']">
-            <span :class="['font-semibold whitespace-nowrap', b.lv.running ? 'text-violet-700' : 'text-slate-500']">
-              🏖 휴원 {{ dd(b.lv.from) }} ~ {{ b.lv.open ? '기한 없음' : dd(prevDay(b.lv.to)) }}
-            </span>
-            <span v-if="b.lv.weeks" class="text-slate-400 whitespace-nowrap">({{ b.lv.weeks }}주)</span>
-            <span v-if="!b.lv.open" :class="b.lv.running ? 'text-violet-600' : 'text-slate-400'">· {{ dd(b.lv.to) }}부터 재원</span>
-            <span v-if="b.lv.reason" class="text-slate-500 truncate">· {{ b.lv.reason }}</span>
-            <!-- 쉬기 시작할 땐 모르다가 나중에 정해지는 일이 흔하다. 그 자리에서 채운다 -->
-            <template v-if="stuCanEdit">
-              <span v-if="leaveEdit.id===b.lv.id" class="flex items-center gap-1">
-                <date-box v-model="leaveEdit.resume" box-class="input py-0.5 text-xs"></date-box>
-                <button @click="saveLeaveResume" class="text-indigo-600 hover:underline">저장</button>
-                <button @click="leaveEdit={id:null,resume:''}" class="text-slate-400 hover:underline">취소</button>
+            <!-- 윗줄은 기간, 아랫줄은 사유. 한 줄에 몰면 사유가 길 때 줄이 접히며 어디부터가
+                 사유인지 흐려진다 -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <span :class="['font-semibold whitespace-nowrap', b.lv.running ? 'text-violet-700' : 'text-slate-500']">
+                🏖 휴원 {{ dd(b.lv.from) }} ~ {{ b.lv.open ? '기한 없음' : dd(prevDay(b.lv.to)) }}
               </span>
-              <button v-else @click="leaveEdit={ id:b.lv.id, resume:b.lv.open ? '' : b.lv.to }"
-                      class="text-violet-500 hover:underline whitespace-nowrap">{{ b.lv.open ? '재원 예정일 적기' : '고치기' }}</button>
-            </template>
-            <span class="ml-auto text-slate-400 whitespace-nowrap">{{ b.lv.actor || '자동' }} · {{ dt(b.lv.time) }}</span>
+              <span v-if="b.lv.weeks" class="text-slate-400 whitespace-nowrap">({{ b.lv.weeks }}주)</span>
+              <span v-if="!b.lv.open" :class="['whitespace-nowrap', b.lv.running ? 'text-violet-600' : 'text-slate-400']">· {{ dd(b.lv.to) }}부터 재원</span>
+              <!-- 쉬기 시작할 땐 모르다가 나중에 정해지는 일이 흔하다. 그 자리에서 채운다 -->
+              <template v-if="stuCanEdit">
+                <span v-if="leaveEdit.id===b.lv.id" class="flex items-center gap-1">
+                  <date-box v-model="leaveEdit.resume" box-class="input py-0.5 text-xs"></date-box>
+                  <button @click="saveLeaveResume" class="text-indigo-600 hover:underline">저장</button>
+                  <button @click="leaveEdit={id:null,resume:''}" class="text-slate-400 hover:underline">취소</button>
+                </span>
+                <button v-else @click="leaveEdit={ id:b.lv.id, resume:b.lv.open ? '' : b.lv.to }"
+                        class="text-violet-500 hover:underline whitespace-nowrap">{{ b.lv.open ? '재원 예정일 적기' : '고치기' }}</button>
+              </template>
+              <span class="ml-auto text-slate-400 whitespace-nowrap">{{ b.lv.actor || '자동' }} · {{ dt(b.lv.time) }}</span>
+            </div>
+            <div v-if="b.lv.reason" class="mt-1 text-slate-500 break-words">{{ b.lv.reason }}</div>
           </div>
           <div v-else class="border rounded-lg overflow-hidden">
             <div class="bg-slate-50 px-3 py-1.5 text-xs flex items-center gap-2">
