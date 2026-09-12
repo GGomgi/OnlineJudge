@@ -9904,6 +9904,34 @@ const app = createApp({
     },
     // 같은 학생의 바로 이어지는 연속 수업(뒤 수업 시작=앞 수업 종료)은 시간순 정렬을 깨더라도
     // 서로 붙여서 보여줌 — 시간표엔 잘 이어져 보이는데 목록에서 뚝뚝 떨어져 보이면 헷갈리기 때문
+    // 시험을 수업 줄 사이 어디에 끼울지 미리 정해 둔다.
+    //
+    // 줄 차례가 늘 시각 순은 아니다 — 이어진 수업은 그 학생의 다음 타임을 바로 뒤에
+    // 붙이므로 시각이 앞으로 뛰었다가 되돌아온다(이준호 14:00→15:30, 그다음 변우주 14:00).
+    // 「앞 줄보다 늦고 이번 줄보다 이르면 끼운다」로만 보면 되돌아올 때 같은 시험이 또
+    // 걸려 두 번 나온다. 지나온 가장 늦은 시각을 기준으로 삼고, 한 번 자리 잡은 시험은
+    // 다시 놓지 않는다.
+    dashExamSlots(){
+      const out = {};
+      if (!this.dashShowExam) return out;
+      const list = this.dashData.exam_today || [];
+      if (!list.length) return out;
+      const rows = this.dashLessonsOrdered;
+      const placed = new Set();
+      let seen = -1;
+      for (let i = 0; i < rows.length; i++){
+        const cur = this.hmMin(rows[i].start_time);
+        list.forEach((g, gi) => {
+          if (placed.has(gi)) return;
+          const m = g.time ? this.hmMin(g.time) : 99999;
+          if (m > seen && m <= cur){ (out[i] = out[i] || []).push(g); placed.add(gi); }
+        });
+        if (cur > seen) seen = cur;
+      }
+      const tail = list.filter((g, gi) => !placed.has(gi));   // 모든 수업보다 늦은 것은 맨 끝에
+      if (tail.length) out[rows.length] = tail;
+      return out;
+    },
     dashLessonsOrdered(){
       const list = this.dashLessons;
       const toM = t=>this.hmMin(t);
@@ -15130,19 +15158,7 @@ const app = createApp({
     // 비고가 둘이라 헷갈린다 — 출결 비고(지각예정·결석 사유 등)와 수업일지 비고는
     // 다른 것이다. 여기 '고'는 수업일지 쪽만 센다. 출결 비고는 오른쪽 비고 칸이 맡는다.
     // 이 자리(i번째 수업) 앞에 와야 하는 시험들. 시각으로 자리를 잡는다.
-    examBefore(i){
-      if (!this.dashShowExam) return [];
-      const list = this.dashData.exam_today || [];
-      if (!list.length) return [];
-      const rows = this.dashLessonsOrdered;
-      const at = k => (k < rows.length ? this.hmMin(rows[k].start_time) : 99999);
-      const prev = (i === 0) ? -1 : at(i - 1);
-      const cur = at(i);
-      return list.filter(g=>{
-        const m = g.time ? this.hmMin(g.time) : 99999;
-        return m > prev && m <= cur;
-      });
-    },
+    examBefore(i){ return this.dashExamSlots[i] || []; },
     logMarks(l){
       const p = (l && l.progress) || {};
       return [
